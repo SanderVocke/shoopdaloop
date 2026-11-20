@@ -1,4 +1,4 @@
-use rt_fpga_reference::midi::{ContentStore, Error, Message, MidiState, StoreLimits};
+use rt_fpga_reference::midi::{ContentStore, Error, Message, StoreLimits};
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 #[global_allocator]
 static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
@@ -10,31 +10,28 @@ fn limits() -> StoreLimits {
         blocks: 8,
         max_events: 12,
         views: 8,
-        snapshots: 4,
         retirements: 4,
     }
 }
 fn msg(v: u8) -> Message {
-    Message::managed(&[0xb0, 1, v]).unwrap()
+    Message::parse(&[0xb0, 1, v]).unwrap()
 }
 
 #[shoop_test]
 fn retained_nested_ranges_survive_append_source_release_and_reuse() {
     let mut store = ContentStore::prepare(limits()).unwrap();
     assert_no_heap(|| {
-        let state = store.snapshot(&MidiState::default()).unwrap();
-        let source = store.writer(state).unwrap();
+        let source = store.writer().unwrap();
         for i in 0..8 {
             store.append(source, 10 + i * 2, msg(i as u8)).unwrap();
         }
         store.advance(source, 40).unwrap();
-        let range = store.range(source, 13, 30, state).unwrap();
-        let nested = store.range(range, 2, 12, state).unwrap();
+        let range = store.range(source, 13, 30).unwrap();
+        let nested = store.range(range, 2, 12).unwrap();
         store.append(source, 40, msg(99)).unwrap();
         store.advance(source, 50).unwrap();
         store.release(source).unwrap();
         store.release(range).unwrap();
-        store.release_snapshot(state).unwrap();
         assert_eq!(store.describe(nested).unwrap().frames, 10);
         let expected = [(1, 3), (3, 4), (5, 5), (7, 6), (9, 7)];
         for (i, (frame, value)) in expected.into_iter().enumerate() {
@@ -50,9 +47,9 @@ fn retained_nested_ranges_survive_append_source_release_and_reuse() {
         while store.maintenance(1) != 0 {}
         assert_eq!(store.usage(), Default::default());
         assert_eq!(store.describe(nested), Err(Error::InvalidState));
-        let next_state = store.snapshot(&MidiState::default()).unwrap();
-        assert_ne!(next_state, state);
-        assert_eq!(store.state(state), Err(Error::InvalidState));
+        let next = store.writer().unwrap();
+        assert_ne!(next, nested);
+        assert_eq!(store.describe(nested), Err(Error::InvalidState));
     });
 }
 
@@ -61,9 +58,8 @@ fn retirement_queue_refusal_is_atomic_and_release_does_not_walk_blocks() {
     let mut l = limits();
     l.retirements = 1;
     let mut store = ContentStore::prepare(l).unwrap();
-    let state = store.snapshot(&MidiState::default()).unwrap();
-    let a = store.writer(state).unwrap();
-    let b = store.writer(state).unwrap();
+    let a = store.writer().unwrap();
+    let b = store.writer().unwrap();
     for i in 0..12 {
         store.append(a, i, msg(i as u8)).unwrap();
     }
@@ -83,13 +79,12 @@ fn retirement_queue_refusal_is_atomic_and_release_does_not_walk_blocks() {
 #[shoop_test]
 fn history_prefix_discard_preserves_pinned_data_and_stable_equal_time_order() {
     let mut store = ContentStore::prepare(limits()).unwrap();
-    let state = store.snapshot(&MidiState::default()).unwrap();
-    let writer = store.writer(state).unwrap();
+    let writer = store.writer().unwrap();
     for i in 0..9 {
         store.append(writer, i / 2, msg(i as u8)).unwrap();
     }
     store.advance(writer, 10).unwrap();
-    let frozen = store.range(writer, 1, 4, state).unwrap();
+    let frozen = store.range(writer, 1, 4).unwrap();
     assert_eq!(store.discard_before(writer, 3).unwrap(), 6);
     for i in 0..6 {
         store.append(writer, 11 + i, msg(30 + i as u8)).unwrap();
@@ -110,10 +105,9 @@ fn silent_ranges_and_capacity_errors_keep_explicit_duration_and_accepted_prefix(
     let mut l = limits();
     l.blocks = 1;
     let mut store = ContentStore::prepare(l).unwrap();
-    let state = store.snapshot(&MidiState::default()).unwrap();
-    let source = store.writer(state).unwrap();
+    let source = store.writer().unwrap();
     store.advance(source, 100).unwrap();
-    let silent = store.range(source, 20, 80, state).unwrap();
+    let silent = store.range(source, 20, 80).unwrap();
     assert_eq!(store.describe(silent).unwrap().frames, 60);
     assert_eq!(store.read(silent, 0).unwrap(), None);
     for i in 0..3 {

@@ -36,7 +36,7 @@ pub enum InitialValue {
         duration: u32,
     },
 }
-/// Ordered MIDI service phases in the mixed work pass.
+/// Legacy schedule for historical fixtures. Current targets use `MidiOperation`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -89,9 +89,51 @@ pub struct MidiBinding {
     pub context: u16,
 }
 
+/// Concrete MIDI data operations, emitted by SP in program order.
+/// Buffer and port IDs address separately prepared MIDI resources.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum MidiOperation {
+    Input {
+        port: u16,
+        destination: u16,
+    },
+    Capture {
+        loop_id: Identity,
+        sequence: u16,
+        source: u16,
+    },
+    Playback {
+        loop_id: Identity,
+        sequence: u16,
+        cursor: u16,
+        channels: u16,
+        destination: u16,
+    },
+    Merge {
+        left: u16,
+        right: u16,
+        destination: u16,
+    },
+    Output {
+        source: u16,
+        port: u16,
+    },
+}
+impl MidiOperation {
+    pub fn jobs(self) -> u32 {
+        if matches!(self, Self::Capture { .. }) {
+            3
+        } else {
+            1
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Operation {
+    MidiData(MidiOperation),
     Midi {
         phase: MidiPhase,
         loop_id: Option<Identity>,
@@ -320,6 +362,25 @@ impl LogicalStateProgram {
         self.resources.queue_capacity = self.resources.queue_capacity.max(self.jobs_per_quantum);
         Ok(self)
     }
+    /// Append data jobs using independently prepared MIDI buffers and ports.
+    pub fn with_midi_data(mut self, operations: &[MidiOperation]) -> Result<Self, CompileError> {
+        if self
+            .work_pass
+            .iter()
+            .any(|op| matches!(op, Operation::Midi { .. }))
+        {
+            return Err(CompileError::InvalidProgram);
+        }
+        for &operation in operations {
+            self.jobs_per_quantum = self
+                .jobs_per_quantum
+                .checked_add(operation.jobs())
+                .ok_or(CompileError::InvalidProgram)?;
+            self.work_pass.push(Operation::MidiData(operation));
+        }
+        self.resources.queue_capacity = self.resources.queue_capacity.max(self.jobs_per_quantum);
+        Ok(self)
+    }
     pub fn validate(&self, limits: ProgramLimits) -> Result<(), CompileError> {
         use CompileError::{Capacity, InvalidProgram};
         let r = self.resources;
@@ -423,6 +484,31 @@ impl LogicalStateProgram {
         }
         for op in &self.work_pass {
             match *op {
+                Operation::MidiData(operation) => match operation {
+                    MidiOperation::Input { .. } | MidiOperation::Output { .. } => {}
+                    MidiOperation::Capture { loop_id: id, .. } => {
+                        loop_id(id)?;
+                    }
+                    MidiOperation::Playback {
+                        loop_id: id,
+                        channels,
+                        ..
+                    } => {
+                        loop_id(id)?;
+                        if channels == 0 {
+                            return Err(InvalidProgram);
+                        }
+                    }
+                    MidiOperation::Merge {
+                        left,
+                        right,
+                        destination,
+                    } => {
+                        if destination == left || destination == right {
+                            return Err(InvalidProgram);
+                        }
+                    }
+                },
                 Operation::Midi {
                     phase,
                     loop_id: id,
@@ -500,6 +586,57 @@ impl LogicalStateProgram {
                     if port >= r.output_ports {
                         return Err(InvalidProgram);
                     }
+                }
+            }
+        }
+        if self
+            .work_pass
+            .iter()
+            .any(|op| matches!(op, Operation::MidiData(_)))
+        {
+            if self
+                .work_pass
+                .iter()
+                .any(|op| matches!(op, Operation::Midi { .. }))
+            {
+                return Err(InvalidProgram);
+            }
+            let needed = self
+                .work_pass
+                .iter()
+                .try_fold(0u32, |n, op| {
+                    n.checked_add(match op {
+                        Operation::MidiData(op) => op.jobs(),
+                        Operation::Capture { .. } => 2,
+                        _ => 1,
+                    })
+                })
+                .ok_or(InvalidProgram)?;
+            if self.jobs_per_quantum < needed {
+                return Err(InvalidProgram);
+            }
+            let mut captures = Vec::new();
+            let mut cursors = Vec::new();
+            for op in &self.work_pass {
+                match op {
+                    Operation::MidiData(MidiOperation::Capture {
+                        loop_id, sequence, ..
+                    }) => {
+                        if captures
+                            .iter()
+                            .any(|(id, seq)| id == loop_id || seq == sequence)
+                        {
+                            return Err(InvalidProgram);
+                        }
+                        captures.push((*loop_id, *sequence));
+                    }
+                    Operation::MidiData(MidiOperation::Playback { cursor, .. }) => {
+                        if cursors.contains(cursor) {
+                            return Err(InvalidProgram);
+                        }
+                        cursors.push(*cursor);
+                    }
+                    _ => {}
                 }
             }
         }

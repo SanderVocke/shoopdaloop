@@ -3,7 +3,7 @@ if {[llength $argv] == 0 || [llength $argv] % 2} {error "Pass CHECKPOINT OUTPUT_
 set_param general.maxThreads 2
 foreach {checkpoint prefix} $argv {
     open_checkpoint $checkpoint
-    set roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_job_port}]
+    set roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_data_jobs}]
     set adapters [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == word_axi && NAME =~ *midi_memory}]
     if {![llength $roots] || ![llength $adapters]} {error "Missing MIDI service or DDR adapter"}
     set registers {}

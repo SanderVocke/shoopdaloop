@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -38,6 +39,10 @@ def prepare(output, revision, mhz, profile):
             target.write_bytes(data)
             hashes[path] = hashlib.sha256(data).hexdigest()
     source = (output/'source/fpga/midi/rtl/midi_audio_pipeline_axi.sv').read_text()
+    declared=set(re.findall(r'parameter\s+(?:integer|\[[^]]+\])\s+(\w+)\s*=',source))
+    parameters={k:v for k,v in parameters.items() if k in declared}
+    for key,value in dict(MIDI_BUFFERS=256,MIDI_CURSORS=64,MIDI_SCRATCH_EVENTS=131072).items():
+        if key in declared: parameters[key]=value
     text = '`include "state_processor_defs.svh"\n'
     text += component_context(source, 'midi_audio_pipeline_axi', 'pipeline_context', dict(
         run_quantum="32'd32", run_chunk_frames="32'd32", arena_base="64'd0",
@@ -50,6 +55,7 @@ def prepare(output, revision, mhz, profile):
         'set_clock_uncertainty 0.200 [get_clocks core]\n'
         'set_property HD.CLK_SRC BUFGCTRL_X0Y0 [get_ports clk]\n')
     shutil.copyfile(HERE/'midi_shared_jobs.tcl', output/'run.tcl')
+    shutil.copyfile(HERE/'run_midi_container.sh', output/'run-container.sh')
     shutil.copyfile(profile, output/'compiled-profile.json')
     (output/'provenance.json').write_text(json.dumps(dict(
         revision=revision, clock_mhz=mhz, part='xc7z020clg484-1', vivado='2021.1',
@@ -60,7 +66,7 @@ def prepare(output, revision, mhz, profile):
         memory='two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build',
         threads=2), indent=2)+'\n')
     (output/'source-manifest.json').write_text(json.dumps(hashes, indent=2)+'\n')
-    artifacts = ['context.sv', 'context.xdc', 'run.tcl', 'compiled-profile.json']
+    artifacts = ['context.sv', 'context.xdc', 'run.tcl', 'run-container.sh', 'compiled-profile.json']
     (output/'artifact-manifest.json').write_text(json.dumps({p: hashlib.sha256((output/p).read_bytes()).hexdigest() for p in artifacts}, indent=2)+'\n')
     print(output)
 

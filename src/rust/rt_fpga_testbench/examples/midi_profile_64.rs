@@ -1,7 +1,8 @@
 #[cfg(feature = "sim")]
 fn main() {
     use rt_fpga_compiler::{
-        CompileContext, MidiBinding, StateProgramTarget, compile_with_chunk_frames, shoop_graph::*,
+        CompileContext, MidiOperation as M, StateProgramTarget, compile_with_chunk_frames,
+        shoop_graph::*,
     };
     use rt_fpga_testbench::target::RtlTarget;
     let mut graph = Graph::default();
@@ -66,16 +67,42 @@ fn main() {
         },
         32,
     )
-    .unwrap()
-    .with_midi(
-        &(0..64)
-            .map(|slot| MidiBinding {
-                loop_id: id(slot),
-                context: slot as u16,
-            })
-            .collect::<Vec<_>>(),
-    )
     .unwrap();
+    let mut operations = vec![M::Input {
+        port: 0,
+        destination: 0,
+    }];
+    for slot in 0..64 {
+        operations.push(M::Capture {
+            loop_id: id(slot),
+            sequence: slot as u16,
+            source: 0,
+        });
+    }
+    for slot in 0..64 {
+        operations.push(M::Playback {
+            loop_id: id(slot),
+            sequence: slot as u16,
+            cursor: slot as u16,
+            channels: 1 << (slot % 16),
+            destination: slot as u16 + 1,
+        });
+    }
+    let mut merged = 1;
+    for slot in 1..64 {
+        let destination = 64 + slot;
+        operations.push(M::Merge {
+            left: merged,
+            right: slot + 1,
+            destination,
+        });
+        merged = destination;
+    }
+    operations.push(M::Output {
+        source: merged,
+        port: 0,
+    });
+    let logical = logical.with_midi_data(&operations).unwrap();
     let views = (0..128).collect::<Vec<_>>();
     let cap = [2048, 256, 2048, 32, 512, 2, 2];
     let image = RtlTarget::new(cap, 256, &views).build(&logical).unwrap();
@@ -85,7 +112,7 @@ fn main() {
         "compiled_instructions":image.instructions.len(),"compiled_sync_instructions":image.sync_count,
         "state_values":image.state.len(),"jobs_per_quantum":image.jobs_per_quantum,
         "audio_buffers":image.resources.buffers,"audio_inputs":image.resources.input_ports,
-        "audio_outputs":image.resources.output_ports,"midi_contexts":64,
+        "audio_outputs":image.resources.output_ports,"midi_sequences":64,"midi_cursors":64,"midi_buffers":128,"midi_scratch_events":131072,
         "audio_read_operations":logical.work_pass.iter().filter(|op|matches!(op,rt_fpga_compiler::Operation::Playback {..})).count(),
         "read_hint_entries":256,
         "capacity":{"instructions":2048,"state_values":256,"jobs":2048,"buffers":512,"loop_slots":256},

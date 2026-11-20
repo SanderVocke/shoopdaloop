@@ -16,6 +16,9 @@ read_xdc context.xdc
 set f [open setup.txt w]
 puts $f "Vivado: [version]\nPart: xc7z020clg484-1\nThreads: 2\nUncertainty: 0.2 ns\nFlow: OOC, rebuilt hierarchy, default placement/routing, post-place phys_opt"
 close $f
+proc checkpoint {path} {
+    if {[info exists ::env(MIDI_SAVE_CHECKPOINTS)] && $::env(MIDI_SAVE_CHECKPOINTS) eq {1}} {write_checkpoint -force $path}
+}
 proc reports {stage} {
     report_utilization -file ${stage}_utilization.rpt
     report_utilization -hierarchical -hierarchical_depth 8 -file ${stage}_hierarchical_utilization.rpt
@@ -24,8 +27,8 @@ proc reports {stage} {
         audio media_audio_pipeline_axi
         state state_processor
         jobs job_processor
-        midi midi_job_port
-        midi_service midi_job_service
+        midi midi_data_jobs
+        midi_store midi_store
     } {
         # Rebuilt hierarchy may insert generated wrappers between public tops.
         set cells [get_cells -quiet -hierarchical -filter "ORIG_REF_NAME == $original"]
@@ -33,7 +36,7 @@ proc reports {stage} {
     }
     report_timing_summary -delay_type min_max -report_unconstrained -check_timing_verbose -max_paths 20 -file ${stage}_timing_summary.rpt
     report_timing -delay_type max -max_paths 20 -path_type full_clock_expanded -file ${stage}_critical_paths.rpt
-    set midi_roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_job_port}]
+    set midi_roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_data_jobs}]
     foreach root $midi_roots {
         set registers [get_cells -quiet -hierarchical -filter "IS_SEQUENTIAL && NAME =~ $root/*"]
         if {![llength $registers]} {error "No MIDI sequential cells found below $root"}
@@ -56,20 +59,20 @@ proc reports {stage} {
 set stage synth
 set status [catch {
     synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
-    write_checkpoint -force post_synth.dcp
+    checkpoint post_synth.dcp
     reports post_synth
     set stage opt
     opt_design
     reports post_opt
-    write_checkpoint -force post_opt.dcp
+    checkpoint post_opt.dcp
     set stage place
     place_design
     phys_opt_design
-    write_checkpoint -force post_place.dcp
+    checkpoint post_place.dcp
     reports post_place
     set stage route
     route_design
-    write_checkpoint -force post_route.dcp
+    checkpoint post_route.dcp
     reports post_route
     report_route_status -file post_route_route_status.rpt
     report_drc -file post_route_drc.rpt

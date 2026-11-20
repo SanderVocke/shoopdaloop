@@ -86,12 +86,14 @@ pub struct Axi {
     held_ar: Stable<Address>,
     held_w: Stable<Write>,
     resetting: bool,
+    ports: BTreeMap<&'static str, String>,
     pub driven: Driven,
 }
 impl Axi {
     pub fn new(words: usize, base: u64, width: usize, timing: Box<dyn Timing>, seed: u64) -> Self {
         assert!(matches!(width, 4 | 8) && base % width as u64 == 0);
         Self {
+            ports: BTreeMap::new(),
             words: vec![0xa5a5a5a5; words],
             base,
             width,
@@ -118,6 +120,45 @@ impl Axi {
             resetting: false,
             driven: Driven::default(),
         }
+    }
+    pub fn with_prefix(mut self, prefix: &str) -> Self {
+        for name in [
+            "m_axi_awvalid",
+            "m_axi_awready",
+            "m_axi_awaddr",
+            "m_axi_awid",
+            "m_axi_awlen",
+            "m_axi_awsize",
+            "m_axi_awburst",
+            "m_axi_arvalid",
+            "m_axi_arready",
+            "m_axi_araddr",
+            "m_axi_arid",
+            "m_axi_arlen",
+            "m_axi_arsize",
+            "m_axi_arburst",
+            "m_axi_wvalid",
+            "m_axi_wready",
+            "m_axi_wdata",
+            "m_axi_wstrb",
+            "m_axi_wlast",
+            "m_axi_bvalid",
+            "m_axi_bready",
+            "m_axi_bresp",
+            "m_axi_bid",
+            "m_axi_rvalid",
+            "m_axi_rready",
+            "m_axi_rdata",
+            "m_axi_rresp",
+            "m_axi_rlast",
+            "m_axi_rid",
+        ] {
+            self.ports.insert(name, format!("{prefix}{name}"));
+        }
+        self
+    }
+    fn port<'a>(&'a self, name: &'a str) -> &'a str {
+        self.ports.get(name).map_or(name, String::as_str)
     }
     pub fn read_bus(&self, address: u64) -> u64 {
         let first = address - address % self.width as u64 - self.base;
@@ -155,7 +196,7 @@ impl Axi {
                     && !c.hold_ar
                     && self.active.is_none()
                     && self.write_beats.is_empty()
-                    && m.get("m_axi_awvalid") == 0
+                    && m.get(self.port("m_axi_awvalid")) == 0
                     && (!c.stalls || self.random.yes(4)),
             ),
             w: u64::from(
@@ -204,22 +245,22 @@ impl Axi {
         }
         let (data, resp, last) = driven.r.unwrap_or_default();
         m.set_all(&[
-            ("m_axi_awready", driven.aw),
-            ("m_axi_arready", driven.ar),
-            ("m_axi_wready", driven.w),
-            ("m_axi_bvalid", u64::from(driven.b.is_some())),
-            ("m_axi_bresp", driven.b.unwrap_or(0)),
-            ("m_axi_bid", 0),
-            ("m_axi_rvalid", u64::from(driven.r.is_some())),
-            ("m_axi_rdata", data),
-            ("m_axi_rresp", resp),
-            ("m_axi_rlast", last),
-            ("m_axi_rid", 0),
+            (self.port("m_axi_awready"), driven.aw),
+            (self.port("m_axi_arready"), driven.ar),
+            (self.port("m_axi_wready"), driven.w),
+            (self.port("m_axi_bvalid"), u64::from(driven.b.is_some())),
+            (self.port("m_axi_bresp"), driven.b.unwrap_or(0)),
+            (self.port("m_axi_bid"), 0),
+            (self.port("m_axi_rvalid"), u64::from(driven.r.is_some())),
+            (self.port("m_axi_rdata"), data),
+            (self.port("m_axi_rresp"), resp),
+            (self.port("m_axi_rlast"), last),
+            (self.port("m_axi_rid"), 0),
         ]);
         self.driven = driven;
     }
-    fn address(m: &Model<'_>, prefix: &str) -> Address {
-        let get = |suffix| m.get(&format!("m_axi_{prefix}{suffix}"));
+    fn address(&self, m: &Model<'_>, prefix: &str) -> Address {
+        let get = |suffix| m.get(self.port(&format!("m_axi_{prefix}{suffix}")));
         Address {
             address: get("addr"),
             id: get("id"),
@@ -306,15 +347,15 @@ impl Axi {
         }
         self.resetting = false;
         let d = self.driven;
-        let aw = Self::address(m, "aw");
-        let ar = Self::address(m, "ar");
-        let awvalid = m.get("m_axi_awvalid");
-        let arvalid = m.get("m_axi_arvalid");
-        let wvalid = m.get("m_axi_wvalid");
+        let aw = self.address(m, "aw");
+        let ar = self.address(m, "ar");
+        let awvalid = m.get(self.port("m_axi_awvalid"));
+        let arvalid = m.get(self.port("m_axi_arvalid"));
+        let wvalid = m.get(self.port("m_axi_wvalid"));
         let w = Write {
-            data: m.get("m_axi_wdata"),
-            strobe: m.get("m_axi_wstrb"),
-            last: m.get("m_axi_wlast"),
+            data: m.get(self.port("m_axi_wdata")),
+            strobe: m.get(self.port("m_axi_wstrb")),
+            last: m.get(self.port("m_axi_wlast")),
         };
         self.held_aw.check("AW", awvalid != 0, d.aw != 0, aw);
         self.held_ar.check("AR", arvalid != 0, d.ar != 0, ar);
@@ -322,16 +363,16 @@ impl Axi {
         self.address_stalls +=
             u64::from(awvalid != 0 && d.aw == 0) + u64::from(arvalid != 0 && d.ar == 0);
         self.write_stalls += u64::from(wvalid != 0 && d.w == 0);
-        self.response_stalls += u64::from(d.b.is_some() && m.get("m_axi_bready") == 0)
-            + u64::from(d.r.is_some() && m.get("m_axi_rready") == 0);
-        if d.b.is_some() && m.get("m_axi_bready") != 0 {
+        self.response_stalls += u64::from(d.b.is_some() && m.get(self.port("m_axi_bready")) == 0)
+            + u64::from(d.r.is_some() && m.get(self.port("m_axi_rready")) == 0);
+        if d.b.is_some() && m.get(self.port("m_axi_bready")) != 0 {
             let a = self.active.as_mut().unwrap();
             a.first.get_or_insert(self.cycle);
             a.beats.push(self.cycle);
             self.offered_b = None;
             self.finish();
         }
-        if d.r.is_some() && m.get("m_axi_rready") != 0 {
+        if d.r.is_some() && m.get(self.port("m_axi_rready")) != 0 {
             let a = self.active.as_mut().unwrap();
             a.first.get_or_insert(self.cycle);
             a.beats.push(self.cycle);

@@ -282,141 +282,159 @@ fn smoothing_history_and_gain_ramp_survive_changed_scratch_assignments() {
 }
 
 #[shoop_test]
-fn compiled_mixed_images_retain_midi_capture_across_relocation() {
-    use rt_fpga_reference::midi::{self, Message};
-    let mut allocator = Allocator::new(limits());
-    let mut media = MediaStore::new(1).unwrap();
-    let views = (0..8)
-        .map(|_| media.create_recording().unwrap().0 as u64)
-        .collect::<Vec<_>>();
-    let mixed = |logical: LogicalStateProgram| {
-        logical
-            .with_midi(&[rt_fpga_compiler::MidiBinding {
-                loop_id: Identity {
-                    slot: 1,
-                    generation: 1,
+fn explicit_midi_capture_survives_image_switch_and_refuses_writer_rebinding() {
+    use rt_fpga_compiler::MidiOperation as M;
+    use rt_fpga_reference::midi::{
+        BufferLimits, InputEvent, Message, MidiMemory, SequenceId, StoreLimits,
+    };
+    let logical = |ids: &[u32], sequence| {
+        let mut p = graph(ids);
+        p.resources.buffers = p.resources.buffers.max(2);
+        p.clone()
+            .with_midi_data(&[
+                M::Input {
+                    port: 0,
+                    destination: 0,
                 },
-                context: 0,
-            }])
+                M::Capture {
+                    loop_id: p.loops[0].id,
+                    sequence,
+                    source: 0,
+                },
+                M::Playback {
+                    loop_id: p.loops[0].id,
+                    sequence,
+                    cursor: 0,
+                    channels: u16::MAX,
+                    destination: 1,
+                },
+                M::Output { source: 1, port: 0 },
+            ])
             .unwrap()
     };
-    let first = image(&mut allocator, &mixed(graph(&[0, 1])), &views);
-    let layout = first.layout.clone();
-    let voice = id(&layout, 1);
-    allocator.publish(layout.revision).unwrap();
-    allocator.complete(layout.revision).unwrap();
-    let mut pipeline = start(first);
-    pipeline.trace_jobs(true);
+    let mut media = MediaStore::new(1).unwrap();
+    let views: Vec<_> = (0..8)
+        .map(|_| media.create_recording().unwrap().0 as u64)
+        .collect();
+    let mut allocator = Allocator::new(limits());
+    let first = image(&mut allocator, &logical(&[0], 0), &views);
+    let revision = first.layout.revision;
+    let loop_id = id(&first.layout, 0);
+    let mut pipeline = Pipeline::from_image(first, limits()).unwrap();
+    allocator.publish(revision).unwrap();
+    allocator.complete(revision).unwrap();
     let mut jobs = JobProcessor::with_history_slots(16, 32, 32);
-    let mut midi = midi::MidiSession::prepare(midi::SessionLimits::session()).unwrap();
-    midi.bind(
-        0,
-        midi::Binding {
-            loop_id: voice,
-            input: 0,
-            destination: 0,
-            channels: 1,
+    jobs.prepare_midi(BufferLimits {
+        buffers: 2,
+        cursors: 1,
+        scratch_events: 1024,
+        input_ports: 1,
+        output_ports: 1,
+    })
+    .unwrap();
+    let mut midi = MidiMemory::prepare(
+        StoreLimits {
+            block_events: 8,
+            blocks: 64,
+            max_events: 128,
+            views: 16,
+            retirements: 16,
         },
+        2,
     )
     .unwrap();
     pipeline
         .write_mode_plan(
-            voice,
+            loop_id,
             ModePlan {
                 now: Some(Mode::Recording),
                 ..Default::default()
             },
         )
         .unwrap();
-    let events = [midi::InputEvent {
-        input: 0,
-        offset: 15,
-        message: Message::managed(&[0x90, 60, 80]).unwrap(),
-    }];
-    let input = [Fixed(123); 16];
-    let mut left = [Fixed::ZERO; 16];
-    let mut right = [Fixed::ZERO; 16];
-    pipeline
-        .process_midi_session(
-            &mut jobs,
-            &mut media,
-            &[&input],
-            &mut [&mut left, &mut right],
-            16,
-            &mut midi,
-            &events,
-            &mut |_| Ok(()),
-        )
-        .unwrap();
-    let mut next = image(&mut allocator, &mixed(graph(&[0, 1, 2])), &views);
-    assert_eq!(
-        next.layout.loop_id(Identity {
-            slot: 1,
-            generation: 1
-        }),
-        Ok(rt_fpga_compiler::Identity {
-            slot: voice.slot,
-            generation: voice.generation
-        })
+    let mut output = Vec::new();
+    let mut tick = |pipeline: &mut Pipeline,
+                    jobs: &mut JobProcessor,
+                    media: &mut MediaStore,
+                    midi: &mut MidiMemory,
+                    events: &[InputEvent]| {
+        output.clear();
+        pipeline
+            .process_with_midi(
+                jobs,
+                media,
+                &[&[Fixed::ZERO; 16]],
+                &mut [&mut [Fixed::ZERO; 16], &mut [Fixed::ZERO; 16]],
+                16,
+                midi,
+                events,
+                &mut |e| {
+                    output.push(e);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        output.clone()
+    };
+    let note = Message::parse(&[0x90, 60, 80]).unwrap();
+    tick(
+        &mut pipeline,
+        &mut jobs,
+        &mut media,
+        &mut midi,
+        &[InputEvent {
+            input: 0,
+            offset: 2,
+            message: note,
+        }],
     );
-    let revision = next.layout.revision;
-    assert_no_heap(|| pipeline.switch_image(&mut next).unwrap());
-    allocator.publish(revision).unwrap();
-    allocator.complete(revision).unwrap();
-    pipeline
-        .process_midi_session(
-            &mut jobs,
-            &mut media,
-            &[&input],
-            &mut [&mut left, &mut right],
-            16,
-            &mut midi,
-            &[],
-            &mut |_| Ok(()),
-        )
-        .unwrap();
+    let mut invalid = image(&mut allocator, &logical(&[0, 1], 1), &views);
+    assert_eq!(
+        pipeline.switch_image(&mut invalid),
+        Err(rt_fpga_reference::pipeline::PipelineError::State(
+            rt_fpga_reference::Error::InvalidState
+        ))
+    );
+    allocator.cancel(invalid.layout.revision).unwrap();
+    let mut next = image(&mut allocator, &logical(&[0, 1], 0), &views);
+    pipeline.switch_image(&mut next).unwrap();
+    allocator.publish(next.layout.revision).unwrap();
+    allocator.complete(next.layout.revision).unwrap();
+    let cc = Message::parse(&[0xb0, 1, 40]).unwrap();
+    tick(
+        &mut pipeline,
+        &mut jobs,
+        &mut media,
+        &mut midi,
+        &[InputEvent {
+            input: 0,
+            offset: 7,
+            message: cc,
+        }],
+    );
+    let view = midi.view(SequenceId(0)).unwrap().unwrap();
+    assert_eq!(midi.store.describe(view).unwrap().events, 2);
     pipeline
         .write_mode_plan(
-            voice,
+            loop_id,
             ModePlan {
                 now: Some(Mode::Playing),
                 ..Default::default()
             },
         )
         .unwrap();
-    let mut emitted = Vec::with_capacity(32);
-    assert_no_heap(|| {
-        assert_eq!(
-            pipeline
-                .process_midi_session(
-                    &mut jobs,
-                    &mut media,
-                    &[&input],
-                    &mut [&mut left, &mut right],
-                    16,
-                    &mut midi,
-                    &[],
-                    &mut |event| {
-                        emitted.push(event);
-                        Ok(())
-                    }
-                )
-                .unwrap()
-                .error,
-            None
-        );
-    });
-    assert_eq!(emitted.len(), 1);
-    assert_eq!(emitted[0].offset, 15);
-    assert_eq!(emitted[0].message, events[0].message);
-    let view = midi.content(0).unwrap().unwrap();
-    assert_eq!(midi.store().describe(view).unwrap().frames, 32);
-    assert!(pipeline
-        .emitted_jobs()
-        .iter()
-        .any(|j| matches!(j, rt_fpga_reference::jobs::Job::ReadView { .. })));
-    assert!(pipeline.emitted_jobs().iter().any(|j| matches!(
-        j,
-        rt_fpga_reference::jobs::Job::Midi(midi::MidiJob::ReadUntil { .. })
-    )));
+    assert_eq!(
+        tick(&mut pipeline, &mut jobs, &mut media, &mut midi, &[])
+            .iter()
+            .map(|e| (e.offset, e.message))
+            .collect::<Vec<_>>(),
+        vec![(2, note)]
+    );
+    assert_eq!(
+        tick(&mut pipeline, &mut jobs, &mut media, &mut midi, &[])
+            .iter()
+            .map(|e| (e.offset, e.message))
+            .collect::<Vec<_>>(),
+        vec![(7, cc)]
+    );
 }

@@ -94,10 +94,23 @@ impl Pipeline {
         {
             return Err(PipelineError::State(Error::InvalidState));
         }
+        for instruction in &self.program.instructions {
+            if let crate::state::Instruction::ProcessMidiCapture {
+                loop_id, sequence, ..
+            } = instruction
+            {
+                if self.state.loop_state(*loop_id).is_ok_and(|slot| slot.midi_capture_open)
+                    && !image.compiled.program.instructions.iter().any(|next| matches!(next,
+                        crate::state::Instruction::ProcessMidiCapture { loop_id: id, sequence: seq, .. }
+                        if id == loop_id && seq == sequence)) {
+                    return Err(PipelineError::State(Error::InvalidState));
+                }
+            }
+        }
         image
             .compiled
             .program
-            .check_midi_job_budget()
+            .check_job_budget()
             .map_err(PipelineError::State)?;
         self.state.switch_image(image);
         core::mem::swap(&mut self.program, &mut image.compiled.program);
@@ -114,9 +127,7 @@ impl Pipeline {
         if plan.image().description.quantum != program.quantum {
             return Err(PipelineError::Transition(TransitionError::InvalidConfig));
         }
-        program
-            .check_midi_job_budget()
-            .map_err(PipelineError::State)?;
+        program.check_job_budget().map_err(PipelineError::State)?;
         if capacity < program.jobs_per_quantum {
             return Err(PipelineError::State(Error::QueueFull));
         }
@@ -226,9 +237,7 @@ impl Pipeline {
         frames: usize,
         observer: &mut impl Observer,
     ) -> Result<(), PipelineError> {
-        self.process_mixed(jobs, memory, inputs, outputs, frames, observer, &mut |_| {
-            Err(Error::UnsupportedJob)
-        })
+        self.process_mixed(jobs, memory, inputs, outputs, frames, observer, None)
     }
     fn process_mixed(
         &mut self,
@@ -238,7 +247,7 @@ impl Pipeline {
         outputs: &mut [&mut [Fixed]],
         frames: usize,
         observer: &mut impl Observer,
-        midi: &mut impl FnMut(crate::midi::MidiJob) -> Result<(), Error>,
+        mut midi: Option<&mut crate::midi::Io<'_>>,
     ) -> Result<(), PipelineError> {
         for output in outputs.iter_mut() {
             output.fill(Fixed::ZERO);
@@ -267,7 +276,7 @@ impl Pipeline {
                 base,
                 observer,
                 base == 0,
-                midi,
+                midi.as_deref_mut(),
             )
         });
         if let Err(error) = result {
@@ -278,100 +287,91 @@ impl Pipeline {
         }
         result
     }
-    pub fn grab_midi(
+    /// Publish a completed sequence while its loop is stopped and its capture has finished.
+    pub fn replace_midi_view(
         &mut self,
-        midi: &mut crate::midi::MidiSession,
-        input: u16,
-        start: u64,
-        end: u64,
-        slots: &[u16],
+        memory: &mut crate::midi::MidiMemory,
+        loop_id: LoopId,
+        sequence: crate::midi::SequenceId,
+        view: Option<crate::midi::ViewId>,
     ) -> Result<(), crate::midi::Error> {
+        use crate::midi::Error as M;
         if self.fault.is_some() {
-            return Err(crate::midi::Error::InvalidState);
+            return Err(M::InvalidState);
         }
-        midi.grab(&mut self.state, input, start, end, slots)
-    }
-    pub fn replace_midi(
-        &mut self,
-        midi: &mut crate::midi::MidiSession,
-        slots: &[u16],
-        view: crate::midi::ViewId,
-    ) -> Result<(), crate::midi::Error> {
-        if self.fault.is_some() {
-            return Err(crate::midi::Error::InvalidState);
+        if !self.program.instructions.iter().any(|instruction| {
+            matches!(instruction,
+            crate::state::Instruction::ProcessMidiPlayback { loop_id: id, sequence: seq, .. }
+            | crate::state::Instruction::ProcessMidiCapture { loop_id: id, sequence: seq, .. }
+            if *id == loop_id && *seq == sequence)
+        }) {
+            return Err(M::InvalidState);
         }
-        midi.replace_group(&mut self.state, slots, view)
-    }
-    pub fn clear_midi(
-        &mut self,
-        midi: &mut crate::midi::MidiSession,
-        slots: &[u16],
-    ) -> Result<(), crate::midi::Error> {
-        if self.fault.is_some() {
-            return Err(crate::midi::Error::InvalidState);
+        let slot = self
+            .state
+            .loop_state(loop_id)
+            .map_err(|_| M::InvalidState)?;
+        if slot.state.mode != Mode::Stopped || slot.midi_capture_open {
+            return Err(M::Busy);
         }
-        midi.clear_group(&mut self.state, slots)
+        let frames = match view {
+            Some(v) => {
+                let d = memory.store.describe(v)?;
+                if d.status != crate::midi::TakeStatus::Complete {
+                    return Err(M::Incomplete);
+                }
+                d.frames
+            }
+            None => 0,
+        };
+        let updates = [(loop_id, frames)];
+        self.state
+            .validate_midi_contents(&updates)
+            .map_err(|_| M::InvalidState)?;
+        memory.replace(sequence, view)?;
+        self.state
+            .publish_midi_contents(&updates)
+            .expect("validated content publication");
+        Ok(())
     }
-    pub fn duplicate_midi(
-        &mut self,
-        midi: &mut crate::midi::MidiSession,
-        source: u16,
-        destination: u16,
-    ) -> Result<(), crate::midi::Error> {
-        if self.fault.is_some() {
-            return Err(crate::midi::Error::InvalidState);
-        }
-        midi.duplicate(&mut self.state, source, destination)
-    }
-    pub fn process_midi_session(
+    pub fn process_with_midi(
         &mut self,
         jobs: &mut JobProcessor,
         memory: &mut impl Memory,
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
         frames: usize,
-        midi: &mut crate::midi::MidiSession,
+        midi: &mut crate::midi::MidiMemory,
         events: &[crate::midi::InputEvent],
         sink: &mut impl FnMut(crate::midi::OutputEvent) -> Result<(), crate::midi::Error>,
-    ) -> Result<crate::midi::SessionReport, crate::midi::ProcessError> {
+    ) -> Result<crate::midi::Work, PipelineError> {
         if let Some(error) = self.fault {
             for output in outputs.iter_mut() {
                 output.fill(Fixed::ZERO);
             }
-            midi.fault();
-            return Err(crate::midi::ProcessError::Pipeline(error));
+            return Err(error);
         }
-        if let Err(error) = midi.validate(&self.state, frames, events) {
+        if let Err(error) = jobs.begin_midi_callback(events, frames) {
             for output in outputs.iter_mut() {
                 output.fill(Fixed::ZERO);
             }
-            return Err(crate::midi::ProcessError::Midi(error));
+            return Err(PipelineError::Jobs(Error::Midi(error)));
         }
-        if let Err(error) = midi.validate_program(&self.program) {
-            for output in outputs.iter_mut() {
-                output.fill(Fixed::ZERO);
-            }
-            return Err(crate::midi::ProcessError::Midi(error));
-        }
-        let mut execution = crate::midi::Execution {
-            session: midi,
-            events,
+        let mut io = crate::midi::Io {
+            memory: midi,
+            inputs: events,
             sink,
-            base: 0,
-            quantum: self.program.quantum,
-            error: None,
         };
-        match self.process_mixed(jobs, memory, inputs, outputs, frames, &mut (), &mut |job| {
-            execution.execute(job)
-        }) {
-            Ok(()) => Ok(execution.session.report(execution.error)),
-            Err(error) => {
-                if self.fault.is_some() {
-                    execution.session.fault();
-                }
-                Err(crate::midi::ProcessError::Pipeline(error))
-            }
-        }
+        self.process_mixed(
+            jobs,
+            memory,
+            inputs,
+            outputs,
+            frames,
+            &mut (),
+            Some(&mut io),
+        )?;
+        Ok(jobs.midi_work())
     }
     #[cfg(feature = "rt-interface")]
     pub(crate) fn process_quantum(
@@ -384,16 +384,7 @@ impl Pipeline {
         observer: &mut impl Observer,
         publish: bool,
     ) -> Result<(), PipelineError> {
-        self.process_quantum_mixed(
-            jobs,
-            memory,
-            inputs,
-            outputs,
-            base,
-            observer,
-            publish,
-            &mut |_| Err(Error::UnsupportedJob),
-        )
+        self.process_quantum_mixed(jobs, memory, inputs, outputs, base, observer, publish, None)
     }
     fn process_quantum_mixed(
         &mut self,
@@ -404,7 +395,7 @@ impl Pipeline {
         base: usize,
         observer: &mut impl Observer,
         publish: bool,
-        midi: &mut impl FnMut(crate::midi::MidiJob) -> Result<(), Error>,
+        mut midi: Option<&mut crate::midi::Io<'_>>,
     ) -> Result<(), PipelineError> {
         self.emitted.clear();
         if let Some(error) = memory.fault() {
@@ -425,10 +416,20 @@ impl Pipeline {
         if publish {
             observer.settled(&self.state);
         }
-        jobs.run_at_mixed(&mut self.queue, memory, inputs, outputs, base, midi)
-            .map_err(PipelineError::Jobs)?;
+        jobs.run_at_mixed(
+            &mut self.queue,
+            memory,
+            inputs,
+            outputs,
+            base,
+            midi.as_deref_mut(),
+        )
+        .map_err(PipelineError::Jobs)?;
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
+        }
+        if let Some(io) = midi {
+            io.memory.store.maintenance(64);
         }
         observer.quantum(&self.state, base);
         observer.processed(jobs);

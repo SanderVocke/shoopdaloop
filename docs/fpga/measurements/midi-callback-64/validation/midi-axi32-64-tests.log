@@ -1,0 +1,10 @@
+   Compiling rt_fpga_testbench v0.3.0 (<repository>/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 13.84s
+     Running tests/midi.rs (target/debug/build/rt_fpga_testbench/13fa027fe74d073d/out/midi-13fa027fe74d073d)
+
+running 1 test
+test midi_ddr_axi32_and_axi64_record_playback_bounds_and_faults has been running for over 60 seconds
+test midi_ddr_axi32_and_axi64_record_playback_bounds_and_faults ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 64.20s
+

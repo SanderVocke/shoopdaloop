@@ -1,0 +1,8 @@
+{
+  "scenario": "midi_only",
+  "memory_delay": 7,
+  "quanta": 33,
+  "entire_result_json_identical": true,
+  "debug_sha256": "c444f9337c1a87635b69af08f03761c7e91fb14ffaad16f5ca024b69e3631e75",
+  "release_sha256": "c444f9337c1a87635b69af08f03761c7e91fb14ffaad16f5ca024b69e3631e75"
+}

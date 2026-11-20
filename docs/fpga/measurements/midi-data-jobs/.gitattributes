@@ -1,0 +1,4 @@
+*.rpt -whitespace linguist-generated=true
+*.svg -whitespace linguist-generated=true
+*.json linguist-generated=true
+*.txt -whitespace linguist-generated=true

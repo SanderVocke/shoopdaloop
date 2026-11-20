@@ -176,18 +176,51 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
         for op in &logical.work_pass {
             let instruction = match *op {
-                Operation::Midi {
-                    phase,
-                    loop_id,
-                    context,
-                } => component::Instruction::ProcessMidi {
-                    phase: phase as u16,
-                    loop_id: loop_id.map(|id| component::Identity {
-                        slot: id.slot,
-                        generation: id.generation,
-                    }),
-                    context,
-                },
+                Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
+                Operation::MidiData(operation) => {
+                    use rt_fpga_compiler::MidiOperation as M;
+                    let byte =
+                        |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
+                    match operation {
+                        M::Input { port, destination } => {
+                            component::Instruction::MidiInput { port, destination }
+                        }
+                        M::Capture {
+                            loop_id,
+                            sequence,
+                            source,
+                        } => component::Instruction::MidiCapture {
+                            loop_id: id(loop_id),
+                            sequence,
+                            source,
+                        },
+                        M::Playback {
+                            loop_id,
+                            sequence,
+                            cursor,
+                            channels,
+                            destination,
+                        } => component::Instruction::MidiPlayback {
+                            loop_id: id(loop_id),
+                            sequence: byte(sequence)?,
+                            cursor: byte(cursor)?,
+                            channels,
+                            destination: byte(destination)?,
+                        },
+                        M::Merge {
+                            left,
+                            right,
+                            destination,
+                        } => component::Instruction::MidiMerge {
+                            left,
+                            right,
+                            destination,
+                        },
+                        M::Output { source, port } => {
+                            component::Instruction::MidiOutput { source, port }
+                        }
+                    }
+                }
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,
                 },

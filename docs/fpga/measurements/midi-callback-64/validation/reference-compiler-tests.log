@@ -1,0 +1,286 @@
+   Compiling rt_fpga_reference v0.3.0 (<repository>/src/rust/rt_fpga_reference)
+    Finished `test` profile [unoptimized] target(s) in 4.63s
+     Running unittests src/lib.rs (target/debug/build/rt_fpga_compiler/91973f623b11faaf/out/rt_fpga_compiler-91973f623b11faaf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/graph.rs (target/debug/build/rt_fpga_compiler/d4b2ff18ae999841/out/graph-d4b2ff18ae999841)
+
+running 4 tests
+test full_graph_views_report_unsupported_features_without_flattening_them_away ... ok
+test invalid_graphs_fail_before_target_preparation ... ok
+test compiler_checks_each_target_resource_and_accepts_the_exact_fit ... ok
+test graph_orders_sync_independently_of_audio_without_a_profile_loop_limit ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/loading.rs (target/debug/build/rt_fpga_compiler/c88976bf275602f9/out/loading-c88976bf275602f9)
+
+running 5 tests
+test logical_ids_do_not_consume_physical_slots_and_failed_staging_keeps_ownership ... ok
+test changing_sync_operands_keeps_addresses_and_requires_explicit_plan_clear ... ok
+test failed_admission_and_cancel_preserve_current_and_relocation_is_sparse ... ok
+test staging_requires_explicit_state_ownership_without_inference ... ok
+test carry_over_has_no_initializers_and_old_slots_are_pinned_until_handoff ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/program.rs (target/debug/build/rt_fpga_compiler/400c77fcbdeb8dea/out/program-400c77fcbdeb8dea)
+
+running 3 tests
+test malformed_program_parameters_and_references_are_rejected ... ok
+test raw_state_programs_enforce_prepared_resource_limits ... ok
+test mixed_programs_validate_phase_order_stable_contexts_and_queue_bounds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/topology.rs (target/debug/build/rt_fpga_compiler/2c0ff97d4b3566da/out/topology-2c0ff97d4b3566da)
+
+running 5 tests
+test arbitrary_routes_include_cross_channel_fan_in_fan_out_and_loop_ports ... ok
+test empty_sessions_and_monitoring_without_loops_are_real_programs ... ok
+test malformed_channel_positions_and_layouts_are_rejected ... ok
+test target_resource_admission_includes_channels_smoothing_and_all_emitted_operations ... ok
+test channel_topologies_have_stable_state_and_deterministic_single_write_programs ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running unittests src/lib.rs (target/debug/build/rt_fpga_reference/989065f8828f9089/out/rt_fpga_reference-989065f8828f9089)
+
+running 7 tests
+test midi::shared_tests::common_queue_finishes_capture_before_restoring_and_emitting_it ... ok
+test midi::shared_tests::context_reuse_requires_stopped_execution_and_keeps_export_pins ... ok
+test midi::shared_tests::mixed_queue_preflight_refuses_before_advancing_musical_time ... ok
+test midi::shared_tests::prepared_input_history_continues_without_bound_midi_loops ... ok
+test midi::storage::tests::counters_refuse_overflow_without_mutating_the_take ... ok
+test midi::shared_tests::activity_initialization_copies_owned_channels_and_the_shared_reset_marker ... ok
+test midi::shared_tests::shared_jobs_match_frozen_session_with_partial_output_and_pedals ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/chunk_memory.rs (target/debug/build/rt_fpga_reference/33473ad20206b228/out/chunk_memory-33473ad20206b228)
+
+running 5 tests
+test chunk_spans_preserve_neighbors_and_survive_prefetch_fence_and_retirement ... ok
+test invalid_chunk_spans_are_checked_before_any_payload_changes ... ok
+test elastic_growth_preserves_samples_and_initializes_only_new_slots ... ok
+test job_lookahead_is_advisory_and_can_precede_publication_of_a_recording ... ok
+test media_views_retain_chunk_memory_contents_until_the_last_reference_retires ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/compiled_graph.rs (target/debug/build/rt_fpga_reference/9d6376b3836ca5f9/out/compiled_graph-9d6376b3836ca5f9)
+
+running 1 test
+test compiled_graph_records_routes_and_sums_exact_samples ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/execution.rs (target/debug/build/rt_fpga_reference/dfe3d8d96ef238b3/out/execution-dfe3d8d96ef238b3)
+
+running 7 tests
+test descriptor_exhaustion_is_fatal_and_partial_output_is_suppressed ... ok
+test invalid_capture_binding_does_not_attempt_to_allocate_missing_descriptor_ids ... ok
+test late_memory_fault_is_reported_on_the_next_call_without_processing_more_audio ... ok
+test malformed_block_is_rejected_without_faulting_the_engine ... ok
+test recording_views_are_created_and_reused_without_host_preparation ... ok
+test exhaustion_after_a_successful_quantum_silences_the_entire_host_block_and_latches ... ok
+test sync_ordered_sp_chain_runs_without_heap_work ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/graph_topology.rs (target/debug/build/rt_fpga_reference/6079716654c3803b/out/graph_topology-6079716654c3803b)
+
+running 2 tests
+test live_graph_changes_preserve_each_channel_recording_and_only_initialize_new_configuration ... ok
+test compiled_multichannel_strips_and_bus_chains_match_independent_sample_calculations ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/loading.rs (target/debug/build/rt_fpga_reference/842adb992b785456/out/loading-842adb992b785456)
+
+running 3 tests
+test smoothing_history_and_gain_ramp_survive_changed_scratch_assignments ... ok
+test staging_never_reinitializes_live_recording_and_switch_keeps_plans_and_frame ... ok
+test compiled_mixed_images_retain_midi_capture_across_relocation ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+     Running tests/loading_transport.rs (target/debug/build/rt_fpga_reference/c8e922412daf5fe8/out/loading_transport-c8e922412daf5fe8)
+
+running 6 tests
+test clear_plans_and_switch_share_one_boundary_when_changing_sync_source ... ok
+test completion_waits_for_memory_fence_while_new_program_and_snapshots_advance ... ok
+test fence_faults_retain_images_and_ownership_without_rt_destruction ... ok
+test slow_control_reclamation_backpressures_staging_without_rt_destruction_or_stalling_audio ... ok
+test ordered_switch_preserves_recording_and_gain_and_rebinds_recycled_physical_slots ... ok
+test cancelled_staging_and_wrong_descriptor_cannot_activate_or_modify_current_state ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/media.rs (target/debug/build/rt_fpga_reference/ab243a14341b8ee7/out/media-ab243a14341b8ee7)
+
+running 15 tests
+test blocked_snapshots_reject_misaligned_tables_and_incomplete_free_blocks ... ok
+test bounded_admission_is_atomic_and_reuses_released_space_before_growing ... ok
+test bounded_capture_cannot_reuse_chunks_retained_by_slices_and_failures_are_atomic ... ok
+test clearing_and_removing_recycle_slots_in_deterministic_order_without_reviving_view_ids ... ok
+test consecutive_views_and_incremental_retirement_preserve_other_recordings ... ok
+test imported_snapshots_reject_invalid_ownership_addresses_and_geometry ... ok
+test incremental_release_counts_shared_chunks_and_respects_slice_offsets ... ok
+test nested_and_empty_slices_outlive_their_sources_and_preserve_partial_tails ... ok
+test allocation_blocks_share_ranges_and_reclaim_once_per_block ... ok
+test arena_and_tables_grow_without_moving_ids_or_changing_existing_audio ... ok
+test blocked_append_keeps_grabbed_prefix_and_refuses_growth_before_mutation ... ok
+test unaligned_slices_survive_source_clear_and_slot_reuse_without_copying_payloads ... ok
+test snapshot_restore_rejects_writable_aliases_and_slices_into_unpublished_tail_samples ... ok
+test seeded_growth_reclamation_and_wrapped_reads_match_independent_sample_vectors ... ok
+test seeded_slices_and_source_reuse_match_independent_immutable_sample_ranges ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests/midi.rs (target/debug/build/rt_fpga_reference/50f5758e7f4d13c2/out/midi-50f5758e7f4d13c2)
+
+running 7 tests
+test cleanup_and_recovery_are_allocation_free_and_acknowledged ... ok
+test direct_state_updates_keep_the_same_managed_policy_as_the_interpreter ... ok
+test message_policy_is_explicit_and_invalid_packets_are_atomic ... ok
+test partial_updates_are_private_and_pedal_work_is_visible ... ok
+test restore_orders_loaded_bank_pending_bank_and_sostenuto_and_retries_exactly ... ok
+test sustain_matches_an_independent_held_key_map ... ok
+test stepped_state_matches_production_projection_across_channels_and_pedals ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.12s
+
+     Running tests/midi_content.rs (target/debug/build/rt_fpga_reference/95cc31b021cbd844/out/midi_content-95cc31b021cbd844)
+
+running 4 tests
+test history_prefix_discard_preserves_pinned_data_and_stable_equal_time_order ... ok
+test silent_ranges_and_capacity_errors_keep_explicit_duration_and_accepted_prefix ... ok
+test retained_nested_ranges_survive_append_source_release_and_reuse ... ok
+test retirement_queue_refusal_is_atomic_and_release_does_not_walk_blocks ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/midi_difference.rs (target/debug/build/rt_fpga_reference/2156af1b9f614762/out/midi_difference-2156af1b9f614762)
+
+running 3 tests
+test ordinary_message_notifies_only_its_changed_fields ... ok
+test drift_and_return_clear_bits_and_staged_setup_tracks_intervening_changes ... ok
+test incremental_maps_match_fresh_comparisons_after_modes_pedals_and_resets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+     Running tests/midi_pipeline.rs (target/debug/build/rt_fpga_reference/9c38d03d9ba797e2/out/midi_pipeline-9c38d03d9ba797e2)
+
+running 13 tests
+test a_partially_restored_pedal_is_owned_until_recovery_and_stop_finish ... ok
+test bad_windows_and_unsupported_seeks_are_refused_before_clock_or_midi_mutation ... ok
+test cleanup_resumes_one_message_at_a_time_without_restarting_recovery ... ok
+test output_exhaustion_uses_acknowledged_recovery_and_releases_take_after_stop ... ok
+test recording_directly_from_playback_releases_the_previous_output_notes ... ok
+test incomplete_capture_cannot_play_and_does_not_interrupt_audio_or_input_tracking ... ok
+test a_fatal_audio_fault_silences_audio_and_leaves_midi_recovery_drainable ... ok
+test recovery_preserves_pedal_ownership_until_stop_releases_it ... ok
+test independent_record_play_repeat_stop_trace_preserves_audio_at_all_quanta ... ok
+test refused_note_off_triggers_recovery_and_never_replays_a_delayed_event ... ok
+test silent_takes_repeat_and_input_budget_refusal_preserves_the_clock ... ok
+test synchronization_wait_releases_notes_and_resumes_only_on_the_source_pulse ... ok
+test split_and_multi_quantum_calls_have_identical_midi_and_loop_results ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/midi_session.rs (target/debug/build/rt_fpga_reference/f950529ad8b1fbb4/out/midi_session-f950529ad8b1fbb4)
+
+running 19 tests
+test background_import_reserves_capacity_for_admitted_capture_and_history ... ok
+test callback_partitioning_keeps_recorded_order_and_playback_offsets ... ok
+test channel_handoff_cleans_the_old_owner_before_restoring_the_new_owner ... ok
+test cleanup_retries_acknowledged_progress_with_one_output_message_per_callback ... ok
+test clearing_content_reclaims_old_events_after_acknowledged_stop ... ok
+test control_transfer_grants_are_shared_and_cancelled_imports_release_all_owners ... ok
+test activity_pool_reuse_keeps_cleanup_progress_and_reinitializes_new_channel_ownership ... ok
+test heavy_history_changes_and_same_frame_events_produce_correct_start_state ... ok
+test imports_exports_and_duplicate_retain_coherent_old_content_during_retake ... ok
+test history_grab_has_correct_pre_event_state_and_shares_one_snapshot ... ok
+test failed_group_grabs_do_not_mutate_any_binding_or_leak_temporary_state ... ok
+test least_prepared_history_start_replays_31_distinct_controls_without_a_full_comparison ... ok
+test ordered_transition_reconstructs_loaded_bank_and_sostenuto_without_global_reset ... ok
+test plain_note_differences_preserve_matching_notes_and_order_velocity_replacement ... ok
+test rejected_channel_overlap_does_not_drop_the_established_owners_note_off ... ok
+test matching_state_needs_no_restoration_and_unsupported_channel_overlap_emits_nothing ... ok
+test record_multiple_channels_restore_only_differences_and_keep_exact_event_offsets ... ok
+test cold_grab_replaces_128_full_sequence_views_without_releasing_their_tables_inline ... ok
+test session_records_128_loops_and_grabs_all_of_them_while_transfers_and_history_continue has been running for over 60 seconds
+test session_records_128_loops_and_grabs_all_of_them_while_transfers_and_history_continue ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 67.33s
+
+     Running tests/midi_storage.rs (target/debug/build/rt_fpga_reference/2616441ac633662e/out/midi_storage-2616441ac633662e)
+
+running 4 tests
+test exhaustion_preserves_prefix_and_cannot_be_finalized_as_success ... ok
+test a_silent_take_has_duration_and_can_play ... ok
+test invalid_windows_are_atomic_and_boundary_events_belong_to_next_window ... ok
+test round_trip_preserves_bytes_equal_frame_order_and_seed_without_allocations ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/pipeline.rs (target/debug/build/rt_fpga_reference/7d81d7b1ce7a2434/out/pipeline-7d81d7b1ce7a2434)
+
+running 4 tests
+test direct_plans_drive_gain_arithmetic_and_smoothing_jobs ... ok
+test combined_trace_latches_failed_work_pass_after_computing_next_cursors ... ok
+test combined_trace_runs_sp_and_jp_without_copied_loop_operands ... ok
+test shared_loop_pipeline_plays_a_retained_range_after_source_clear ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/rt_interface.rs (target/debug/build/rt_fpga_reference/f9cfe65ed50dd3f6/out/rt_interface-f9cfe65ed50dd3f6)
+
+running 7 tests
+test commands_published_during_a_callback_wait_for_the_next_callback ... ok
+test endpoint_scalar_execution_and_snapshot_publication_do_not_allocate ... ok
+test carrier_polling_and_client_lifetime_do_not_drive_processing ... ok
+test invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups ... ok
+test reference_fifo_drives_exact_audio_and_publishes_the_first_settled_quantum ... ok
+test ordered_failures_configuration_deadlines_and_backpressure_preserve_state ... ok
+test fifo_commands_responses_and_loop_snapshots_match_native ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.23s
+
+     Running tests/sync.rs (target/debug/build/rt_fpga_reference/c1ea2adac3440c6e/out/sync-c1ea2adac3440c6e)
+
+running 4 tests
+test capture_start_is_saved_before_length_advance_and_recomputed_on_retake ... ok
+test direct_plan_writes_reuse_resolved_slots_and_validate_atomically ... ok
+test malformed_sync_order_faults_without_emitting_audio_or_advancing_clocks ... ok
+test sync_prefix_propagates_before_reverse_audio_order_and_keeps_render_cursors ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/transition_traces.rs (target/debug/build/rt_fpga_reference/dbb15d2026974a09/out/transition_traces-dbb15d2026974a09)
+
+running 5 tests
+test multi_loop_sync_cycles_are_rejected_by_both_compilers ... ok
+test wide_sequences_and_effective_frames_preserve_priority_without_request_ids ... ok
+test recording_repeat_wait_and_same_boundary_sync_chain ... ok
+test sparse_reordered_dependencies_and_self_sync_keep_deterministic_pulses ... ok
+test seeded_direct_plan_graphs_match_native_resolver ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s
+
+   Doc-tests rt_fpga_compiler
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rt_fpga_reference
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

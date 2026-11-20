@@ -1,0 +1,463 @@
+{
+  "rtl_revision": "0bc04a541c6c356be5cca63d99fb431d3fdb9bbc",
+  "baseline_revision": "9c75aa490ad70d48fae4a96bac198033f6f63a9a",
+  "builds": {
+    "before-100": {
+      "clock_mhz": 100,
+      "provenance": {
+        "revision": "9c75aa490ad70d48fae4a96bac198033f6f63a9a",
+        "clock_mhz": 100,
+        "part": "xc7z020clg484-1",
+        "vivado": "2021.1",
+        "uncertainty_ns": 0.2,
+        "loops": 64,
+        "audio_channels_per_loop": 2,
+        "sample_rate": 48000,
+        "storage_seconds": 30,
+        "chunk_frames": 32,
+        "quantum_frames": 32,
+        "parameters": {
+          "EXTERNAL_IO": 1,
+          "LIVE_LOADING": 1,
+          "EXPORT_SYNC_EVENTS": 1,
+          "PROGRAM_DEPTH": 2048,
+          "STATE_DEPTH": 256,
+          "JOB_DEPTH": 2048,
+          "MAX_FRAMES": 32,
+          "BUFFERS": 512,
+          "INPUT_PORTS": 2,
+          "OUTPUT_PORTS": 2,
+          "REUSE_VIEWS": 1,
+          "VIEWS": 512,
+          "SLOTS": 5763072,
+          "CHUNK_FRAMES": 32,
+          "BLOCK_CHUNKS": 32,
+          "RETIRED_TABLES": 256,
+          "TABLE_LINES": 128,
+          "REF_LINES": 4,
+          "STACK_LINES": 2,
+          "READ_BUFFERS": 4,
+          "WRITE_BUFFERS": 4,
+          "BURST_MEMORY": 1,
+          "AXI_DATA_WIDTH": 64,
+          "PHYSICAL_BASE": 16777216,
+          "PHYSICAL_BYTES_LIMIT": 1073741824,
+          "READ_HINT_DEPTH": 256,
+          "MIDI_LOOPS": 64,
+          "MIDI_INPUTS": 1,
+          "MIDI_DESTINATIONS": 8,
+          "MIDI_BLOCK_EVENTS": 256,
+          "MIDI_BLOCKS": 2432,
+          "MIDI_MAX_EVENTS": 8192,
+          "MIDI_VIEWS": 256,
+          "MIDI_RETIREMENTS": 128,
+          "MIDI_INPUT_EVENTS": 256,
+          "MIDI_MAINTENANCE": 64,
+          "MIDI_AXI_DATA_WIDTH": 64,
+          "MIDI_PHYSICAL_BASE": 805306368,
+          "MIDI_PHYSICAL_BYTES_LIMIT": 67108864
+        },
+        "compiled_instructions": 1030,
+        "jobs_per_quantum": 1158,
+        "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+        "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+        "threads": 2
+      },
+      "post_opt": {
+        "total": {
+          "luts": 32637,
+          "registers": 26841,
+          "bram_tiles": 81.5,
+          "dsps": 8
+        },
+        "timing": {
+          "wns_ns": -5.32,
+          "whs_ns": 0.002
+        },
+        "midi": {
+          "luts": 3309,
+          "registers": 1686,
+          "bram_tiles": 16.5,
+          "dsps": 4
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -0.244,
+          "to_midi_wns_ns": -0.244
+        }
+      },
+      "post_place": {
+        "total": {
+          "luts": 32429,
+          "registers": 26947,
+          "bram_tiles": 81.5,
+          "dsps": 8
+        },
+        "timing": {
+          "wns_ns": -5.157,
+          "whs_ns": -0.308
+        }
+      }
+    },
+    "before-150": {
+      "clock_mhz": 150,
+      "provenance": {
+        "revision": "9c75aa490ad70d48fae4a96bac198033f6f63a9a",
+        "clock_mhz": 150,
+        "part": "xc7z020clg484-1",
+        "vivado": "2021.1",
+        "uncertainty_ns": 0.2,
+        "loops": 64,
+        "audio_channels_per_loop": 2,
+        "sample_rate": 48000,
+        "storage_seconds": 30,
+        "chunk_frames": 32,
+        "quantum_frames": 32,
+        "parameters": {
+          "EXTERNAL_IO": 1,
+          "LIVE_LOADING": 1,
+          "EXPORT_SYNC_EVENTS": 1,
+          "PROGRAM_DEPTH": 2048,
+          "STATE_DEPTH": 256,
+          "JOB_DEPTH": 2048,
+          "MAX_FRAMES": 32,
+          "BUFFERS": 512,
+          "INPUT_PORTS": 2,
+          "OUTPUT_PORTS": 2,
+          "REUSE_VIEWS": 1,
+          "VIEWS": 512,
+          "SLOTS": 5763072,
+          "CHUNK_FRAMES": 32,
+          "BLOCK_CHUNKS": 32,
+          "RETIRED_TABLES": 256,
+          "TABLE_LINES": 128,
+          "REF_LINES": 4,
+          "STACK_LINES": 2,
+          "READ_BUFFERS": 4,
+          "WRITE_BUFFERS": 4,
+          "BURST_MEMORY": 1,
+          "AXI_DATA_WIDTH": 64,
+          "PHYSICAL_BASE": 16777216,
+          "PHYSICAL_BYTES_LIMIT": 1073741824,
+          "READ_HINT_DEPTH": 256,
+          "MIDI_LOOPS": 64,
+          "MIDI_INPUTS": 1,
+          "MIDI_DESTINATIONS": 8,
+          "MIDI_BLOCK_EVENTS": 256,
+          "MIDI_BLOCKS": 2432,
+          "MIDI_MAX_EVENTS": 8192,
+          "MIDI_VIEWS": 256,
+          "MIDI_RETIREMENTS": 128,
+          "MIDI_INPUT_EVENTS": 256,
+          "MIDI_MAINTENANCE": 64,
+          "MIDI_AXI_DATA_WIDTH": 64,
+          "MIDI_PHYSICAL_BASE": 805306368,
+          "MIDI_PHYSICAL_BYTES_LIMIT": 67108864
+        },
+        "compiled_instructions": 1030,
+        "jobs_per_quantum": 1158,
+        "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+        "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+        "threads": 2
+      },
+      "post_opt": {
+        "total": {
+          "luts": 32642,
+          "registers": 26841,
+          "bram_tiles": 81.5,
+          "dsps": 8
+        },
+        "timing": {
+          "wns_ns": -8.653,
+          "whs_ns": 0.002
+        },
+        "midi": {
+          "luts": 3309,
+          "registers": 1686,
+          "bram_tiles": 16.5,
+          "dsps": 4
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -3.577,
+          "to_midi_wns_ns": -3.577
+        }
+      }
+    },
+    "after-100": {
+      "clock_mhz": 100,
+      "provenance": {
+        "revision": "0bc04a541c6c356be5cca63d99fb431d3fdb9bbc",
+        "clock_mhz": 100,
+        "part": "xc7z020clg484-1",
+        "vivado": "2021.1",
+        "uncertainty_ns": 0.2,
+        "loops": 64,
+        "audio_channels_per_loop": 2,
+        "sample_rate": 48000,
+        "storage_seconds": 30,
+        "chunk_frames": 32,
+        "quantum_frames": 32,
+        "parameters": {
+          "EXTERNAL_IO": 1,
+          "LIVE_LOADING": 1,
+          "EXPORT_SYNC_EVENTS": 1,
+          "PROGRAM_DEPTH": 2048,
+          "STATE_DEPTH": 256,
+          "JOB_DEPTH": 2048,
+          "MAX_FRAMES": 32,
+          "BUFFERS": 512,
+          "INPUT_PORTS": 2,
+          "OUTPUT_PORTS": 2,
+          "REUSE_VIEWS": 1,
+          "VIEWS": 512,
+          "SLOTS": 5763072,
+          "CHUNK_FRAMES": 32,
+          "BLOCK_CHUNKS": 32,
+          "RETIRED_TABLES": 256,
+          "TABLE_LINES": 128,
+          "REF_LINES": 4,
+          "STACK_LINES": 2,
+          "READ_BUFFERS": 4,
+          "WRITE_BUFFERS": 4,
+          "BURST_MEMORY": 1,
+          "AXI_DATA_WIDTH": 64,
+          "PHYSICAL_BASE": 16777216,
+          "PHYSICAL_BYTES_LIMIT": 1073741824,
+          "READ_HINT_DEPTH": 256,
+          "MIDI_LOOPS": 64,
+          "MIDI_INPUTS": 1,
+          "MIDI_DESTINATIONS": 8,
+          "MIDI_BLOCK_EVENTS": 256,
+          "MIDI_BLOCKS": 2432,
+          "MIDI_MAX_EVENTS": 8192,
+          "MIDI_VIEWS": 256,
+          "MIDI_RETIREMENTS": 128,
+          "MIDI_MAINTENANCE": 64,
+          "MIDI_AXI_DATA_WIDTH": 64,
+          "MIDI_PHYSICAL_BASE": 805306368,
+          "MIDI_PHYSICAL_BYTES_LIMIT": 67108864,
+          "MIDI_BUFFERS": 256,
+          "MIDI_CURSORS": 64,
+          "MIDI_SCRATCH_EVENTS": 131072
+        },
+        "compiled_instructions": 771,
+        "jobs_per_quantum": 963,
+        "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+        "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+        "threads": 2,
+        "resume_from_synthesis_checkpoint": {
+          "sha256": "bba8ab2e38e7a3e9947b9920ba5bded902dca45db90a77d8d36b46b20f3788ff",
+          "source_revision": "0bc04a54",
+          "reason": "Vivado directory-creation failure while saving optional post-opt checkpoint; synthesis succeeded."
+        }
+      },
+      "post_opt": {
+        "total": {
+          "luts": 37548,
+          "registers": 30948,
+          "bram_tiles": 71.5,
+          "dsps": 4
+        },
+        "timing": {
+          "wns_ns": -5.32,
+          "whs_ns": 0.002
+        },
+        "midi": {
+          "luts": 8319,
+          "registers": 5867,
+          "bram_tiles": 6.5,
+          "dsps": 0
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -2.566,
+          "to_midi_wns_ns": -2.566
+        }
+      },
+      "post_place": {
+        "total": {
+          "luts": 37323,
+          "registers": 31118,
+          "bram_tiles": 71.5,
+          "dsps": 4
+        },
+        "timing": {
+          "wns_ns": -5.008,
+          "whs_ns": -0.301
+        },
+        "midi": {
+          "luts": 8389,
+          "registers": 5941,
+          "bram_tiles": 6.5,
+          "dsps": 0
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -2.202,
+          "to_midi_wns_ns": -3.201
+        }
+      },
+      "post_route": {
+        "total": {
+          "luts": 37323,
+          "registers": 31118,
+          "bram_tiles": 71.5,
+          "dsps": 4
+        },
+        "timing": {
+          "wns_ns": -5.273,
+          "whs_ns": 0.005
+        },
+        "midi": {
+          "luts": 8389,
+          "registers": 5941,
+          "bram_tiles": 6.5,
+          "dsps": 0
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -2.533,
+          "to_midi_wns_ns": -3.211
+        }
+      }
+    },
+    "after-150": {
+      "clock_mhz": 150,
+      "provenance": {
+        "revision": "0bc04a541c6c356be5cca63d99fb431d3fdb9bbc",
+        "clock_mhz": 150,
+        "part": "xc7z020clg484-1",
+        "vivado": "2021.1",
+        "uncertainty_ns": 0.2,
+        "loops": 64,
+        "audio_channels_per_loop": 2,
+        "sample_rate": 48000,
+        "storage_seconds": 30,
+        "chunk_frames": 32,
+        "quantum_frames": 32,
+        "parameters": {
+          "EXTERNAL_IO": 1,
+          "LIVE_LOADING": 1,
+          "EXPORT_SYNC_EVENTS": 1,
+          "PROGRAM_DEPTH": 2048,
+          "STATE_DEPTH": 256,
+          "JOB_DEPTH": 2048,
+          "MAX_FRAMES": 32,
+          "BUFFERS": 512,
+          "INPUT_PORTS": 2,
+          "OUTPUT_PORTS": 2,
+          "REUSE_VIEWS": 1,
+          "VIEWS": 512,
+          "SLOTS": 5763072,
+          "CHUNK_FRAMES": 32,
+          "BLOCK_CHUNKS": 32,
+          "RETIRED_TABLES": 256,
+          "TABLE_LINES": 128,
+          "REF_LINES": 4,
+          "STACK_LINES": 2,
+          "READ_BUFFERS": 4,
+          "WRITE_BUFFERS": 4,
+          "BURST_MEMORY": 1,
+          "AXI_DATA_WIDTH": 64,
+          "PHYSICAL_BASE": 16777216,
+          "PHYSICAL_BYTES_LIMIT": 1073741824,
+          "READ_HINT_DEPTH": 256,
+          "MIDI_LOOPS": 64,
+          "MIDI_INPUTS": 1,
+          "MIDI_DESTINATIONS": 8,
+          "MIDI_BLOCK_EVENTS": 256,
+          "MIDI_BLOCKS": 2432,
+          "MIDI_MAX_EVENTS": 8192,
+          "MIDI_VIEWS": 256,
+          "MIDI_RETIREMENTS": 128,
+          "MIDI_MAINTENANCE": 64,
+          "MIDI_AXI_DATA_WIDTH": 64,
+          "MIDI_PHYSICAL_BASE": 805306368,
+          "MIDI_PHYSICAL_BYTES_LIMIT": 67108864,
+          "MIDI_BUFFERS": 256,
+          "MIDI_CURSORS": 64,
+          "MIDI_SCRATCH_EVENTS": 131072
+        },
+        "compiled_instructions": 771,
+        "jobs_per_quantum": 963,
+        "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+        "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+        "threads": 2
+      },
+      "post_opt": {
+        "total": {
+          "luts": 37553,
+          "registers": 30948,
+          "bram_tiles": 71.5,
+          "dsps": 4
+        },
+        "timing": {
+          "wns_ns": -8.653,
+          "whs_ns": 0.002
+        },
+        "midi": {
+          "luts": 8322,
+          "registers": 5867,
+          "bram_tiles": 6.5,
+          "dsps": 0
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -5.899,
+          "to_midi_wns_ns": -5.899
+        }
+      },
+      "post_place": {
+        "total": {
+          "luts": 38050,
+          "registers": 31126,
+          "bram_tiles": 71.5,
+          "dsps": 4
+        },
+        "timing": {
+          "wns_ns": -7.913,
+          "whs_ns": -0.339
+        },
+        "midi": {
+          "luts": 8472,
+          "registers": 5946,
+          "bram_tiles": 6.5,
+          "dsps": 0
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -5.896,
+          "to_midi_wns_ns": -5.896
+        }
+      },
+      "post_route": {
+        "total": {
+          "luts": 38050,
+          "registers": 31126,
+          "bram_tiles": 71.5,
+          "dsps": 4
+        },
+        "timing": {
+          "wns_ns": -8.206,
+          "whs_ns": 0.006
+        },
+        "midi": {
+          "luts": 8472,
+          "registers": 5946,
+          "bram_tiles": 6.5,
+          "dsps": 0
+        },
+        "midi_timing": {
+          "from_midi_wns_ns": -6.098,
+          "to_midi_wns_ns": -6.098
+        }
+      }
+    }
+  },
+  "tests": {
+    "reference_compiler_rtl": 103,
+    "midi_rtl": 15,
+    "shared_rtl": 21,
+    "total": 139,
+    "full_workspace_run": false
+  },
+  "memory_bytes": {
+    "audio_sample_pool": 737673216,
+    "midi_arena": 12129280
+  },
+  "scope": "Resources and timing only; no 64-loop quantum throughput measurement."
+}

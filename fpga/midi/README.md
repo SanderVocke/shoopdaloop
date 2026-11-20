@@ -1,161 +1,134 @@
-# MIDI through the shared SP and JP
+# MIDI event looping through SP and JP
 
-The new hardware entry point is `midi_audio_pipeline_axi`: one compiled SP,
-one mixed queue and one JP for audio and MIDI. MIDI storage/state operations
-live behind explicit jobs. See [architecture and mapping](../../docs/fpga/midi-shared-jobs.md)
-for ownership, work bounds, publication and integration requirements.
-
-Job control and content management use a compact shared execution unit. See
-[its hardware architecture and generation workflow](../../docs/fpga/midi-compact-execution.md).
-
-`midi_job_service` and `midi_job_service_axi` support isolated service tests.
-`midi_runtime` and `midi_runtime_axi` below describe the earlier standalone
-composition, retained as historical fixtures. It is absent from the new pipeline.
-
-# Historical standalone MIDI RTL
-
-This is the hardware counterpart of managed MIDI in the Rust FPGA reference. It
-records and plays timestamped packets, shares recorded content between loops,
-grabs recent input history, and restores state at the start of playback. The
-same scenarios run against Rust and RTL in the testbench.
-
-Large data structures live in DDR. The fixed per-loop descriptors live in primary
-BRAM: at most 16 KiB for 128 loops. Small command registers and temporary working
-values also stay on chip. There is no cache or fixed memory-latency assumption.
+The RTL implements the event-only Rust FPGA reference: record MIDI messages,
+play and repeat them, seek, route ports, merge streams, and share stored content.
+It does not track or restore instrument state. Notes, pedals, and controller
+messages are replayed as bytes; stopping sends no automatic correction packets.
 
 ```mermaid
 flowchart LR
-    SP[Settled loop records from SP] --> C[Session controller]
-    I[Timestamped MIDI input] --> C
-    UI[Content commands] --> C
-    C --> S[Shared content and history]
-    C --> T[State and comparison maps]
-    C --> P[Restore, clean up, and play]
-    S <--> D[(DDR)]
-    T <--> D
-    P --> O[Output packets with sample offsets]
-    O --> A[Receiver accepts or refuses]
-    A --> T
+    P[Compiled program] --> SP[Existing SP: loop modes and time]
+    SP --> Q[One audio and MIDI queue]
+    Q --> JP[Existing shared JP]
+    JP --> A[Audio datapath and caches]
+    JP --> M[MIDI data-job controller]
+    M <--> D[(DDR: event blocks, views, scratch lists)]
+    M <--> B[Small BRAM tables: sequences, lists, cursors]
+    M --> O[Timestamped MIDI output]
 ```
 
-The core uses timing supplied by SP. It does not schedule loop transitions or
-run another musical clock. Application graph/control endpoint enablement, board
-wiring and device drivers remain outside this component, as they do for reference
-MIDI. An embedding supplies settled SP records and applies successful content
-publications to SP before its next quantum. Publications stop/reset the affected
-loops. Existing application compilation still refuses MIDI.
+## Execution
 
-## Content and history
+SP performs the same sync pass as audio. It emits concrete MIDI jobs: input,
+empty list, read a view interval, begin/append/finish recording, sorted merge, and
+output. The existing JP consumes those jobs alongside audio jobs. There is no
+MIDI instruction interpreter, instruction ROM, phase program, or second scheduler.
 
-Events occupy fixed blocks, filled by event count. Silence needs only a duration.
-One view describes a sequence's range, time origin, duration and immutable starting
-state. Views share blocks; duplication copies no event payloads. An export retains
-its view, so a later retake cannot change exported content.
+A short SP pass queues recording transitions before the normal data pass. A take
+can therefore finish before its first playback read, regardless of capture's
+position in the compiled program. SP keeps the writer-open flag and supplies the
+recording position, playback position, interval length, and restart request. JP
+never advances a loop clock or reconstructs a loop's mode.
 
-Each input has a history writer and rolling checkpoints. A checkpoint follows
-every 32 ordinary messages and every operation that can change many notes, such
-as releasing a pedal. A range start shares an exact checkpoint or copies one state
-and replays at most 31 ordinary messages. Starting state includes earlier messages
-and excludes messages at the start frame itself.
+The MIDI functional unit is a directly sequenced controller with a separate
+content-store controller. These are the implementation of data jobs, analogous to
+JP's audio/media functional units. They do not execute a MIDI control program.
+The former service interpreter and generated instruction ROM have been removed.
 
-Comparisons are prepared with checkpoints. A new checkpoint or range copies its
-base's comparison maps and updates only changed cells. Recording starts use this
-same history service. They do not run a fresh full-state comparison per loop.
+Each reader retains its view/owner identity, event index, and one future event.
+Quiet playback therefore needs no MIDI DDR traffic. Starts, wraps, and seeks
+explicitly reposition the reader. A seek away from zero uses binary search;
+ordinary playback walks forward. The store keeps its current view descriptor and
+block pointer in working registers while processing a stream.
 
-Clear/replacement releases ownership, then bounded maintenance releases blocks
-and descriptors. A block is reusable after its final owner is gone. Generations
-reject stale handles within an image; a new prepared image invalidates old handles.
+## Storage and capacity
 
-Defaults support 128 bindings, 4,864 blocks of 256 events, 512 views, 768 snapshots
-and 256 retirement records. Each sequence admits 8,192 events; history has two
-extra blocks of headroom. Events occupy 16 bytes. The event arena is 19 MiB:
-128 independent 3,000-event recordings use 1,536 blocks (6 MiB with padding);
-128 maximum-size recordings use 4,096 blocks (16 MiB). History and retained
-versions share the remaining finite capacity.
+- Timestamped events remain 16-byte records in blocks filled by event count.
+- A view selects an interval spanning any number of blocks, including partial
+  first and last blocks. It rebases event timestamps by subtracting its origin.
+- Completed views and range views share blocks through reference counts. Retained
+  exports survive replacement and retakes.
+- Sequence handles, logical list descriptors, and reader lookahead use small
+  synchronous BRAM tables. View descriptors, block tables, free/reference tables,
+  event payloads, retirement entries, and intermediate list payloads live in DDR.
+- All lists in a quantum share one prepared scratch arena. A list is a start/count
+  pair; empty merges can alias the other list. Merging two nonempty lists copies
+  their messages in timestamp/source/insertion order into a new list.
+- Recording appends an entire list across block boundaries, loading and saving
+  its view descriptor once for the batch. It extends duration during silence too.
+- Cleanup releases at most 64 blocks/view retirements after a successful quantum.
 
-## State and output
+There is **no 256-message limit per quantum**, event-iterator quota, or fixed array
+of messages per loop. Jobs finish their required work, crossing blocks as needed.
+A 256-record block is only a storage choice. A test records and plays 3,000 messages
+per quantum; a separate test merges 1,200 messages. Neither is a deadline claim.
 
-Inputs own their observed state. Outputs own the state of messages their receiver
-actually accepted. A playing loop separately owns its cursor, pinned content and
-note/pedal activity. Starting snapshots belong to content/history, not outputs.
+Physical memory remains finite. Sequence slots, cursors, buffers, blocks, views,
+per-view event capacity, scratch records, and retirement entries are configurable.
+Scratch capacity includes intermediate merge results. Exhaustion returns an error;
+the engine does not silently drop messages or finalize a partial recording as a
+successful take. Larger scratch payloads consume DDR, rather than a full BRAM
+message array per loop. Power-of-two block sizes make address arithmetic cheaper.
 
-A comparison bitmap belongs to a snapshot/destination pair. Accepted output
-changes update affected cells in prepared comparisons. Unknown target controls
-are ignored; returning a value to its target clears its difference bit. Maps use
-weak references: generation and reference checks prevent a bitmap referring to a
-reused snapshot slot, without keeping otherwise unused snapshots alive.
+## Boundaries and error handling
 
-Restoration skips matching values. It handles loaded versus pending bank
-selectors, pressure, pitch and the relationship between notes and pedals. With
-pedals up, differing notes can change individually; more complicated pedal changes
-rebuild the affected channel's relationship. Temporary state consists of scalar
-values and nine bitmap words for one MIDI channel. Note/controller cells are read
-directly from DDR.
+`midi_audio_pipeline` connects SP, the mixed queue, JP, audio memory services, and
+MIDI data jobs. `midi_audio_pipeline_axi` adds the MIDI word-to-AXI adapter;
+`midi_data_jobs_axi` is an isolated functional-unit test boundary. Both 32-bit and
+64-bit MIDI AXI are supported. Audio keeps its existing caches; MIDI has no general
+DDR cache or speculative block-payload prefetch.
 
-All old-loop cleanup precedes new restoration. Established owners take priority
-over newly starting loops. Independent playing loops cannot own the same MIDI
-channel at one destination. A binding selects channels without renumbering them;
-System Reset playback requires all sixteen channels.
+Input validation runs before SP starts. Bad input timestamps/order can be
+corrected and retried without advancing musical time. Valid input has no message
+count cutoff. Quantum work takes priority over a waiting control command; an
+already admitted control command completes atomically before another quantum.
+Formatting and bulk preparation belong outside active rendering.
 
-Progress follows output acceptance. Playback/restoration refusal starts
-coordinated destination recovery and suppresses overdue packets until a later
-loop beginning. Recovery sends All Sound Off and All Notes Off per channel and
-retains its position through refusal. Stop cleanup can resume over several calls.
-A DDR fault invalidates the image; explicit recovery can still silence outputs
-without DDR access. Processing then needs a newly prepared image.
+Output uses ready/valid backpressure and holds packet fields stable while stalled.
+A refused packet faults the shared JP, as do job/storage failures. Already accepted
+packets cannot be undone. Memory errors invalidate the MIDI image. The connected
+pipeline latches execution faults and stops admitting quanta until reset; a failed
+quantum's audio buffers must be discarded by its caller. No cleanup/recovery MIDI
+packets are generated.
 
-The managed subset matches Rust: MIDI 1.0 channel packets and System Reset,
-including sustain, sostenuto, Hold 2, pressure, pitch, banks/programs and channel
-modes. Parameter-editing CCs 6, 38 and 96–101, SysEx and other system messages are
-unsupported. Seek, overdub, automatic input monitoring, arbitrary channel remapping
-and same-key voice merging remain outside the subset.
+Control operations expose view creation/import, export/read/release, ranges,
+replacement, duplication, clearing, and maintenance. Publication waits for the
+caller to update the matching stopped SP loop and acknowledge the fence. The
+caller must preserve open-writer bindings across program switches, as required
+by the Rust reference's image-switch guard. Sequence/cursor resource IDs remain
+stable across compatible switches. Live reference and RTL state are independent;
+the Rust implementation is the behavioral oracle, not part of RTL execution.
 
-## Composition and controls
+The application's host endpoint is not wired for this MIDI interface yet. History
+grab, overdub editing, instrument-state tracking/restoration, SysEx, and byte-stream
+running-status decoding are outside this implementation, just as in the current
+Rust reference. Ports accept complete one-to-three-byte messages, including all
+channel controllers and supported short system messages.
 
-| Component | Responsibility |
-| --- | --- |
-| `midi_store` | Event blocks, views, snapshots, references and retirement. |
-| `midi_state` | Apply one packet to DDR state; report changed cells. |
-| `midi_difference` | Initialize/update comparison cells. |
-| `midi_transition` | Propose ordered restoration/cleanup packets. |
-| `midi_state_service` | Acceptance, output/activity updates and live comparisons. |
-| `midi_runtime` | History, loop execution, transfers and atomic publication. |
+See [the protocol](PROTOCOL.md) for memory layout, instructions, and handshakes.
+Older MIDI measurement documents describe earlier implementations and are not
+performance results for this one.
+The [current implementation report](../../docs/fpga/midi-data-jobs.md) includes
+the Rust comparisons and Vivado 2021.1 utilization/timing at 100 and 150 MHz.
+The [64-loop playback measurements](../../docs/fpga/midi-data-jobs-benchmarks.md)
+compare audio plus MIDI, audio only, and MIDI only with ideal and delayed DDR.
 
-`midi_runtime` combines these on an acknowledged 32-bit word-memory interface.
-`midi_runtime_axi` adds the existing `word_axi` endpoint for AXI32 or AXI64.
-`memory_arena_bytes` includes caller staging space as well as required
-`arena_bytes`; they have different purposes. The core reserves an address window
-for its private BRAM descriptors; that window has no DDR-backed copy.
-
-Transfers share grants replenished per quantum: 64 events, 256 comparison cells,
-64 metadata operations and 128 published bindings. Import preparation is resumable.
-Imports preserve capacity promised to admitted recording/history writers. Private
-capture/history writers reject import edits. Groups validate targets and reserve
-new ownership before changing bindings. Publication conservatively reserves two
-retirement entries per target and can return `Busy` until maintenance makes room.
-
-See the [protocol](PROTOCOL.md) for commands, ownership and memory formats.
-
-## Verification
-
-Use the repository build environment and Verilator 5.032:
+## Generation and verification
 
 ```sh
-cargo test --locked -p rt_fpga_reference --all-features -p rt_fpga_compiler
-cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=1
+python3 fpga/midi/generate_control.py --check
+python3 fpga/midi/generate_pipeline.py --check
+cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=2
+cargo test --locked -p rt_fpga_rtl --test midi_target
 ```
 
-Comparisons check packets, offsets, content, starting state and accepted output
-state under delayed memory and output pressure. Cases cover all quantum sizes,
-31-message replay/checkpoint edges, 128 loops/eight outputs, transfers during
-playback, resource exhaustion, retirement, refusal recovery and AXI32/64 faults.
-There is no wall-clock performance gate. Simulation/synthesis establish
-functionality and synthesizability; routed-board deadlines require later work.
+The content-store generator copies the directly sequenced store from its source;
+the pipeline generator connects existing core ports. Neither compiles a program
+into hardware microcode.
 
-The [Vivado 2021.1 study](../../docs/fpga/midi-vivado-7020.md) compares the audio
-components before and after adding MIDI, sized for 64 stereo loops with MIDI,
-30-second audio storage, and 32-frame chunks/quanta on a Zynq-7020. It reports
-resource use and clock timing separately from quantum execution deadlines.
-The [compact-execution study](../../docs/fpga/midi-compact-vivado-7020.md) records
-the subsequent redesign behind the common SP/JP, its resource savings and the
-remaining timing/throughput limits.
+Tests compare Rust and RTL events and, for connected programs, every emitted job.
+They cover mixed audio/MIDI, supported quantum sizes, partial blocks, dense input,
+channel masks, short system messages, seeks, silent intervals, retained ranges,
+duplication/retakes, publication, capacity failures, refusal, and AXI stalls/faults.
+The old phase/session-based testbench and benchmarks have been replaced; their
+sources and numbers remain available in Git history.

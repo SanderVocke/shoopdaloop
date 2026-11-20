@@ -60,54 +60,23 @@ pub fn job(bits: &Bits) -> Value {
     let p1 = bits.get(128, 64);
     let p2 = bits.get(192, 64);
     assert_eq!(bits.get(40, 24), 0, "nonzero reserved job bits");
-    if (0x20..=0x2a).contains(&kind) {
-        use rt_fpga_reference::{
-            midi::MidiJob as M,
-            records::{Identity, LoopRecord, Mode},
-        };
-        let mode = |n| match n {
-            0 => Mode::Stopped,
-            1 => Mode::Playing,
-            2 => Mode::Recording,
-            _ => panic!("invalid MIDI mode"),
-        };
-        let context = a as u16;
-        let record = LoopRecord {
-            id: Identity {
-                slot: p2 as u32,
-                generation: (p2 >> 32) as u32,
-            },
-            mode: if kind == 0x25 || kind == 0x27 {
-                mode(b & 3)
-            } else {
-                Mode::Stopped
-            },
-            position: p0,
-            content_length: p1,
-            begin_capture: b & 4 != 0,
-        };
-        let job = match kind {
-            0x20 => M::Begin { frame: p0 },
-            0x21 => M::FinishCapture { context },
-            0x22 => M::BeginCapture { context, frame: p0 },
-            0x23 => M::Observe,
-            0x24 => M::Append { context },
-            0x25 => M::Cleanup { context, record },
-            0x26 => M::Claim {
-                context,
-                playing: b & 1 != 0,
-                established: b & 2 != 0,
-            },
-            0x27 => M::ReadUntil { context, record },
-            0x28 => M::Output,
-            0x29 => M::Complete {
-                context,
-                mode: mode(b),
-            },
-            0x2a => M::Maintain,
+    if (0x20..=0x27).contains(&kind) {
+        let owner = json!({"slot":p2 as u32,"generation":p2>>32});
+        return match kind {
+            0x20 => json!({"kind":"midi_input","port":a,"destination":b}),
+            0x21 => json!({"kind":"midi_empty","destination":a}),
+            0x22 => {
+                json!({"kind":"midi_read_view","owner":owner,"sequence":a,"destination":b,"position":p0,"frames":p1 as u32,"cursor":(p1>>32)&255,"channels":(p1>>40)&65535,"restart":p1&(1<<56)!=0})
+            }
+            0x23 => json!({"kind":"midi_begin_capture","sequence":a}),
+            0x24 => {
+                json!({"kind":"midi_append","sequence":a,"source":b,"position":p0,"frames":p1 as u32})
+            }
+            0x25 => json!({"kind":"midi_finish_capture","sequence":a}),
+            0x26 => json!({"kind":"midi_merge","left":a,"right":b,"destination":p0}),
+            0x27 => json!({"kind":"midi_output","source":a,"port":b}),
             _ => unreachable!(),
         };
-        return serde_json::to_value(rt_fpga_reference::jobs::Job::Midi(job)).unwrap();
     }
     match kind {
         0 => {

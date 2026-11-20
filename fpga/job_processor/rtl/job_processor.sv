@@ -469,10 +469,9 @@ module job_processor #(
                     frame <= 0;
                     stream_frame <= 0; mix_second <= 0;
                     case (opcode)
-                        `SHOOP_SP_MIDI_BEGIN, `SHOOP_SP_MIDI_FINISH_CAPTURE, `SHOOP_SP_MIDI_BEGIN_CAPTURE,
-                        `SHOOP_SP_MIDI_OBSERVE, `SHOOP_SP_MIDI_APPEND, `SHOOP_SP_MIDI_CLEANUP,
-                        `SHOOP_SP_MIDI_CLAIM, `SHOOP_SP_MIDI_READ, `SHOOP_SP_MIDI_OUTPUT,
-                        `SHOOP_SP_MIDI_COMPLETE, `SHOOP_SP_MIDI_MAINTAIN:
+                        `SHOOP_SP_MIDI_INPUT, `SHOOP_SP_MIDI_EMPTY, `SHOOP_SP_MIDI_READ,
+                        `SHOOP_SP_MIDI_BEGIN_CAPTURE, `SHOOP_SP_MIDI_APPEND, `SHOOP_SP_MIDI_FINISH_CAPTURE,
+                        `SHOOP_SP_MIDI_MERGE, `SHOOP_SP_MIDI_OUTPUT:
                             if(ENABLE_MIDI != 0) phase<=MIDI_COMMAND;
                             else begin error_code<=UNSUPPORTED;done<=1;busy<=0;phase<=IDLE;end
                         `SHOOP_SP_JOB_INPUT: begin
@@ -780,7 +779,8 @@ module job_processor #(
                 MIDI_COMMAND: if(midi_job_ready) phase<=MIDI_DONE;
                 MIDI_DONE: if(midi_job_done) begin
                     if(midi_error_code==0) midi_error_code<=midi_job_error;
-                    phase<=FETCH;
+                    if(midi_job_error!=0) begin error_code<=INVALID_JOB;done<=1;busy<=0;phase<=IDLE;end
+                    else phase<=FETCH;
                 end
                 MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)
                     phase <= opcode == `SHOOP_SP_JOB_BEGIN_CAPTURE ? MEDIA_DONE : (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : MEDIA_SOURCE_REQUEST;

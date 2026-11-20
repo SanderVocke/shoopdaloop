@@ -73,12 +73,21 @@ cargo run --locked -p rt_fpga_testbench --features sim -- audio --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model fixed
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model dramsim3 --axi-data-width 32
 cargo run --locked -p rt_fpga_testbench --features sim -- deferred --memory-model dramsim3
+cargo run --locked --release -p rt_fpga_testbench --features sim --example midi_data_quantum_64 -- --scenario mixed --ddr-delay 7
 ```
 
-The `midi` test target includes compiled mixed SP/JP programs, exact audio and
-MIDI output/job/state comparisons at all supported quanta, publication fences,
-partial output and fatal recovery. It also retains DDR service scenarios and
-AXI32/64 checks. See the [coverage and limits](../../../docs/fpga/midi-shared-jobs-validation.md).
+The [64-loop playback benchmark](../../../docs/fpga/midi-data-jobs-benchmarks.md)
+also accepts `--scenario audio`/`midi` and `--ddr-delay 0` for ideal memory. It
+checks all jobs, output, and loop clocks against Rust while measuring RTL clocks.
+
+The `midi` test target compares the event-only RTL with the Rust FPGA reference:
+compiled SP/shared-JP job traces, mixed audio/MIDI output, all supported quantum
+sizes in the data unit, block crossings, shared ranges, duplication and retakes,
+publication fences, capacity failures, output refusal, input validation, and
+AXI32/64 stalls/faults. It includes 3,000-message recording/playback and a
+1,200-message merge, without a per-quantum message quota. Rust and RTL both omit
+instrument-state tracking/restoration. See the [implementation and protocol](../../../fpga/midi/README.md).
+The previous phase/session MIDI fixtures and their measurements are historical.
 
 `pipeline` is the TP-free SP -> JP -> media/cache execution harness. Explicit
 instructions, initial state and samples exercise exact output, recording/readback,
