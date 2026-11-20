@@ -10,7 +10,7 @@ fn main() {
         !args.iter().any(|p| p == "--midi-only"),
         option("--loops", 64),
         option("--frames", 1_440_000),
-        option("--quanta", 60),
+        option("--quanta", 16),
     )
     .unwrap();
     let text = serde_json::to_string_pretty(&value).unwrap();

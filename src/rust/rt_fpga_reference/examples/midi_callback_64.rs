@@ -149,7 +149,6 @@ impl Production {
         description.control_lead_frames = 0;
         description.pending_transitions = 256;
         description.reliable_credits = 128;
-        description.telemetry_interval_frames = 0;
         let mut host = OfflineHost::new(&description).unwrap();
         host.connect().unwrap();
         while host.receive().is_some() {}

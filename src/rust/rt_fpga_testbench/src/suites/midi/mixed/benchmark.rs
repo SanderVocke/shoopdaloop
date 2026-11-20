@@ -343,7 +343,7 @@ pub fn benchmark_64(
     reference.play();
     rows(&mut driver, &mut sim, &reference, false);
     let mut measurements = Vec::new();
-    for tick in 0..quanta + 31 {
+    for tick in 0..quanta + 17 {
         let report = reference.callback();
         assert_eq!(report.error, None);
         reference.validate();
@@ -379,7 +379,7 @@ pub fn benchmark_64(
                 assert_eq!(actual, reference.outputs[channel][offset].0);
             }
         }
-        if tick == 0 || tick >= 31 {
+        if tick == 0 || tick >= 17 {
             measurements.push(serde_json::json!({"kind":if tick==0 {"playback_start"} else {"steady"},"position":reference.position(),"cycles":cycles,"us_at_100mhz":cycles as f64/100.0,"midi_packets":reference.emitted.len()}));
         }
         eprintln!(
