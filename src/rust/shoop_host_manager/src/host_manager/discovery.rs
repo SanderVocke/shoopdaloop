@@ -26,7 +26,7 @@ impl Job {
         }
     }
 }
-fn local_address(mut address: SocketAddr) -> SocketAddr {
+pub(super) fn local_address(mut address: SocketAddr) -> SocketAddr {
     if address.ip().is_unspecified() {
         address.set_ip(if address.is_ipv4() {
             IpAddr::V4(Ipv4Addr::LOCALHOST)
@@ -68,7 +68,14 @@ fn local(process: Process) -> Option<Host> {
                     }
                 }
             }
-            Err(failure) => error = format!("{failure:#}"),
+            Err(failure) => {
+                if shoop_remote_fx::describe(local_address(*address))
+                    .is_ok_and(|fx| fx.pid == process.identity.pid)
+                {
+                    return None;
+                }
+                error = format!("{failure:#}");
+            }
         }
     }
     Some(Host::unavailable(source, error))

@@ -27,6 +27,7 @@ fn run() -> anyhow::Result<()> {
         match std::env::args().nth(1).as_deref() {
             Some("--probe-carla-native") => return shoop_carla::native::smoke_test_carla_runtime(),
             Some("--probe-carla-native-ui") => return shoop_carla::native::smoke_test_carla_ui(),
+            Some("--fx-service") => return run_fx_service(),
             _ => {}
         }
     }
@@ -89,6 +90,7 @@ fn run() -> anyhow::Result<()> {
         };
         options.log_file = args.log_file;
         options.name = args.name;
+        options.remote_carla = args.audio.remote_carla();
         (None, options)
     };
     if !args.launch_stdin {
@@ -178,6 +180,30 @@ fn run() -> anyhow::Result<()> {
     })?;
     tracing::info!("Host cleanup confirmed; exiting");
     Ok(())
+}
+
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+fn run_fx_service() -> anyhow::Result<()> {
+    use clap::Parser;
+    #[derive(Parser)]
+    #[command(name = "shoop_host --fx-service")]
+    struct ServiceArgs {
+        #[arg(long, default_value = "127.0.0.1:0")]
+        listen: std::net::SocketAddr,
+        #[arg(long)]
+        lan: bool,
+        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u16).range(1..=32))]
+        slots: u16,
+        #[arg(long)]
+        isolated: bool,
+    }
+    let args = ServiceArgs::parse_from(std::env::args_os().skip(1));
+    anyhow::ensure!(
+        args.lan || args.listen.ip().is_loopback(),
+        "FX service requires --lan to bind a non-loopback address"
+    );
+    let worker = args.isolated.then(std::env::current_exe).transpose()?;
+    shoop_carla::remote::serve(args.listen, usize::from(args.slots), worker)
 }
 #[cfg(target_arch = "wasm32")]
 fn main() {}

@@ -12,6 +12,8 @@ pub mod child;
 pub mod native;
 #[cfg(feature = "native")]
 pub mod processor;
+#[cfg(feature = "remote")]
+pub mod remote;
 #[cfg(feature = "buffered")]
 pub mod service;
 #[cfg(feature = "native")]

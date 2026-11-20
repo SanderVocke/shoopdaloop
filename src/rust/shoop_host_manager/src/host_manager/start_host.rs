@@ -96,6 +96,8 @@ pub(super) struct Dialog {
     midi_outputs: Vec<String>,
     pools: NewEnginePools,
     processors: shoop_app_api::ProcessorSettings,
+    fx_address: String,
+    fx_slack_quanta: Option<u16>,
     master_auto_connect: bool,
     smoothing: u32,
     lan: bool,
@@ -138,6 +140,8 @@ impl Default for Dialog {
             midi_outputs: vec!["all".into()],
             pools: NewEnginePools::default(),
             processors: Default::default(),
+            fx_address: String::new(),
+            fx_slack_quanta: None,
             master_auto_connect: true,
             smoothing: 3,
             lan: false,
@@ -153,6 +157,34 @@ impl Default for Dialog {
     }
 }
 impl Dialog {
+    pub(super) fn probe_remote(address: SocketAddr) -> Result<Target> {
+        let mut dialog = Self {
+            driver: AudioDriverKind::Dummy,
+            buffer_size: 128,
+            pools: NewEnginePools {
+                tracks: 2,
+                loops: 16,
+                buses: 2,
+                bus_channels: 2,
+                loop_memory_mb: 16,
+                ..NewEnginePools::default()
+            },
+            ..Self::default()
+        };
+        dialog.processors.builtin_fx = shoop_app_api::ProcessorPolicy::Off;
+        dialog.processors.oxisynth = shoop_app_api::ProcessorPolicy::Off;
+        dialog.select_fx_service(address);
+        dialog.request()?.start()
+    }
+
+    pub(super) fn select_fx_service(&mut self, address: SocketAddr) {
+        self.backend = BackendType::Native;
+        self.fx_address = address.to_string();
+        self.processors.carla.hosting = shoop_app_api::CarlaHosting::Remote;
+        if self.processors.carla.configured_instances() == 0 {
+            self.processors.carla.rack_instances = 1;
+        }
+    }
     pub fn new() -> Self {
         let mut dialog = Self::default();
         if dialog.driver == AudioDriverKind::Cpal {
@@ -221,6 +253,17 @@ impl Dialog {
         options.management_endpoint = management;
         options.lan = self.lan;
         options.log_file = log_file;
+        if self.processors.carla.hosting == shoop_app_api::CarlaHosting::Remote {
+            let address = self
+                .fx_address
+                .parse()
+                .context("Invalid desktop FX service address")?;
+            options.remote_carla = Some(shoop_host::serve::RemoteCarla {
+                address,
+                slack_quanta: self.fx_slack_quanta,
+                copies: shoop_remote_fx::DEFAULT_COPIES,
+            });
+        }
         if self.lan && !self.advertised_host.trim().is_empty() {
             ensure!(
                 endpoint.port() != 0 && management.port() != 0,
@@ -598,6 +641,7 @@ impl Dialog {
                     (CarlaHosting::Disabled, "Disabled"),
                     (CarlaHosting::InProcess, "In session host"),
                     (CarlaHosting::Subprocess, "One subprocess per chain"),
+                    (CarlaHosting::Remote, "Remote FX service"),
                 ];
                 ui.horizontal(|ui| {
                     ui.label("Carla hosting");
@@ -614,6 +658,19 @@ impl Dialog {
                             }
                         });
                 });
+                if carla.hosting == CarlaHosting::Remote {
+                    ui.horizontal(|ui| {
+                        ui.label("FX service address");
+                        ui.text_edit_singleline(&mut self.fx_address);
+                    });
+                    let mut custom = self.fx_slack_quanta.is_some();
+                    if ui.checkbox(&mut custom, "Set extra FX buffering").changed() {
+                        self.fx_slack_quanta = custom.then_some(8);
+                    }
+                    if let Some(slack) = &mut self.fx_slack_quanta {
+                        ui.add(egui::DragValue::new(slack).range(0..=255).suffix(" quanta"));
+                    }
+                }
                 if carla.hosting != CarlaHosting::Disabled {
                     for (label, count) in [
                         ("Carla Rack instances", &mut carla.rack_instances),

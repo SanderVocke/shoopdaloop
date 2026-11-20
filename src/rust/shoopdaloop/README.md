@@ -63,6 +63,10 @@ Browser acceptance includes the corresponding AudioWorklet workflow. See the
 [processor contract and evidence](../../../docs/native_session_recovery/track-processors.md)
 for resource, timing and platform limits.
 
+An independent Native host can use a desktop FX service for Carla. Host Manager
+can launch and inspect the service and configure its endpoint for a new host.
+[Remote Carla setup](../../../docs/remote-fx.md)
+
 ## Native roles and delivery
 
 ```sh

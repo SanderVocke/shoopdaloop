@@ -25,6 +25,7 @@ shoop_app_api = { path = "../shoop_app_api" }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
 shoop_host = { path = "../shoop_host", default-features = false }
 shoop_host_processes = { path = "../shoop_host_processes" }
+shoop_remote_fx = { path = "../shoop_remote_fx" }
 shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = false }
 rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
 

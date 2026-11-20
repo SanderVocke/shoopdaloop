@@ -11,6 +11,8 @@ use std::sync::Arc;
 mod benchmark;
 #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
 mod carla;
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+mod remote_carla;
 pub use drivers::DriverStatusReport as NativeStatus;
 #[cfg(feature = "jack")]
 pub use drivers::JackConfig;
@@ -38,8 +40,16 @@ pub struct NativeConfig {
 #[derive(Clone, Debug, Default)]
 pub struct CarlaHostOptions {
     pub worker: Option<std::path::PathBuf>,
+    pub remote: Option<RemoteCarla>,
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
     pub ui: Option<shoop_carla::native::CarlaMainThreadUiDispatcher>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteCarla {
+    pub address: std::net::SocketAddr,
+    pub slack_quanta: Option<u16>,
+    pub copies: u8,
 }
 pub struct Started {
     pub host: NativeHost,
@@ -349,12 +359,25 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
     let carla_first_slot = processors.instances.len();
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    let (processors, carla_services) = carla::prepare(
-        &description,
-        driver.buffer_frames as usize,
-        &factory.carla,
-        processors,
-    );
+    let (processors, carla_services, remote_services) = if description.processors.carla.hosting
+        == shoop_rt_protocol::processors::CarlaHosting::Remote
+    {
+        let (processors, remote) = remote_carla::prepare(
+            &description,
+            driver.buffer_frames as usize,
+            factory.carla.remote,
+            processors,
+        );
+        (processors, Vec::new(), remote)
+    } else {
+        let (processors, local) = carla::prepare(
+            &description,
+            driver.buffer_frames as usize,
+            &factory.carla,
+            processors,
+        );
+        (processors, local, Vec::new())
+    };
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
     if !carla_services.is_empty() {
@@ -362,6 +385,15 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
         engine
             .endpoint
             .install_hosted_processor_controls(Box::new(controls));
+    }
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    if !remote_services.is_empty() {
+        engine
+            .endpoint
+            .install_hosted_processor_controls(Box::new(remote_carla::Controls::new(
+                carla_first_slot,
+                remote_services,
+            )));
     }
     engine
         .render

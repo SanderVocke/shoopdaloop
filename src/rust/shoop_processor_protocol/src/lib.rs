@@ -208,6 +208,7 @@ pub enum CarlaHosting {
     Disabled = 0,
     InProcess = 1,
     Subprocess = 2,
+    Remote = 3,
 }
 
 // Native Carla v2 accepts up to 1,024 short packets per block. The engine may
@@ -374,6 +375,7 @@ pub enum Unavailable {
     ChannelCapacity = 4,
     Runtime = 5,
     Memory = 6,
+    Remote = 7,
 }
 impl Unavailable {
     pub const fn message(self) -> &'static str {
@@ -385,6 +387,7 @@ impl Unavailable {
             Self::ChannelCapacity => "processor requires two prepared audio channels per side",
             Self::Runtime => "Carla Native runtime could not be started",
             Self::Memory => "processor buffers exceed the host memory budget",
+            Self::Remote => "remote Carla service could not prepare the configured processors",
         }
     }
 }

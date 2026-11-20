@@ -105,7 +105,18 @@ fn spawn_host(config: &HostConfig, real_device: bool) -> Host {
     };
 
     let stderr_path = log_path.with_extension("stderr.log");
-    let mut child = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
+    let remote = config.processors.carla.hosting == CarlaHosting::Remote;
+    let exe = remote
+        .then(|| std::env::var_os("SHOOP_REMOTE_FX_HOST"))
+        .flatten()
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoop_host").into());
+    let mut launch = Process::new(exe);
+    if remote {
+        launch
+            .arg("--carla-fx-address")
+            .arg(std::env::var_os("SHOOP_REMOTE_FX_TEST_ADDRESS").unwrap());
+    }
+    let mut child = launch
         .env("RUST_LOG", "info")
         .args(["--config"])
         .arg(&config_path)
@@ -145,11 +156,15 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
         return;
     }
     shoop_carla::native::carla_runtime_availability().unwrap();
-    for (hosting, transport) in [
+    let mut modes = vec![
         (CarlaHosting::InProcess, AppTransport::Socket),
         (CarlaHosting::Subprocess, AppTransport::SharedMemory),
         (CarlaHosting::Subprocess, AppTransport::Socket),
-    ] {
+    ];
+    if std::env::var_os("SHOOP_REMOTE_FX_TEST_ADDRESS").is_some() {
+        modes = vec![(CarlaHosting::Remote, AppTransport::Socket)];
+    }
+    for (hosting, transport) in modes {
         let mut config = HostConfig {
             transport,
             ..Default::default()

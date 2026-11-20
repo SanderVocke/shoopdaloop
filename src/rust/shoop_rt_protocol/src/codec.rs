@@ -2386,6 +2386,7 @@ impl Wire for crate::processors::Unavailable {
             4 => Self::ChannelCapacity,
             5 => Self::Runtime,
             6 => Self::Memory,
+            7 => Self::Remote,
             _ => return Err(CodecError::Invalid),
         })
     }

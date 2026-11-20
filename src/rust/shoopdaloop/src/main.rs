@@ -3746,6 +3746,10 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     let settings = settings.active();
     let transport = args.selected_engine_transport(&settings)?;
     if transport == shoop_egui::EngineTransportKind::InProcess {
+        anyhow::ensure!(
+            !matches!(args.audio.carla_hosting, Some(shoop_host::audio_args::CarlaChoice::Remote)),
+            "Remote Carla needs an independent session host. Select socket or shared-memory session delivery."
+        );
         return Ok(false);
     }
     let config = shoop_host::config::HostConfig {
@@ -3761,6 +3765,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     let executable = std::env::current_exe()?;
     let companion = shoop_host::launch::companion_path(&executable)?;
     let mut options = StartOptions::new()?;
+    options.remote_carla = args.audio.remote_carla();
     options.use_configured_driver = args.audio.dummy_buffer_size.is_some();
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;

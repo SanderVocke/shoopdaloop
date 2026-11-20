@@ -5,7 +5,7 @@ use crate::{
     engine,
     remote::{identity, RemoteProfile, Target},
 };
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
@@ -40,6 +40,8 @@ pub struct StartOptions {
     pub use_configured_driver: bool,
     #[serde(skip)]
     pub carla_worker: Option<PathBuf>,
+    #[serde(default)]
+    pub remote_carla: Option<RemoteCarla>,
 
     pub name: String,
 }
@@ -57,10 +59,18 @@ impl StartOptions {
             driver_preferences: None,
             use_configured_driver: false,
             carla_worker: None,
+            remote_carla: None,
 
             name: "ShoopDaLoop".into(),
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+pub struct RemoteCarla {
+    pub address: SocketAddr,
+    pub slack_quanta: Option<u16>,
+    pub copies: u8,
 }
 
 struct Acceptor {
@@ -376,6 +386,23 @@ pub fn run_with_ready(
         "LAN hosts require socket delivery"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
+    if config.settings.processors.carla.hosting == shoop_app_api::CarlaHosting::Remote {
+        ensure!(
+            cfg!(feature = "carla"),
+            "Remote Carla requires a Carla-enabled Native host"
+        );
+        ensure!(
+            config.settings.backend == shoop_app_api::BackendType::Native,
+            "Remote Carla requires the Native backend"
+        );
+        let remote = options
+            .remote_carla
+            .context("Remote Carla requires an FX endpoint")?;
+        ensure!(
+            (1..=2).contains(&remote.copies),
+            "Remote Carla packet copies must be 1 or 2"
+        );
+    }
     #[cfg(feature = "carla")]
     let (mut carla_ui, carla_dispatcher) = (config.settings.processors.carla.hosting
         == shoop_app_api::CarlaHosting::InProcess)
@@ -383,6 +410,13 @@ pub fn run_with_ready(
         .unzip();
     let mut carla = CarlaHostOptions::default();
     carla.worker.clone_from(&options.carla_worker);
+    carla.remote = options
+        .remote_carla
+        .map(|remote| shoop_rt_host_native::RemoteCarla {
+            address: remote.address,
+            slack_quanta: remote.slack_quanta,
+            copies: remote.copies,
+        });
     #[cfg(feature = "carla")]
     {
         carla.ui = carla_dispatcher;

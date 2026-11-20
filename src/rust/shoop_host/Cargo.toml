@@ -13,7 +13,7 @@ name = "fpga_reference_client"
 required-features = ["fpga-reference"]
 
 [features]
-carla = ["dep:shoop_carla", "shoop_rt_host_native/carla"]
+carla = ["dep:shoop_carla", "shoop_carla/remote", "shoop_rt_host_native/carla"]
 rtl-sim = ["fpga-reference", "dep:shoop_rt_host_marlin", "shoop_rt_host_marlin/sim"]
 fpga-reference = ["dep:shoop_rt_host_reference", "dep:shoop_audio_drivers", "dep:rt_runtime","dep:rt_fpga_reference", "dep:rt_fpga_compiler", "dep:shoop_rt_transport", "dep:shoop_rt_protocol"]
 builtin-fx = ["shoop_rt_host_native/builtin-fx"]

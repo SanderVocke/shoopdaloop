@@ -420,6 +420,11 @@ fn processor_status(
                 "{} queued MIDI controls",
                 snapshot.global_midi.pending
             ))
+        } else if let Some(worker) = snapshot.worker {
+            Some(format!(
+                "Peak worker completion {} frames · peak queue {} batches",
+                worker.peak_completion_frames, worker.peak_pending,
+            ))
         } else {
             None
         },

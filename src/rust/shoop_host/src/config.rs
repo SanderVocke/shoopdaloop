@@ -8,6 +8,7 @@ pub struct HostConfig {
     pub settings: HostSettings,
     pub transport: AppTransport,
     #[cfg(feature = "testing")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub test_signal: bool,
 }
 impl core::ops::Deref for HostConfig {
