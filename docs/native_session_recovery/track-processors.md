@@ -54,8 +54,8 @@ host manager's **New host** dialog also accepts Carla mode and counts under
 Linux development tests exercise both modes with the pinned runtime and actual
 Carla editors. In isolated mode the FX control can restart a crashed worker and
 reopen its editor. The host reports the new generation when the worker is ready.
-Full session saves refuse when a Carla track or bus is present. Selected loop
-media can still be captured for export.
+Full session saves include confirmed Carla track and bus projects. Selected loop
+media can be captured independently for export.
 See the plan for qualification scope and pending work. [Carla hosting plan](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
 
 ## Routing and media matrix

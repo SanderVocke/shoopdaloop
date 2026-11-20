@@ -661,23 +661,24 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             .find(|entry| entry.name == "Archived Wide Track")
             .unwrap();
         let (track, take) = (track.id, track.loops[0].id);
+        let expected_audio = |client: &mut Client| {
+            let state = client.snapshot().unwrap();
+            let bus = state
+                .buses
+                .iter()
+                .find(|entry| entry.name == "Archived Patchbay")
+                .unwrap();
+            lanes.iter().all(|&(lane, _, expected)| {
+                (bus.output_peaks_db[lane] - 20. * expected.log10()).abs() < 0.02
+            })
+        };
         let play = |fixture: &mut Fixture| {
             fixture.command(Command::Loop {
                 track,
                 loop_id: take,
                 action: LoopAction::PlayDryClicked,
             });
-            fixture.until(|client| {
-                let state = client.snapshot().unwrap();
-                let bus = state
-                    .buses
-                    .iter()
-                    .find(|entry| entry.name == "Archived Patchbay")
-                    .unwrap();
-                lanes.iter().all(|&(lane, _, expected)| {
-                    (bus.output_peaks_db[lane] - 20. * expected.log10()).abs() < 0.02
-                })
-            });
+            fixture.until(expected_audio);
         };
         play(&mut fixture);
 
@@ -732,22 +733,22 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         let image::Manifest::Session(session) = &saved.manifest else {
             panic!("session manifest")
         };
-        let track = session
+        let saved_track = session
             .tracks
             .iter()
             .find(|entry| entry.name == "Archived Wide Track")
             .unwrap();
-        let take = &track.loops[0];
-        assert_eq!(take.frames, 2048);
-        assert_eq!(take.audio.len(), 32);
+        let saved_take = &saved_track.loops[0];
+        assert_eq!(saved_take.frames, 2048);
+        assert_eq!(saved_take.audio.len(), 32);
         let image::Payload::Midi(events) =
-            &saved.payloads[take.midi[0].channel.object.unwrap() as usize - 1]
+            &saved.payloads[saved_take.midi[0].channel.object.unwrap() as usize - 1]
         else {
             panic!("retimed MIDI")
         };
         assert_eq!(events[0].frame, 118);
-        assert!(take.recorded_processor_checkpoint.is_some());
-        assert!(track.processor_checkpoint.is_some());
+        assert!(saved_take.recorded_processor_checkpoint.is_some());
+        assert!(saved_track.processor_checkpoint.is_some());
         assert!(session
             .buses
             .iter()
@@ -758,6 +759,59 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             .unwrap()
             .processor_checkpoint
             .is_some());
+
+        #[cfg(target_os = "linux")]
+        if hosting == CarlaHosting::Subprocess
+            && std::env::var_os("SHOOP_REQUIRE_CARLA_UI_TESTS").is_some()
+        {
+            let Delivery::Remote { _owner, .. } = &fixture.delivery else {
+                unreachable!("isolated Carla has a standalone host")
+            };
+            let parent = _owner.0.id();
+            let state = fixture.client.snapshot().unwrap();
+            let bus = state
+                .buses
+                .iter()
+                .find(|entry| entry.name == "Archived Patchbay")
+                .unwrap()
+                .id;
+            let fx_status = |client: &Client| {
+                let state = client.snapshot().unwrap();
+                let track = state.tracks.iter().find(|t| t.id == track).unwrap();
+                let bus = state.buses.iter().find(|b| b.id == bus).unwrap();
+                assert_eq!(track.loops[0].mode, LoopMode::PlayingDryThroughWet);
+                [track.fx.as_ref().unwrap(), bus.fx.as_ref().unwrap()]
+                    .map(|fx| (fx.lifecycle, fx.generation, fx.active))
+            };
+            // The new driver's bank has two live claims and two spares.
+            for chain in [b"1", b"2"] {
+                let mut before = fx_status(&fixture.client);
+                carla_worker::kill(parent, chain);
+                let mut crashed = None;
+                fixture.until(|client| {
+                    let status = fx_status(client);
+                    crashed = status.iter().position(|&(lifecycle, _, active)| {
+                        lifecycle == FxLifecycle::Crashed && !active
+                    });
+                    crashed.is_some() && !expected_audio(client)
+                });
+                let failed = crashed.unwrap();
+                assert_eq!(fx_status(&fixture.client)[1 - failed], before[1 - failed]);
+                fixture.command(if failed == 0 {
+                    Command::Track {
+                        track,
+                        action: TrackAction::FxToggleOrRecover,
+                    }
+                } else {
+                    Command::Bus {
+                        bus,
+                        action: BusAction::FxToggleOrRecover,
+                    }
+                });
+                before[failed].1 += 1;
+                fixture.until(|client| fx_status(client) == before && expected_audio(client));
+            }
+        }
 
         // This period exceeds Carla Native's maximum block. The target engine
         // cannot prepare a Carla bank, so the prior format and projects must return.
@@ -788,6 +842,10 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         play(&mut fixture);
     }
 }
+
+#[cfg(all(feature = "carla", target_os = "linux"))]
+#[path = "support/carla_worker.rs"]
+mod carla_worker;
 
 #[shoop_test(no_wasm = "native JACK application service and independent host")]
 fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_routing() {
