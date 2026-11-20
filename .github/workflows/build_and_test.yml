@@ -228,13 +228,16 @@ jobs:
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
-            protobuf-compiler
+            patchelf protobuf-compiler python3-venv xvfb
 
       - name: Reserve disk space for instrumented workspace binaries
         run: |
           df -h /
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
           df -h /
+
+      - name: Build pinned Linux Carla component for coverage
+        run: bash scripts/prepare_carla_linux.sh
 
       - name: Generate Rust coverage
         env:
@@ -248,8 +251,14 @@ jobs:
           export CARGO_TARGET_DIR="$PWD/target/llvm-cov-target"
           eval "$(cargo llvm-cov show-env --sh)"
           cargo llvm-cov clean --workspace
-          cargo nextest run --locked --workspace \
-            --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+          features=shoop_engine/app_backend,shoop_backend/native-fx,shoop_host/carla,shoop_rt_host_process/carla-worker
+          cargo nextest run --locked --workspace --features "$features" --profile ci
+          export SHOOP_CARLA_NATIVE_LIBRARY="$PWD/.carla-component/lib/libcarla_native-plugin.so"
+          export SHOOP_CARLA_RESOURCE_DIR="$PWD/.carla-component/resources"
+          xvfb-run -a env SHOOP_REQUIRE_CARLA_TESTS=1 SHOOP_REQUIRE_CARLA_UI_TESTS=1 SHOOP_TEST_CARLA_UI=1 \
+            cargo nextest run --locked --workspace --features "$features" --profile ci --test-threads 1 \
+              -E 'package(shoop_carla) | binary_id(=shoop_rt_host_process::carla_worker) | test(/carla/)'
+          unset SHOOP_CARLA_NATIVE_LIBRARY SHOOP_CARLA_RESOURCE_DIR
           python3 scripts/run_native_jack_tests.py --output target/native-jack-coverage
           timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport socket
           timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport shared_memory
@@ -653,23 +662,7 @@ jobs:
 
       - name: Build pinned Linux Carla component
         if: matrix.target == 'linux' && matrix.profile == 'release'
-        run: |
-          python3 scripts/carla_runtime.py fetch --asset source --output carla-source.tar.gz
-          mkdir .carla-source
-          tar -xzf carla-source.tar.gz -C .carla-source --strip-components=1
-          header_sha=$(python3 -c 'import json; print(json.load(open("third_party/carla/runtime-lock.json"))["source"]["native_header_sha256"])')
-          echo "$header_sha  .carla-source/source/includes/CarlaNative.h" | sha256sum --check
-          cc -std=c11 -I .carla-source/source/includes third_party/carla/abi_probe.c -o .carla-abi-probe
-          ./.carla-abi-probe > .carla-abi.actual
-          diff -u third_party/carla/abi-x86_64.expected .carla-abi.actual
-          python3 -m venv .carla-venv
-          .carla-venv/bin/pip install --disable-pip-version-check 'cx-Freeze==7.2.7' 'PyQt5==5.15.11'
-          PATH="$PWD/.carla-venv/bin:$PATH" make -C .carla-source -j2 plugin frontend
-          .carla-venv/bin/python scripts/build_carla_linux_ui.py --source .carla-source --output .carla-frozen-ui
-          python3 scripts/carla_runtime.py normalize --platform linux \
-            --search-root .carla-source/bin --search-root .carla-frozen-ui \
-            --license .carla-source/doc/GPL.txt --output .carla-component
-          readelf -d .carla-component/lib/libcarla_native-plugin.so | grep 'Shared library: \[libsndfile'
+        run: bash scripts/prepare_carla_linux.sh
 
       - name: Prepare pinned Windows Carla component
         if: matrix.target == 'windows' && matrix.profile == 'release'
