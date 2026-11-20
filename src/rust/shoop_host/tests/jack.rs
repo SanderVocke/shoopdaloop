@@ -283,6 +283,21 @@ impl Fixture {
         result.attach();
         result
     }
+
+    #[cfg(feature = "carla")]
+    fn shutdown(&mut self) {
+        let Delivery::Remote {
+            _owner: owner,
+            entry,
+            ..
+        } = &mut self.delivery
+        else {
+            unreachable!("Carla archive qualification uses a standalone host");
+        };
+        let status = shutdown::shutdown(&mut owner.0, entry, &mut self.client);
+        assert!(status.success(), "Carla session host exited with {status}");
+    }
+
     fn send(&mut self, message: ClientMessage) {
         match &mut self.delivery {
             Delivery::Local { service, id, .. } => service.handle(*id, message).unwrap(),
@@ -866,6 +881,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 .and_then(|fx| fx.status_summary.as_deref());
             eprintln!("remote Carla {width}-channel run {seconds}s at period {period}: {delay} frames of buffering, {} frames rendered, {} xruns, DSP {:?}, worker {:?} → {:?}, {completion:?}", state.status.processed_frames - frames, state.status.xruns, state.status.dsp, before, after);
             if sweep {
+                fixture.shutdown();
                 continue;
             }
             if clean_soak {
@@ -879,6 +895,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                     );
                 }
                 fixture.until(expected_audio);
+                fixture.shutdown();
                 continue;
             }
             if let Some(restart) = std::env::var_os("SHOOP_REMOTE_FX_RESTART_FILE") {
@@ -904,6 +921,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                         .all(|((generation, _, _), previous)| *generation > previous.0)
                         && expected_audio(client)
                 });
+                fixture.shutdown();
                 continue;
             }
             if let Ok(mode) = std::env::var("SHOOP_REMOTE_FX_IMPAIRED") {
@@ -916,6 +934,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 }
                 if mode != "capture" {
                     assert!(state.status.processed_frames > frames);
+                    fixture.shutdown();
                     continue;
                 }
             }
@@ -965,6 +984,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 });
                 std::fs::remove_file(block).unwrap();
                 fixture.until(expected_audio);
+                fixture.shutdown();
                 continue;
             }
             fixture.command(Command::Loop {
@@ -1044,15 +1064,17 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 let mut local = Fixture::with_settings(local_settings, DeliveryMode::Socket);
                 local.load(saved);
                 let restored = local.capture(4);
-                let image::Manifest::Session(local) = &restored.manifest else {
+                let image::Manifest::Session(local_session) = &restored.manifest else {
                     panic!("local session manifest")
                 };
-                assert!(local
+                assert!(local_session
                     .tracks
                     .iter()
                     .any(|entry| entry.name == "Archived Wide Track"
                         && entry.processor_checkpoint.is_some()));
+                local.shutdown();
             }
+            fixture.shutdown();
             continue;
         }
 
@@ -1214,16 +1236,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         let restored = snapshot.audio_drivers.active.as_ref().unwrap();
         assert_eq!((restored.sample_rate, restored.buffer_size), (96_000, 512));
         play(&mut fixture);
-        let Delivery::Remote {
-            _owner: owner,
-            entry,
-            ..
-        } = &mut fixture.delivery
-        else {
-            unreachable!("Carla archive qualification uses a standalone host");
-        };
-        let status = shutdown::shutdown(&mut owner.0, entry, &mut fixture.client);
-        assert!(status.success(), "Carla session host exited with {status}");
+        fixture.shutdown();
     }
 }
 

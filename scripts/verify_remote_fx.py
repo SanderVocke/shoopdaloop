@@ -132,14 +132,23 @@ async def relay(mode):
         await server.serve_forever()
 
 
-def query_service():
-    request = json.dumps({"version": 1, "intent": "describe"}).encode()
+def service_request(intent):
+    request = json.dumps({"version": 1, "intent": intent}).encode()
     with socket.create_connection((DESKTOP, SERVICE_PORT), timeout=1) as sock:
         sock.sendall(len(request).to_bytes(4, "little") + request)
         with sock.makefile("rb") as reply:
             size = int.from_bytes(reply.read(4), "little")
-            result = json.loads(reply.read(size))
-    return result["description"]["description"]
+            return json.loads(reply.read(size))
+
+
+def query_service():
+    return service_request("describe")["description"]["description"]
+
+
+def shutdown_service():
+    instance = query_service()["instance"]
+    if service_request({"shutdown": {"instance": instance}}) != "shutdown":
+        raise RuntimeError("desktop FX service did not confirm shutdown")
 
 
 def run_archive(args, env, width, restart=None):
@@ -282,11 +291,6 @@ def run_fixture(args, root):
             f"Looper CPUs {args.looper_cpus or 'shared'}, service CPUs {desktop_cpus or 'shared'}.",
             flush=True,
         )
-        if args.recovery_test:
-            run(
-                affinity(args.looper_cpus) + [args.recovery_test, "--exact", "carla_editor_controls_follow_the_confirmed_track_and_bus", "--nocapture"],
-                env=env, timeout=120,
-            )
         if args.restart:
             restart_env = {
                 **env,
@@ -294,6 +298,11 @@ def run_fixture(args, root):
                 "SHOOP_REMOTE_FX_SOAK_SECONDS": "0",
             }
             run_archive(args, restart_env, 2, restart_service)
+        if args.recovery_test:
+            run(
+                affinity(args.looper_cpus) + [args.recovery_test, "--exact", "carla_editor_controls_follow_the_confirmed_track_and_bus", "--nocapture"],
+                env=env, timeout=120,
+            )
         for width in args.width:
             run_archive(args, env, width)
         if args.sweep:
@@ -328,6 +337,9 @@ def run_fixture(args, root):
                     run_archive(args, {**impaired, "SHOOP_REMOTE_FX_COPIES": "1"}, 2)
                 stop(proxy)
                 proxy = None
+        run(enter + [sys.executable, str(Path(__file__).resolve()), "--shutdown-service"], timeout=5)
+        if broker.wait(timeout=15) != 0:
+            raise RuntimeError("desktop FX service failed during shutdown")
     except BaseException:
         if log_path.exists():
             print(log_path.read_text(errors="replace")[-20_000:], file=sys.stderr)
@@ -343,6 +355,9 @@ def run_fixture(args, root):
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--relay":
         asyncio.run(relay(sys.argv[2]))
+        return
+    if sys.argv[1:] == ["--shutdown-service"]:
+        shutdown_service()
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", required=True, type=Path)
