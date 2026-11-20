@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -38,8 +39,10 @@ def prepare(output, revision, mhz, profile):
             target.write_bytes(data)
             hashes[path] = hashlib.sha256(data).hexdigest()
     source = (output/'source/fpga/midi/rtl/midi_audio_pipeline_axi.sv').read_text()
-    if 'MIDI_SNAPSHOTS' not in source:
-        parameters.pop('MIDI_SNAPSHOTS', None)
+    declared=set(re.findall(r'parameter\s+(?:integer|\[[^]]+\])\s+(\w+)\s*=',source))
+    parameters={k:v for k,v in parameters.items() if k in declared}
+    for key,value in dict(MIDI_BUFFERS=256,MIDI_CURSORS=64,MIDI_SCRATCH_EVENTS=131072).items():
+        if key in declared: parameters[key]=value
     text = '`include "state_processor_defs.svh"\n'
     text += component_context(source, 'midi_audio_pipeline_axi', 'pipeline_context', dict(
         run_quantum="32'd32", run_chunk_frames="32'd32", arena_base="64'd0",

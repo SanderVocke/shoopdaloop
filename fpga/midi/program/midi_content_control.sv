@@ -1,15 +1,16 @@
 module midi_content_control #(
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
     parameter integer VIEWS=512, RETIREMENTS=256,
-    parameter integer TABLE_ENTRIES=(MAX_EVENTS+2*BLOCK_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
+    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
 ) (
     input wire clk, input wire reset, input wire [63:0] arena_base,
     output wire [63:0] arena_bytes,
     input wire command_valid, output wire command_ready, input wire [3:0] command_op,
     input wire [63:0] command_view,
     input wire [63:0] command_arg0, input wire [63:0] command_arg1,
+    input wire [63:0] command_source, input wire [31:0] command_count,
     input wire [23:0] command_packet, input wire [1:0] command_length,
-    output wire response_valid, input wire response_ready, output reg [2:0] response_error,
+    output wire response_valid, input wire response_ready, output reg [3:0] response_error,
     output reg [63:0] response_handle,
     output reg [63:0] response_frame, output reg [31:0] response_order,
     output reg [23:0] response_packet, output reg [1:0] response_length,
@@ -26,7 +27,7 @@ module midi_content_control #(
     `include "midi_functions.svh"
     initial begin
         if(BLOCK_EVENTS<1 || BLOCKS<1 || MAX_EVENTS<1 || VIEWS<1 || RETIREMENTS<1 ||
-            TABLE_ENTRIES<(MAX_EVENTS+2*BLOCK_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1)
+            TABLE_ENTRIES<(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1)
             $fatal(1,"Invalid MIDI storage capacities");
     end
     localparam [63:0] TABLE_BASE=64'(VIEWS)*64,
@@ -106,9 +107,15 @@ module midi_content_control #(
         DISCARD_TABLE_WRITE=68,
         DISCARD_TABLE_NEXT=69,
         DISCARD_FINISH=70,
-        RESPONSE=71;
+        RESPONSE=71, BATCH_START=72, BATCH_FETCH=73, BATCH_OFFSET=74, BATCH_PACKET=75,
+        BATCH_NEXT=76, BATCH_FINISH=77;
     reg [15:0] phase, return_phase, after_load, after_save, after_record, after_block;
     reg [3:0] op;
+    reg descriptor_valid;
+    reg [63:0] descriptor_handle, batch_source, batch_position, batch_last_frame;
+    reg [31:0] batch_count, batch_index, batch_offset, append_ordinal, append_block;
+    reg batch_has_last, append_block_valid, record_block_valid;
+    reg [31:0] record_block_ordinal, record_block_id;
     reg formatted, searching_end;
     reg [63:0] view_handle, arg0, arg1;
     reg [23:0] packet;
@@ -152,14 +159,14 @@ module midi_content_control #(
     task automatic write_word(input [63:0] address, input [31:0] value, input [15:0] next);
         begin memory_address<=address;memory_write_data<=value;return_phase<=next;phase<=WRITE_REQ;end
     endtask
-    task automatic fail(input [2:0] error_code);
-        begin response_error<=error_code;phase<=RESPONSE;end
+    task automatic fail(input [3:0] error_code);
+        begin response_error<=error_code;phase<=RESPONSE;descriptor_valid<=0;end
     endtask
     task automatic save_view(input [15:0] next);
         begin cursor<=0;after_save<=next;phase<=SAVE_VIEW;end
     endtask
     task automatic load_view(input [15:0] next);
-        begin cursor<=0;after_load<=next;phase<=LOAD_VIEW;end
+        begin cursor<=0;after_load<=next;phase<=LOAD_VIEW;record_block_valid<=0;end
     endtask
     task automatic read_record(input [31:0] index, input [15:0] next);
         begin record_index<=index;after_record<=next;phase<=RECORD;end
@@ -168,7 +175,10 @@ module midi_content_control #(
         reg [63:0] origin, frames;
         reg [31:0] position;
         if (reset) begin
-            phase<=IDLE;formatted<=0;used_views<=0;response_error<=0;response_handle<=0;
+            phase<=IDLE;formatted<=0;used_views<=0;descriptor_valid<=0;descriptor_handle<=0;
+            batch_source<=0;batch_position<=0;batch_last_frame<=0;batch_count<=0;batch_index<=0;batch_offset<=0;
+            append_ordinal<=0;append_block<=0;batch_has_last<=0;append_block_valid<=0;
+            record_block_valid<=0;record_block_ordinal<=0;record_block_id<=0;response_error<=0;response_handle<=0;
             response_frame<=0;response_order<=0;response_packet<=0;response_length<=0;response_work<=0;
             memory_address<=0;memory_write_data<=0;free_count<=0;queue_head<=0;queue_tail<=0;queue_count<=0;
             op<=0;view_handle<=0;arg0<=0;arg1<=0;packet<=0;length<=0;
@@ -181,6 +191,7 @@ module midi_content_control #(
         end else case (phase)
             IDLE: if(command_valid) begin
                 op<=command_op;view_handle<=command_view;
+                batch_source<=command_source;batch_count<=command_count;
                 arg0<=command_arg0;arg1<=command_arg1;packet<=command_packet;length<=command_length;
                 response_error<=0;response_length<=0;response_work<=0;phase<=DISPATCH;
             end
@@ -195,13 +206,13 @@ module midi_content_control #(
                 else phase<=return_phase;
             end
             DISPATCH: begin
-                if(op==0) begin formatted<=0;scan<=0;phase<=FORMAT;end
+                if(op==0) begin formatted<=0;descriptor_valid<=0;scan<=0;phase<=FORMAT;end
                 else if(!formatted) fail(4);
                 else if(op==4) begin candidate<=0;phase<=VIEW_ALLOC;end
-                else if(op==1 || op==2 || op==3 || op==15) fail(2);
+                else if(op==1 || op==2 || op==3) fail(2);
                 else if(op==11) phase<=MAINTAIN;
                 else if(view_handle[31:0]>=VIEWS || view_handle[63:32]==0) fail(4);
-                else begin view_slot<=view_handle[31:0];load_view(CHECK_VIEW);end
+                else begin view_slot<=view_handle[31:0];if(descriptor_valid && descriptor_handle==view_handle) phase<=CHECK_VIEW;else load_view(CHECK_VIEW);end
             end
             FORMAT: begin
                 if(scan<32'(VIEWS)*16) write_word(arena_base+64'(scan)*4,0,FORMAT_NEXT);
@@ -217,13 +228,14 @@ module midi_content_control #(
             LOAD_VIEW: read_word(view_address(view_slot,integer'(cursor)),LOADED_VIEW);
             LOADED_VIEW: begin
                 desc[cursor[3:0]]<=data_word;
-                if(cursor==15) phase<=after_load;
+                if(cursor==15) begin phase<=after_load;descriptor_valid<=1;descriptor_handle<=view_handle;end
                 else begin cursor<=cursor+1;phase<=LOAD_VIEW;end
             end
             CHECK_VIEW: begin
                 if(desc[0]!=view_handle[63:32] || desc[1]==0 || desc[2]==4) fail(4);
                 else case(op)
-                    5: phase<=APPEND;
+                    5: begin append_block_valid<=0;phase<=APPEND;end
+                    15: phase<=BATCH_START;
                     6,13: phase<=FINISH;
                     7: phase<=RANGE;
                     8: phase<=RETAIN;
@@ -248,6 +260,7 @@ module midi_content_control #(
             VIEW_ALLOC_CHECK: phase<=VIEW_CREATED;
             VIEW_CREATED: begin
                 begin
+                    descriptor_valid<=1;descriptor_handle<={generation,view_slot};record_block_valid<=0;
                     used_views<=used_views+1;desc[0]<=generation;desc[1]<=1;desc[2]<=op==7 ? 2 : 1;
                     desc[3]<=op==7 ? table_count : 0;desc[4]<=op==7 ? (desc[4]+range_first)%32'(BLOCK_EVENTS) : 0;
                     desc[5]<=op==7 ? range_count : 0;
@@ -262,10 +275,11 @@ module midi_content_control #(
             VIEW_READY: if(op==7) begin table_cursor<=0;phase<=RANGE_TABLE;end else save_view(RESPONSE);
             APPEND: begin
                 if(desc[2]!=1 || desc[1]!=1) fail(4);
-                else if(packet_error(packet,length)!=0) fail(packet_error(packet,length));
+                else if(packet_error(packet,length)!=0) fail({1'b0,packet_error(packet,length)});
                 else if(desc[12]==32'hffffffff) fail(6);
                 else if(desc[5]>=desc[13]) begin desc[2]<=3;response_error<=3;save_view(RESPONSE);end
                 else if(arg0<{desc[9],desc[8]} || arg0+{desc[7],desc[6]}<arg0) fail(1);
+                else if(op==15 && batch_has_last) begin if(arg0<batch_last_frame) fail(1);else phase<=APPEND_PREPARE;end
                 else if(desc[5]!=0) read_record(desc[5]-1,APPEND_LAST);
                 else phase<=APPEND_PREPARE;
             end
@@ -277,27 +291,33 @@ module midi_content_control #(
                         desc[2]<=3;response_error<=3;save_view(RESPONSE);
                     end
                     else read_word(arena_base+FREE_BASE+64'(32'(free_count-1))*4,APPEND_BLOCK);
-                end else read_word(table_address(view_slot,position/32'(BLOCK_EVENTS)),APPEND_BLOCK_ID);
+                end else if(op==15 && append_block_valid && append_ordinal==position/32'(BLOCK_EVENTS)) begin data_word<=append_block;phase<=APPEND_BLOCK_ID;end
+                else read_word(table_address(view_slot,position/32'(BLOCK_EVENTS)),APPEND_BLOCK_ID);
             end
             APPEND_BLOCK: begin block_id<=data_word;write_word(arena_base+REF_BASE+64'(data_word)*4,1,APPEND_BLOCK_REF);end
             APPEND_BLOCK_REF: write_word(table_address(view_slot,desc[3]),block_id,APPEND_TABLE);
             APPEND_TABLE: begin free_count<=free_count-1;desc[3]<=desc[3]+1;phase<=APPEND_BLOCK_ID;data_word<=block_id;end
             APPEND_BLOCK_ID: begin
                 position=desc[4]+desc[5];origin={desc[7],desc[6]}+arg0;
+                append_block_valid<=1;append_ordinal<=position/32'(BLOCK_EVENTS);append_block<=data_word;
                 record_address<=arena_base+EVENT_BASE+64'(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)))*16;
                 payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[12];payload[3]<={6'b0,length,packet};
                 record_word<=0;phase<=APPEND_PAYLOAD;
             end
             APPEND_PAYLOAD: write_word(record_address+64'(record_word)*4,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
             APPEND_PAYLOAD_NEXT: if(record_word==3) begin
-                    desc[5]<=desc[5]+1;desc[12]<=desc[12]+1;save_view(RESPONSE);
+                    desc[5]<=desc[5]+1;desc[12]<=desc[12]+1;
+                    if(op==15) begin batch_has_last<=1;batch_last_frame<=arg0;phase<=BATCH_NEXT;end
+                    else save_view(RESPONSE);
                 end else begin record_word<=record_word+1;phase<=APPEND_PAYLOAD;end
             RECORD: begin
                 position=desc[4]+record_index;
-                read_word(table_address(view_slot,position/32'(BLOCK_EVENTS)),RECORD_BLOCK);
+                if(record_block_valid && record_block_ordinal==position/32'(BLOCK_EVENTS)) begin data_word<=record_block_id;phase<=RECORD_BLOCK;end
+                else read_word(table_address(view_slot,position/32'(BLOCK_EVENTS)),RECORD_BLOCK);
             end
             RECORD_BLOCK: begin
                 position=desc[4]+record_index;
+                record_block_valid<=1;record_block_ordinal<=position/32'(BLOCK_EVENTS);record_block_id<=data_word;
                 record_address<=arena_base+EVENT_BASE+64'(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)))*16;
                 record_word<=0;phase<=RECORD_PAYLOAD;
             end
@@ -310,11 +330,11 @@ module midi_content_control #(
                     phase<=after_record;
                 end else begin record_word<=record_word+1;phase<=RECORD_PAYLOAD;end
             end
-            FINISH: if(desc[2]!=1 || arg0<{desc[9],desc[8]}) fail(4);
+            FINISH: if(desc[2]==3) fail(8);else if(desc[2]!=1 || arg0<{desc[9],desc[8]}) fail(4);
                 else if(desc[5]!=0) read_record(desc[5]-1,FINISH_LAST);else phase<=FINISH_LAST;
             FINISH_LAST: if(desc[5]!=0 && response_frame>=arg0) fail(1);
                 else begin desc[8]<=arg0[31:0];desc[9]<=arg0[63:32];if(op==6) desc[2]<=2;save_view(RESPONSE);end
-            RETAIN: if(desc[2]!=2) fail(4);else if(desc[1]==32'hffffffff) fail(6);
+            RETAIN: if(desc[2]!=2) fail(8);else if(desc[1]==32'hffffffff) fail(6);
                 else begin desc[1]<=desc[1]+1;response_handle<=view_handle;save_view(RESPONSE);end
             RELEASE: if(desc[1]==1 && queue_count>=32'(RETIREMENTS)) fail(3);
                 else begin desc[1]<=desc[1]-1;if(desc[1]==1) desc[2]<=4;save_view(RELEASE_REF);end
@@ -362,7 +382,7 @@ module midi_content_control #(
             MAINTAIN_RETIRED: begin queue_head<=(queue_head+1)%32'(RETIREMENTS);queue_count<=queue_count-1;phase<=MAINTAIN_NEXT;end
             MAINTAIN_NEXT: begin response_work<=response_work+1;phase<=MAINTAIN;end
             DISCARD: if(desc[2]!=1 || desc[1]!=1 || arg0>{32'b0,desc[5]}) fail(4);
-                else begin discard_count<=arg0[31:0];removed_blocks<=(desc[4]+arg0[31:0])/32'(BLOCK_EVENTS);table_cursor<=0;phase<=DISCARD_BLOCK;end
+                else begin record_block_valid<=0;discard_count<=arg0[31:0];removed_blocks<=(desc[4]+arg0[31:0])/32'(BLOCK_EVENTS);table_cursor<=0;phase<=DISCARD_BLOCK;end
             DISCARD_BLOCK: if(table_cursor==removed_blocks) begin table_cursor<=0;phase<=DISCARD_TABLE;end
                 else read_word(table_address(view_slot,table_cursor),DISCARD_ID);
             DISCARD_ID: begin block_id<=data_word;after_block<=DISCARD_RELEASED;phase<=BLOCK_RELEASE;end
@@ -374,6 +394,20 @@ module midi_content_control #(
             DISCARD_FINISH: begin
                 desc[3]<=desc[3]-removed_blocks;desc[4]<=(desc[4]+discard_count)%32'(BLOCK_EVENTS);desc[5]<=desc[5]-discard_count;save_view(RESPONSE);
             end
+            BATCH_START: begin
+                if(desc[2]!=1 || desc[1]!=1 || arg0<{desc[9],desc[8]} || arg1<arg0) fail(4);
+                else if(batch_source[3:0]!=0 || batch_source<arena_base+arena_bytes) fail(1);
+                else begin batch_position<=arg0;batch_index<=0;batch_has_last<=0;append_block_valid<=0;phase<=BATCH_FETCH;end
+            end
+            BATCH_FETCH: if(batch_index==batch_count) phase<=BATCH_FINISH;
+                else read_word(batch_source+64'(batch_index)*16,BATCH_OFFSET);
+            BATCH_OFFSET: begin batch_offset<=data_word;read_word(batch_source+64'(batch_index)*16+12,BATCH_PACKET);end
+            BATCH_PACKET: begin
+                if({32'b0,batch_offset}>=arg1-batch_position || batch_position+{32'b0,batch_offset}<batch_position || data_word[31:26]!=0) fail(1);
+                else begin arg0<=batch_position+{32'b0,batch_offset};packet<=data_word[23:0];length<=data_word[25:24];phase<=APPEND;end
+            end
+            BATCH_NEXT: begin batch_index<=batch_index+1;phase<=BATCH_FETCH;end
+            BATCH_FINISH: begin desc[8]<=arg1[31:0];desc[9]<=arg1[63:32];save_view(RESPONSE);end
             RESPONSE: if(response_ready) phase<=IDLE;
             default: begin formatted<=0;fail(7);end
         endcase

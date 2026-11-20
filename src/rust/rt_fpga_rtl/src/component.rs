@@ -38,10 +38,30 @@ pub enum ArithmeticMode {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Instruction {
-    ProcessMidi {
-        phase: u16,
-        loop_id: Option<Identity>,
-        context: u16,
+    MidiInput {
+        port: u16,
+        destination: u16,
+    },
+    MidiPlayback {
+        loop_id: Identity,
+        sequence: u8,
+        cursor: u8,
+        channels: u16,
+        destination: u8,
+    },
+    MidiCapture {
+        loop_id: Identity,
+        sequence: u16,
+        source: u16,
+    },
+    MidiMerge {
+        left: u16,
+        right: u16,
+        destination: u16,
+    },
+    MidiOutput {
+        source: u16,
+        port: u16,
     },
     ProcessHistorySmoothing {
         loop_id: Identity,
@@ -106,25 +126,48 @@ pub fn value_words(value: Value) -> [u32; 5] {
 }
 pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
     let (opcode, args) = match value {
-        Instruction::ProcessMidi {
-            phase,
+        Instruction::MidiInput { port, destination } => (14, vec![port, destination]),
+        Instruction::MidiCapture {
             loop_id,
-            context,
+            sequence,
+            source,
+        } => (
+            16,
+            vec![
+                u16::try_from(loop_id.slot)?,
+                loop_id.generation as u16,
+                (loop_id.generation >> 16) as u16,
+                sequence,
+                source,
+            ],
+        ),
+        Instruction::MidiMerge {
+            left,
+            right,
+            destination,
+        } => (17, vec![left, right, destination]),
+        Instruction::MidiOutput { source, port } => (18, vec![source, port]),
+        Instruction::MidiPlayback {
+            loop_id,
+            sequence,
+            cursor,
+            channels,
+            destination,
         } => {
-            let id = loop_id.unwrap_or(Identity {
-                slot: 0,
-                generation: 0,
-            });
-            (
-                14,
-                vec![
-                    u16::try_from(id.slot)?,
-                    id.generation as u16,
-                    (id.generation >> 16) as u16,
-                    context,
-                    phase,
-                ],
-            )
+            let packed = 15u128
+                | (u128::from(u16::try_from(loop_id.slot)?) << 8)
+                | (u128::from(loop_id.generation) << 24)
+                | (u128::from(sequence) << 56)
+                | (u128::from(cursor) << 64)
+                | (u128::from(channels) << 72)
+                | (u128::from(destination) << 88);
+            return Ok([
+                packed as u32,
+                (packed >> 32) as u32,
+                (packed >> 64) as u32,
+                0,
+                0,
+            ]);
         }
         Instruction::ProcessHistorySmoothing {
             loop_id,

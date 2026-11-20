@@ -116,6 +116,7 @@ impl LoopImage {
         let mut expected = image(slot, spec, Some(stamp));
         expected.set(56, 1, self.newer[&spec.id.slot]);
         let mut actual = actual.clone();
+        actual.set(57, 2, 0);
         for (i, expected_plan) in slot.planned.iter().enumerate() {
             if expected_plan.is_none() {
                 assert_eq!(actual.get(96 + i * 5, 1), 0);

@@ -36,7 +36,7 @@ pub enum InitialValue {
         duration: u32,
     },
 }
-/// Legacy schedule for retained RTL artifacts. The reference uses `MidiOperation`.
+/// Legacy schedule for historical fixtures. Current targets use `MidiOperation`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]

@@ -159,7 +159,8 @@ each job a small data-moving controller:
 The interfaces expose positions and counts directly, and block traversal is data
 dependent. There is no reason to synthesize a general MIDI instruction interpreter
 or expand a quantum into a fixed maximum number of message slots. None of this
-claims a proven hardware deadline; the RTL port and its measurements are deferred.
+claims a proven hardware deadline. The RTL counterpart still needs workload-specific
+throughput measurements as configurations change.
 
 ## Validation and migration
 
@@ -177,8 +178,9 @@ switches, shared ranges, capacity failures, and callback heap-allocation guards.
 
 State-based tests and benchmarks are archived under `tests/retired_midi` and
 `examples/retired_midi`; Cargo does not discover them. Useful storage tests have
-been adapted to the new API. The old RTL MIDI oracle/testbench still depends on the
-removed session interface and has not been ported. The compiler retains its old
-MIDI phase format for existing RTL artifacts, but the Rust target rejects it. The
-RTL target rejects new `MidiData` operations until that port is implemented.
-No HDL has been changed as part of this rewrite.
+been adapted to the new API. The RTL counterpart now uses the same explicit data operations and is checked
+against the Rust reference, including connected SP/JP traces and AXI32/64 traffic.
+See the [RTL implementation and protocol](../../../../../fpga/midi/README.md).
+The compiler keeps its old phase format only for historical fixtures; both current
+targets reject that format. The application host control endpoint remains outside
+this MIDI path.

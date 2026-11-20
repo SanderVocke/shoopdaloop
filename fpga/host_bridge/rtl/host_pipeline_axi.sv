@@ -301,7 +301,7 @@ module host_pipeline_axi #(
         .WRITE_BUFFERS(WRITE_BUFFERS),
         .BURST_MEMORY(BURST_MEMORY),
         .AXI_DATA_WIDTH(AXI_DATA_WIDTH),
-        .ENABLE_MIDI(0), .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (
+        .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (
         .arena_base({32'b0, ARENA_BASE}),
         .maintenance_enable(1'b1),
         .maintenance_tick(1'b0),

@@ -24,8 +24,8 @@ proc reports {stage} {
         audio media_audio_pipeline_axi
         state state_processor
         jobs job_processor
-        midi midi_job_port
-        midi_service midi_job_service
+        midi midi_data_jobs
+        midi_store midi_store
     } {
         # Rebuilt hierarchy may insert generated wrappers between public tops.
         set cells [get_cells -quiet -hierarchical -filter "ORIG_REF_NAME == $original"]
@@ -33,7 +33,7 @@ proc reports {stage} {
     }
     report_timing_summary -delay_type min_max -report_unconstrained -check_timing_verbose -max_paths 20 -file ${stage}_timing_summary.rpt
     report_timing -delay_type max -max_paths 20 -path_type full_clock_expanded -file ${stage}_critical_paths.rpt
-    set midi_roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_job_port}]
+    set midi_roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_data_jobs}]
     foreach root $midi_roots {
         set registers [get_cells -quiet -hierarchical -filter "IS_SEQUENTIAL && NAME =~ $root/*"]
         if {![llength $registers]} {error "No MIDI sequential cells found below $root"}

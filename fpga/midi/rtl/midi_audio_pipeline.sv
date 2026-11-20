@@ -37,12 +37,14 @@ module midi_audio_pipeline #(
     parameter integer MIDI_LOOPS = 128,
     parameter integer MIDI_INPUTS = 1,
     parameter integer MIDI_DESTINATIONS = 8,
+    parameter integer MIDI_BUFFERS = 256,
+    parameter integer MIDI_CURSORS = 128,
+    parameter integer MIDI_SCRATCH_EVENTS = 131072,
     parameter integer MIDI_BLOCK_EVENTS = 256,
     parameter integer MIDI_BLOCKS = 4864,
     parameter integer MIDI_MAX_EVENTS = 8192,
     parameter integer MIDI_VIEWS = 512,
     parameter integer MIDI_RETIREMENTS = 256,
-    parameter integer MIDI_INPUT_EVENTS = 256,
     parameter integer MIDI_MAINTENANCE = 64
 ) (
     output wire [3:0] midi_error_code,
@@ -240,20 +242,86 @@ module midi_audio_pipeline #(
     input wire midi_memory_response_error,
     input wire [31:0] midi_memory_read_data
 );
-    wire midi_job_valid, midi_job_ready, midi_job_done;
+    localparam [2:0] IDLE=0, PREPARE=1, START=2, RUN=3, FINISH=4;
+    reg [2:0] phase;
+    reg completed, finish_accepted, engine_fault;
+    reg [7:0] result_error;
+    reg [1:0] result_stage;
+    reg [3:0] result_midi_error;
+    wire audio_run_ready, audio_busy, audio_done, midi_idle;
+    wire [7:0] audio_error;
+    wire [1:0] audio_stage;
+    wire [3:0] audio_midi_error;
+    wire prepare_ready, prepare_done, finish_ready, finish_done;
+    wire [3:0] prepare_error, finish_error;
+    wire accepted=run_valid && run_ready;
+    wire midi_job_valid,midi_job_ready,midi_job_done;
     wire [255:0] midi_job_data;
     wire [3:0] midi_job_error;
-    wire audio_run_ready, midi_idle;
-    wire audio_run_valid = run_valid && midi_idle && !midi_command_valid;
-    assign run_ready = audio_run_ready && midi_idle && !midi_command_valid;
-    reg [63:0] event_address;
-    reg [31:0] event_count, midi_quantum;
+    reg saved_run_program_region;
+    reg [31:0] saved_run_sync_count;
+    reg [31:0] saved_run_instruction_count;
+    reg [31:0] saved_run_state_count;
+    reg [31:0] saved_run_quantum;
+    reg [31:0] saved_run_chunk_frames;
+    reg [31:0] saved_run_job_budget;
+    reg [31:0] saved_run_buffers;
+    reg [31:0] saved_run_inputs;
+    reg [31:0] saved_run_outputs;
+    wire gated_cfg_ready;
+    wire gated_audio_cfg_ready;
+    wire gated_switch_ready;
+    wire gated_store_cmd_ready;
+    wire gated_store_cfg_ready;
+    assign run_ready=phase==IDLE && audio_run_ready && midi_idle && prepare_ready && !engine_fault;
+    assign busy=phase!=IDLE || audio_busy;
+    assign done=completed;
+    assign error_code=result_error;
+    assign error_stage=result_stage;
+    assign midi_error_code=result_midi_error;
     always @(posedge clk) begin
-        if(reset) begin event_address<=0;event_count<=0;midi_quantum<=32'(MAX_FRAMES);end
-        else if(run_valid && run_ready) begin
-            event_address<=midi_event_address;event_count<=midi_event_count;midi_quantum<=run_quantum;
+        if(reset) begin phase<=IDLE;completed<=0;finish_accepted<=0;engine_fault<=0;result_error<=0;result_stage<=0;result_midi_error<=0;end
+        else begin
+            completed<=0;
+            case(phase)
+                IDLE: if(accepted) begin phase<=PREPARE;finish_accepted<=0;result_error<=0;result_stage<=0;result_midi_error<=0;end
+                PREPARE: if(prepare_done) begin
+                    if(prepare_error!=0) begin result_error<=4;result_stage<=2;result_midi_error<=prepare_error;if(prepare_error==7) engine_fault<=1;completed<=1;phase<=IDLE;end
+                    else phase<=START;
+                end
+                START: if(audio_run_ready) phase<=RUN;
+                RUN: if(audio_done) begin
+                    result_error<=audio_error;result_stage<=audio_stage;result_midi_error<=audio_midi_error;
+                    if(audio_error!=0) begin engine_fault<=1;completed<=1;phase<=IDLE;end else phase<=FINISH;
+                end
+                FINISH: begin
+                    if(finish_ready) finish_accepted<=1;
+                    if(finish_done) begin
+                        if(finish_error!=0) begin engine_fault<=1;result_error<=4;result_stage<=2;result_midi_error<=finish_error;end
+                        completed<=1;phase<=IDLE;
+                    end
+                end
+                default: phase<=IDLE;
+            endcase
         end
     end
+    always @(posedge clk) if(accepted) begin
+        saved_run_program_region<=run_program_region;
+        saved_run_sync_count<=run_sync_count;
+        saved_run_instruction_count<=run_instruction_count;
+        saved_run_state_count<=run_state_count;
+        saved_run_quantum<=run_quantum;
+        saved_run_chunk_frames<=run_chunk_frames;
+        saved_run_job_budget<=run_job_budget;
+        saved_run_buffers<=run_buffers;
+        saved_run_inputs<=run_inputs;
+        saved_run_outputs<=run_outputs;
+    end
+    assign cfg_ready=gated_cfg_ready && phase==IDLE;
+    assign audio_cfg_ready=gated_audio_cfg_ready && phase==IDLE;
+    assign switch_ready=gated_switch_ready && phase==IDLE;
+    assign store_cmd_ready=gated_store_cmd_ready && phase==IDLE;
+    assign store_cfg_ready=gated_store_cfg_ready && phase==IDLE;
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .LIVE_LOADING(LIVE_LOADING),
@@ -295,7 +363,7 @@ module midi_audio_pipeline #(
         .midi_job_data(midi_job_data),
         .midi_job_done(midi_job_done),
         .midi_job_error(midi_job_error),
-        .midi_error_code(midi_error_code),
+        .midi_error_code(audio_midi_error),
         .sample_input_read(sample_input_read),
         .sample_input_address(sample_input_address),
         .sample_input_data(sample_input_data),
@@ -320,10 +388,10 @@ module midi_audio_pipeline #(
         .reclaim_pages_available(reclaim_pages_available),
         .reclaim_pages_freed(reclaim_pages_freed),
         .reclaim_capacity_failures(reclaim_capacity_failures),
-        .run_program_region(run_program_region),
-        .run_sync_count(run_sync_count),
-        .switch_valid(switch_valid),
-        .switch_ready(switch_ready),
+        .run_program_region(saved_run_program_region),
+        .run_sync_count(saved_run_sync_count),
+        .switch_valid(switch_valid && phase==IDLE),
+        .switch_ready(gated_switch_ready),
         .switch_expected(switch_expected),
         .switch_revision(switch_revision),
         .switch_region(switch_region),
@@ -341,28 +409,28 @@ module midi_audio_pipeline #(
         .sync_event_valid(sync_event_valid),
         .sync_event_ready(sync_event_ready),
         .sync_event_data(sync_event_data),
-        .run_valid(audio_run_valid),
+        .run_valid(phase==START),
         .run_ready(audio_run_ready),
-        .run_instruction_count(run_instruction_count),
-        .run_state_count(run_state_count),
-        .run_quantum(run_quantum),
-        .run_chunk_frames(run_chunk_frames),
-        .run_job_budget(run_job_budget),
-        .run_buffers(run_buffers),
-        .run_inputs(run_inputs),
-        .run_outputs(run_outputs),
+        .run_instruction_count(saved_run_instruction_count),
+        .run_state_count(saved_run_state_count),
+        .run_quantum(saved_run_quantum),
+        .run_chunk_frames(saved_run_chunk_frames),
+        .run_job_budget(saved_run_job_budget),
+        .run_buffers(saved_run_buffers),
+        .run_inputs(saved_run_inputs),
+        .run_outputs(saved_run_outputs),
         .job_enable(job_enable),
-        .busy(busy),
-        .done(done),
-        .error_code(error_code),
-        .error_stage(error_stage),
+        .busy(audio_busy),
+        .done(audio_done),
+        .error_code(audio_error),
+        .error_stage(audio_stage),
         .state_busy(state_busy),
         .state_done(state_done),
         .jobs_busy(jobs_busy),
         .jobs_done(jobs_done),
         .buffer_ready(buffer_ready),
-        .cfg_valid(cfg_valid),
-        .cfg_ready(cfg_ready),
+        .cfg_valid(cfg_valid && phase==IDLE),
+        .cfg_ready(gated_cfg_ready),
         .cfg_state(cfg_state),
         .cfg_loop(cfg_loop),
         .cfg_write(cfg_write),
@@ -371,8 +439,8 @@ module midi_audio_pipeline #(
         .cfg_response_valid(cfg_response_valid),
         .cfg_response_error(cfg_response_error),
         .cfg_read_data(cfg_read_data),
-        .audio_cfg_valid(audio_cfg_valid),
-        .audio_cfg_ready(audio_cfg_ready),
+        .audio_cfg_valid(audio_cfg_valid && phase==IDLE),
+        .audio_cfg_ready(gated_audio_cfg_ready),
         .audio_cfg_space(audio_cfg_space),
         .audio_cfg_write(audio_cfg_write),
         .audio_cfg_address(audio_cfg_address),
@@ -393,8 +461,8 @@ module midi_audio_pipeline #(
         .loop_response_error(loop_response_error),
         .loop_response_data(loop_response_data),
         .arena_base(arena_base),
-        .store_cmd_valid(store_cmd_valid),
-        .store_cmd_ready(store_cmd_ready),
+        .store_cmd_valid(store_cmd_valid && phase==IDLE),
+        .store_cmd_ready(gated_store_cmd_ready),
         .store_cmd_opcode(store_cmd_opcode),
         .store_cmd_view(store_cmd_view),
         .store_cmd_start(store_cmd_start),
@@ -411,8 +479,8 @@ module midi_audio_pipeline #(
         .store_read_valid(store_read_valid),
         .store_read_ready(store_read_ready),
         .store_read_data(store_read_data),
-        .store_cfg_valid(store_cfg_valid),
-        .store_cfg_ready(store_cfg_ready),
+        .store_cfg_valid(store_cfg_valid && phase==IDLE),
+        .store_cfg_ready(gated_store_cfg_ready),
         .store_cfg_write(store_cfg_write),
         .store_cfg_space(store_cfg_space),
         .store_cfg_address(store_cfg_address),
@@ -452,28 +520,45 @@ module midi_audio_pipeline #(
         .m_axi_rvalid(m_axi_rvalid),
         .m_axi_rready(m_axi_rready)
     );
-    midi_job_port #(
+    midi_data_jobs #(
         .LOOPS(MIDI_LOOPS),
         .INPUTS(MIDI_INPUTS),
         .DESTINATIONS(MIDI_DESTINATIONS),
+        .BUFFERS(MIDI_BUFFERS),
+        .CURSORS(MIDI_CURSORS),
+        .SCRATCH_EVENTS(MIDI_SCRATCH_EVENTS),
         .BLOCK_EVENTS(MIDI_BLOCK_EVENTS),
         .BLOCKS(MIDI_BLOCKS),
         .MAX_EVENTS(MIDI_MAX_EVENTS),
         .VIEWS(MIDI_VIEWS),
         .RETIREMENTS(MIDI_RETIREMENTS),
-        .INPUT_EVENTS(MIDI_INPUT_EVENTS),
         .MAINTENANCE(MIDI_MAINTENANCE)
     ) midi (
-        .idle(midi_idle), .control_enable(!busy), .fault_request(error_code!=0),
-        .publication_valid(midi_publication_valid), .publication_commit(midi_publication_commit),
-        .job_valid(midi_job_valid), .job_ready(midi_job_ready), .job_data(midi_job_data),
-        .job_done(midi_job_done), .job_error(midi_job_error),
-        .event_address(event_address), .event_count(event_count),
         .clk(clk),
         .reset(reset),
         .arena_base(midi_arena_base),
-        .quantum_frames(midi_quantum),
+        .quantum_frames(phase==IDLE ? run_quantum : saved_run_quantum),
         .arena_bytes(midi_arena_bytes),
+        .prepare_valid(accepted),
+        .prepare_ready(prepare_ready),
+        .prepare_done(prepare_done),
+        .prepare_error(prepare_error),
+        .event_address(midi_event_address),
+        .event_count(midi_event_count),
+        .finish_valid(phase==FINISH && !finish_accepted),
+        .finish_ready(finish_ready),
+        .finish_done(finish_done),
+        .finish_error(finish_error),
+        .idle(midi_idle),
+        .control_enable(phase==IDLE && !run_valid),
+        .fault_request(audio_error!=0),
+        .publication_valid(midi_publication_valid),
+        .publication_commit(midi_publication_commit),
+        .job_valid(midi_job_valid),
+        .job_ready(midi_job_ready),
+        .job_data(midi_job_data),
+        .job_done(midi_job_done),
+        .job_error(midi_job_error),
         .command_valid(midi_command_valid),
         .command_ready(midi_command_ready),
         .command_op(midi_command_op),

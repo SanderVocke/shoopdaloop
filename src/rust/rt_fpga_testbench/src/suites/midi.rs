@@ -1,14 +1,7 @@
-use crate::{
-    clock::Edges,
-    model::Model,
-    random::Random,
-    sim::{Agent, Sim},
-};
-mod axi;
-pub mod runtime;
-pub use axi::axi_conformance;
+use crate::{clock::Edges, model::Model, random::Random, sim::Agent};
+pub mod data;
 
-pub(crate) struct Memory {
+pub struct Memory {
     pins: [&'static str; 9],
     pub words: Vec<u32>,
     rng: Random,
@@ -39,7 +32,7 @@ impl Memory {
     }
 }
 impl Memory {
-    fn mixed(words: usize) -> Self {
+    pub fn mixed(words: usize) -> Self {
         let mut memory = Self::new(words);
         memory.pins = [
             "midi_memory_ready",
@@ -55,9 +48,6 @@ impl Memory {
         memory
     }
 }
-mod mixed;
-pub use mixed::benchmark::benchmark_64;
-pub use mixed::compiled_mixed_conformance;
 impl Agent for Memory {
     fn drive(&mut self, m: &mut Model<'_>, e: Edges) {
         if !e.rises(0) {
@@ -100,22 +90,4 @@ impl Agent for Memory {
             self.pending = Some((self.rng.below(4), self.words[index], error));
         }
     }
-}
-pub(crate) fn command(s: &mut Sim<'_>) -> u64 {
-    s.model
-        .set_all(&[("command_valid", 1), ("response_ready", 0)]);
-    s.until(20_000_000, "command admission", |m| {
-        m.get("command_ready") != 0
-    });
-    s.idle(1);
-    s.model.set("command_valid", 0);
-    s.until(20_000_000, "MIDI completion", |m| {
-        m.get("response_valid") != 0
-    });
-    let error = s.model.get("response_error");
-    s.idle(3);
-    assert_eq!(s.model.get("response_error"), error);
-    s.model.set("response_ready", 1);
-    s.idle(1);
-    error
 }

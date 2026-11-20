@@ -75,10 +75,14 @@ cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config smal
 cargo run --locked -p rt_fpga_testbench --features sim -- deferred --memory-model dramsim3
 ```
 
-The `midi` test target includes compiled mixed SP/JP programs, exact audio and
-MIDI output/job/state comparisons at all supported quanta, publication fences,
-partial output and fatal recovery. It also retains DDR service scenarios and
-AXI32/64 checks. See the [coverage and limits](../../../docs/fpga/midi-shared-jobs-validation.md).
+The `midi` test target compares the event-only RTL with the Rust FPGA reference:
+compiled SP/shared-JP job traces, mixed audio/MIDI output, all supported quantum
+sizes in the data unit, block crossings, shared ranges, duplication and retakes,
+publication fences, capacity failures, output refusal, input validation, and
+AXI32/64 stalls/faults. It includes 3,000-message recording/playback and a
+1,200-message merge, without a per-quantum message quota. Rust and RTL both omit
+instrument-state tracking/restoration. See the [implementation and protocol](../../../fpga/midi/README.md).
+The previous phase/session MIDI fixtures and their measurements are historical.
 
 `pipeline` is the TP-free SP -> JP -> media/cache execution harness. Explicit
 instructions, initial state and samples exercise exact output, recording/readback,

@@ -107,7 +107,7 @@ def generate():
     text += "        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);\n"
     text += "    media_audio_pipeline_axi #(\n        "
     text += ",\n        ".join(f".{name}({name})" for name in param_names)
-    text += ",\n        .ENABLE_MIDI(0), .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (\n        "
+    text += ",\n        .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (\n        "
     text += ",\n        ".join(f".{name}({value})" for name, value in core_constants.items())
     text += ",\n        .*);\nendmodule\n"
     # Vivado 2021.1 requires a Verilog or VHDL top for block design module references.
