@@ -72,7 +72,7 @@ def generate_axi(core):
         text += '    '+re.sub(r'(input|output)\s+(wire|reg)', 'wire', prefix)+n+';\n'
     text += '    midi_audio_pipeline #(\n'+',\n'.join(f'        .{n}({n})' for n in names)+'\n    ) core (.*);\n'
     text += "    wire [63:0] checked_bytes = midi_memory_arena_bytes<=MIDI_PHYSICAL_BYTES_LIMIT ? midi_memory_arena_bytes : 0;\n"
-    text += '    word_axi #(.DATA_WIDTH(MIDI_AXI_DATA_WIDTH)) midi_memory (\n'
+    text += '    word_axi #(.DATA_WIDTH(MIDI_AXI_DATA_WIDTH),.REGISTER_REQUEST(1)) midi_memory (\n'
     fixed = dict(clk='clk',reset='reset',arena_base='midi_arena_base',arena_bytes='checked_bytes',physical_base='MIDI_PHYSICAL_BASE')
     mappings = []
     for _,n in word_ports:

@@ -1,10 +1,12 @@
     localparam integer WORK_BITS=$clog2(MIDI_WORK_WORDS), WORK_DEPTH=1<<WORK_BITS;
-    localparam [4:0] FETCH=0, READ=1, EXECUTE=2, INIT=3, INDIRECT=4, FILL=5,
+    localparam [5:0] FETCH=0, READ=1, EXECUTE=2, INIT=3, INDIRECT=4, FILL=5,
         MEMORY_WAIT=7, STATE_WAIT=9, HEAD_WAIT=10,
         MULTIPLY=11, MULTIPLIED=12, DIVIDE=13, CONTEXT_STORE_REQUEST=16, CONTEXT_STORE_WRITE=17,
         BULK_COUNT_READ=18, BULK_START=19, BULK_READ_REQUEST=20, BULK_READ_WAIT=21,
-        BULK_WRITE_REQUEST=22, BULK_WRITE_WAIT=23, BULK_RF_READ=24, CONTEXT_ZERO=25, CONTEXT_CELL=26;
-    reg [4:0] phase;
+        BULK_WRITE_REQUEST=22, BULK_WRITE_WAIT=23, BULK_RF_READ=24, CONTEXT_ZERO=25, CONTEXT_CELL=26, MERGE_READ=27, MERGE_RECOVERY=28, MERGE_COMPARE=29,
+        MERGE_RESULT=30, META_LATCH=31, COMMAND_CHECK=32, FAST_REPLY=33,
+        FAST_CONTEXT=34, FAST_CAPTURE=35, FAST_METADATA=36;
+    reg [5:0] phase;
     reg [15:0] micro_pc;
     reg [63:0] instruction,operand_a,operand_b;
     (* ram_style="block" *) reg [63:0] work_a[0:WORK_DEPTH-1];
@@ -15,6 +17,27 @@
     reg [31:0] context_dirty;
     wire [4:0] dirty_field=5'(first_set_bit(context_dirty));
     reg selected_dirty;
+    reg [LOOP_BITS-1:0] merge_index,merge_slot;
+    reg [HEAD_BITS-1:0] merge_best;
+    reg merge_found;
+    reg fast_prepared,fast_running;
+    wire fast_bound=summary_q[64] && summary_q[63:0]==a4 && a0<64'(LOOPS);
+    wire fast_idle=summary_q[66:65]==0 && summary_q[68:67]==0 && !summary_q[69] &&
+        !summary_q[70] && !summary_q[71] && !summary_q[74] && !summary_q[75];
+    wire fast_command=fast_prepared && fast_running && fast_bound &&
+        (op==25 && summary_q[66:65]!=1 || op==29 && a3==0 && fast_idle ||
+         op==33 && a1==0 && fast_idle || op==30 && a1[1]!=(summary_q[70] || summary_q[71]));
+    reg [WORK_BITS-1:0] merge_write_address;
+    reg [63:0] merge_write_data;
+    always @* begin
+        case(work_index[2:0])
+            0: begin merge_write_address=WORK_BITS'(R_best_frame);merge_write_data={32'b0,merge_best[31:0]};end
+            1: begin merge_write_address=WORK_BITS'(R_best_slot);merge_write_data=64'(merge_slot);end
+            2: begin merge_write_address=WORK_BITS'(R_best_packet);merge_write_data={40'b0,merge_best[55:32]};end
+            3: begin merge_write_address=WORK_BITS'(R_best_length);merge_write_data={62'b0,merge_best[57:56]};end
+            default: begin merge_write_address=WORK_BITS'(R_found);merge_write_data={63'b0,merge_found};end
+        endcase
+    end
     reg [63:0] bulk_source,bulk_target;
     reg [31:0] bulk_remaining,bulk_word;
     reg [8:0] bulk_field;
@@ -70,22 +93,23 @@
     wire alu_writes=operation==MC_MOV || operation==MC_MOVI || operation==MC_MOVHI ||
         (operation>=MC_ADD && operation<=MC_INV) || operation==MC_IOREAD ||
         operation==MC_PKTERR || operation==MC_EXPENSIVE || operation==MC_FIRSTBIT || operation==MC_INITIALCELL;
-    wire work_write=phase==CONTEXT_CELL || bulk_ram_write || phase==INIT || phase==FILL || phase==INDIRECT || phase==MULTIPLIED ||
+    wire work_write=phase==FAST_CONTEXT || phase==FAST_CAPTURE || phase==MERGE_RESULT || phase==CONTEXT_CELL || bulk_ram_write || phase==INIT || phase==FILL || phase==INDIRECT || phase==MULTIPLIED ||
         (phase==DIVIDE && divide_bit==0) || (phase==EXECUTE && (alu_writes || operation==MC_STORE || operation==MC_CSTORE));
-    wire [WORK_BITS-1:0] work_write_address=phase==EXECUTE && operation==MC_CSTORE ? WORK_BITS'(R_c)+WORK_BITS'(operand_a[4:0]) : bulk_ram_write ? bulk_register : phase==INIT || phase==FILL ? work_index :
+    wire [WORK_BITS-1:0] work_write_address=phase==FAST_CONTEXT ? WORK_BITS'(R_context_slot) :
+        phase==FAST_CAPTURE ? WORK_BITS'(R_c+17) : phase==MERGE_RESULT ? merge_write_address : phase==EXECUTE && operation==MC_CSTORE ? WORK_BITS'(R_c)+WORK_BITS'(operand_a[4:0]) : bulk_ram_write ? bulk_register : phase==INIT || phase==FILL ? work_index :
         phase==EXECUTE && operation==MC_STORE ? operand_a[WORK_BITS-1:0] : WORK_BITS'(destination_register);
-    wire [63:0] work_write_data=phase==CONTEXT_CELL ? (selected_dirty ? operand_a : {32'b0,context_q}) : bulk_ram_write ? {32'b0,memory_read_data} : phase==INIT || phase==FILL ? 0 : phase==INDIRECT ? operand_a :
+    wire [63:0] work_write_data=phase==FAST_CONTEXT ? {32'b0,a0[31:0]} : phase==FAST_CAPTURE ? 0 :
+        phase==MERGE_RESULT ? merge_write_data : phase==CONTEXT_CELL ? (selected_dirty ? operand_a : {32'b0,context_q}) : bulk_ram_write ? {32'b0,memory_read_data} : phase==INIT || phase==FILL ? 0 : phase==INDIRECT ? operand_a :
         phase==MULTIPLIED ? multiply_result : phase==DIVIDE ?
             (operation==MC_DIV ? {divide_quotient[62:0],!division_subtract[64]} :
              division_subtract[64] ? division_trial[63:0] : division_subtract[63:0]) :
         operation==MC_STORE || operation==MC_CSTORE ? operand_b : alu_result;
-    wire [WORK_BITS-1:0] work_read_address=phase==BULK_COUNT_READ ? WORK_BITS'(destination_register) :
+    wire [WORK_BITS-1:0] work_read_address=phase==MERGE_RECOVERY ? WORK_BITS'(R_recovery)+WORK_BITS'(head_q[HEAD_BITS-1:59]) : phase==BULK_COUNT_READ ? WORK_BITS'(destination_register) :
         phase==BULK_RF_READ ? bulk_register : phase==CONTEXT_STORE_REQUEST ? WORK_BITS'(R_c)+WORK_BITS'(dirty_field) :
         phase==EXECUTE && operation==MC_CLOAD ? WORK_BITS'(R_c)+WORK_BITS'(operand_a[4:0]) : phase==EXECUTE ? operand_a[WORK_BITS-1:0] :
         WORK_BITS'(operation==MC_MOVHI ? destination_register : instruction[27:18]);
     always @(posedge clk) begin
-        if(phase==FETCH) instruction<=midi_ucode[micro_pc[MIDI_UCODE_BITS-1:0]];
-        if(phase==BULK_RF_READ || phase==BULK_COUNT_READ || phase==CONTEXT_STORE_REQUEST || phase==READ || phase==EXECUTE && (operation==MC_LOAD || operation==MC_CLOAD))
+        if(phase==MERGE_RECOVERY || phase==BULK_RF_READ || phase==BULK_COUNT_READ || phase==CONTEXT_STORE_REQUEST || phase==READ || phase==EXECUTE && (operation==MC_LOAD || operation==MC_CLOAD))
             operand_a<=work_a[work_read_address];
         if(phase==READ) operand_b<=work_b[WORK_BITS'(instruction[37:28])];
         if(work_write && !reset) begin
@@ -100,10 +124,15 @@
     always @(posedge clk) begin
         if(reset) begin
             phase<=INIT;work_index<=0;micro_pc<=U_BOOT;
+            merge_index<=0;merge_slot<=0;merge_best<=0;merge_found<=0;
+            fast_prepared<=0;fast_running<=0;
             bulk_source<=0;bulk_target<=0;bulk_remaining<=0;bulk_word<=0;bulk_field<=0;bulk_register<=0;
             context_dirty<=0;selected_dirty<=0;transfer_context<=0;fill_remaining<=0;multiply_a<=0;multiply_b<=0;multiply_result<=0;
             divide_remainder<=0;divide_dividend<=0;divide_divisor<=0;divide_quotient<=0;divide_bit<=0;
-        end else case(phase)
+        end else begin
+        if(work_write && work_write_address==WORK_BITS'(R_prepared)) fast_prepared<=work_write_data[0];
+        if(work_write && work_write_address==WORK_BITS'(R_running)) fast_running<=work_write_data[0];
+        case(phase)
             INIT: if(work_index==WORK_BITS'(WORK_DEPTH-1)) begin phase<=FETCH;micro_pc<=U_BOOT;end
                 else work_index<=work_index+1'b1;
             FETCH: phase<=READ;
@@ -113,7 +142,7 @@
                     MC_JUMP: begin micro_pc<=target_pc;phase<=FETCH;end
                     MC_JZERO: begin micro_pc<=operand_a==0 ? target_pc : micro_pc+1'b1;phase<=FETCH;end
                     MC_JIND: begin micro_pc<=operand_a[15:0];phase<=FETCH;end
-                    MC_COMMAND: if(command_valid) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
+                    MC_COMMAND: if(command_valid) begin micro_pc<=micro_pc+1'b1;phase<=COMMAND_CHECK;end
                     MC_REPLY: if(response_ready) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                     MC_PACKET: if(packet_ready) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                     MC_BULKCOPY,MC_BULKZERO,MC_BULKINIT,MC_BULKIN,MC_BULKOUT: begin
@@ -121,8 +150,9 @@
                         bulk_register<=operation==MC_BULKIN ? operand_b[WORK_BITS-1:0] : operand_a[WORK_BITS-1:0];
                         bulk_field<=0;phase<=BULK_COUNT_READ;
                     end
+                    MC_MERGE: begin merge_index<=0;merge_found<=0;merge_best<=0;merge_slot<=0;phase<=MERGE_READ;end
                     MC_CTXZERO: begin transfer_context<=0;work_index<=0;phase<=CONTEXT_ZERO;end
-                    MC_CTXREAD: begin transfer_context<=operand_a[LOOP_BITS-1:0];context_dirty<=0;micro_pc<=micro_pc+1'b1;phase<=FETCH;end
+                    MC_CTXREAD: begin transfer_context<=operand_a[LOOP_BITS-1:0];context_dirty<=0;micro_pc<=micro_pc+1'b1;phase<=META_LATCH;end
                     MC_CTXWRITE: if(context_dirty==0) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                         else phase<=CONTEXT_STORE_REQUEST;
                     MC_CLOAD: begin selected_dirty<=context_dirty[operand_a[4:0]];phase<=CONTEXT_CELL;end
@@ -144,6 +174,26 @@
                     default: begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                 endcase
             end
+            COMMAND_CHECK: phase<=fast_command ? FAST_CONTEXT : FETCH;
+            FAST_CONTEXT: begin
+                transfer_context<=a0[LOOP_BITS-1:0];context_dirty<=0;work_index<=0;
+                phase<=op==25 ? FAST_CAPTURE : op==29 ? FAST_METADATA : FAST_REPLY;
+            end
+            FAST_CAPTURE: begin context_dirty<=32'b1<<17;phase<=FAST_REPLY;end
+            FAST_METADATA: if(work_index==3) phase<=FAST_REPLY;else work_index<=work_index+1'b1;
+            FAST_REPLY: if(response_ready) begin micro_pc<=U_IDLE;phase<=FETCH;end
+            META_LATCH: phase<=FETCH;
+            MERGE_READ: phase<=MERGE_RECOVERY;
+            MERGE_RECOVERY: phase<=MERGE_COMPARE;
+            MERGE_COMPARE: begin
+                if(head_q[58] && operand_a==32 && (!merge_found || head_q[31:0]<merge_best[31:0])) begin
+                    merge_found<=1;merge_best<=head_q;merge_slot<=merge_index;
+                end
+                if(merge_index==LOOP_BITS'(LOOPS-1)) begin work_index<=0;phase<=MERGE_RESULT;end
+                else begin merge_index<=merge_index+1'b1;phase<=MERGE_READ;end
+            end
+            MERGE_RESULT: if(work_index==4) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
+                else work_index<=work_index+1'b1;
             CONTEXT_ZERO: if(work_index==31) begin
                 work_index<=0;
                 if(transfer_context==LOOP_BITS'(LOOPS-1)) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
@@ -204,6 +254,7 @@
             STATE_WAIT: if(state_valid) begin micro_pc<=state_error==7 ? target_pc : micro_pc+1'b1;phase<=FETCH;end
             default: phase<=INIT;
         endcase
+        end
     end
 
 // synthesis translate_off

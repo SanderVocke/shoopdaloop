@@ -76,6 +76,7 @@ OPS = [
     "CTXZERO",
     "CLOAD",
     "CSTORE",
+    "MERGE",
 ]
 OP = {name: i for i, name in enumerate(OPS)}
 INPUTS = [
@@ -340,22 +341,27 @@ class Compiler:
         return out
 
     def unary(self, op, value):
+        if value.kind == "c":
+            if value.number is not None:
+                n = value.number
+                return constant(
+                    int(n != 0)
+                    if op == "BOOL"
+                    else int(n == 0) if op == "NOT" else ~n if op == "INV" else n
+                )
+            expression = {
+                "BOOL": f"({value.data} != 0)",
+                "NOT": f"({value.data} == 0)",
+                "INV": f"~64'({value.data})",
+                "MOV": value.data,
+            }[op]
+            return Value("c", expression, width=1 if op in ["BOOL", "NOT"] else 64)
         out = self.fresh()
         out = Value(out.kind, out.data, width=1 if op in ["BOOL", "NOT"] else 64)
         self.emit(op, out, self.reg(value))
         return out
 
     def binary(self, op, a, b):
-        if op == "MUL32" and (
-            not isinstance(a.width, int)
-            or not isinstance(b.width, int)
-            or a.width > 32
-            or b.width > 32
-        ):
-            raise ValueError(
-                "Control program multiplication operands must fit 32 bits: "
-                + repr((a, b))
-            )
         if a.kind == b.kind == "c" and a.number is not None and b.number is not None:
             x, y = a.number, b.number
             calc = {
@@ -372,7 +378,9 @@ class Compiler:
                 "LE": lambda: int(x <= y),
                 "GT": lambda: int(x > y),
                 "GE": lambda: int(x >= y),
-                "MUL32": lambda: (x & 0xFFFFFFFF) * (y & 0xFFFFFFFF),
+                "MUL32": lambda: x * y,
+                "DIV": lambda: x // y,
+                "MOD": lambda: x % y,
             }
             if op in calc:
                 return constant(calc[op]())
@@ -380,6 +388,8 @@ class Compiler:
             return a
         if op in ["ADD", "OR", "XOR"] and a.number == 0:
             return b
+        if op in ["SHL", "SHR"] and a.number == 0:
+            return constant(0)
         if op in ["MUL32", "AND"] and (a.number == 0 or b.number == 0):
             return constant(0)
         if (
@@ -408,6 +418,40 @@ class Compiler:
             and isinstance(b.width, int)
         ):
             width = max(a.width, b.width)
+        if a.kind == b.kind == "c":
+            operator = {
+                "ADD": "+",
+                "SUB": "-",
+                "AND": "&",
+                "OR": "|",
+                "XOR": "^",
+                "SHL": "<<",
+                "SHR": ">>",
+                "EQ": "==",
+                "NE": "!=",
+                "LT": "<",
+                "LE": "<=",
+                "GT": ">",
+                "GE": ">=",
+                "MUL32": "*",
+                "DIV": "/",
+                "MOD": "%",
+            }[op]
+            return Value("c", f"(64'({a.data}) {operator} 64'({b.data}))", width=width)
+        if op == "MUL32" and (
+            not isinstance(a.width, int)
+            or not isinstance(b.width, int)
+            or a.width > 32
+            or b.width > 32
+        ):
+            raise ValueError(
+                "Control program multiplication operands must fit 32 bits: "
+                + repr((a, b))
+            )
+        if op in ["DIV", "MOD"] and b.width > 32:
+            raise ValueError(
+                "Control division requires a denominator of at most 32 bits"
+            )
         out = self.fresh()
         out = Value(out.kind, out.data, width=width)
         self.emit(op, out, self.reg(a), self.reg(b))
@@ -942,6 +986,8 @@ class Compiler:
             "COPY_WRITE",
             "COPY_NEXT",
             "ZERO_NEXT",
+            "JOB_SELECT",
+            "JOB_SELECT_COMPARE",
             "BOOT_CONTEXT",
             "BOOT_CONTEXT_NEXT",
         }
@@ -958,6 +1004,24 @@ class Compiler:
             elif name == "RESPONSE":
                 self.emit("REPLY")
                 self.emit("JUMP", target="IDLE")
+                continue
+            elif name == "JOB_SELECT_BEGIN":
+                self.emit("MERGE")
+                self.write(
+                    ("reg", self.variable("scan"), None, None),
+                    Value("c", "LOOPS", width=32),
+                )
+                self.emit("JZERO", a=self.variable("found"), target="RESPONSE")
+                self.write(
+                    ("reg", self.variable("context_slot"), None, None),
+                    self.variable("best_slot"),
+                )
+                self.write(("reg", self.variable("cursor"), None, None), constant(0))
+                self.write(
+                    ("reg", self.variable("context_return"), None, None),
+                    Value("label", "PROCESS_EMIT", width=16),
+                )
+                self.emit("JUMP", target="CONTEXT_READ")
                 continue
             elif name == "BOOT_CONTEXTS":
                 self.emit("CTXZERO")
@@ -1066,11 +1130,8 @@ class Compiler:
             lines.append(f"localparam [15:0] U_{label} = 16'd{pc};")
         lines += [f"localparam [7:0] MC_{name} = 8'd{i};" for name, i in OP.items()]
         lines += [f"localparam [7:0] MI_{name} = 8'd{i};" for name, i in IO_ID.items()]
-        lines += [
-            '(* rom_style="block" *) reg [63:0] midi_ucode [0:MIDI_UCODE_DEPTH-1];',
-            "initial begin",
-            "    for(integer i=0;i<MIDI_UCODE_DEPTH;i=i+1) midi_ucode[i]=64'b0;",
-        ]
+        save_generated(out, "\n".join(lines) + "\n", check)
+        words = []
         for pc, i in enumerate(self.code):
             op = f'MC_{i["op"]}'
             rd = f"10'({i['rd']})"
@@ -1086,9 +1147,40 @@ class Compiler:
                 word = f"{{U_{i['target']},10'b0,{b},{a},{rd},{op}}}"
             else:
                 word = f"{{26'b0,{b},{a},{rd},{op}}}"
-            lines.append(f"    midi_ucode[{pc}] = {word};")
-        lines += ["end"]
-        save_generated(out, "\n".join(lines) + "\n", check)
+            words.append(word)
+        bank_words = 2048
+        bank_count = (len(words) + bank_words - 1) // bank_words
+        rom = [
+            "// Generated by compile_control.py.",
+            "localparam integer MIDI_ROM_BANK_BITS=11;",
+            "localparam integer MIDI_ROM_SELECT_BITS=MIDI_UCODE_BITS>11 ? MIDI_UCODE_BITS-11 : 1;",
+            "reg [MIDI_ROM_SELECT_BITS-1:0] code_bank;",
+            "always @(posedge clk) if(phase==FETCH) code_bank<=MIDI_ROM_SELECT_BITS'(micro_pc>>11);",
+        ]
+        for bank in range(bank_count):
+            name = f"control_bank_{bank}"
+            rom += [
+                f'(* ram_style="block", rom_style="block" *) reg [63:0] {name}[0:2047];',
+                f"reg [63:0] {name}_q;",
+                "initial begin",
+                f"    for(integer i=0;i<2048;i=i+1) {name}[i]=0;",
+            ]
+            for index, word in enumerate(
+                words[bank * bank_words : (bank + 1) * bank_words]
+            ):
+                rom.append(f"    {name}[{index}]={word};")
+            rom += [
+                "end",
+                f"always @(posedge clk) if(phase==FETCH && MIDI_ROM_SELECT_BITS'(micro_pc>>11)==MIDI_ROM_SELECT_BITS'({bank}))",
+                f"    {name}_q<={name}[micro_pc[10:0]];",
+            ]
+        rom += ["always @* begin", "    case(code_bank)"]
+        for bank in range(bank_count):
+            rom.append(
+                f"        MIDI_ROM_SELECT_BITS'({bank}): instruction=control_bank_{bank}_q;"
+            )
+        rom += ["        default: instruction=0;", "    endcase", "end"]
+        save_generated(ROOT / "rtl/midi_control_rom.svh", "\n".join(rom) + "\n", check)
         save_generated(
             ROOT / "program/control-layout.json",
             json.dumps(

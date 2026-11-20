@@ -33,6 +33,19 @@ proc reports {stage} {
     }
     report_timing_summary -delay_type min_max -report_unconstrained -check_timing_verbose -max_paths 20 -file ${stage}_timing_summary.rpt
     report_timing -delay_type max -max_paths 20 -path_type full_clock_expanded -file ${stage}_critical_paths.rpt
+    set midi_roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_job_port}]
+    foreach root $midi_roots {
+        set registers [get_cells -quiet -hierarchical -filter "IS_SEQUENTIAL && NAME =~ $root/*"]
+        if {![llength $registers]} {error "No MIDI sequential cells found below $root"}
+        report_timing -from $registers -delay_type max -max_paths 10 -path_type full_clock_expanded -file ${stage}_midi_from_paths.rpt
+        report_timing -to $registers -delay_type max -max_paths 10 -path_type full_clock_expanded -file ${stage}_midi_to_paths.rpt
+        set from_path [get_timing_paths -from $registers -delay_type max -max_paths 1]
+        set to_path [get_timing_paths -to $registers -delay_type max -max_paths 1]
+        set midi_file [open ${stage}_midi_timing.json w]
+        puts $midi_file "{\"from_midi_wns_ns\":[get_property SLACK $from_path],\"to_midi_wns_ns\":[get_property SLACK $to_path]}"
+        close $midi_file
+    }
+    report_control_sets -verbose -file ${stage}_control_sets.rpt
     check_timing -verbose -file ${stage}_check_timing.rpt
     set setup_paths [get_timing_paths -delay_type max -max_paths 1]
     set hold_paths [get_timing_paths -delay_type min -max_paths 1]

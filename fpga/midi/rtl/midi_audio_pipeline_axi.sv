@@ -323,7 +323,7 @@ parameter integer EXTERNAL_IO = 0,
         .MIDI_MAINTENANCE(MIDI_MAINTENANCE)
     ) core (.*);
     wire [63:0] checked_bytes = midi_memory_arena_bytes<=MIDI_PHYSICAL_BYTES_LIMIT ? midi_memory_arena_bytes : 0;
-    word_axi #(.DATA_WIDTH(MIDI_AXI_DATA_WIDTH)) midi_memory (
+    word_axi #(.DATA_WIDTH(MIDI_AXI_DATA_WIDTH),.REGISTER_REQUEST(1)) midi_memory (
         .clk(clk),
         .reset(reset),
         .arena_base(midi_arena_base),

@@ -60,9 +60,12 @@ def generate(check=False):
     (* ram_style="block" *) reg [HEAD_BITS-1:0] heads[0:LOOPS-1];
     reg [31:0] context_q;
     reg [HEAD_BITS-1:0] head_q;
+    (* ram_style="block" *) reg [79:0] summaries[0:LOOPS-1];
+    reg [79:0] summary_q,summary_work;
     reg panic_refused;
     reg [63:0] io_read_data;
     `include "midi_control_core.svh"
+    `include "midi_control_rom.svh"
     always @* begin
         io_read_data=0;
         case(target_pc)
@@ -80,7 +83,7 @@ def generate(check=False):
     wire state_response_ready=phase==STATE_WAIT && !reset;
     wire select_state=state_command_valid || phase==STATE_WAIT;
     assign command_ready=phase==EXECUTE && operation==MC_COMMAND && !reset;
-    assign response_valid=phase==EXECUTE && operation==MC_REPLY && !reset;
+    assign response_valid=(phase==FAST_REPLY || phase==EXECUTE && operation==MC_REPLY) && !reset;
     wire panic_valid=phase==EXECUTE && operation==MC_PACKET;
     assign packet_valid=(panic_valid || select_state && state_packet_valid) && !reset;
     assign packet_data=panic_valid ? recovery_packet : state_packet_data;
@@ -95,14 +98,51 @@ def generate(check=False):
         (phase==MEMORY_WAIT || bulk_wait) && !reset;
     assign state_memory_ready=select_state && memory_ready;
     assign state_memory_response_valid=select_state && memory_response_valid;
-    wire [CONTEXT_ADDRESS_BITS-1:0] context_word_index={transfer_context,work_index[4:0]};
+    wire [CONTEXT_ADDRESS_BITS-1:0] context_word_index={transfer_context,
+        phase==FAST_METADATA ? 5'd18+{3'b0,work_index[1:0]} : work_index[4:0]};
+    wire [31:0] fast_metadata_word=work_index[1:0]==0 ? a1[31:0] : work_index[1:0]==1 ? a1[63:32] :
+        work_index[1:0]==2 ? a2[31:0] : a2[63:32];
+    wire summary_read=phase==EXECUTE && operation==MC_CTXREAD || command_ready && command_valid && command_arg0<64'(LOOPS);
+    wire [LOOP_BITS-1:0] summary_index=command_ready ? command_arg0[LOOP_BITS-1:0] : operand_a[LOOP_BITS-1:0];
+    wire head_read=phase==MERGE_READ || phase==EXECUTE && operation==MC_HEADREAD && operand_a<64'(LOOPS);
+    wire [LOOP_BITS-1:0] head_index=phase==MERGE_READ ? merge_index : operand_a[LOOP_BITS-1:0];
+    wire context_committed=phase==CONTEXT_STORE_WRITE && (context_dirty & ~(32'b1<<work_index[4:0]))==0;
     always @(posedge clk) begin
         if(!reset) begin
             if(phase==EXECUTE && operation==MC_CLOAD) context_q<=context_words[{transfer_context,operand_a[4:0]}];
-            if(phase==CONTEXT_STORE_WRITE || phase==CONTEXT_ZERO)
-                context_words[context_word_index]<=phase==CONTEXT_ZERO ? 0 : operand_a[31:0];
-            if(phase==EXECUTE && operation==MC_HEADREAD && operand_a<64'(LOOPS)) head_q<=heads[operand_a[LOOP_BITS-1:0]];
+            if(phase==CONTEXT_STORE_WRITE || phase==CONTEXT_ZERO || phase==FAST_METADATA)
+                context_words[context_word_index]<=phase==CONTEXT_ZERO ? 0 : phase==FAST_METADATA ? fast_metadata_word : operand_a[31:0];
+            if(head_read) head_q<=heads[head_index];
+            if(summary_read) summary_q<=summaries[summary_index];
+            if(phase==CONTEXT_ZERO && work_index==31 || context_committed)
+                summaries[transfer_context]<=phase==CONTEXT_ZERO ? 0 : summary_work;
             if(phase==EXECUTE && operation==MC_HEADWRITE) heads[head_write_index]<=head_write_data;
+        end
+    end
+    always @(posedge clk) begin
+        if(reset) summary_work<=0;
+        else begin
+            if(phase==META_LATCH || phase==FAST_CONTEXT) summary_work<=summary_q;
+            if(phase==FAST_CAPTURE) summary_work[68:67]<=0;
+            if(phase==EXECUTE && operation==MC_FILL && operand_a==64'(R_c) && operand_b==32) summary_work<=0;
+            if(phase==EXECUTE && operation==MC_CSTORE) begin
+                case(operand_a[4:0])
+                    0: summary_work[64]<=operand_b!=0;
+                    4: summary_work[31:0]<=operand_b[31:0];
+                    5: summary_work[63:32]<=operand_b[31:0];
+                    8: summary_work[72]<=operand_b!=0;
+                    9: summary_work[73]<=operand_b!=0;
+                    10: summary_work[70]<=operand_b!=0;
+                    11: summary_work[71]<=operand_b!=0;
+                    16: summary_work[66:65]<=operand_b[1:0];
+                    17: summary_work[68:67]<=operand_b[1:0];
+                    22: summary_work[69]<=operand_b[0];
+                    23: summary_work[76]<=operand_b!=0;
+                    28: summary_work[75]<=operand_b!=0;
+                    30: summary_work[74]<=operand_b!=0;
+                    default: begin end
+                endcase
+            end
         end
     end
     always @(posedge clk) begin
@@ -125,6 +165,7 @@ def generate(check=False):
     text += """                    default: begin end
                 endcase
             end
+            if(phase==COMMAND_CHECK && fast_command) begin response_error<=0;response_count<=0;response_length<=0;end
             if(command_ready && command_valid) begin
                 op<=command_op;a0<=command_arg0;a1<=command_arg1;a2<=command_arg2;a3<=command_arg3;a4<=command_arg4;
                 last_error<=0;

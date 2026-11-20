@@ -46,13 +46,22 @@ another descriptor discards uncommitted changes, preserving the validation and
 publication behavior of the job algorithms. These temporary values are separate
 from the incremental MIDI state-difference bitmaps stored in DDR.
 
+A small packed header beside each descriptor holds its loop identity and status
+flags. Descriptor commits update both representations together. The hardware uses
+this header to finish common idle bookkeeping and inapplicable ownership claims
+quickly. Other cases continue through the control program. A pinned playback
+cursor also retains its immutable sequence's event count, so an empty sequence or
+an exhausted cursor needs no repeated DDR descriptor lookup.
+
 ## Work performed by the hardware
 
 Most instructions take three clocks: fetch the instruction, read operands, then
 execute it. One bounded 32-by-32 multiplier computes addresses; musical time,
 durations and address additions remain 64-bit. The compiler rejects multiplication
 operands that it cannot establish fit 32 bits. A shared serial divider handles
-general division; constant powers of two become shifts or masks.
+64-bit numerators with divisors of at most 32 bits. Constant expressions are
+evaluated when building the FPGA image; literal powers of two become shifts or
+masks in the control program.
 
 Bulk transfers run as short hardware loops. They copy/clear DDR words, initialize
 a state snapshot, or move a history descriptor between DDR and working memory.
@@ -61,6 +70,17 @@ handling. This avoids executing arithmetic instructions for every copied word.
 Descriptor selection and commit similarly have direct BRAM operations rather
 than converting a descriptor index into a pretend DDR address and decoding it
 back into a BRAM index.
+
+Playback-head selection walks the BRAM table directly, taking three clocks per
+candidate and preserving the ordering by timestamp and then context. This keeps
+the small linear search economical in both logic and execution time.
+
+The ROM uses explicit 2,048-word banks with synchronous reads. This matters:
+Vivado 2021.1 sometimes converts the larger combined ROM into LUTs despite its
+memory attribute. The banked form reliably infers BRAM. An optional request
+register in the word-to-AXI adapter is enabled for MIDI. It captures the address
+and arena configuration before checking bounds, separating the state engines'
+address calculation from the adapter's range checks.
 
 The existing state interpreter, incremental comparison and ordered transition
 engines remain dedicated hardware. The execution unit waits for them while they
@@ -118,3 +138,6 @@ overhead. FPGA clock timing and the time needed to finish a whole audio quantum
 are separate measurements. The descriptive `midi_cycles_64` example compares MIDI
 service output with Rust while reporting clock counts; it excludes audio and
 the outer SP/JP execution and therefore does not certify a board deadline.
+Use `--active-loops 1` for one active MIDI loop among 64 bindings, or
+`--active-loops 64 --events-per-quantum 16` for the simultaneous-start/burst
+measurement. The latter is descriptive and is not a deployment acceptance gate.

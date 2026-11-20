@@ -43,7 +43,7 @@ module midi_job_service_axi #(
         .BLOCK_EVENTS(BLOCK_EVENTS),.BLOCKS(BLOCKS),.MAX_EVENTS(MAX_EVENTS),
         .VIEWS(VIEWS),.SNAPSHOTS(SNAPSHOTS),.RETIREMENTS(RETIREMENTS),
         .INPUT_EVENTS(INPUT_EVENTS),.MAINTENANCE(MAINTENANCE),.TABLE_ENTRIES(TABLE_ENTRIES)) core (.*);
-    word_axi #(.DATA_WIDTH(DATA_WIDTH)) memory (
+    word_axi #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(1)) memory (
         .arena_base(arena_base),.arena_bytes(memory_arena_bytes),.*
     );
 endmodule

@@ -748,7 +748,7 @@ module midi_job_control #(
                     if(response_error==0) response_error<=4'(2);begin head_write<=1;head_write_index<=LOOP_BITS'(context_slot);head_write_data<=0;end save_context(RESPONSE);
                 end else pc<=JOB_HEAD;
             end
-            JOB_HEAD: if(c[0]==0 || c[28]!=0 || c[23]!=0 || c[30]!=0 || c[17]!=2 ||
+            JOB_HEAD: if(c[12]>=c[29] || c[0]==0 || c[28]!=0 || c[23]!=0 || c[30]!=0 || c[17]!=2 ||
                     recovery[c[2]]!=32 || {c[11],c[10]}==0 || {c[19],c[18]}>={c[21],c[20]}) begin begin head_write<=1;head_write_index<=LOOP_BITS'(context_slot);head_write_data<=0;end save_context(head_return);end
                 else call_store(10,{c[11],c[10]},0,{32'b0,c[12]},0,JOB_HEAD_RECORD);
             JOB_HEAD_RECORD: if(last_error!=0) begin if(response_error==0) response_error<=4'(last_error);begin head_write<=1;head_write_index<=LOOP_BITS'(context_slot);head_write_data<=0;end save_context(head_return);end
@@ -780,7 +780,7 @@ module midi_job_control #(
                             running<=1;scan<=0;pc<=VALIDATE_INPUTS_CLEAR;end
                     25,26,28,29,30,31,33: if(a0>=64'(LOOPS)) fail(4);else load_context(a0[31:0],JOB_CONTEXT);
                     27: begin scan<=0;pc<=PROCESS_RELEASE_SEED;end
-                    32: begin scan<=0;found<=0;pc<=JOB_SELECT;end
+                    32: pc<=JOB_SELECT_BEGIN;
                     34: call_store(11,0,0,64'(MAINTENANCE),0,PROCESS_FINISHED);
                     4,15: if(a0>=64'(INPUTS) || (op==4 && (a4==0 || a4>64'(LOOPS)))) fail(4);
                         else if(a1>=a2) fail(1);
@@ -1155,7 +1155,7 @@ module midi_job_control #(
             PROCESS_PLAY_READY: if(data_word!=4225) begin if(response_error==0) response_error<=4'(5);pc<=PROCESS_PLAY_NEXT;end
                 else call_store(8,{c[7],c[6]},0,0,0,PROCESS_PLAY_PINNED);
             PROCESS_PLAY_PINNED: if(last_error!=0) begin if(response_error==0) response_error<=4'(last_error);pc<=PROCESS_PLAY_NEXT;end
-                else begin c[10]<=c[6];c[11]<=c[7];c[12]<=0;c[14]<=0;c[15]<=0;c[23]<=0;
+                else begin c[10]<=c[6];c[11]<=c[7];c[12]<=0;c[14]<=0;c[15]<=0;c[23]<=0;c[29]<=last_events;
                     activity_channel<=0;pc<=ACTIVITY_SELECT;end
             ACTIVITY_SELECT: if(activity_channel==16)
                     copy_words(snapshot_address(snapshot_id)+16896,activity_address(context_slot)+16896,1,PROCESS_PLAY_ACTIVITY);
