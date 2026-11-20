@@ -1,0 +1,83 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 20 17:14:31 2026
+| Host         : 694aa7188d63 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -hierarchical_depth 8 -file post_route_hierarchical_utilization.rpt
+| Design       : session_context
+| Device       : 7z020clg484-1
+| Design State : Routed
+----------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++----------------------------------+--------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+|             Instance             |             Module             | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
++----------------------------------+--------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+| session_context                  |                          (top) |      37323 |      37263 |      60 |    0 | 31118 |     68 |      7 |          4 |
+|   pipeline                       |               pipeline_context |      37323 |      37263 |      60 |    0 | 31118 |     68 |      7 |          4 |
+|     (pipeline)                   |               pipeline_context |        168 |        168 |       0 |    0 |  6739 |      0 |      0 |          0 |
+|     core_under_test              |        midi_audio_pipeline_axi |      37155 |      37095 |      60 |    0 | 24379 |     68 |      7 |          4 |
+|       (core_under_test)          |        midi_audio_pipeline_axi |        137 |        137 |       0 |    0 |     0 |      0 |      0 |          0 |
+|       core                       |            midi_audio_pipeline |      36670 |      36610 |      60 |    0 | 24162 |     68 |      7 |          4 |
+|         (core)                   |            midi_audio_pipeline |          2 |          2 |       0 |    0 |    85 |      0 |      0 |          0 |
+|         audio                    |       media_audio_pipeline_axi |      28282 |      28222 |      60 |    0 | 18136 |     62 |      6 |          4 |
+|           core                   |           media_audio_pipeline |      27024 |      26964 |      60 |    0 | 17445 |     62 |      6 |          4 |
+|             (core)               |           media_audio_pipeline |          0 |          0 |       0 |    0 |     2 |      0 |      0 |          0 |
+|             delay                |                   memory_delay |          4 |          4 |       0 |    0 |     1 |      0 |      0 |          0 |
+|             media                |                    media_store |      17485 |      17425 |      60 |    0 | 12359 |      7 |      4 |          0 |
+|               (media)            |                    media_store |       5879 |       5879 |       0 |    0 |  3406 |      0 |      0 |          0 |
+|               descriptors        |                      media_ram |        230 |        230 |       0 |    0 |     0 |      2 |      1 |          0 |
+|               metadata           |                 media_metadata |       9190 |       9130 |      60 |    0 |  7702 |      4 |      2 |          0 |
+|                 (metadata)       |                 media_metadata |       3942 |       3882 |      60 |    0 |  2289 |      0 |      0 |          0 |
+|                 banks[0].cache   |                 metadata_cache |       4626 |       4626 |       0 |    0 |  4948 |      2 |      0 |          0 |
+|                 banks[1].cache   | metadata_cache__parameterized0 |        281 |        281 |       0 |    0 |   271 |      0 |      1 |          0 |
+|                 banks[2].cache   | metadata_cache__parameterized1 |        283 |        283 |       0 |    0 |   194 |      0 |      1 |          0 |
+|                 roots            |      media_ram__parameterized3 |         65 |         65 |       0 |    0 |     0 |      2 |      0 |          0 |
+|               reclaimer          |                media_reclaimer |        648 |        648 |       0 |    0 |   366 |      0 |      0 |          0 |
+|               resolver           |        media_prefetch_resolver |        516 |        516 |       0 |    0 |   473 |      0 |      0 |          0 |
+|               sample_memory      |                   chunk_memory |       1031 |       1031 |       0 |    0 |   412 |      1 |      1 |          0 |
+|                 (sample_memory)  |                   chunk_memory |        962 |        962 |       0 |    0 |   412 |      0 |      0 |          0 |
+|                 read_ram         |                      chunk_ram |         18 |         18 |       0 |    0 |     0 |      0 |      1 |          0 |
+|                 write_ram        |                    chunk_ram_1 |         54 |         54 |       0 |    0 |     0 |      1 |      0 |          0 |
+|             pipeline             |                 audio_pipeline |       9574 |       9574 |       0 |    0 |  5083 |     55 |      2 |          4 |
+|               (pipeline)         |                 audio_pipeline |        143 |        143 |       0 |    0 |   572 |      0 |      0 |          0 |
+|               read_intents       |                    sp_job_fifo |        230 |        230 |       0 |    0 |    27 |      3 |      0 |          0 |
+|                 (read_intents)   |                    sp_job_fifo |         24 |         24 |       0 |    0 |    27 |      0 |      0 |          0 |
+|                 storage          |                         sp_ram |        207 |        207 |       0 |    0 |     0 |      3 |      0 |          0 |
+|               sample_engine      |                  job_processor |       5371 |       5371 |       0 |    0 |  2844 |     18 |      0 |          4 |
+|                 (sample_engine)  |                  job_processor |       4675 |       4675 |       0 |    0 |  2675 |      0 |      0 |          4 |
+|                 divide           |                     jp_divider |        341 |        341 |       0 |    0 |   169 |      0 |      0 |          0 |
+|                 scratch_memory   |                  jp_sample_ram |        202 |        202 |       0 |    0 |     0 |     16 |      0 |          0 |
+|                 smoothing_memory |         sp_ram__parameterized4 |        155 |        155 |       0 |    0 |     0 |      2 |      0 |          0 |
+|               state_engine       |                state_processor |       3831 |       3831 |       0 |    0 |  1640 |     34 |      2 |          0 |
+|                 (state_engine)   |                state_processor |         29 |         29 |       0 |    0 |     6 |      0 |      0 |          0 |
+|                 engine           |                      sp_engine |       3506 |       3506 |       0 |    0 |  1598 |      0 |      0 |          0 |
+|                 jobs             |    sp_job_fifo__parameterized0 |         82 |         82 |       0 |    0 |    36 |     14 |      1 |          0 |
+|                 loop_memory      |         sp_ram__parameterized2 |         34 |         34 |       0 |    0 |     0 |      7 |      1 |          0 |
+|                 program_memory   |         sp_ram__parameterized0 |         67 |         67 |       0 |    0 |     0 |     11 |      0 |          0 |
+|                 state_memory     |         sp_ram__parameterized1 |        116 |        116 |       0 |    0 |     0 |      2 |      0 |          0 |
+|           memory_endpoint        |                     shared_axi |       1266 |       1266 |       0 |    0 |   691 |      0 |      0 |          0 |
+|             (memory_endpoint)    |                     shared_axi |        197 |        197 |       0 |    0 |     0 |      0 |      0 |          0 |
+|             scheduler            |                  axi_burst_mux |         86 |         86 |       0 |    0 |    61 |      0 |      0 |          0 |
+|               (scheduler)        |                  axi_burst_mux |          0 |          0 |       0 |    0 |     3 |      0 |      0 |          0 |
+|               endpoint           |                   axi_master_0 |         86 |         86 |       0 |    0 |    58 |      0 |      0 |          0 |
+|             stream_0.transfer    |                      chunk_dma |        465 |        465 |       0 |    0 |   296 |      0 |      0 |          0 |
+|             stream_1.transfer    |      chunk_dma__parameterized0 |        546 |        546 |       0 |    0 |   334 |      0 |      0 |          0 |
+|         midi                     |                 midi_data_jobs |       8389 |       8389 |       0 |    0 |  5941 |      6 |      1 |          0 |
+|           (midi)                 |                 midi_data_jobs |       4003 |       4003 |       0 |    0 |  3443 |      6 |      1 |          0 |
+|           content                |                     midi_store |       4387 |       4387 |       0 |    0 |  2498 |      0 |      0 |          0 |
+|       midi_memory                |                       word_axi |        349 |        349 |       0 |    0 |   217 |      0 |      0 |          0 |
+|         endpoint                 |                     axi_master |         49 |         49 |       0 |    0 |    50 |      0 |      0 |          0 |
+|         transfer                 |                       word_dma |        301 |        301 |       0 |    0 |   167 |      0 |      0 |          0 |
++----------------------------------+--------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

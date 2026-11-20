@@ -17,8 +17,8 @@ use rt_fpga_reference::{
     transitions::Operation,
 };
 use std::{cell::RefCell, rc::Rc};
-const CAP: [u64; 7] = [64, 16, 64, 128, 8, 2, 2];
-fn geometry(q: u64) -> Geometry {
+pub(super) const CAP: [u64; 7] = [64, 16, 64, 128, 8, 2, 2];
+pub(super) fn geometry(q: u64) -> Geometry {
     Geometry::new([8, 128, q], 1)
 }
 pub fn design(q: u64) -> Design {
@@ -239,24 +239,7 @@ impl<'a> Driver<'a> {
         self.reference.command(slot, op);
     }
     pub fn quantum(&mut self, events: &[InputEvent]) -> u64 {
-        for slot in 0..2 {
-            let state = self
-                .reference
-                .pipeline
-                .state()
-                .loop_state(super::id(slot))
-                .unwrap();
-            let spec = rt_fpga_reference::transitions::LoopSpec {
-                id: state.state.id,
-                kind: rt_fpga_reference::transitions::LoopKind::Primitive,
-                length: 0,
-                sync_source: (slot == 1).then_some(super::id(0)),
-                repeat_sync: false,
-                timeline: None,
-            };
-            let row = crate::loop_image::image(state, &spec, None);
-            crate::loop_image::write_plans(&mut self.audio.program, &mut self.sim, slot, &row);
-        }
+        update_plans(&mut self.audio, &mut self.sim, &self.reference);
         write_events(&mut self.memory.borrow_mut(), self.address, events);
         self.sink.borrow_mut().events.clear();
         self.sim.model.set_all(&[
@@ -322,5 +305,25 @@ impl<'a> Driver<'a> {
             );
         }
         clocks
+    }
+}
+
+pub(super) fn update_plans(audio: &mut Audio, sim: &mut Sim<'_>, reference: &Oracle) {
+    for slot in 0..2 {
+        let state = reference
+            .pipeline
+            .state()
+            .loop_state(super::id(slot))
+            .unwrap();
+        let spec = rt_fpga_reference::transitions::LoopSpec {
+            id: state.state.id,
+            kind: rt_fpga_reference::transitions::LoopKind::Primitive,
+            length: 0,
+            sync_source: (slot == 1).then_some(super::id(0)),
+            repeat_sync: false,
+            timeline: None,
+        };
+        let row = crate::loop_image::image(state, &spec, None);
+        crate::loop_image::write_plans(&mut audio.program, sim, slot, &row);
     }
 }

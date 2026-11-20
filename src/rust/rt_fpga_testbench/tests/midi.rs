@@ -461,3 +461,12 @@ fn pending_ui_command_cannot_deadlock_midi_quantum_completion() {
     d.sim.idle(30);
     assert!(pending.borrow().offered && pending.borrow().accepted);
 }
+
+#[shoop_test]
+fn full_audio_midi_axi32_pipeline_matches_rust_with_delayed_ddr() {
+    axi::compiled_pipeline(32, 7).unwrap();
+}
+#[shoop_test]
+fn full_audio_midi_axi64_pipeline_matches_rust_with_ideal_ddr() {
+    axi::compiled_pipeline(64, 0).unwrap();
+}

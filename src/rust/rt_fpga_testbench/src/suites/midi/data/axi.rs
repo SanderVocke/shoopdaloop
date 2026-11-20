@@ -135,3 +135,151 @@ pub fn conformance(width: u64) -> Result<()> {
     assert_eq!(prepare_core(&mut sim, BASE + address, 0), 4);
     Ok(())
 }
+
+pub fn compiled_pipeline(width: u64, delay: u64) -> Result<()> {
+    use super::pipeline::{CAP, geometry, update_plans};
+    use crate::{
+        drivers::{audio::Audio, store::Store},
+        memory::{Control, axi::Axi},
+        timing::Fixed,
+    };
+    let mut design = super::pipeline::design(32);
+    design.top = "midi_audio_pipeline_axi".into();
+    design
+        .sources
+        .push(crate::root().join("fpga/midi/rtl/midi_audio_pipeline_axi.sv"));
+    design
+        .parameters
+        .insert("MIDI_AXI_DATA_WIDTH".into(), width.to_string());
+    let compiled = design.build(&crate::root().join("work/marlin-suite/midi-connected-axi"))?;
+    let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    sim.max_ps = 1_000_000_000_000_000;
+    let address = (sim.model.get("midi_arena_bytes") + 271) & !15;
+    let words = (address / 4 + 8192) as usize;
+    let memory = Rc::new(RefCell::new(AxiMemory {
+        control: Control {
+            stalls: true,
+            ..Default::default()
+        },
+        backend: Backend::Axi(Box::new(
+            Axi::new(
+                words,
+                0x30000000,
+                width as usize / 8,
+                Box::new(Fixed::new(delay)),
+                5001,
+            )
+            .with_prefix("midi_"),
+        )),
+        words,
+        base: 0x30000000,
+        width: width as usize / 8,
+        sample_words: None,
+        sample_transactions: 0,
+    }));
+    sim.agent(memory.clone());
+    let sink = Rc::new(RefCell::new(Sink::mixed()));
+    sim.agent(sink.clone());
+    sim.agent(crate::protocol::ReadyValid::new(
+        "midi_packet_valid",
+        "midi_packet_ready",
+        &[
+            "midi_packet_data",
+            "midi_packet_length",
+            "midi_packet_offset",
+            "midi_packet_destination",
+        ],
+    ));
+    let mut audio = Audio::new(&mut sim, CAP, 601);
+    let mut store = Store::new(&mut sim, geometry(32), Mode::Instant, 617, "store_")?;
+    let mut oracle = Oracle::new(32, true);
+    let image = crate::target::RtlTarget::new(CAP, 16, &[0, 1]).build(&logical(32, true))?;
+    audio.load_compiled(&mut sim, &image);
+    store.load(
+        &mut sim,
+        &serde_json::to_value(oracle.audio.snapshot()).unwrap(),
+    );
+    const BASE: u64 = 0x100000000;
+    sim.model.set_all(&[
+        ("sync_event_ready", 1),
+        ("run_quantum", 32),
+        ("midi_arena_base", BASE),
+        ("midi_memory_arena_bytes", (words * 4) as u64),
+        ("midi_command_op", 0),
+        ("midi_command_valid", 1),
+        ("midi_response_ready", 0),
+    ]);
+    sim.until(100, "MIDI format admission", |m| {
+        m.get("midi_command_ready") != 0
+    });
+    sim.idle(1);
+    sim.model.set("midi_command_valid", 0);
+    sim.until(2_000_000, "MIDI format reply", |m| {
+        m.get("midi_response_valid") != 0
+    });
+    assert_eq!(sim.model.get("midi_response_error"), 0);
+    sim.model.set("midi_response_ready", 1);
+    sim.idle(1);
+    sim.model.set("midi_response_ready", 0);
+    let input: Vec<_> = (0..200)
+        .flat_map(|n| {
+            [
+                event(1, 2, &[0xb1, 1, (n % 128) as u8]),
+                event(0, 2, &[0xb0, 1, (n % 128) as u8]),
+            ]
+        })
+        .collect();
+    for tick in 0..4 {
+        if tick == 0 {
+            for slot in 0..2 {
+                oracle.command(slot, Operation::Record);
+            }
+        }
+        if tick == 1 {
+            for slot in 0..2 {
+                oracle.command(
+                    slot,
+                    Operation::Play {
+                        position: 0,
+                        retrigger: true,
+                    },
+                );
+            }
+        }
+        if tick == 3 {
+            for slot in 0..2 {
+                oracle.command(slot, Operation::Stop);
+            }
+        }
+        update_plans(&mut audio, &mut sim, &oracle);
+        let events = if tick == 0 { input.as_slice() } else { &[] };
+        if let Backend::Axi(a) = &mut memory.borrow_mut().backend {
+            for (i, e) in events.iter().enumerate() {
+                a.words[address as usize / 4 + 4 * i..address as usize / 4 + 4 * i + 4]
+                    .copy_from_slice(&[u32::from(e.input), e.offset, packed(e.message), 0]);
+            }
+        }
+        sim.model.set_all(&[
+            ("midi_event_address", BASE + address),
+            ("midi_event_count", events.len() as u64),
+        ]);
+        sink.borrow_mut().events.clear();
+        let jobs = oracle.run(events);
+        assert_eq!(
+            audio.execute_with_limit(&mut sim, &[vec![1 << 22; 32]], true, 5_000_000),
+            (2, 0)
+        );
+        assert_eq!(
+            audio.consumed(),
+            jobs.iter()
+                .map(|j| serde_json::to_value(j).unwrap())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(sink.borrow().events, oracle.emitted);
+        assert_eq!(
+            audio.read_samples(&mut sim).1,
+            vec![vec![if tick == 1 || tick == 2 { 1 << 22 } else { 0 }; 32]; 2]
+        );
+    }
+    Ok(())
+}

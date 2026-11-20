@@ -1,0 +1,940 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 20 17:14:49 2026
+| Host         : 694aa7188d63 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -from [get_cells -quiet -hierarchical -filter {IS_SEQUENTIAL && NAME =~ pipeline/core_under_test/core/midi/*}] -delay_type max -max_paths 10 -path_type full_clock_expanded -file post_route_midi_from_paths.rpt
+| Design       : session_context
+| Device       : 7z020-clg484
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -2.533ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[39]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.275ns  (logic 6.098ns (49.678%)  route 6.177ns (50.322%))
+  Logic Levels:           21  (CARRY4=12 LUT2=2 LUT3=1 LUT4=2 LUT5=3 MUXF7=1)
+  Clock Path Skew:        -0.055ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.639ns = ( 11.639 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.590 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/CO[3]
+                         net (fo=1, routed)           0.009    11.599    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_0
+    SLICE_X39Y125        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.713 r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.713    pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4_n_0
+    SLICE_X39Y126        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313    12.026 r  pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_4/O[3]
+                         net (fo=3, routed)           0.674    12.700    pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_4_n_4
+    SLICE_X35Y124        LUT5 (Prop_lut5_I4_O)        0.306    13.006 r  pipeline/core_under_test/core/midi/content/memory_address[39]_i_6/O
+                         net (fo=1, routed)           0.000    13.006    pipeline/core_under_test/core/midi/content/memory_address[39]_i_6_n_0
+    SLICE_X35Y124        MUXF7 (Prop_muxf7_I1_O)      0.217    13.223 r  pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_3/O
+                         net (fo=1, routed)           0.578    13.801    pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_3_n_0
+    SLICE_X35Y123        LUT5 (Prop_lut5_I1_O)        0.299    14.100 r  pipeline/core_under_test/core/midi/content/memory_address[39]_i_1/O
+                         net (fo=1, routed)           0.000    14.100    pipeline/core_under_test/core/midi/content/memory_address[39]_i_1_n_0
+    SLICE_X35Y123        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[39]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.639    11.639    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X35Y123        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[39]/C
+                         clock pessimism              0.131    11.770    
+                         clock uncertainty           -0.235    11.535    
+    SLICE_X35Y123        FDRE (Setup_fdre_C_D)        0.032    11.567    pipeline/core_under_test/core/midi/content/memory_address_reg[39]
+  -------------------------------------------------------------------
+                         required time                         11.567    
+                         arrival time                         -14.100    
+  -------------------------------------------------------------------
+                         slack                                 -2.533    
+
+Slack (VIOLATED) :        -2.472ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[6][0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/phase_reg[6]_rep/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        11.948ns  (logic 4.399ns (36.819%)  route 7.549ns (63.181%))
+  Logic Levels:           23  (CARRY4=15 LUT2=1 LUT3=1 LUT4=1 LUT6=5)
+  Clock Path Skew:        -0.222ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.646ns = ( 11.646 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.899ns
+    Clock Pessimism Removal (CPR):    0.031ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.899     1.899    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X65Y115        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[6][0]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X65Y115        FDRE (Prop_fdre_C_Q)         0.456     2.355 r  pipeline/core_under_test/core/midi/content/desc_reg[6][0]/Q
+                         net (fo=4, routed)           1.378     3.733    pipeline/core_under_test/core/midi/content/p_0_in4_in[0]
+    SLICE_X66Y105        LUT2 (Prop_lut2_I0_O)        0.124     3.857 r  pipeline/core_under_test/core/midi/content/desc[6][3]_i_6/O
+                         net (fo=1, routed)           0.000     3.857    pipeline/core_under_test/core/midi/content/desc[6][3]_i_6_n_0
+    SLICE_X66Y105        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.370 r  pipeline/core_under_test/core/midi/content/desc_reg[6][3]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     4.370    pipeline/core_under_test/core/midi/content/desc_reg[6][3]_i_2_n_0
+    SLICE_X66Y106        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.487 r  pipeline/core_under_test/core/midi/content/desc_reg[6][7]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     4.487    pipeline/core_under_test/core/midi/content/desc_reg[6][7]_i_2_n_0
+    SLICE_X66Y107        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.604 r  pipeline/core_under_test/core/midi/content/desc_reg[6][11]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     4.604    pipeline/core_under_test/core/midi/content/desc_reg[6][11]_i_2_n_0
+    SLICE_X66Y108        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.721 r  pipeline/core_under_test/core/midi/content/desc_reg[6][15]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     4.721    pipeline/core_under_test/core/midi/content/desc_reg[6][15]_i_2_n_0
+    SLICE_X66Y109        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.838 r  pipeline/core_under_test/core/midi/content/desc_reg[6][19]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     4.838    pipeline/core_under_test/core/midi/content/desc_reg[6][19]_i_2_n_0
+    SLICE_X66Y110        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.955 r  pipeline/core_under_test/core/midi/content/desc_reg[6][23]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     4.955    pipeline/core_under_test/core/midi/content/desc_reg[6][23]_i_2_n_0
+    SLICE_X66Y111        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     5.072 r  pipeline/core_under_test/core/midi/content/desc_reg[6][27]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     5.072    pipeline/core_under_test/core/midi/content/desc_reg[6][27]_i_2_n_0
+    SLICE_X66Y112        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     5.189 r  pipeline/core_under_test/core/midi/content/desc_reg[6][31]_i_3/CO[3]
+                         net (fo=1, routed)           0.000     5.189    pipeline/core_under_test/core/midi/content/desc_reg[6][31]_i_3_n_0
+    SLICE_X66Y113        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     5.306 r  pipeline/core_under_test/core/midi/content/desc_reg[7][3]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     5.306    pipeline/core_under_test/core/midi/content/desc_reg[7][3]_i_2_n_0
+    SLICE_X66Y114        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     5.423 r  pipeline/core_under_test/core/midi/content/desc_reg[7][7]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     5.423    pipeline/core_under_test/core/midi/content/desc_reg[7][7]_i_2_n_0
+    SLICE_X66Y115        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     5.540 r  pipeline/core_under_test/core/midi/content/desc_reg[7][11]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     5.540    pipeline/core_under_test/core/midi/content/desc_reg[7][11]_i_2_n_0
+    SLICE_X66Y116        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     5.657 r  pipeline/core_under_test/core/midi/content/desc_reg[7][15]_i_2/CO[3]
+                         net (fo=1, routed)           0.000     5.657    pipeline/core_under_test/core/midi/content/desc_reg[7][15]_i_2_n_0
+    SLICE_X66Y117        CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.323     5.980 r  pipeline/core_under_test/core/midi/content/desc_reg[7][19]_i_2/O[1]
+                         net (fo=4, routed)           1.316     7.296    pipeline/core_under_test/core/midi/content/desc_reg[7][19]_i_2_n_6
+    SLICE_X61Y129        LUT4 (Prop_lut4_I0_O)        0.306     7.602 r  pipeline/core_under_test/core/midi/content/source_slot[7]_i_63/O
+                         net (fo=1, routed)           0.000     7.602    pipeline/core_under_test/core/midi/content/source_slot[7]_i_63_n_0
+    SLICE_X61Y129        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     8.134 r  pipeline/core_under_test/core/midi/content/source_slot_reg[7]_i_27/CO[3]
+                         net (fo=1, routed)           0.000     8.134    pipeline/core_under_test/core/midi/content/source_slot_reg[7]_i_27_n_0
+    SLICE_X61Y130        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     8.248 r  pipeline/core_under_test/core/midi/content/source_slot_reg[7]_i_7/CO[3]
+                         net (fo=4, routed)           0.801     9.050    pipeline/core_under_test/core/midi/content/phase220_in
+    SLICE_X58Y132        LUT6 (Prop_lut6_I2_O)        0.124     9.174 f  pipeline/core_under_test/core/midi/content/source_slot[7]_i_2/O
+                         net (fo=9, routed)           1.298    10.472    pipeline/core_under_test/core/midi/content/source_slot[7]_i_2_n_0
+    SLICE_X40Y135        LUT3 (Prop_lut3_I0_O)        0.124    10.596 f  pipeline/core_under_test/core/midi/content/phase[6]_i_46/O
+                         net (fo=1, routed)           0.490    11.086    pipeline/core_under_test/core/midi/content/phase[6]_i_46_n_0
+    SLICE_X40Y135        LUT6 (Prop_lut6_I1_O)        0.124    11.210 r  pipeline/core_under_test/core/midi/content/phase[6]_i_35/O
+                         net (fo=1, routed)           0.520    11.730    pipeline/core_under_test/core/midi/content/phase[6]_i_35_n_0
+    SLICE_X42Y135        LUT6 (Prop_lut6_I5_O)        0.124    11.854 r  pipeline/core_under_test/core/midi/content/phase[6]_i_22/O
+                         net (fo=1, routed)           0.572    12.426    pipeline/core_under_test/core/midi/content/phase[6]_i_22_n_0
+    SLICE_X46Y135        LUT6 (Prop_lut6_I1_O)        0.124    12.550 r  pipeline/core_under_test/core/midi/content/phase[6]_i_10__0/O
+                         net (fo=4, routed)           0.682    13.232    pipeline/core_under_test/core/midi/content/phase[6]_i_10__0_n_0
+    SLICE_X46Y135        LUT6 (Prop_lut6_I4_O)        0.124    13.356 r  pipeline/core_under_test/core/midi/content/phase[6]_rep_i_1/O
+                         net (fo=1, routed)           0.491    13.847    pipeline/core_under_test/core/midi/content/phase[6]_rep_i_1_n_0
+    SLICE_X49Y135        FDRE                                         r  pipeline/core_under_test/core/midi/content/phase_reg[6]_rep/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.646    11.646    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X49Y135        FDRE                                         r  pipeline/core_under_test/core/midi/content/phase_reg[6]_rep/C
+                         clock pessimism              0.031    11.677    
+                         clock uncertainty           -0.235    11.442    
+    SLICE_X49Y135        FDRE (Setup_fdre_C_D)       -0.067    11.375    pipeline/core_under_test/core/midi/content/phase_reg[6]_rep
+  -------------------------------------------------------------------
+                         required time                         11.375    
+                         arrival time                         -13.847    
+  -------------------------------------------------------------------
+                         slack                                 -2.472    
+
+Slack (VIOLATED) :        -2.447ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[29]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.242ns  (logic 5.883ns (48.056%)  route 6.359ns (51.944%))
+  Logic Levels:           19  (CARRY4=10 LUT2=3 LUT3=1 LUT4=2 LUT5=1 LUT6=1 MUXF7=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.645ns = ( 11.645 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.334    11.810 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/O[1]
+                         net (fo=3, routed)           0.838    12.648    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_6
+    SLICE_X38Y118        LUT2 (Prop_lut2_I1_O)        0.303    12.951 r  pipeline/core_under_test/core/midi/content/memory_address[29]_i_5/O
+                         net (fo=1, routed)           0.000    12.951    pipeline/core_under_test/core/midi/content/memory_address[29]_i_5_n_0
+    SLICE_X38Y118        MUXF7 (Prop_muxf7_I1_O)      0.214    13.165 r  pipeline/core_under_test/core/midi/content/memory_address_reg[29]_i_3/O
+                         net (fo=1, routed)           0.605    13.770    pipeline/core_under_test/core/midi/content/memory_address_reg[29]_i_3_n_0
+    SLICE_X36Y117        LUT6 (Prop_lut6_I2_O)        0.297    14.067 r  pipeline/core_under_test/core/midi/content/memory_address[29]_i_1/O
+                         net (fo=1, routed)           0.000    14.067    pipeline/core_under_test/core/midi/content/memory_address[29]_i_1_n_0
+    SLICE_X36Y117        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[29]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.645    11.645    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X36Y117        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[29]/C
+                         clock pessimism              0.131    11.776    
+                         clock uncertainty           -0.235    11.541    
+    SLICE_X36Y117        FDRE (Setup_fdre_C_D)        0.079    11.620    pipeline/core_under_test/core/midi/content/memory_address_reg[29]
+  -------------------------------------------------------------------
+                         required time                         11.620    
+                         arrival time                         -14.067    
+  -------------------------------------------------------------------
+                         slack                                 -2.447    
+
+Slack (VIOLATED) :        -2.419ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[30]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.216ns  (logic 5.787ns (47.374%)  route 6.429ns (52.626%))
+  Logic Levels:           19  (CARRY4=10 LUT2=2 LUT3=1 LUT4=3 LUT5=1 LUT6=1 MUXF7=1)
+  Clock Path Skew:        -0.047ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.647ns = ( 11.647 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.239    11.715 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/O[2]
+                         net (fo=3, routed)           1.043    12.758    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_5
+    SLICE_X36Y115        LUT4 (Prop_lut4_I3_O)        0.302    13.060 r  pipeline/core_under_test/core/midi/content/memory_address[30]_i_6/O
+                         net (fo=1, routed)           0.000    13.060    pipeline/core_under_test/core/midi/content/memory_address[30]_i_6_n_0
+    SLICE_X36Y115        MUXF7 (Prop_muxf7_I1_O)      0.214    13.274 r  pipeline/core_under_test/core/midi/content/memory_address_reg[30]_i_3/O
+                         net (fo=1, routed)           0.469    13.744    pipeline/core_under_test/core/midi/content/memory_address_reg[30]_i_3_n_0
+    SLICE_X36Y115        LUT6 (Prop_lut6_I2_O)        0.297    14.041 r  pipeline/core_under_test/core/midi/content/memory_address[30]_i_1/O
+                         net (fo=1, routed)           0.000    14.041    pipeline/core_under_test/core/midi/content/memory_address[30]_i_1_n_0
+    SLICE_X36Y115        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[30]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.647    11.647    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X36Y115        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[30]/C
+                         clock pessimism              0.131    11.778    
+                         clock uncertainty           -0.235    11.543    
+    SLICE_X36Y115        FDRE (Setup_fdre_C_D)        0.079    11.622    pipeline/core_under_test/core/midi/content/memory_address_reg[30]
+  -------------------------------------------------------------------
+                         required time                         11.622    
+                         arrival time                         -14.041    
+  -------------------------------------------------------------------
+                         slack                                 -2.419    
+
+Slack (VIOLATED) :        -2.369ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/phase_reg[3]_rep__0/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/batch_count_reg[29]/CE
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        11.568ns  (logic 0.900ns (7.780%)  route 10.668ns (92.220%))
+  Logic Levels:           2  (LUT2=1 LUT6=1)
+  Clock Path Skew:        -0.360ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.464ns = ( 11.464 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.838ns
+    Clock Pessimism Removal (CPR):    0.014ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.838     1.838    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X48Y137        FDRE                                         r  pipeline/core_under_test/core/midi/content/phase_reg[3]_rep__0/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X48Y137        FDRE (Prop_fdre_C_Q)         0.456     2.294 f  pipeline/core_under_test/core/midi/content/phase_reg[3]_rep__0/Q
+                         net (fo=119, routed)         2.863     5.157    pipeline/core_under_test/core/midi/content/phase_reg[3]_rep__0_n_0
+    SLICE_X62Y135        LUT2 (Prop_lut2_I1_O)        0.116     5.273 r  pipeline/core_under_test/core/midi/content/view_handle[63]_i_3/O
+                         net (fo=21, routed)          2.351     7.624    pipeline/core_under_test/core/midi/content/view_handle[63]_i_3_n_0
+    SLICE_X48Y134        LUT6 (Prop_lut6_I3_O)        0.328     7.952 r  pipeline/core_under_test/core/midi/content/batch_count[31]_i_1/O
+                         net (fo=140, routed)         5.454    13.406    pipeline/core_under_test/core/midi/content/batch_source
+    SLICE_X40Y72         FDRE                                         r  pipeline/core_under_test/core/midi/content/batch_count_reg[29]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.464    11.464    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X40Y72         FDRE                                         r  pipeline/core_under_test/core/midi/content/batch_count_reg[29]/C
+                         clock pessimism              0.014    11.478    
+                         clock uncertainty           -0.235    11.243    
+    SLICE_X40Y72         FDRE (Setup_fdre_C_CE)      -0.205    11.038    pipeline/core_under_test/core/midi/content/batch_count_reg[29]
+  -------------------------------------------------------------------
+                         required time                         11.038    
+                         arrival time                         -13.406    
+  -------------------------------------------------------------------
+                         slack                                 -2.369    
+
+Slack (VIOLATED) :        -2.316ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[32]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.110ns  (logic 5.886ns (48.604%)  route 6.224ns (51.396%))
+  Logic Levels:           20  (CARRY4=11 LUT2=2 LUT3=1 LUT4=3 LUT5=1 LUT6=1 MUXF7=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.645ns = ( 11.645 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.590 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/CO[3]
+                         net (fo=1, routed)           0.009    11.599    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_0
+    SLICE_X39Y125        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.222    11.821 r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4/O[0]
+                         net (fo=3, routed)           0.859    12.680    pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4_n_7
+    SLICE_X37Y118        LUT4 (Prop_lut4_I3_O)        0.299    12.979 r  pipeline/core_under_test/core/midi/content/memory_address[32]_i_7/O
+                         net (fo=1, routed)           0.000    12.979    pipeline/core_under_test/core/midi/content/memory_address[32]_i_7_n_0
+    SLICE_X37Y118        MUXF7 (Prop_muxf7_I1_O)      0.217    13.196 r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_3/O
+                         net (fo=1, routed)           0.440    13.636    pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_3_n_0
+    SLICE_X36Y117        LUT6 (Prop_lut6_I2_O)        0.299    13.935 r  pipeline/core_under_test/core/midi/content/memory_address[32]_i_1/O
+                         net (fo=1, routed)           0.000    13.935    pipeline/core_under_test/core/midi/content/memory_address[32]_i_1_n_0
+    SLICE_X36Y117        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.645    11.645    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X36Y117        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]/C
+                         clock pessimism              0.131    11.776    
+                         clock uncertainty           -0.235    11.541    
+    SLICE_X36Y117        FDRE (Setup_fdre_C_D)        0.079    11.620    pipeline/core_under_test/core/midi/content/memory_address_reg[32]
+  -------------------------------------------------------------------
+                         required time                         11.620    
+                         arrival time                         -13.935    
+  -------------------------------------------------------------------
+                         slack                                 -2.316    
+
+Slack (VIOLATED) :        -2.302ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[33]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.092ns  (logic 5.610ns (46.396%)  route 6.482ns (53.604%))
+  Logic Levels:           19  (CARRY4=11 LUT2=2 LUT3=2 LUT4=2 LUT5=2)
+  Clock Path Skew:        -0.052ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.642ns = ( 11.642 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.590 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/CO[3]
+                         net (fo=1, routed)           0.009    11.599    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_0
+    SLICE_X39Y125        CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.334    11.933 r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4/O[1]
+                         net (fo=3, routed)           0.876    12.810    pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4_n_6
+    SLICE_X34Y121        LUT3 (Prop_lut3_I1_O)        0.303    13.113 r  pipeline/core_under_test/core/midi/content/memory_address[33]_i_3/O
+                         net (fo=1, routed)           0.680    13.793    pipeline/core_under_test/core/midi/content/memory_address[33]_i_3_n_0
+    SLICE_X34Y121        LUT5 (Prop_lut5_I3_O)        0.124    13.917 r  pipeline/core_under_test/core/midi/content/memory_address[33]_i_1/O
+                         net (fo=1, routed)           0.000    13.917    pipeline/core_under_test/core/midi/content/memory_address[33]_i_1_n_0
+    SLICE_X34Y121        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[33]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.642    11.642    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X34Y121        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[33]/C
+                         clock pessimism              0.131    11.773    
+                         clock uncertainty           -0.235    11.538    
+    SLICE_X34Y121        FDRE (Setup_fdre_C_D)        0.077    11.615    pipeline/core_under_test/core/midi/content/memory_address_reg[33]
+  -------------------------------------------------------------------
+                         required time                         11.615    
+                         arrival time                         -13.917    
+  -------------------------------------------------------------------
+                         slack                                 -2.302    
+
+Slack (VIOLATED) :        -2.299ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[12]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        11.809ns  (logic 4.657ns (39.435%)  route 7.152ns (60.565%))
+  Logic Levels:           17  (CARRY4=9 LUT2=1 LUT3=1 LUT4=1 LUT5=4 MUXF7=1)
+  Clock Path Skew:        -0.331ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.480ns = ( 11.480 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.014ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.209 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.209    pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1_n_0
+    SLICE_X50Y128        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.326 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[11]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.326    pipeline/core_under_test/core/midi/content/append_ordinal_reg[11]_i_1_n_0
+    SLICE_X50Y129        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.443 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[15]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.443    pipeline/core_under_test/core/midi/content/append_ordinal_reg[15]_i_1_n_0
+    SLICE_X50Y130        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331     4.774 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[19]_i_1/O[3]
+                         net (fo=4, routed)           0.823     5.596    pipeline/core_under_test/core/midi/content/phase3[27]
+    SLICE_X52Y131        LUT4 (Prop_lut4_I1_O)        0.307     5.903 r  pipeline/core_under_test/core/midi/content/return_phase[3]_i_15/O
+                         net (fo=1, routed)           0.000     5.903    pipeline/core_under_test/core/midi/content/return_phase[3]_i_15_n_0
+    SLICE_X52Y131        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.550     6.453 r  pipeline/core_under_test/core/midi/content/return_phase_reg[3]_i_3/CO[3]
+                         net (fo=1, routed)           0.000     6.453    pipeline/core_under_test/core/midi/content/return_phase_reg[3]_i_3_n_0
+    SLICE_X52Y132        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     6.567 r  pipeline/core_under_test/core/midi/content/return_phase_reg[3]_i_2/CO[3]
+                         net (fo=47, routed)          1.878     8.446    pipeline/core_under_test/core/midi/content/return_phase_reg[3]_i_2_n_0
+    SLICE_X46Y118        LUT3 (Prop_lut3_I0_O)        0.124     8.570 r  pipeline/core_under_test/core/midi/content/memory_address[10]_i_70/O
+                         net (fo=1, routed)           0.461     9.030    pipeline/core_under_test/core/midi/content/memory_address[10]_i_70_n_0
+    SLICE_X42Y117        LUT5 (Prop_lut5_I4_O)        0.124     9.154 r  pipeline/core_under_test/core/midi/content/memory_address[10]_i_49/O
+                         net (fo=1, routed)           0.000     9.154    pipeline/core_under_test/core/midi/content/memory_address[10]_i_49_n_0
+    SLICE_X42Y117        MUXF7 (Prop_muxf7_I1_O)      0.214     9.368 r  pipeline/core_under_test/core/midi/content/memory_address_reg[10]_i_28/O
+                         net (fo=2, routed)           0.463     9.831    pipeline/core_under_test/core/midi/content/memory_address_reg[10]_i_28_n_0
+    SLICE_X40Y119        LUT5 (Prop_lut5_I0_O)        0.297    10.128 r  pipeline/core_under_test/core/midi/content/memory_address[10]_i_10/O
+                         net (fo=1, routed)           0.338    10.467    pipeline/core_under_test/core/midi/content/memory_address[10]_i_10_n_0
+    SLICE_X39Y119        CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.507    10.974 r  pipeline/core_under_test/core/midi/content/memory_address_reg[10]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    10.974    pipeline/core_under_test/core/midi/content/memory_address_reg[10]_i_4_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.222    11.196 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/O[0]
+                         net (fo=3, routed)           1.417    12.613    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_7
+    SLICE_X33Y97         LUT5 (Prop_lut5_I3_O)        0.299    12.912 r  pipeline/core_under_test/core/midi/content/memory_address[12]_i_3/O
+                         net (fo=1, routed)           0.598    13.510    pipeline/core_under_test/core/midi/content/memory_address[12]_i_3_n_0
+    SLICE_X34Y97         LUT5 (Prop_lut5_I3_O)        0.124    13.634 r  pipeline/core_under_test/core/midi/content/memory_address[12]_i_1/O
+                         net (fo=1, routed)           0.000    13.634    pipeline/core_under_test/core/midi/content/memory_address[12]_i_1_n_0
+    SLICE_X34Y97         FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[12]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.480    11.480    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X34Y97         FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[12]/C
+                         clock pessimism              0.014    11.494    
+                         clock uncertainty           -0.235    11.259    
+    SLICE_X34Y97         FDRE (Setup_fdre_C_D)        0.077    11.336    pipeline/core_under_test/core/midi/content/memory_address_reg[12]
+  -------------------------------------------------------------------
+                         required time                         11.336    
+                         arrival time                         -13.634    
+  -------------------------------------------------------------------
+                         slack                                 -2.299    
+
+Slack (VIOLATED) :        -2.290ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[37]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.076ns  (logic 5.724ns (47.399%)  route 6.352ns (52.601%))
+  Logic Levels:           20  (CARRY4=12 LUT2=2 LUT3=2 LUT4=2 LUT5=2)
+  Clock Path Skew:        -0.055ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.639ns = ( 11.639 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.590 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/CO[3]
+                         net (fo=1, routed)           0.009    11.599    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_0
+    SLICE_X39Y125        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.713 r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.713    pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4_n_0
+    SLICE_X39Y126        CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.334    12.047 r  pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_4/O[1]
+                         net (fo=3, routed)           0.747    12.794    pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_4_n_6
+    SLICE_X36Y122        LUT3 (Prop_lut3_I1_O)        0.303    13.097 r  pipeline/core_under_test/core/midi/content/memory_address[37]_i_3/O
+                         net (fo=1, routed)           0.680    13.777    pipeline/core_under_test/core/midi/content/memory_address[37]_i_3_n_0
+    SLICE_X36Y122        LUT5 (Prop_lut5_I3_O)        0.124    13.901 r  pipeline/core_under_test/core/midi/content/memory_address[37]_i_1/O
+                         net (fo=1, routed)           0.000    13.901    pipeline/core_under_test/core/midi/content/memory_address[37]_i_1_n_0
+    SLICE_X36Y122        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[37]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.639    11.639    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X36Y122        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[37]/C
+                         clock pessimism              0.131    11.770    
+                         clock uncertainty           -0.235    11.535    
+    SLICE_X36Y122        FDRE (Setup_fdre_C_D)        0.077    11.612    pipeline/core_under_test/core/midi/content/memory_address_reg[37]
+  -------------------------------------------------------------------
+                         required time                         11.612    
+                         arrival time                         -13.901    
+  -------------------------------------------------------------------
+                         slack                                 -2.290    
+
+Slack (VIOLATED) :        -2.267ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/midi/content/memory_address_reg[36]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        12.005ns  (logic 5.995ns (49.939%)  route 6.010ns (50.061%))
+  Logic Levels:           21  (CARRY4=12 LUT2=2 LUT3=1 LUT4=3 LUT5=1 LUT6=1 MUXF7=1)
+  Clock Path Skew:        -0.056ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.638ns = ( 11.638 - 10.000 ) 
+    Source Clock Delay      (SCD):    1.825ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=31385, unset)        1.825     1.825    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X47Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y126        FDRE (Prop_fdre_C_Q)         0.456     2.281 r  pipeline/core_under_test/core/midi/content/desc_reg[4][8]/Q
+                         net (fo=9, routed)           1.174     3.455    pipeline/core_under_test/core/midi/content/desc_reg[4]_1[8]
+    SLICE_X50Y126        LUT2 (Prop_lut2_I0_O)        0.124     3.579 r  pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6/O
+                         net (fo=1, routed)           0.000     3.579    pipeline/core_under_test/core/midi/content/append_ordinal[3]_i_6_n_0
+    SLICE_X50Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.092 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.092    pipeline/core_under_test/core/midi/content/append_ordinal_reg[3]_i_1_n_0
+    SLICE_X50Y127        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     4.324 r  pipeline/core_under_test/core/midi/content/append_ordinal_reg[7]_i_1/O[0]
+                         net (fo=5, routed)           0.893     5.216    pipeline/core_under_test/core/midi/content/phase3[12]
+    SLICE_X47Y126        LUT2 (Prop_lut2_I1_O)        0.295     5.511 r  pipeline/core_under_test/core/midi/content/memory_address[7]_i_85/O
+                         net (fo=1, routed)           0.000     5.511    pipeline/core_under_test/core/midi/content/memory_address[7]_i_85_n_0
+    SLICE_X47Y126        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     6.043 r  pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59/CO[3]
+                         net (fo=1, routed)           0.000     6.043    pipeline/core_under_test/core/midi/content/memory_address_reg[7]_i_59_n_0
+    SLICE_X47Y127        CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.313     6.356 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_99/O[3]
+                         net (fo=1, routed)           0.554     6.910    pipeline/core_under_test/midi/content/table_address_return1[11]
+    SLICE_X45Y129        CARRY4 (Prop_carry4_S[0]_O[2])
+                                                      0.853     7.763 r  pipeline/core_under_test/memory_address_reg[15]_i_95/O[2]
+                         net (fo=1, routed)           0.764     8.527    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_0[2]
+    SLICE_X33Y128        LUT3 (Prop_lut3_I2_O)        0.302     8.829 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_82/O
+                         net (fo=1, routed)           0.407     9.236    pipeline/core_under_test/core/midi/content/memory_address[15]_i_82_n_0
+    SLICE_X33Y128        LUT4 (Prop_lut4_I0_O)        0.124     9.360 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_55/O
+                         net (fo=1, routed)           0.613     9.974    pipeline/core_under_test/core/midi/content/memory_address[15]_i_55_n_0
+    SLICE_X33Y124        LUT5 (Prop_lut5_I0_O)        0.124    10.098 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_28/O
+                         net (fo=1, routed)           0.512    10.609    pipeline/core_under_test/core/midi/content/memory_address[15]_i_28_n_0
+    SLICE_X39Y120        LUT4 (Prop_lut4_I3_O)        0.124    10.733 r  pipeline/core_under_test/core/midi/content/memory_address[15]_i_11/O
+                         net (fo=1, routed)           0.000    10.733    pipeline/core_under_test/core/midi/content/memory_address[15]_i_11_n_0
+    SLICE_X39Y120        CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401    11.134 r  pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.134    pipeline/core_under_test/core/midi/content/memory_address_reg[15]_i_4_n_0
+    SLICE_X39Y121        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.248 r  pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.248    pipeline/core_under_test/core/midi/content/memory_address_reg[19]_i_4_n_0
+    SLICE_X39Y122        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.362 r  pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.362    pipeline/core_under_test/core/midi/content/memory_address_reg[23]_i_4_n_0
+    SLICE_X39Y123        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.476 r  pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.476    pipeline/core_under_test/core/midi/content/memory_address_reg[27]_i_4_n_0
+    SLICE_X39Y124        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.590 r  pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4/CO[3]
+                         net (fo=1, routed)           0.009    11.599    pipeline/core_under_test/core/midi/content/memory_address_reg[31]_i_4_n_0
+    SLICE_X39Y125        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114    11.713 r  pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4/CO[3]
+                         net (fo=1, routed)           0.000    11.713    pipeline/core_under_test/core/midi/content/memory_address_reg[32]_i_4_n_0
+    SLICE_X39Y126        CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.222    11.935 r  pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_4/O[0]
+                         net (fo=3, routed)           0.604    12.540    pipeline/core_under_test/core/midi/content/memory_address_reg[39]_i_4_n_7
+    SLICE_X42Y126        LUT4 (Prop_lut4_I3_O)        0.299    12.839 r  pipeline/core_under_test/core/midi/content/memory_address[36]_i_6/O
+                         net (fo=1, routed)           0.000    12.839    pipeline/core_under_test/core/midi/content/memory_address[36]_i_6_n_0
+    SLICE_X42Y126        MUXF7 (Prop_muxf7_I1_O)      0.214    13.053 r  pipeline/core_under_test/core/midi/content/memory_address_reg[36]_i_3/O
+                         net (fo=1, routed)           0.480    13.533    pipeline/core_under_test/core/midi/content/memory_address_reg[36]_i_3_n_0
+    SLICE_X41Y126        LUT6 (Prop_lut6_I2_O)        0.297    13.830 r  pipeline/core_under_test/core/midi/content/memory_address[36]_i_1/O
+                         net (fo=1, routed)           0.000    13.830    pipeline/core_under_test/core/midi/content/memory_address[36]_i_1_n_0
+    SLICE_X41Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[36]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=31385, unset)        1.638    11.638    pipeline/core_under_test/core/midi/content/clk
+    SLICE_X41Y126        FDRE                                         r  pipeline/core_under_test/core/midi/content/memory_address_reg[36]/C
+                         clock pessimism              0.131    11.769    
+                         clock uncertainty           -0.235    11.534    
+    SLICE_X41Y126        FDRE (Setup_fdre_C_D)        0.029    11.563    pipeline/core_under_test/core/midi/content/memory_address_reg[36]
+  -------------------------------------------------------------------
+                         required time                         11.563    
+                         arrival time                         -13.830    
+  -------------------------------------------------------------------
+                         slack                                 -2.267    
+
+
+
+

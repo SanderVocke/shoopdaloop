@@ -16,6 +16,9 @@ read_xdc context.xdc
 set f [open setup.txt w]
 puts $f "Vivado: [version]\nPart: xc7z020clg484-1\nThreads: 2\nUncertainty: 0.2 ns\nFlow: OOC, rebuilt hierarchy, default placement/routing, post-place phys_opt"
 close $f
+proc checkpoint {path} {
+    if {[info exists ::env(MIDI_SAVE_CHECKPOINTS)] && $::env(MIDI_SAVE_CHECKPOINTS) eq {1}} {write_checkpoint -force $path}
+}
 proc reports {stage} {
     report_utilization -file ${stage}_utilization.rpt
     report_utilization -hierarchical -hierarchical_depth 8 -file ${stage}_hierarchical_utilization.rpt
@@ -56,20 +59,20 @@ proc reports {stage} {
 set stage synth
 set status [catch {
     synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
-    write_checkpoint -force post_synth.dcp
+    checkpoint post_synth.dcp
     reports post_synth
     set stage opt
     opt_design
     reports post_opt
-    write_checkpoint -force post_opt.dcp
+    checkpoint post_opt.dcp
     set stage place
     place_design
     phys_opt_design
-    write_checkpoint -force post_place.dcp
+    checkpoint post_place.dcp
     reports post_place
     set stage route
     route_design
-    write_checkpoint -force post_route.dcp
+    checkpoint post_route.dcp
     reports post_route
     report_route_status -file post_route_route_status.rpt
     report_drc -file post_route_drc.rpt

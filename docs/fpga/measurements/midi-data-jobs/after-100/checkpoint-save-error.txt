@@ -1,0 +1,4 @@
+stage=opt
+status=1
+message=ERROR: [Common 17-1294] Unable to create directory [/tmp/midi-design/.Xil/Vivado-45-1db982c8c278/design.hdf].
+

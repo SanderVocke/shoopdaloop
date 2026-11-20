@@ -55,6 +55,7 @@ def prepare(output, revision, mhz, profile):
         'set_clock_uncertainty 0.200 [get_clocks core]\n'
         'set_property HD.CLK_SRC BUFGCTRL_X0Y0 [get_ports clk]\n')
     shutil.copyfile(HERE/'midi_shared_jobs.tcl', output/'run.tcl')
+    shutil.copyfile(HERE/'run_midi_container.sh', output/'run-container.sh')
     shutil.copyfile(profile, output/'compiled-profile.json')
     (output/'provenance.json').write_text(json.dumps(dict(
         revision=revision, clock_mhz=mhz, part='xc7z020clg484-1', vivado='2021.1',
@@ -65,7 +66,7 @@ def prepare(output, revision, mhz, profile):
         memory='two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build',
         threads=2), indent=2)+'\n')
     (output/'source-manifest.json').write_text(json.dumps(hashes, indent=2)+'\n')
-    artifacts = ['context.sv', 'context.xdc', 'run.tcl', 'compiled-profile.json']
+    artifacts = ['context.sv', 'context.xdc', 'run.tcl', 'run-container.sh', 'compiled-profile.json']
     (output/'artifact-manifest.json').write_text(json.dumps({p: hashlib.sha256((output/p).read_bytes()).hexdigest() for p in artifacts}, indent=2)+'\n')
     print(output)
 
