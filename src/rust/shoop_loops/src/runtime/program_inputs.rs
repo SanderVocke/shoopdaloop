@@ -120,6 +120,7 @@ impl<S: Sample> LoopPlanner<S> {
                 frame,
                 io,
                 true,
+                true,
             )?;
             let result = (|| {
                 if initial.dry_wet {

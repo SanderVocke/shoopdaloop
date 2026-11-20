@@ -1459,174 +1459,10 @@ impl<S: Sample> LoopPlanner<S> {
                 })
             }
             Operation::WriterPrepareReplacing { target, source } => {
-                let row = self.row(target)?;
-                let state = self.resolver.state(target)?;
-                if row.prepared.is_some() {
-                    return Err(Error::Busy.into());
-                }
-                if let Some(writer) = row.active.and_then(|take| take.writer) {
-                    let shared = self.shared.as_ref().ok_or(Error::InvalidState)?;
-                    let status = shared.status(source.source, graph, io)?;
-                    if status.id != source {
-                        return Err(Error::InvalidId.into());
-                    }
-                    let job = shared.live_job(writer)?;
-                    if let Some(error) = job.failure.or(status.failure) {
-                        return Err(error.into());
-                    }
-                    if job.source.source != source.source
-                        || job.source.generation != source.generation
-                    {
-                        return Err(Error::StaleRevision.into());
-                    }
-                    return Ok(Reply::ReplacingPrepared {
-                        id: None,
-                        status: CandidateStatus::Ready,
-                    });
-                }
-                if state.mode == Mode::Recording {
-                    let Reply::Writer { id, status } = self.shared_operation(
-                        Operation::WriterPrepareRecording { target, source },
-                        frame,
-                        graph,
-                        io,
-                    )?
-                    else {
-                        return Err(Error::InvalidState.into());
-                    };
-                    return Ok(Reply::ReplacingPrepared {
-                        id: Some(id),
-                        status,
-                    });
-                }
-                let view = self
-                    .ledger
-                    .view(self.ledger.playback(target)?.ok_or(Error::InvalidState)?)?;
-                let audio = if row.dry_wet {
-                    view.auxiliary
-                } else {
-                    view.audio
-                };
-                if (if row.dry_wet {
-                    row.binding.auxiliary_channels
-                } else {
-                    row.binding.channels
-                } > 0)
-                    != audio.is_some()
-                    || row.binding.midi != view.midi.is_some()
-                {
-                    return Err(Error::InvalidShape.into());
-                }
-                let fence = Fence {
-                    timing_revision: row.timing_revision,
-                    target,
-                    revision: state.content_revision,
-                    length: state.content_length,
-                    graph,
-                    topology: self.resolver.epoch(),
-                };
-                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
-                let mut windows = row.windows;
-                if row.dry_wet {
-                    windows.audio[row.audio_widths[1]..].fill(Default::default());
-                }
-                let id = shared.begin_live_snapshots(
-                    fence,
-                    source,
-                    state.content_length,
-                    [
-                        audio.map(|source| source.snapshot),
-                        view.midi.map(|source| source.snapshot),
-                    ],
-                    indexed_midi::WriteKind::Fixed,
-                    1,
-                    windows,
-                    frame,
-                    io,
-                    false,
-                )?;
-                if row.dry_wet {
-                    let mut wet = Windows::default();
-                    let width = row.audio_widths[0];
-                    wet.audio[..width].copy_from_slice(
-                        &row.windows.audio[row.audio_widths[1]..row.audio_widths[1] + width],
-                    );
-                    if let Err(error) = shared.configure_processed(
-                        id,
-                        view.audio.map(|source| source.snapshot),
-                        wet,
-                        width,
-                        frame,
-                        io,
-                    ) {
-                        shared.cancel_live(id, io)?;
-                        return Err(error.into());
-                    }
-                }
-                let job = shared.live_job(id)?;
-                Ok(Reply::ReplacingPrepared {
-                    id: Some(id),
-                    status: if job.ready {
-                        CandidateStatus::Ready
-                    } else {
-                        CandidateStatus::Building
-                    },
-                })
+                self.prepare_replacing_writer(target, source, frame, graph, io)
             }
             Operation::WriterPrepareRecording { target, source } => {
-                let row = self.row(target)?;
-                let state = self.resolver.state(target)?;
-                let take = row.active.ok_or(Error::InvalidState)?;
-                if state.mode != Mode::Recording || take.writer.is_some() || row.prepared.is_some()
-                {
-                    return Err(Error::Busy.into());
-                }
-                let fence = Fence {
-                    timing_revision: row.timing_revision,
-                    target,
-                    revision: state.content_revision,
-                    length: state.content_length,
-                    graph,
-                    topology: self.resolver.epoch(),
-                };
-                let midi = if row.binding.midi {
-                    Some(
-                        io.snapshot(
-                            row.resources[take.bank][usize::from(row.dry_wet)][2]
-                                .ok_or(Error::InvalidState)?,
-                            frame,
-                        )?,
-                    )
-                } else {
-                    None
-                };
-                let result = self
-                    .shared
-                    .as_mut()
-                    .ok_or(Error::InvalidState)?
-                    .begin_recording(
-                        fence,
-                        source,
-                        state.capture_revision,
-                        state.capture_frames,
-                        take.windows,
-                        midi,
-                        frame,
-                        io,
-                    );
-                if let Some(snapshot) = midi {
-                    io.release_snapshot(snapshot.id)?;
-                }
-                let id = result?;
-                let job = self.shared.as_ref().unwrap().live_job(id)?;
-                Ok(Reply::Writer {
-                    id,
-                    status: if job.ready {
-                        CandidateStatus::Ready
-                    } else {
-                        CandidateStatus::Building
-                    },
-                })
+                self.prepare_recording_writer(target, source, frame, graph, io)
             }
             Operation::WriterStatus { id } => {
                 let job = self
@@ -1754,6 +1590,184 @@ impl<S: Sample> LoopPlanner<S> {
             Operation::CandidatePublish { id } => self.publish_candidate(id, frame, graph, io),
             _ => Err(Error::InvalidEvent.into()),
         }
+    }
+    // Keep writer preparation out of the callback command dispatcher's stack frame.
+    #[inline(never)]
+    fn prepare_replacing_writer(
+        &mut self,
+        target: LoopId,
+        source: HistoryId,
+        frame: Frame,
+        graph: Epoch,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<Reply<S>, Failure> {
+        let row = self.row(target)?;
+        let state = self.resolver.state(target)?;
+        if row.prepared.is_some() {
+            return Err(Error::Busy.into());
+        }
+        if let Some(writer) = row.active.and_then(|take| take.writer) {
+            let shared = self.shared.as_ref().ok_or(Error::InvalidState)?;
+            let status = shared.status(source.source, graph, io)?;
+            if status.id != source {
+                return Err(Error::InvalidId.into());
+            }
+            let job = shared.live_job(writer)?;
+            if let Some(error) = job.failure.or(status.failure) {
+                return Err(error.into());
+            }
+            if job.source.source != source.source || job.source.generation != source.generation {
+                return Err(Error::StaleRevision.into());
+            }
+            return Ok(Reply::ReplacingPrepared {
+                id: None,
+                status: CandidateStatus::Ready,
+            });
+        }
+        if state.mode == Mode::Recording {
+            let Reply::Writer { id, status } =
+                self.prepare_recording_writer(target, source, frame, graph, io)?
+            else {
+                return Err(Error::InvalidState.into());
+            };
+            return Ok(Reply::ReplacingPrepared {
+                id: Some(id),
+                status,
+            });
+        }
+        let view = self
+            .ledger
+            .view(self.ledger.playback(target)?.ok_or(Error::InvalidState)?)?;
+        let audio = if row.dry_wet {
+            view.auxiliary
+        } else {
+            view.audio
+        };
+        if (if row.dry_wet {
+            row.binding.auxiliary_channels
+        } else {
+            row.binding.channels
+        } > 0)
+            != audio.is_some()
+            || row.binding.midi != view.midi.is_some()
+        {
+            return Err(Error::InvalidShape.into());
+        }
+        let fence = Fence {
+            timing_revision: row.timing_revision,
+            target,
+            revision: state.content_revision,
+            length: state.content_length,
+            graph,
+            topology: self.resolver.epoch(),
+        };
+        let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+        let mut windows = row.windows;
+        if row.dry_wet {
+            windows.audio[row.audio_widths[1]..].fill(Default::default());
+        }
+        let id = shared.begin_live_snapshots(
+            fence,
+            source,
+            state.content_length,
+            [
+                audio.map(|source| source.snapshot),
+                view.midi.map(|source| source.snapshot),
+            ],
+            indexed_midi::WriteKind::Fixed,
+            1,
+            windows,
+            frame,
+            io,
+            false,
+            true,
+        )?;
+        if row.dry_wet {
+            let mut wet = Windows::default();
+            let width = row.audio_widths[0];
+            wet.audio[..width].copy_from_slice(
+                &row.windows.audio[row.audio_widths[1]..row.audio_widths[1] + width],
+            );
+            if let Err(error) = shared.configure_processed(
+                id,
+                view.audio.map(|source| source.snapshot),
+                wet,
+                width,
+                frame,
+                io,
+            ) {
+                shared.cancel_live(id, io)?;
+                return Err(error.into());
+            }
+        }
+        let job = shared.live_job(id)?;
+        Ok(Reply::ReplacingPrepared {
+            id: Some(id),
+            status: if job.ready {
+                CandidateStatus::Ready
+            } else {
+                CandidateStatus::Building
+            },
+        })
+    }
+    #[inline(never)]
+    fn prepare_recording_writer(
+        &mut self,
+        target: LoopId,
+        source: HistoryId,
+        frame: Frame,
+        graph: Epoch,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<Reply<S>, Failure> {
+        let row = self.row(target)?;
+        let state = self.resolver.state(target)?;
+        let take = row.active.ok_or(Error::InvalidState)?;
+        if state.mode != Mode::Recording || take.writer.is_some() || row.prepared.is_some() {
+            return Err(Error::Busy.into());
+        }
+        let fence = Fence {
+            timing_revision: row.timing_revision,
+            target,
+            revision: state.content_revision,
+            length: state.content_length,
+            graph,
+            topology: self.resolver.epoch(),
+        };
+        let midi = if row.binding.midi {
+            Some(io.snapshot(
+                row.resources[take.bank][usize::from(row.dry_wet)][2].ok_or(Error::InvalidState)?,
+                frame,
+            )?)
+        } else {
+            None
+        };
+        let result = self
+            .shared
+            .as_mut()
+            .ok_or(Error::InvalidState)?
+            .begin_recording(
+                fence,
+                source,
+                state.capture_revision,
+                state.capture_frames,
+                take.windows,
+                midi,
+                frame,
+                io,
+            );
+        if let Some(snapshot) = midi {
+            io.release_snapshot(snapshot.id)?;
+        }
+        let id = result?;
+        let job = self.shared.as_ref().unwrap().live_job(id)?;
+        Ok(Reply::Writer {
+            id,
+            status: if job.ready {
+                CandidateStatus::Ready
+            } else {
+                CandidateStatus::Building
+            },
+        })
     }
     fn publish_candidate(
         &mut self,

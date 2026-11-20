@@ -272,6 +272,7 @@ impl<S: Sample> Shared<S> {
                 frame,
                 io,
                 false,
+                false,
             )
         })();
         for snapshot in snapshots.into_iter().flatten() {
@@ -291,6 +292,7 @@ impl<S: Sample> Shared<S> {
         frame: Frame,
         io: &mut ResourceIo<'_, S>,
         unobserved_source: bool,
+        defer_midi_admission: bool,
     ) -> Result<LiveWriterId, Error> {
         if self.live_for(fence.target).is_some() {
             return Err(Error::Busy);
@@ -436,7 +438,13 @@ impl<S: Sample> Shared<S> {
                     )
                     .map_err(runtime_error)?;
             }
-            Self::progress_live_job(&mut job, frame, 1, io)
+            if defer_midi_admission && snapshots[1].is_some() {
+                // Replacing already polls for readiness. Prepare its MIDI writer
+                // in callback maintenance, outside the command dispatch stack.
+                Ok(())
+            } else {
+                Self::progress_live_job(&mut job, frame, 1, io)
+            }
         })();
         self.live_building += usize::from(job.preparing());
         self.live[slot].value = Some(job);
