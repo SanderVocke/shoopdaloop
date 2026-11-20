@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "2.5.10",
-  "git_revision": "ad09259060a4e660a5033024406a1c3cc9f9c198",
+  "git_revision": "3834c7fee07b7402c24ea4344e304adb7310dbf6",
   "source": {
     "url": "https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz",
     "sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
