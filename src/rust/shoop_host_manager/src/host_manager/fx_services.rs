@@ -285,7 +285,23 @@ fn stop_service(address: SocketAddr, identity: &Identity, instance: String) -> R
 }
 
 pub(super) fn probe() -> Result<()> {
-    let (address, started) = launch_service("127.0.0.1:0".parse()?, false)?;
+    const LAUNCH_ONLY: &str = "SHOOP_FX_PROBE_LAUNCH_ONLY";
+    if std::env::var_os(LAUNCH_ONLY).is_some() {
+        let (address, _) = launch_service("127.0.0.1:0".parse()?, false)?;
+        println!("{address}");
+        return Ok(());
+    }
+    let launcher = Command::new(std::env::current_exe()?)
+        .arg("--probe-fx-service")
+        .env(LAUNCH_ONLY, "1")
+        .output()?;
+    ensure!(
+        launcher.status.success(),
+        "FX service launcher failed: {}",
+        String::from_utf8_lossy(&launcher.stderr)
+    );
+    let address = std::str::from_utf8(&launcher.stdout)?.trim().parse()?;
+    let started = describe(address).context("FX service did not survive its manager")?;
     let identity =
         shoop_host_processes::identity(started.pid)?.context("FX service locally unavailable")?;
     let result = scan(vec![address]).and_then(|services| {

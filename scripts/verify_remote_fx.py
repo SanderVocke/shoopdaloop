@@ -144,7 +144,7 @@ def query_service():
 
 def run_archive(args, env, width, restart=None):
     env = {**env, "SHOOP_REMOTE_FX_WIDTH": str(width)}
-    command = [args.archive_test, "--exact", "native_carla_session_archive_survives_driver_rate_and_period_change", "--nocapture"]
+    command = affinity(args.looper_cpus) + [args.archive_test, "--exact", "native_carla_session_archive_survives_driver_rate_and_period_change", "--nocapture"]
     sample = {"datagrams_per_second": 0.0, "peak_processing_us": 0, "peak_pending": 0}
     previous = None
     began = time.monotonic()
@@ -180,6 +180,10 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
 
 
+def affinity(cpus):
+    return ["taskset", "--cpu-list", ",".join(map(str, cpus))] if cpus else []
+
+
 def ready(address, process, logs):
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline and process.poll() is None:
@@ -203,6 +207,9 @@ def stop(process):
 
 
 def run_fixture(args, root):
+    available_cpus = sorted(os.sched_getaffinity(0))
+    args.looper_cpus = available_cpus[:2] if len(available_cpus) >= 4 else []
+    desktop_cpus = available_cpus[2:4] if args.looper_cpus else []
     env = os.environ.copy()
     env.update(
         SHOOP_REMOTE_FX_HOST=str(args.host),
@@ -250,7 +257,7 @@ def run_fixture(args, root):
         def start_service():
             with log_path.open("a") as log:
                 service = subprocess.Popen(
-                    enter + [str(args.host), "--fx-service", "--lan", "--listen", f"{DESKTOP}:{SERVICE_PORT}"],
+                    affinity(desktop_cpus) + enter + [str(args.host), "--fx-service", "--lan", "--listen", f"{DESKTOP}:{SERVICE_PORT}"],
                     env=env, stdout=log, stderr=subprocess.STDOUT,
                 )
             try:
@@ -269,12 +276,13 @@ def run_fixture(args, root):
         broker = start_service()
         print(
             f"Remote Carla on {platform.platform()}, {len(os.sched_getaffinity(0))} CPUs, "
-            f"{args.host}, virtual Ethernet, 48 kHz, 128-frame period, 32-frame quantum",
+            f"{args.host}, virtual Ethernet, 48 kHz, 128-frame period, 32-frame quantum. "
+            f"Looper CPUs {args.looper_cpus or 'shared'}, service CPUs {desktop_cpus or 'shared'}.",
             flush=True,
         )
         if args.recovery_test:
             run(
-                [args.recovery_test, "--exact", "carla_editor_controls_follow_the_confirmed_track_and_bus", "--nocapture"],
+                affinity(args.looper_cpus) + [args.recovery_test, "--exact", "carla_editor_controls_follow_the_confirmed_track_and_bus", "--nocapture"],
                 env=env, timeout=120,
             )
         if args.restart:
@@ -286,6 +294,16 @@ def run_fixture(args, root):
             run_archive(args, restart_env, 2, restart_service)
         for width in args.width:
             run_archive(args, env, width)
+        if args.sweep:
+            for period, slack in ((64, 4), (128, 8), (128, 14), (256, 16)):
+                sweep = {
+                    **env,
+                    "SHOOP_REMOTE_FX_PERIOD": str(period),
+                    "SHOOP_REMOTE_FX_SLACK": str(slack),
+                    "SHOOP_REMOTE_FX_SWEEP": "1",
+                    "SHOOP_REMOTE_FX_SOAK_SECONDS": "5",
+                }
+                run_archive(args, sweep, 2)
         if args.impairment:
             for mode in dict.fromkeys((args.impairment, "burst", "capture")):
                 block = str(root / "block-media")
@@ -334,6 +352,7 @@ def main():
     parser.add_argument("--slack", type=int)
     parser.add_argument("--impairment", choices=["one-copy", "burst"])
     parser.add_argument("--restart", action="store_true")
+    parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--width", nargs="+", type=int, choices=[2, 16], default=[2, 16])
     parser.add_argument("--network-ready", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()

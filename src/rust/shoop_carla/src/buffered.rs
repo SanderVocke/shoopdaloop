@@ -193,7 +193,7 @@ impl Backend for RenderEndpoint {
     }
 }
 
-fn process(
+pub(crate) fn process(
     processor: &mut dyn CarlaProcessor,
     midi_output: &mut PreparedMidiBuffer,
     discontinuous: bool,

@@ -10,7 +10,7 @@ workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rt_buffered = { path = "../rt_buffered" }
 rt_runtime = { path = "../rt_runtime" }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 

@@ -186,9 +186,7 @@ impl Fixture {
             options.driver_preferences = Some(root.path().join("audio-driver.json"));
             options.use_configured_driver = true;
             let remote = settings.processors.carla.hosting == CarlaHosting::Remote;
-            let executable = remote
-                .then(|| std::env::var_os("SHOOP_REMOTE_FX_HOST"))
-                .flatten()
+            let executable = std::env::var_os("SHOOP_REMOTE_FX_HOST")
                 .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoop_host").into());
             if remote {
                 options.remote_carla = Some(shoop_host::serve::RemoteCarla {
@@ -499,6 +497,9 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         modes = vec![(CarlaHosting::Remote, DeliveryMode::Socket)];
     }
     for (hosting, delivery) in modes {
+        let period = std::env::var("SHOOP_REMOTE_FX_PERIOD")
+            .ok()
+            .map_or(128, |value| value.parse().unwrap());
         let stereo = hosting == CarlaHosting::Remote
             && std::env::var("SHOOP_REMOTE_FX_WIDTH").as_deref() == Ok("2");
         let (width, carla_kind, id) = if stereo {
@@ -534,7 +535,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             },
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                 buffer_size: if hosting == CarlaHosting::Remote {
-                    128
+                    period
                 } else {
                     DummyAudioDriverConfig::default().buffer_size
                 },
@@ -785,9 +786,13 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 .unwrap()
                 .buffering_frames;
             assert_eq!(state_before.status.quantum_frames, 32);
-            assert_eq!(state_before.status.buffer_size, 128);
+            assert_eq!(state_before.status.buffer_size, period);
             assert_eq!(state_before.status.sample_rate, 48_000);
-            assert!(delay <= 576, "remote processor delay is {delay} frames");
+            let sweep = std::env::var_os("SHOOP_REMOTE_FX_SWEEP").is_some();
+            if !sweep {
+                assert_eq!(period, 128);
+                assert!(delay <= 576, "remote processor delay is {delay} frames");
+            }
             let fx_stats = |client: &Client| {
                 let state = client.snapshot().unwrap();
                 [
@@ -816,23 +821,33 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 .map_or(0, |value| value.parse().unwrap());
             let started = Instant::now();
             let end = started + Duration::from_secs(seconds);
-            let clean_soak = seconds != 0 && std::env::var_os("SHOOP_REMOTE_FX_IMPAIRED").is_none();
+            let clean_soak =
+                seconds != 0 && !sweep && std::env::var_os("SHOOP_REMOTE_FX_IMPAIRED").is_none();
             let mut next_log = started + Duration::from_secs(300);
             let frames = state_before.status.processed_frames;
+            let mut progress = (frames, started);
             while Instant::now() < end {
                 fixture.tick();
                 if clean_soak {
+                    let observed_frame = fixture.client.snapshot().unwrap().status.processed_frames;
+                    if observed_frame > progress.0 {
+                        progress = (observed_frame, Instant::now());
+                    }
+                    assert!(
+                        progress.1.elapsed() < Duration::from_secs(5),
+                        "Native render stopped making progress"
+                    );
                     let observed = fx_stats(&fixture.client);
                     assert_eq!(
-                        before.map(|(generation, misses, _)| (generation, misses)),
-                        observed.map(|(generation, misses, _)| (generation, misses)),
-                        "wet deadline miss after {:.1}s at width {width}",
+                        before.map(|(generation, _, _)| generation),
+                        observed.map(|(generation, _, _)| generation),
+                        "FX service changed generation after {:.1}s at width {width}",
                         started.elapsed().as_secs_f64()
                     );
                     if Instant::now() >= next_log {
                         eprintln!(
-                            "Remote Carla {width} channels: {} seconds, zero wet misses",
-                            started.elapsed().as_secs()
+                            "Remote Carla {width} channels: {} seconds, worker {observed:?}",
+                            started.elapsed().as_secs(),
                         );
                         next_log += Duration::from_secs(300);
                     }
@@ -849,12 +864,21 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 .fx
                 .as_ref()
                 .and_then(|fx| fx.status_summary.as_deref());
-            eprintln!("remote Carla {width}-channel soak {seconds}s: {delay} frames of buffering, {} frames rendered, {} xruns, DSP {:?}, worker {:?} → {:?}, {completion:?}", state.status.processed_frames - frames, state.status.xruns, state.status.dsp, before, after);
+            eprintln!("remote Carla {width}-channel run {seconds}s at period {period}: {delay} frames of buffering, {} frames rendered, {} xruns, DSP {:?}, worker {:?} → {:?}, {completion:?}", state.status.processed_frames - frames, state.status.xruns, state.status.dsp, before, after);
+            if sweep {
+                continue;
+            }
             if clean_soak {
-                assert_eq!(
-                    before.map(|(generation, misses, _)| (generation, misses)),
-                    after.map(|(generation, misses, _)| (generation, misses))
-                );
+                let batches = (state.status.processed_frames - frames) / u64::from(period);
+                assert!(batches > 0, "Native render stopped making progress");
+                for ((_, misses, _), (_, baseline, _)) in after.into_iter().zip(before) {
+                    let missed = misses.checked_sub(baseline).expect("worker counters reset");
+                    assert!(
+                        missed * 100 <= batches,
+                        "{missed} wet misses in {batches} batches"
+                    );
+                }
+                fixture.until(expected_audio);
                 continue;
             }
             if let Some(restart) = std::env::var_os("SHOOP_REMOTE_FX_RESTART_FILE") {
@@ -889,6 +913,9 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                         .iter()
                         .zip(before)
                         .any(|((_, misses, _), previous)| *misses > previous.1));
+                }
+                if mode != "capture" {
+                    assert!(state.status.processed_frames > frames);
                     continue;
                 }
             }

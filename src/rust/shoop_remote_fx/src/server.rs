@@ -3,7 +3,6 @@ use crate::{
         read_frame, write_frame, Action, Description, Greeting, Intent, Kind, Lifecycle, Request,
         Response, Status, Welcome, CONTROL_TIMEOUT, INITIAL_LIMIT, LEASE, STATE_LIMIT,
     },
-    media::POLL,
     wire::VERSION,
     Config, Counters, Dsp, ServerMedia,
 };
@@ -223,6 +222,7 @@ impl Server {
             INITIAL_LIMIT,
         )?;
         crate::control::prove_server(&socket, tcp.peer_addr()?.ip(), stream)?;
+        socket.set_read_timeout(Some(Duration::from_millis(1)))?;
 
         let closed = AtomicBool::new(false);
         let counters = Arc::new(Mutex::new(Counters::default()));
@@ -233,10 +233,11 @@ impl Server {
         let result = thread::scope(|scope| {
             let media = scope.spawn(|| {
                 let mut published = Instant::now();
-                let mut active_at = None;
                 while !closed.load(Ordering::Acquire) && !self.stopping.load(Ordering::Acquire) {
-                    let received = server.counters().received_datagrams;
-                    if server.poll(&socket, stream, dsp.as_mut()).is_err() {
+                    if wait_for_media(&socket)
+                        .and_then(|()| server.poll(&socket, stream, dsp.as_mut()))
+                        .is_err()
+                    {
                         closed.store(true, Ordering::Release);
                         break;
                     }
@@ -244,16 +245,6 @@ impl Server {
                         *counters.lock().unwrap() = server.counters();
                         published = Instant::now();
                     }
-                    if server.counters().received_datagrams != received {
-                        active_at = Some(Instant::now());
-                    }
-                    let active =
-                        active_at.is_some_and(|time| time.elapsed() < Duration::from_millis(20));
-                    thread::sleep(if active {
-                        POLL
-                    } else {
-                        Duration::from_millis(1)
-                    });
                 }
             });
             let mut active = false;
@@ -318,6 +309,24 @@ impl Server {
             previous = Some(reply);
         }
         Ok(())
+    }
+}
+
+fn wait_for_media(socket: &UdpSocket) -> io::Result<()> {
+    socket.set_nonblocking(false)?;
+    let result = socket.peek(&mut [0; crate::wire::DATAGRAM + 1]);
+    socket.set_nonblocking(true)?;
+    match result {
+        Ok(_) => Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted
+            ) || error.raw_os_error() == Some(10040) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error),
     }
 }
 

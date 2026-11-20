@@ -1,26 +1,32 @@
 use crate::{
-    buffered::RenderEndpoint,
-    native::{carla_runtime_availability, CarlaMainThreadUiDispatcher, CarlaMainThreadUiService},
-    service::ChainService,
+    native::{
+        carla_runtime_availability, CarlaMainThreadUiDispatcher, CarlaMainThreadUiService,
+        CarlaNativeHost,
+    },
+    processor::{CarlaExternalUi, CarlaProcessor},
+    subprocess::SupervisedCarlaProcessor,
 };
 use anyhow::{Context, Result};
-use rt_buffered::{AsyncBatch, Backend};
-use rt_runtime::{buffer::MidiBuffer, Error};
-use shoop_plugin_protocol::{CarlaChainType, CarlaProcessorLifecycle, ChainId};
+use rt_buffered::{AsyncBatch, Batch, BatchTag};
+use rt_runtime::{
+    buffer::{AudioPorts, MidiBuffer},
+    Error,
+};
+use shoop_plugin_protocol::{
+    CarlaChainType, CarlaProcessorLifecycle, ChainId, PreparedMidiBuffer,
+    MAX_MIDI_EVENTS_PER_BLOCK, MAX_NATIVE_MIDI_PACKET_BYTES,
+};
 use shoop_remote_fx::{Chain, ChainControls, Config, Dsp, Kind, Lifecycle, Status};
 use std::{
     net::{SocketAddr, TcpListener},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
-
-const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
-const POLL: Duration = Duration::from_micros(100);
 
 pub fn serve(address: SocketAddr, slots: usize, worker: Option<PathBuf>) -> Result<()> {
     carla_runtime_availability().map_err(anyhow::Error::msg)?;
@@ -33,7 +39,7 @@ pub fn serve(address: SocketAddr, slots: usize, worker: Option<PathBuf>) -> Resu
         .name("remote-fx-service".into())
         .spawn(move || {
             shoop_remote_fx::serve(listener, slots, stopping, move |kind, config| {
-                make_chain(kind, config, worker.as_ref(), &dispatcher, &next)
+                make_chain(kind, config, worker.as_deref(), &dispatcher, &next)
                     .map_err(|error| error.to_string())
             })
         })?;
@@ -47,10 +53,12 @@ pub fn serve(address: SocketAddr, slots: usize, worker: Option<PathBuf>) -> Resu
     Ok(())
 }
 
+type Processor = Arc<Mutex<Box<dyn CarlaProcessor>>>;
+
 fn make_chain(
     kind: Kind,
     config: Config,
-    worker: Option<&PathBuf>,
+    worker: Option<&Path>,
     ui: &CarlaMainThreadUiDispatcher,
     next: &AtomicU64,
 ) -> Result<Chain> {
@@ -62,98 +70,93 @@ fn make_chain(
     let timing = config
         .prepare()
         .map_err(|error| anyhow::anyhow!("{error:?}"))?;
-    let limits = config.limits();
-    let (endpoint, service) = if let Some(worker) = worker {
-        ChainService::start_isolated(
-            worker.clone(),
-            ChainId(next.fetch_add(1, Ordering::Relaxed)),
+    let frames = timing.batch_frames() as u32;
+    let mut processor: Box<dyn CarlaProcessor> = if let Some(worker) = worker {
+        Box::new(SupervisedCarlaProcessor::launch(
+            worker.to_owned(),
             kind,
             config.sample_rate,
-            timing,
-            limits,
-        )?
+            frames,
+            ChainId(next.fetch_add(1, Ordering::Relaxed)),
+        )?)
     } else {
-        ChainService::start_in_process(kind, config.sample_rate, timing, limits, Some(ui.clone()))?
+        Box::new(CarlaNativeHost::instantiate_with_ui_dispatcher(
+            kind,
+            config.sample_rate,
+            frames,
+            ui.clone(),
+        )?)
     };
-    let chain = Arc::new(Owner {
-        service,
-        active: AtomicBool::new(false),
-    });
+    anyhow::ensure!(processor.is_ready(), "Carla processor did not start");
+    let editor = processor.external_ui();
+    let processor = Arc::new(Mutex::new(processor));
     Ok(Chain {
         dsp: Box::new(RemoteDsp {
-            endpoint,
-            chain: Arc::clone(&chain),
+            processor: Arc::clone(&processor),
+            previous: None,
+            midi: PreparedMidiBuffer::new(MAX_MIDI_EVENTS_PER_BLOCK, MAX_NATIVE_MIDI_PACKET_BYTES),
         }),
-        controls: Box::new(RemoteControls(chain)),
+        controls: Box::new(RemoteControls { processor, editor }),
     })
 }
 
-struct Owner {
-    service: ChainService,
-    active: AtomicBool,
-}
-
-impl Owner {
-    fn activate(&self, active: bool) -> Result<()> {
-        self.service.set_active(active)?;
-        self.active.store(active, Ordering::Release);
-        Ok(())
-    }
-}
-
 struct RemoteDsp {
-    chain: Arc<Owner>,
-    endpoint: RenderEndpoint,
+    processor: Processor,
+    previous: Option<BatchTag>,
+    midi: PreparedMidiBuffer,
 }
 
 impl Dsp for RemoteDsp {
     fn process(
         &mut self,
         input: AsyncBatch<'_>,
-        audio: &mut [f32],
+        output: &mut [f32],
         midi: &mut [MidiBuffer],
     ) -> Result<(), Error> {
-        if !self.chain.active.load(Ordering::Acquire) {
-            self.chain.activate(true).map_err(|_| Error::Disconnected)?;
-        }
-        let tag = input.tag;
-        let transport = self.endpoint.async_transport().ok_or(Error::InvalidState)?;
-        transport.try_submit(input)?;
-        self.chain.service.wake_audio();
-        let timeout = Instant::now() + Duration::from_millis(10);
-        while Instant::now() < timeout {
-            if let Some(completion) = transport.try_completion() {
-                if completion.tag == tag {
-                    let output = completion.output?;
-                    if output.audio.len() != audio.len() || output.midi.len() != midi.len() {
-                        return Err(Error::InvalidShape);
-                    }
-                    audio.copy_from_slice(output.audio);
-                    for (source, target) in output.midi.iter().zip(midi.iter_mut()) {
-                        for index in 0..source.len() {
-                            let (offset, data) = source.get(index).ok_or(Error::InvalidEvent)?;
-                            target.push(offset, output.frames, data)?;
-                        }
-                    }
-                    return Ok(());
-                }
-            } else {
-                thread::sleep(POLL);
-            }
-        }
-        Err(Error::Incomplete)
+        let discontinuous = self.previous.is_none_or(|previous| {
+            previous.generation != input.tag.generation
+                || previous.sequence.checked_add(1) != Some(input.tag.sequence)
+                || previous.source.checked_add(input.frames).ok() != Some(input.tag.source)
+        });
+        let mut processor = self.processor.lock().map_err(|_| Error::Disconnected)?;
+        let result = crate::buffered::process(
+            processor.as_mut(),
+            &mut self.midi,
+            discontinuous,
+            &mut Batch {
+                tag: input.tag,
+                frames: input.frames,
+                audio: AudioPorts::new(input.audio, output, input.frames, 0, input.frames)?,
+                midi_inputs: input.midi,
+                midi_controls: None,
+                midi_outputs: midi,
+                parameters: input.parameters,
+                observer: None,
+            },
+        );
+        self.previous = result.is_ok().then_some(input.tag);
+        result
     }
 }
 
-struct RemoteControls(Arc<Owner>);
+struct RemoteControls {
+    processor: Processor,
+    editor: Option<Arc<dyn CarlaExternalUi>>,
+}
 
 impl ChainControls for RemoteControls {
     fn status(&self) -> Status {
-        let service = &self.0.service;
-        let health = service.monitor().owned_health().1;
+        let Ok(mut processor) = self.processor.lock() else {
+            return Status {
+                lifecycle: Lifecycle::Crashed,
+                ..Status::default()
+            };
+        };
+        processor.idle();
+        let _ = processor.is_ready();
         Status {
-            active: health.active && self.0.active.load(Ordering::Acquire),
-            lifecycle: match health.lifecycle {
+            active: processor.is_active(),
+            lifecycle: match processor.lifecycle() {
                 CarlaProcessorLifecycle::Stopped => Lifecycle::Stopped,
                 CarlaProcessorLifecycle::Starting => Lifecycle::Starting,
                 CarlaProcessorLifecycle::Running => Lifecycle::Running,
@@ -162,55 +165,38 @@ impl ChainControls for RemoteControls {
                 CarlaProcessorLifecycle::Restarting => Lifecycle::Restarting,
                 CarlaProcessorLifecycle::Unavailable => Lifecycle::Unavailable,
             },
-            editor_visible: service.editor().map(|editor| editor.is_visible()),
+            editor_visible: self.editor.as_ref().map(|editor| editor.is_visible()),
             ..Status::default()
         }
     }
 
     fn active(&mut self, active: bool) -> Result<(), String> {
-        if self.0.active.load(Ordering::Acquire) == active {
-            return Ok(());
+        let mut processor = self.processor.lock().map_err(|error| error.to_string())?;
+        if processor.is_active() != active {
+            processor.set_active(active);
         }
-        self.0.activate(active).map_err(|error| error.to_string())
+        if processor.is_active() != active || !processor.is_ready() {
+            return Err("Carla active state was not confirmed".into());
+        }
+        Ok(())
     }
 
     fn editor(&mut self, visible: bool) -> Result<(), String> {
-        self.0
-            .service
-            .editor()
+        self.editor
+            .as_ref()
             .context("Carla editor unavailable")
             .and_then(|editor| editor.set_visible(visible))
             .map_err(|error| error.to_string())
     }
 
     fn save(&mut self) -> Result<String, String> {
-        let service = &self.0.service;
-        let (owner, health) = service.monitor().owned_health();
-        let ticket = service
-            .control()
-            .capture_state(owner, health.generation)
-            .map_err(|error| error.to_string())?;
-        await_result(|| ticket.poll())
+        let mut processor = self.processor.lock().map_err(|error| error.to_string())?;
+        processor.capture_state().map_err(|error| error.to_string())
     }
 
     fn restore(&mut self, state: String) -> Result<(), String> {
-        let service = &self.0.service;
-        let (owner, health) = service.monitor().owned_health();
-        let ticket = service
-            .control()
-            .restore_candidate(owner, health.generation, state)
-            .map_err(|error| error.to_string())?;
-        await_result(|| ticket.poll())
+        let mut processor = self.processor.lock().map_err(|error| error.to_string())?;
+        crate::state::restore_candidate(processor.as_mut(), &state)
+            .map_err(|error| error.to_string())
     }
-}
-
-fn await_result<T>(mut poll: impl FnMut() -> Option<Result<T>>) -> Result<T, String> {
-    let end = Instant::now() + CONTROL_TIMEOUT;
-    while Instant::now() < end {
-        if let Some(result) = poll() {
-            return result.map_err(|error| error.to_string());
-        }
-        thread::sleep(Duration::from_millis(1));
-    }
-    Err("Timed out waiting for Carla control".into())
 }

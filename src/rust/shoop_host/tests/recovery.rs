@@ -155,7 +155,6 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
     if std::env::var_os("SHOOP_REQUIRE_CARLA_UI_TESTS").is_none() {
         return;
     }
-    shoop_carla::native::carla_runtime_availability().unwrap();
     let mut modes = vec![
         (CarlaHosting::InProcess, AppTransport::Socket),
         (CarlaHosting::Subprocess, AppTransport::SharedMemory),
@@ -163,6 +162,8 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
     ];
     if std::env::var_os("SHOOP_REMOTE_FX_TEST_ADDRESS").is_some() {
         modes = vec![(CarlaHosting::Remote, AppTransport::Socket)];
+    } else {
+        shoop_carla::native::carla_runtime_availability().unwrap();
     }
     for (hosting, transport) in modes {
         let mut config = HostConfig {

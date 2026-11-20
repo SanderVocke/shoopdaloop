@@ -424,11 +424,6 @@ impl ChainService {
         self.monitor.clone()
     }
 
-    #[cfg(feature = "remote")]
-    pub(crate) fn wake_audio(&self) {
-        self.thread.thread().unpark();
-    }
-
     pub fn control(&self) -> ChainControl {
         ChainControl {
             commands: Arc::downgrade(&self.commands),
