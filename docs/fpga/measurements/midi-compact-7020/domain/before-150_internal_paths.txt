@@ -1,0 +1,1127 @@
+Timing section extracted from before-150_internal_paths.rpt.gz; the compressed file preserves the complete original report.
+
+Timing Report
+
+Slack (VIOLATED) :        -8.865ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/transition_engine/load_cursor_reg[9]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_response_error_reg/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        15.199ns  (logic 5.874ns (38.647%)  route 9.325ns (61.353%))
+  Logic Levels:           26  (CARRY4=14 LUT3=2 LUT4=1 LUT5=6 LUT6=3)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/states/transition_engine/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/states/transition_engine/load_cursor_reg[9]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 f  pipeline/core_under_test/core/midi/service/states/transition_engine/load_cursor_reg[9]/Q
+                         net (fo=6, unplaced)         0.838     2.173    pipeline/core_under_test/core/midi/service/states/transition_engine/p_0_in0
+                         LUT5 (Prop_lut5_I0_O)        0.295     2.468 r  pipeline/core_under_test/core/midi/service/states/transition_engine/target_scalar[7][31]_i_3/O
+                         net (fo=15, unplaced)        0.502     2.970    pipeline/core_under_test/core/midi/service/states/transition_engine/target_scalar[7][31]_i_3_n_0
+                         LUT5 (Prop_lut5_I1_O)        0.124     3.094 r  pipeline/core_under_test/core/midi/service/states/transition_engine/current_scalar[4][31]_i_2/O
+                         net (fo=61, unplaced)        0.536     3.630    pipeline/core_under_test/core/midi/service/states/transition_engine/current_scalar[4][31]_i_2_n_0
+                         LUT5 (Prop_lut5_I3_O)        0.124     3.754 f  pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_58/O
+                         net (fo=1, unplaced)         0.449     4.203    pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_58_n_0
+                         LUT6 (Prop_lut6_I1_O)        0.124     4.327 r  pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_35/O
+                         net (fo=2, unplaced)         0.650     4.977    pipeline/core_under_test/core/midi/service/states/transition_engine/p_0_out[1]
+                         CARRY4 (Prop_carry4_DI[1]_O[2])
+                                                      0.566     5.543 f  pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_22/O[2]
+                         net (fo=1, unplaced)         0.452     5.995    pipeline/core_under_test/core/midi/service/states/state_engine/O[2]
+                         LUT5 (Prop_lut5_I2_O)        0.301     6.296 f  pipeline/core_under_test/core/midi/service/states/state_engine/offset_carry_i_19/O
+                         net (fo=1, unplaced)         0.449     6.745    pipeline/core_under_test/core/midi/service/states/state_engine/offset_carry_i_19_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124     6.869 f  pipeline/core_under_test/core/midi/service/states/state_engine/offset_carry_i_11/O
+                         net (fo=2, unplaced)         0.460     7.329    pipeline/core_under_test/core/midi/service/content/command_address_reg[3]_3
+                         LUT3 (Prop_lut3_I2_O)        0.117     7.446 r  pipeline/core_under_test/core/midi/service/content/offset_carry_i_14/O
+                         net (fo=2, unplaced)         0.865     8.311    pipeline/core_under_test/midi_memory/transfer/command_address_reg[3]_1[2]
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.728     9.039 r  pipeline/core_under_test/midi_memory/transfer/offset_carry/CO[3]
+                         net (fo=1, unplaced)         0.009     9.048    pipeline/core_under_test/midi_memory/transfer/offset_carry_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.165 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__0/CO[3]
+                         net (fo=1, unplaced)         0.000     9.165    pipeline/core_under_test/midi_memory/transfer/offset_carry__0_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.282 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__1/CO[3]
+                         net (fo=1, unplaced)         0.000     9.282    pipeline/core_under_test/midi_memory/transfer/offset_carry__1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.399 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__2/CO[3]
+                         net (fo=1, unplaced)         0.000     9.399    pipeline/core_under_test/midi_memory/transfer/offset_carry__2_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.516 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__3/CO[3]
+                         net (fo=1, unplaced)         0.000     9.516    pipeline/core_under_test/midi_memory/transfer/offset_carry__3_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.633 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__4/CO[3]
+                         net (fo=1, unplaced)         0.000     9.633    pipeline/core_under_test/midi_memory/transfer/offset_carry__4_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.750 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__5/CO[3]
+                         net (fo=1, unplaced)         0.000     9.750    pipeline/core_under_test/midi_memory/transfer/offset_carry__5_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.867 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__6/CO[3]
+                         net (fo=1, unplaced)         0.000     9.867    pipeline/core_under_test/midi_memory/transfer/offset_carry__6_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    10.099 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__7/O[0]
+                         net (fo=3, unplaced)         1.001    11.100    pipeline/core_under_test/midi_memory/transfer/p_0_in__0[32]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671    11.771 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry/CO[3]
+                         net (fo=1, unplaced)         0.009    11.780    pipeline/core_under_test/midi_memory/transfer/mapped_carry_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.897 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry__0/CO[3]
+                         net (fo=1, unplaced)         0.000    11.897    pipeline/core_under_test/midi_memory/transfer/mapped_carry__0_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.014 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry__1/CO[3]
+                         net (fo=1, unplaced)         0.000    12.014    pipeline/core_under_test/midi_memory/transfer/mapped_carry__1_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    12.270 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry__2/O[2]
+                         net (fo=1, unplaced)         0.905    13.175    pipeline/core_under_test/midi_memory/transfer/mapped_carry__2_n_5
+                         LUT4 (Prop_lut4_I1_O)        0.301    13.476 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_16/O
+                         net (fo=1, unplaced)         0.419    13.895    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_16_n_0
+                         LUT5 (Prop_lut5_I4_O)        0.124    14.019 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_13/O
+                         net (fo=1, unplaced)         0.902    14.921    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_13_n_0
+                         LUT6 (Prop_lut6_I0_O)        0.124    15.045 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_8__0/O
+                         net (fo=1, unplaced)         0.419    15.464    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_8__0_n_0
+                         LUT3 (Prop_lut3_I2_O)        0.124    15.588 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_2__1/O
+                         net (fo=2, unplaced)         0.460    16.048    pipeline/core_under_test/midi_memory/endpoint/memory_response_error_reg_1
+                         LUT6 (Prop_lut6_I0_O)        0.124    16.172 r  pipeline/core_under_test/midi_memory/endpoint/memory_response_error_i_1__1/O
+                         net (fo=1, unplaced)         0.000    16.172    pipeline/core_under_test/midi_memory/transfer/memory_response_error_reg_6
+                         FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_response_error_reg/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/midi_memory/transfer/clk
+                         FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_response_error_reg/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/midi_memory/transfer/memory_response_error_reg
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -16.172    
+  -------------------------------------------------------------------
+                         slack                                 -8.865    
+
+Slack (VIOLATED) :        -8.865ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/transition_engine/load_cursor_reg[9]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/phase_reg[2]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        15.199ns  (logic 5.874ns (38.647%)  route 9.325ns (61.353%))
+  Logic Levels:           26  (CARRY4=14 LUT3=2 LUT4=1 LUT5=6 LUT6=3)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/states/transition_engine/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/states/transition_engine/load_cursor_reg[9]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 f  pipeline/core_under_test/core/midi/service/states/transition_engine/load_cursor_reg[9]/Q
+                         net (fo=6, unplaced)         0.838     2.173    pipeline/core_under_test/core/midi/service/states/transition_engine/p_0_in0
+                         LUT5 (Prop_lut5_I0_O)        0.295     2.468 r  pipeline/core_under_test/core/midi/service/states/transition_engine/target_scalar[7][31]_i_3/O
+                         net (fo=15, unplaced)        0.502     2.970    pipeline/core_under_test/core/midi/service/states/transition_engine/target_scalar[7][31]_i_3_n_0
+                         LUT5 (Prop_lut5_I1_O)        0.124     3.094 r  pipeline/core_under_test/core/midi/service/states/transition_engine/current_scalar[4][31]_i_2/O
+                         net (fo=61, unplaced)        0.536     3.630    pipeline/core_under_test/core/midi/service/states/transition_engine/current_scalar[4][31]_i_2_n_0
+                         LUT5 (Prop_lut5_I3_O)        0.124     3.754 f  pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_58/O
+                         net (fo=1, unplaced)         0.449     4.203    pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_58_n_0
+                         LUT6 (Prop_lut6_I1_O)        0.124     4.327 r  pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_35/O
+                         net (fo=2, unplaced)         0.650     4.977    pipeline/core_under_test/core/midi/service/states/transition_engine/p_0_out[1]
+                         CARRY4 (Prop_carry4_DI[1]_O[2])
+                                                      0.566     5.543 f  pipeline/core_under_test/core/midi/service/states/transition_engine/offset_carry_i_22/O[2]
+                         net (fo=1, unplaced)         0.452     5.995    pipeline/core_under_test/core/midi/service/states/state_engine/O[2]
+                         LUT5 (Prop_lut5_I2_O)        0.301     6.296 f  pipeline/core_under_test/core/midi/service/states/state_engine/offset_carry_i_19/O
+                         net (fo=1, unplaced)         0.449     6.745    pipeline/core_under_test/core/midi/service/states/state_engine/offset_carry_i_19_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124     6.869 f  pipeline/core_under_test/core/midi/service/states/state_engine/offset_carry_i_11/O
+                         net (fo=2, unplaced)         0.460     7.329    pipeline/core_under_test/core/midi/service/content/command_address_reg[3]_3
+                         LUT3 (Prop_lut3_I2_O)        0.117     7.446 r  pipeline/core_under_test/core/midi/service/content/offset_carry_i_14/O
+                         net (fo=2, unplaced)         0.865     8.311    pipeline/core_under_test/midi_memory/transfer/command_address_reg[3]_1[2]
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.728     9.039 r  pipeline/core_under_test/midi_memory/transfer/offset_carry/CO[3]
+                         net (fo=1, unplaced)         0.009     9.048    pipeline/core_under_test/midi_memory/transfer/offset_carry_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.165 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__0/CO[3]
+                         net (fo=1, unplaced)         0.000     9.165    pipeline/core_under_test/midi_memory/transfer/offset_carry__0_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.282 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__1/CO[3]
+                         net (fo=1, unplaced)         0.000     9.282    pipeline/core_under_test/midi_memory/transfer/offset_carry__1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.399 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__2/CO[3]
+                         net (fo=1, unplaced)         0.000     9.399    pipeline/core_under_test/midi_memory/transfer/offset_carry__2_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.516 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__3/CO[3]
+                         net (fo=1, unplaced)         0.000     9.516    pipeline/core_under_test/midi_memory/transfer/offset_carry__3_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.633 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__4/CO[3]
+                         net (fo=1, unplaced)         0.000     9.633    pipeline/core_under_test/midi_memory/transfer/offset_carry__4_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.750 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__5/CO[3]
+                         net (fo=1, unplaced)         0.000     9.750    pipeline/core_under_test/midi_memory/transfer/offset_carry__5_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     9.867 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__6/CO[3]
+                         net (fo=1, unplaced)         0.000     9.867    pipeline/core_under_test/midi_memory/transfer/offset_carry__6_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    10.099 r  pipeline/core_under_test/midi_memory/transfer/offset_carry__7/O[0]
+                         net (fo=3, unplaced)         1.001    11.100    pipeline/core_under_test/midi_memory/transfer/p_0_in__0[32]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671    11.771 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry/CO[3]
+                         net (fo=1, unplaced)         0.009    11.780    pipeline/core_under_test/midi_memory/transfer/mapped_carry_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.897 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry__0/CO[3]
+                         net (fo=1, unplaced)         0.000    11.897    pipeline/core_under_test/midi_memory/transfer/mapped_carry__0_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.014 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry__1/CO[3]
+                         net (fo=1, unplaced)         0.000    12.014    pipeline/core_under_test/midi_memory/transfer/mapped_carry__1_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    12.270 r  pipeline/core_under_test/midi_memory/transfer/mapped_carry__2/O[2]
+                         net (fo=1, unplaced)         0.905    13.175    pipeline/core_under_test/midi_memory/transfer/mapped_carry__2_n_5
+                         LUT4 (Prop_lut4_I1_O)        0.301    13.476 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_16/O
+                         net (fo=1, unplaced)         0.419    13.895    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_16_n_0
+                         LUT5 (Prop_lut5_I4_O)        0.124    14.019 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_13/O
+                         net (fo=1, unplaced)         0.902    14.921    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_13_n_0
+                         LUT6 (Prop_lut6_I0_O)        0.124    15.045 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_8__0/O
+                         net (fo=1, unplaced)         0.419    15.464    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_8__0_n_0
+                         LUT3 (Prop_lut3_I2_O)        0.124    15.588 f  pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_2__1/O
+                         net (fo=2, unplaced)         0.460    16.048    pipeline/core_under_test/midi_memory/transfer/memory_response_error_i_8__0_0
+                         LUT6 (Prop_lut6_I4_O)        0.124    16.172 r  pipeline/core_under_test/midi_memory/transfer/phase[2]_i_1__13/O
+                         net (fo=1, unplaced)         0.000    16.172    pipeline/core_under_test/midi_memory/transfer/phase[2]_i_1__13_n_0
+                         FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/phase_reg[2]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/midi_memory/transfer/clk
+                         FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/phase_reg[2]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/midi_memory/transfer/phase_reg[2]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -16.172    
+  -------------------------------------------------------------------
+                         slack                                 -8.865    
+
+Slack (VIOLATED) :        -7.464ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.798ns  (logic 7.337ns (53.174%)  route 6.461ns (46.826%))
+  Logic Levels:           25  (CARRY4=19 LUT3=1 LUT4=1 LUT5=2 LUT6=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.825 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.825    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.942 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.942    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.273 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]_i_18/O[3]
+                         net (fo=1, unplaced)         0.618    13.891    pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]_i_18_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    14.198 r  pipeline/core_under_test/core/midi/service/content/memory_address[63]_i_5/O
+                         net (fo=1, unplaced)         0.449    14.647    pipeline/core_under_test/core/midi/service/content/memory_address[63]_i_5_n_0
+                         LUT6 (Prop_lut6_I3_O)        0.124    14.771 r  pipeline/core_under_test/core/midi/service/content/memory_address[63]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.771    pipeline/core_under_test/core/midi/service/content/memory_address[63]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.771    
+  -------------------------------------------------------------------
+                         slack                                 -7.464    
+
+Slack (VIOLATED) :        -7.347ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.681ns  (logic 7.220ns (52.774%)  route 6.461ns (47.226%))
+  Logic Levels:           24  (CARRY4=18 LUT3=1 LUT4=1 LUT5=3 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.825 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.825    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.156 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9/O[3]
+                         net (fo=1, unplaced)         0.618    13.774    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    14.081 r  pipeline/core_under_test/core/midi/service/content/memory_address[59]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.530    pipeline/core_under_test/core/midi/service/content/memory_address[59]_i_3_n_0
+                         LUT5 (Prop_lut5_I3_O)        0.124    14.654 r  pipeline/core_under_test/core/midi/service/content/memory_address[59]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.654    pipeline/core_under_test/core/midi/service/content/memory_address[59]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.654    
+  -------------------------------------------------------------------
+                         slack                                 -7.347    
+
+Slack (VIOLATED) :        -7.230ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.564ns  (logic 7.103ns (52.367%)  route 6.461ns (47.633%))
+  Logic Levels:           23  (CARRY4=17 LUT3=1 LUT4=1 LUT5=3 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.039 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/O[3]
+                         net (fo=1, unplaced)         0.618    13.657    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    13.964 r  pipeline/core_under_test/core/midi/service/content/memory_address[55]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.413    pipeline/core_under_test/core/midi/service/content/memory_address[55]_i_3_n_0
+                         LUT5 (Prop_lut5_I3_O)        0.124    14.537 r  pipeline/core_under_test/core/midi/service/content/memory_address[55]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.537    pipeline/core_under_test/core/midi/service/content/memory_address[55]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.537    
+  -------------------------------------------------------------------
+                         slack                                 -7.230    
+
+Slack (VIOLATED) :        -7.217ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[62]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.551ns  (logic 7.256ns (53.546%)  route 6.295ns (46.454%))
+  Logic Levels:           25  (CARRY4=19 LUT3=1 LUT4=1 LUT5=3 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.825 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.825    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.942 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.942    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    13.198 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]_i_18/O[2]
+                         net (fo=1, unplaced)         0.452    13.650    pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]_i_18_n_5
+                         LUT3 (Prop_lut3_I0_O)        0.301    13.951 r  pipeline/core_under_test/core/midi/service/content/memory_address[62]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.400    pipeline/core_under_test/core/midi/service/content/memory_address[62]_i_3_n_0
+                         LUT5 (Prop_lut5_I3_O)        0.124    14.524 r  pipeline/core_under_test/core/midi/service/content/memory_address[62]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.524    pipeline/core_under_test/core/midi/service/content/memory_address[62]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[62]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[62]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[62]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.524    
+  -------------------------------------------------------------------
+                         slack                                 -7.217    
+
+Slack (VIOLATED) :        -7.163ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[61]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.497ns  (logic 7.342ns (54.397%)  route 6.155ns (45.603%))
+  Logic Levels:           25  (CARRY4=19 LUT2=1 LUT3=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.825 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.825    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.942 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.942    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    13.279 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]_i_18/O[1]
+                         net (fo=1, unplaced)         0.312    13.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[63]_i_18_n_6
+                         LUT3 (Prop_lut3_I0_O)        0.306    13.897 r  pipeline/core_under_test/core/midi/service/content/memory_address[61]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.346    pipeline/core_under_test/core/midi/service/content/memory_address[61]_i_3_n_0
+                         LUT2 (Prop_lut2_I1_O)        0.124    14.470 r  pipeline/core_under_test/core/midi/service/content/memory_address[61]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.470    pipeline/core_under_test/core/midi/service/content/memory_address[61]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[61]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[61]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[61]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.470    
+  -------------------------------------------------------------------
+                         slack                                 -7.163    
+
+Slack (VIOLATED) :        -7.113ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.447ns  (logic 6.986ns (51.952%)  route 6.461ns (48.048%))
+  Logic Levels:           22  (CARRY4=16 LUT3=1 LUT4=1 LUT5=3 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    12.922 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/O[3]
+                         net (fo=1, unplaced)         0.618    13.540    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    13.847 r  pipeline/core_under_test/core/midi/service/content/memory_address[51]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.296    pipeline/core_under_test/core/midi/service/content/memory_address[51]_i_3_n_0
+                         LUT5 (Prop_lut5_I3_O)        0.124    14.420 r  pipeline/core_under_test/core/midi/service/content/memory_address[51]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.420    pipeline/core_under_test/core/midi/service/content/memory_address[51]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.420    
+  -------------------------------------------------------------------
+                         slack                                 -7.113    
+
+Slack (VIOLATED) :        -7.100ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[58]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.434ns  (logic 7.139ns (53.141%)  route 6.295ns (46.859%))
+  Logic Levels:           24  (CARRY4=18 LUT2=1 LUT3=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.825 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.825    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    13.081 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9/O[2]
+                         net (fo=1, unplaced)         0.452    13.533    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9_n_5
+                         LUT3 (Prop_lut3_I0_O)        0.301    13.834 r  pipeline/core_under_test/core/midi/service/content/memory_address[58]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.283    pipeline/core_under_test/core/midi/service/content/memory_address[58]_i_3_n_0
+                         LUT2 (Prop_lut2_I1_O)        0.124    14.407 r  pipeline/core_under_test/core/midi/service/content/memory_address[58]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.407    pipeline/core_under_test/core/midi/service/content/memory_address[58]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[58]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[58]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[58]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.407    
+  -------------------------------------------------------------------
+                         slack                                 -7.100    
+
+Slack (VIOLATED) :        -7.046ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/content/memory_address_reg[57]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        13.380ns  (logic 7.225ns (53.999%)  route 6.155ns (46.002%))
+  Logic Levels:           24  (CARRY4=18 LUT2=1 LUT3=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 7.591 - 6.667 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=36661, unset)        0.973     0.973    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/midi/service/content/view_slot_reg[0]/Q
+                         net (fo=10, unplaced)        0.709     2.044    pipeline/core_under_test/core/midi/service/content/view_slot_reg_n_0_[0]
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     2.852 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.009     2.861    pipeline/core_under_test/core/midi/service/content/memory_address_reg[5]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232     3.093 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30/O[0]
+                         net (fo=1, unplaced)         0.666     3.759    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_30_n_7
+                         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.808     4.567 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24/CO[3]
+                         net (fo=1, unplaced)         0.009     4.576    pipeline/core_under_test/core/midi/service/content/memory_address_reg[9]_i_24_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     4.913 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[13]_i_19/O[1]
+                         net (fo=6, unplaced)         0.747     5.660    pipeline/core_under_test/core/midi/service/content/table_address_return3[9]
+                         CARRY4 (Prop_carry4_S[1]_O[3])
+                                                      0.949     6.609 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_145/O[3]
+                         net (fo=1, unplaced)         0.808     7.417    pipeline/core_under_test/core_n_963
+                         CARRY4 (Prop_carry4_S[0]_O[1])
+                                                      0.734     8.151 r  pipeline/core_under_test/memory_address_reg[19]_i_95/O[1]
+                         net (fo=4, unplaced)         0.635     8.786    pipeline/core_under_test/core/midi/service/content/memory_address[19]_i_46_1[1]
+                         LUT4 (Prop_lut4_I0_O)        0.306     9.092 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69/O
+                         net (fo=1, unplaced)         0.449     9.541    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_69_n_0
+                         LUT5 (Prop_lut5_I2_O)        0.124     9.665 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37/O
+                         net (fo=2, unplaced)         0.913    10.578    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_37_n_0
+                         LUT5 (Prop_lut5_I0_O)        0.124    10.702 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58/O
+                         net (fo=1, unplaced)         0.449    11.151    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_58_n_0
+                         LUT6 (Prop_lut6_I2_O)        0.124    11.275 r  pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25/O
+                         net (fo=1, unplaced)         0.000    11.275    pipeline/core_under_test/core/midi/service/content/memory_address[15]_i_25_n_0
+                         CARRY4 (Prop_carry4_S[2]_CO[3])
+                                                      0.380    11.655 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.655    pipeline/core_under_test/core/midi/service/content/memory_address_reg[15]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.772 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.772    pipeline/core_under_test/core/midi/service/content/memory_address_reg[19]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    11.889 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    11.889    pipeline/core_under_test/core/midi/service/content/memory_address_reg[23]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.006 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.006    pipeline/core_under_test/core/midi/service/content/memory_address_reg[27]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.123 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.123    pipeline/core_under_test/core/midi/service/content/memory_address_reg[31]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.240 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.240    pipeline/core_under_test/core/midi/service/content/memory_address_reg[35]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.357 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.357    pipeline/core_under_test/core/midi/service/content/memory_address_reg[39]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.474 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[43]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.591 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.591    pipeline/core_under_test/core/midi/service/content/memory_address_reg[47]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.708 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.708    pipeline/core_under_test/core/midi/service/content/memory_address_reg[51]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    12.825 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9/CO[3]
+                         net (fo=1, unplaced)         0.000    12.825    pipeline/core_under_test/core/midi/service/content/memory_address_reg[55]_i_9_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    13.162 r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9/O[1]
+                         net (fo=1, unplaced)         0.312    13.474    pipeline/core_under_test/core/midi/service/content/memory_address_reg[59]_i_9_n_6
+                         LUT3 (Prop_lut3_I0_O)        0.306    13.780 r  pipeline/core_under_test/core/midi/service/content/memory_address[57]_i_3/O
+                         net (fo=1, unplaced)         0.449    14.229    pipeline/core_under_test/core/midi/service/content/memory_address[57]_i_3_n_0
+                         LUT2 (Prop_lut2_I1_O)        0.124    14.353 r  pipeline/core_under_test/core/midi/service/content/memory_address[57]_i_1/O
+                         net (fo=1, unplaced)         0.000    14.353    pipeline/core_under_test/core/midi/service/content/memory_address[57]_i_1_n_0
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[57]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=36661, unset)        0.924     7.591    pipeline/core_under_test/core/midi/service/content/clk
+                         FDRE                                         r  pipeline/core_under_test/core/midi/service/content/memory_address_reg[57]/C
+                         clock pessimism              0.000     7.591    
+                         clock uncertainty           -0.235     7.356    
+                         FDRE (Setup_fdre_C_D)       -0.049     7.307    pipeline/core_under_test/core/midi/service/content/memory_address_reg[57]
+  -------------------------------------------------------------------
+                         required time                          7.307    
+                         arrival time                         -14.353    
+  -------------------------------------------------------------------
+                         slack                                 -7.046    
+
+
+
+

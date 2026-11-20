@@ -1,0 +1,81 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 9.78s
+     Running tests/audio.rs (target/debug/build/rt_fpga_testbench/1611e955791ddea0/out/audio-1611e955791ddea0)
+
+running 1 test
+test sample_pipeline_arithmetic_streaming_reset_and_production_numeric_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.43s
+
+     Running tests/axi.rs (target/debug/build/rt_fpga_testbench/bb4345b0ac23f208/out/axi-bb4345b0ac23f208)
+
+running 1 test
+   Compiling bench_top#9199815729047639319 (/workspace/work/current-backend/work/marlin-suite/axi/axi_master-3c01ed232d2aed01/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 24.32s
+   Compiling bench_top#14960346391674188476 (/workspace/work/current-backend/work/marlin-suite/axi/word_axi-31ae3975d9f6faa3/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 25.64s
+   Compiling bench_top#16648871257814389034 (/workspace/work/current-backend/work/marlin-suite/axi/chunk_axi-bcba065297472a39/bench_top.sv)
+test axi_endpoints_word_and_chunk_transfers_preserve_bounds_strobes_and_retirement has been running for over 60 seconds
+    Finished `verilator-O0` profile [unoptimized] target in 34.03s
+   Compiling bench_top#4961920812844284156 (/workspace/work/current-backend/work/marlin-suite/axi/axi_master-7c346a63cf3be49d/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 46.01s
+   Compiling bench_top#7092657972888361350 (/workspace/work/current-backend/work/marlin-suite/axi/word_axi-25cd3fb3434a8bdd/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 30.29s
+   Compiling bench_top#14621538878706431827 (/workspace/work/current-backend/work/marlin-suite/axi/chunk_axi-f6229f6641a98ae5/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 29.59s
+   Compiling bench_top#5799593856129378869 (/workspace/work/current-backend/work/marlin-suite/axi/axi_master-cea3778a7b02af08/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 17.10s
+   Compiling bench_top#10887106945167468630 (/workspace/work/current-backend/work/marlin-suite/axi/word_axi-f84fbee84b3fa1c6/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 18.77s
+   Compiling bench_top#17027957376143772828 (/workspace/work/current-backend/work/marlin-suite/axi/chunk_axi-d2ba439b18f1c509/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 21.15s
+   Compiling bench_top#2575671045993556276 (/workspace/work/current-backend/work/marlin-suite/axi/axi_master-3a22e0c57105573c/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 17.78s
+   Compiling bench_top#8025973210208266525 (/workspace/work/current-backend/work/marlin-suite/axi/word_axi-6487b34d26d678bb/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 19.73s
+   Compiling bench_top#14936050645616542675 (/workspace/work/current-backend/work/marlin-suite/axi/chunk_axi-09eb1129f589c026/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 18.27s
+test axi_endpoints_word_and_chunk_transfers_preserve_bounds_strobes_and_retirement ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 333.87s
+
+     Running tests/core.rs (target/debug/build/rt_fpga_testbench/79b62bfa51ba25a4/out/core-79b62bfa51ba25a4)
+
+running 1 test
+test elaborated_widths_wide_inputs_probes_and_independent_models ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.06s
+
+     Running tests/graph_compiler.rs (target/debug/build/rt_fpga_testbench/040e3b9cb6bcb783/out/graph_compiler-040e3b9cb6bcb783)
+
+running 2 tests
+test general_compiler_gain_balance_monitoring_and_multibus_samples_match_on_rtl ... ok
+test multichannel_recording_smoothing_and_bus_programs_emit_identical_rust_and_rtl_jobs ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.29s
+
+     Running tests/loading.rs (target/debug/build/rt_fpga_testbench/1abbd20afa63a778/out/loading-1abbd20afa63a778)
+
+running 3 tests
+   Compiling bench_top#2812036226685996503 (/workspace/work/current-backend/work/marlin-suite/loading-media/media_audio_pipeline_axi-b4a5cdd88c594723/bench_top.sv)
+test live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads ... ok
+   Compiling bench_top#4885079407096202435 (/workspace/work/current-backend/work/marlin-suite/loading-ddr/media_audio_pipeline_axi-0c4e4e513d3054bd/bench_top.sv)
+test live_media_graph_switch_preserves_recording_and_fences_axi_work has been running for over 60 seconds
+test looping_workloads_with_thirty_two_frame_chunks_and_dram_timing has been running for over 60 seconds
+    Finished `verilator-O0` profile [unoptimized] target in 84.02s
+   Compiling bench_top#7824235463441760978 (/workspace/work/current-backend/work/marlin-suite/loading-media/media_audio_pipeline_axi-4a71ce6238eaab15/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 89.14s
+    Finished `verilator-O0` profile [unoptimized] target in 45.91s
+test live_media_graph_switch_preserves_recording_and_fences_axi_work ... ok
+test looping_workloads_with_thirty_two_frame_chunks_and_dram_timing ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 195.53s
+
+     Running tests/targets.rs (target/debug/build/rt_fpga_testbench/5115d9a9ad419e69/out/targets-5115d9a9ad419e69)
+
+running 2 tests
+test targets_reject_missing_media_and_physical_capacity_before_loading ... ok
+test targets_match_raw_and_compiled_programs_at_distinct_state_addresses ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.09s
+

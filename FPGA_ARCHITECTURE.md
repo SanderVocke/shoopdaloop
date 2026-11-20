@@ -13,10 +13,13 @@ Explicit MIDI context bindings extend the compiled work pass in both Rust and
 RTL. SP remains the sole owner of loop time/modes, and MIDI operations share the
 ordinary queue and JP with audio. `midi_audio_pipeline_axi` connects that path;
 MIDI content/state live in cache-less DDR with small context/working tables on
-chip. Audio keeps its caches. General application MIDI wiring and the SoC
+chip. Its MIDI execution unit shares arithmetic and BRAM working storage under a
+read-only control program; the Rust reference remains ordinary bounded software.
+Audio keeps its caches. General application MIDI wiring and the SoC
 embedding remain separate. See [the execution design](docs/fpga/midi-shared-jobs.md),
+[compact MIDI hardware](docs/fpga/midi-compact-execution.md),
 [validation](docs/fpga/midi-shared-jobs-validation.md), and
-[Vivado measurements](docs/fpga/midi-shared-jobs-vivado-7020.md).
+[current Vivado measurements](docs/fpga/midi-compact-vivado-7020.md).
 
 
 The RTL transition processor, full-loop hardware coordinator, old ARM control interfaces,

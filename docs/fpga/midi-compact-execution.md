@@ -30,7 +30,9 @@ no MIDI job that takes over scheduling an entire quantum.
 
 Recorded events, shared views, block references, snapshots, input/output state,
 history, comparison maps and retirement records retain their DDR formats. MIDI
-has no DDR cache. The finite descriptor table for loops remains primary BRAM.
+has no DDR cache. A loop descriptor holds its identity, playback position,
+references to recorded content and status. The finite descriptor table remains
+primary BRAM.
 The head table used to merge playback events also stays in BRAM.
 
 The instruction ROM and two copies of a small working memory are new. Both

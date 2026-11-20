@@ -1,0 +1,76 @@
+WARNING: Default location for XILINX_HLS not found
+
+****** Vivado v2021.1 (64-bit)
+  **** SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+    ** Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+
+source run.tcl
+# if {[version -short] ne {2021.1}} {error "This analysis requires Vivado 2021.1"}
+# if {[llength $argv] == 0 || [llength $argv] % 2} {error "Pass CHECKPOINT OUTPUT_PREFIX pairs"}
+# set_param general.maxThreads 2
+# foreach {checkpoint prefix} $argv {
+#     open_checkpoint $checkpoint
+#     set roots [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == midi_job_port}]
+#     set adapters [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME == word_axi && NAME =~ *midi_memory}]
+#     if {![llength $roots] || ![llength $adapters]} {error "Missing MIDI service or DDR adapter"}
+#     set registers {}
+#     foreach root [concat $roots $adapters] {
+#         set selected [get_cells -quiet -hierarchical -filter "NAME =~ $root/* && (IS_SEQUENTIAL || REF_NAME =~ RAMB* || REF_NAME =~ DSP*)"]
+#         set registers [concat $registers $selected]
+#     }
+#     set registers [lsort -unique $registers]
+#     if {![llength $registers]} {error "No clocked MIDI cells found"}
+#     file mkdir [file dirname $prefix]
+#     report_timing -from $registers -delay_type max -max_paths 10 -path_type full_clock_expanded -file ${prefix}_from_paths.rpt
+#     report_timing -to $registers -delay_type max -max_paths 10 -path_type full_clock_expanded -file ${prefix}_to_paths.rpt
+#     report_timing -from $registers -to $registers -delay_type max -max_paths 10 -path_type full_clock_expanded -file ${prefix}_internal_paths.rpt
+#     set from [get_timing_paths -from $registers -delay_type max -max_paths 1]
+#     set to [get_timing_paths -to $registers -delay_type max -max_paths 1]
+#     set internal [get_timing_paths -from $registers -to $registers -delay_type max -max_paths 1]
+#     set output [open ${prefix}.json w]
+#     puts $output "{\"clocked_cells\":[llength $registers],\"from_wns_ns\":[get_property SLACK $from],\"to_wns_ns\":[get_property SLACK $to],\"internal_wns_ns\":[get_property SLACK $internal]}"
+#     close $output
+#     close_design
+# }
+Command: open_checkpoint /workspace/work/midi-vivado/compact-pipelined-100/post_route.dcp
+
+Starting open_checkpoint Task
+
+Time (s): cpu = 00:00:00.02 ; elapsed = 00:00:00.03 . Memory (MB): peak = 2011.691 ; gain = 3.969 ; free physical = 7149 ; free virtual = 13664
+INFO: [Device 21-403] Loading part xc7z020clg484-1
+Netlist sorting complete. Time (s): cpu = 00:00:00.29 ; elapsed = 00:00:00.30 . Memory (MB): peak = 2638.078 ; gain = 0.000 ; free physical = 6602 ; free virtual = 13223
+INFO: [Netlist 29-17] Analyzing 6489 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2021.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:05 ; elapsed = 00:00:05 . Memory (MB): peak = 2782.957 ; gain = 74.898 ; free physical = 5892 ; free virtual = 12616
+Restored from archive | CPU: 5.380000 secs | Memory: 80.017059 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:05 ; elapsed = 00:00:05 . Memory (MB): peak = 2782.957 ; gain = 74.898 ; free physical = 5900 ; free virtual = 12624
+Netlist sorting complete. Time (s): cpu = 00:00:00 ; elapsed = 00:00:00.01 . Memory (MB): peak = 2782.957 ; gain = 0.000 ; free physical = 5909 ; free virtual = 12635
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 58 instances were transformed.
+  RAM16X1D => RAM32X1D (RAMD32(x2)): 37 instances
+  RAM32M => RAM32M (RAMD32(x6), RAMS32(x2)): 15 instances
+  RAM32X1D => RAM32X1D (RAMD32(x2)): 6 instances
+
+INFO: [Project 1-604] Checkpoint was created with Vivado v2021.1 (64-bit) build 3247384
+open_checkpoint: Time (s): cpu = 00:00:27 ; elapsed = 00:00:31 . Memory (MB): peak = 2786.957 ; gain = 785.172 ; free physical = 5909 ; free virtual = 12635
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -1, Delay Type: max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 2 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -from_pins  -max_paths 10 -nworst 1 -delay_type max -sort_by slack.
+report_timing: Time (s): cpu = 00:00:20 ; elapsed = 00:00:12 . Memory (MB): peak = 2901.250 ; gain = 114.293 ; free physical = 6069 ; free virtual = 12582
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -1, Delay Type: max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 2 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -to_pins  -max_paths 10 -nworst 1 -delay_type max -sort_by slack.
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -1, Delay Type: max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 2 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -from_pins  -to_pins  -max_paths 10 -nworst 1 -delay_type max -sort_by slack.
+# exit 0
+INFO: [Common 17-206] Exiting Vivado at Fri Nov 20 09:02:10 2026...

@@ -156,3 +156,6 @@ The [Vivado 2021.1 study](../../docs/fpga/midi-vivado-7020.md) compares the audi
 components before and after adding MIDI, sized for 64 stereo loops with MIDI,
 30-second audio storage, and 32-frame chunks/quanta on a Zynq-7020. It reports
 resource use and clock timing separately from quantum execution deadlines.
+The [compact-execution study](../../docs/fpga/midi-compact-vivado-7020.md) records
+the subsequent redesign behind the common SP/JP, its resource savings and the
+remaining timing/throughput limits.

@@ -484,3 +484,27 @@ and speculative profiling.
   does not remove the remaining 7020 packing/address-timing or full-session DDR
   throughput qualification work. No CI/review feedback was consulted; no merge
   was performed.
+
+### Resource follow-up, 2026-11-20
+
+- Preserved the resource investigation and controlled experiments in `94ec44f4`
+  before redesigning RTL. The Rust reference remains the behavioral oracle.
+- Replaced the JP's wide MIDI bookkeeping/storage controllers with a bounded
+  read-only control program, shared arithmetic and BRAM working memory. Native
+  paths handle repeated transfers, descriptor commits, head selection and idle
+  bookkeeping. SP, the mixed queue and the common audio/MIDI JP retain their roles.
+- Final RTL `ad08d55e` passes all 18 MIDI conformance tests. The 131 Rust
+  reference/compiler tests and 10 retained RTL tests pass, along with generation,
+  lint, formatting, policy and warning-denying example-build checks.
+- Repeated the unchanged 64-stereo-plus-MIDI/chunk-32/quantum-32 Vivado 2021.1
+  profile. Optimized logic falls from 49,841/49,832 to 35,660/35,666 LUTs at
+  100/150 MHz. Added logic above audio-only falls 64.9% at 100 MHz. The new design
+  uses 92 BRAM equivalents and eight DSPs; both builds now place and route.
+- Whole-image routed setup margins remain −5.138/−7.773 ns, with MIDI-involving
+  paths at −2.727/−5.618 ns. Physical slice usage remains 96.2%/96.5%. This is a
+  substantial MIDI resource improvement, not clock closure or board qualification.
+  Cycle measurements remain descriptive; no simultaneous-start performance gate
+  was added. CI and automated review feedback remain out of scope.
+- The [follow-up report](docs/fpga/midi-compact-vivado-7020.md) contains figures,
+  plain-language architecture, configuration limits, cycle measurements and raw
+  evidence. The historical studies remain available as the before measurements.

@@ -7,3 +7,5 @@ resources/builtins/catalog.json text eol=lf
 resources/builtins/*.png binary
 resources/builtins/**/*.png binary
 platforms/zynq7000/patches/*.patch -whitespace
+fpga/midi/rtl/midi_control_program.svh linguist-generated=true
+fpga/midi/rtl/midi_control_rom.svh linguist-generated=true
