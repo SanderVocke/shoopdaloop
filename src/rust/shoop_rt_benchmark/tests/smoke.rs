@@ -110,3 +110,21 @@ fn unsupported_grabs_do_not_turn_into_a_cheaper_workload() {
     assert_eq!(run.status, "unsupported");
     assert!(run.callbacks.is_empty());
 }
+
+#[shoop_test(no_wasm = "native dummy history capture")]
+fn audio_grab_fixture_retains_exact_stereo_after_history_wrap_without_heap_work() {
+    let fixture = Fixture::new(Preset::Smoke, Pattern::Grab);
+    let (control, driver) = cpu::prepare(&fixture).unwrap();
+    let run = runner::run("cpu", fixture, control, Guard(driver));
+    assert_eq!(run.status, "completed", "{:?}", run.error);
+    assert_eq!(run.coverage["stereo_samples_checked"], true);
+    assert!(run
+        .events
+        .iter()
+        .filter(|e| e.label == "grab-all")
+        .all(|e| e.commands == 64 && e.same_frame));
+    assert_eq!(
+        run.events.iter().filter(|e| e.label == "grab-all").count(),
+        2
+    );
+}

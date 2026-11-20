@@ -144,11 +144,19 @@ pub fn prepare(fixture: &Fixture) -> Result<(Control<shoop_rt_engine::ControlEnd
         pending_transitions: 1024,
         reliable_credits: 256,
         bulk_credits: 1,
-        midi_events: MIDI_INPUT_CAPACITY,
-        midi_bytes: MIDI_INPUT_CAPACITY * 3,
+        midi_events: if media.midi() { MIDI_INPUT_CAPACITY } else { 1 },
+        midi_bytes: if media.midi() {
+            MIDI_INPUT_CAPACITY * 3
+        } else {
+            16
+        },
         master_connections: (0..channels).map(|i| (i as u8, i as u16)).collect(),
         history: host::InputHistorySettings {
-            seconds: fixture.history_seconds,
+            seconds: if media.midi() {
+                0
+            } else {
+                fixture.history_seconds
+            },
             audio_take_pages: SHARED_TAKE_PAGES,
             midi_pages: 16,
             midi_records: 16,
