@@ -73,7 +73,12 @@ cargo run --locked -p rt_fpga_testbench --features sim -- audio --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model fixed
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model dramsim3 --axi-data-width 32
 cargo run --locked -p rt_fpga_testbench --features sim -- deferred --memory-model dramsim3
+cargo run --locked --release -p rt_fpga_testbench --features sim --example midi_data_quantum_64 -- --scenario mixed --ddr-delay 7
 ```
+
+The [64-loop playback benchmark](../../../docs/fpga/midi-data-jobs-benchmarks.md)
+also accepts `--scenario audio`/`midi` and `--ddr-delay 0` for ideal memory. It
+checks all jobs, output, and loop clocks against Rust while measuring RTL clocks.
 
 The `midi` test target compares the event-only RTL with the Rust FPGA reference:
 compiled SP/shared-JP job traces, mixed audio/MIDI output, all supported quantum

@@ -110,6 +110,8 @@ Older MIDI measurement documents describe earlier implementations and are not
 performance results for this one.
 The [current implementation report](../../docs/fpga/midi-data-jobs.md) includes
 the Rust comparisons and Vivado 2021.1 utilization/timing at 100 and 150 MHz.
+The [64-loop playback measurements](../../docs/fpga/midi-data-jobs-benchmarks.md)
+compare audio plus MIDI, audio only, and MIDI only with ideal and delayed DDR.
 
 ## Generation and verification
 

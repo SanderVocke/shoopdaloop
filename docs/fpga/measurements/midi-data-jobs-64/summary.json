@@ -1,0 +1,102 @@
+{
+  "mixed-0": {
+    "median_us": 488.49,
+    "min_us": 488.49,
+    "max_us": 491.2,
+    "startup_us": 874.05,
+    "median_cycles": 48849.0,
+    "steady_samples": 16,
+    "steady_midi_packets": [
+      4,
+      5
+    ],
+    "compiled_instructions": 771,
+    "maximum_jobs": 963,
+    "actual_jobs": [
+      515
+    ]
+  },
+  "mixed-7": {
+    "median_us": 505.5,
+    "min_us": 505.5,
+    "max_us": 510.24,
+    "startup_us": 981.36,
+    "median_cycles": 50550.0,
+    "steady_samples": 16,
+    "steady_midi_packets": [
+      4,
+      5
+    ],
+    "compiled_instructions": 771,
+    "maximum_jobs": 963,
+    "actual_jobs": [
+      515
+    ]
+  },
+  "audio-0": {
+    "median_us": 402.2,
+    "min_us": 402.2,
+    "max_us": 402.2,
+    "startup_us": 625.5,
+    "median_cycles": 40220.0,
+    "steady_samples": 16,
+    "steady_midi_packets": [
+      0
+    ],
+    "compiled_instructions": 578,
+    "maximum_jobs": 642,
+    "actual_jobs": [
+      386
+    ]
+  },
+  "audio-7": {
+    "median_us": 411.84,
+    "min_us": 411.84,
+    "max_us": 411.84,
+    "startup_us": 696.51,
+    "median_cycles": 41184.0,
+    "steady_samples": 16,
+    "steady_midi_packets": [
+      0
+    ],
+    "compiled_instructions": 578,
+    "maximum_jobs": 642,
+    "actual_jobs": [
+      386
+    ]
+  },
+  "midi-0": {
+    "median_us": 124.72,
+    "min_us": 124.72,
+    "max_us": 127.43,
+    "startup_us": 261.96,
+    "median_cycles": 12472.0,
+    "steady_samples": 16,
+    "steady_midi_packets": [
+      4,
+      5
+    ],
+    "compiled_instructions": 258,
+    "maximum_jobs": 322,
+    "actual_jobs": [
+      130
+    ]
+  },
+  "midi-7": {
+    "median_us": 132.84,
+    "min_us": 132.84,
+    "max_us": 137.58,
+    "startup_us": 360.24,
+    "median_cycles": 13284.0,
+    "steady_samples": 16,
+    "steady_midi_packets": [
+      4,
+      5
+    ],
+    "compiled_instructions": 258,
+    "maximum_jobs": 322,
+    "actual_jobs": [
+      130
+    ]
+  }
+}

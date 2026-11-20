@@ -184,6 +184,9 @@ claimed before/after routed comparison.
 These builds measure fabric resources and clock paths. They do **not** measure
 64-loop quantum execution time or establish the 32-frame processing deadline.
 Likewise, completing the 3,000-message functional test is not a deadline claim.
+The subsequent [64-loop playback benchmarks](midi-data-jobs-benchmarks.md) measure
+quantum execution separately, with audio plus MIDI, audio only, and MIDI only,
+under ideal and delayed memory.
 
 ## Evidence and reproduction
 
