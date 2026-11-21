@@ -128,6 +128,19 @@ impl StateProgramTarget for RustTarget<'_> {
             .map(|op| match *op {
                 Operation::Midi { .. } => unreachable!("legacy MIDI phases rejected"),
                 Operation::MidiData(operation) => match operation {
+                    MidiOperation::State {
+                        loop_id,
+                        sequence,
+                        input,
+                        outputs,
+                        channels,
+                    } => Instruction::ProcessMidiState {
+                        loop_id: id(loop_id),
+                        sequence: crate::midi::SequenceId(sequence),
+                        input,
+                        outputs,
+                        channels,
+                    },
                     MidiOperation::Input { port, destination } => Instruction::ProcessMidiInput {
                         port,
                         destination: crate::midi::BufferId(destination),

@@ -94,6 +94,13 @@ pub struct MidiBinding {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MidiOperation {
+    State {
+        loop_id: Identity,
+        sequence: u16,
+        input: u16,
+        outputs: u8,
+        channels: u16,
+    },
     Input {
         port: u16,
         destination: u16,
@@ -122,7 +129,7 @@ pub enum MidiOperation {
 }
 impl MidiOperation {
     pub fn jobs(self) -> u32 {
-        if matches!(self, Self::Capture { .. }) {
+        if matches!(self, Self::Capture { .. } | Self::State { .. }) {
             3
         } else {
             1
@@ -486,6 +493,18 @@ impl LogicalStateProgram {
             match *op {
                 Operation::MidiData(operation) => match operation {
                     MidiOperation::Input { .. } | MidiOperation::Output { .. } => {}
+                    MidiOperation::State {
+                        loop_id: id,
+                        sequence,
+                        input,
+                        outputs,
+                        channels,
+                    } => {
+                        loop_id(id)?;
+                        if sequence >= 128 || input >= 256 || outputs == 0 || channels == 0 {
+                            return Err(InvalidProgram);
+                        }
+                    }
                     MidiOperation::Capture { loop_id: id, .. } => {
                         loop_id(id)?;
                     }
@@ -617,6 +636,7 @@ impl LogicalStateProgram {
             }
             let mut captures = Vec::new();
             let mut cursors = Vec::new();
+            let mut states = Vec::new();
             for op in &self.work_pass {
                 match op {
                     Operation::MidiData(MidiOperation::Capture {
@@ -629,6 +649,17 @@ impl LogicalStateProgram {
                             return Err(InvalidProgram);
                         }
                         captures.push((*loop_id, *sequence));
+                    }
+                    Operation::MidiData(MidiOperation::State {
+                        loop_id, sequence, ..
+                    }) => {
+                        if states.iter().any(|(id, seq)| id == loop_id || seq == sequence)
+                            || !self.work_pass.iter().any(|op| matches!(op,
+                                Operation::MidiData(MidiOperation::Playback { loop_id: id, sequence: seq, .. })
+                                if id == loop_id && seq == sequence)) {
+                            return Err(InvalidProgram);
+                        }
+                        states.push((*loop_id, *sequence));
                     }
                     Operation::MidiData(MidiOperation::Playback { cursor, .. }) => {
                         if cursors.contains(cursor) {

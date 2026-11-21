@@ -229,18 +229,18 @@ reject incompatible images. A software test pass does not establish FPGA timing.
 - [x] Fetch `feat/backend-replacement`; start a fresh work branch/worktree from
   the merged base, preserving unrelated work. Carry this plan into that worktree
   and commit it there; record the source revision.
-- [ ] Specify the reduced field layout, seeds/unknowns, reset effects, ordinary-CC
+- [x] Specify the reduced field layout, seeds/unknowns, reset effects, ordinary-CC
   policy, note continuation/retrigger, shared-channel cleanup, source observation,
   snapshot origins, and same-time restore/event precedence. Keep exclusions above.
   Only CC64/66 participate in holding/capturing notes; CC67 is a sound control.
-- [ ] Review the initial baseline for disproportionate cost. Record justified
+- [x] Review the initial baseline for disproportionate cost. Record justified
   simplifications and the resulting supported-state contract before writing its
   acceptance fixtures; revisit it when Rust or RTL evidence warrants a change.
-- [ ] Turn the discussion scenarios into a small fixture table: wobble/return,
+- [x] Turn the discussion scenarios into a small fixture table: wobble/return,
   dirty-bit stability with changing note repairs, sustain insertion, sostenuto
   capture membership, pedal handoffs, pressure, resets, shared-output cascades,
   and interrupted restoration. Give expected packets for representative cases.
-- [ ] Preserve/verify the current event-only tests and benchmark artifacts. Reuse
+- [x] Preserve/verify the current event-only tests and benchmark artifacts. Reuse
   the existing physical baseline only after checking source/configuration hashes.
 
 Verification: a reviewable semantic/layout document and independent receiver-model
@@ -251,14 +251,14 @@ not architectural starting points to resurrect wholesale.
 
 ### 2. Build the Rust state, snapshot, and bitmap components
 
-- [ ] Add the reduced state interpreter, explicit known masks, prepared snapshot
+- [x] Add the reduced state interpreter, explicit known masks, prepared snapshot
   pool, output/source states, relevant-comparison directory, and direct-index
   difference maps with summaries. Keep the event-only configuration available.
-- [ ] Report affected fields/groups from each state update. Handle the chosen
+- [x] Report affected fields/groups from each state update. Handle the chosen
   model's notes/velocities, pressure, pedal edges/capture, and reset effects.
-- [ ] Add view/snapshot lifecycle, import/export metadata, range-origin derivation,
+- [x] Add view/snapshot lifecycle, import/export metadata, range-origin derivation,
   and generation/refcount rules; preserve independent exports through retakes.
-- [ ] Implement the phased bitmap-driven restore/cleanup routines with accepted-
+- [x] Implement the phased bitmap-driven restore/cleanup routines with accepted-
   prefix progress and no persistent restoration-message sequence.
 
 Verification: focused unit tests for the chosen model first, then randomized
@@ -272,19 +272,19 @@ notes rather than relying on reset-default controller-only fixtures.
 
 ### 3. Integrate Rust through compiled SP/JP jobs and pass the Rust gate
 
-- [ ] Extend typed jobs, compiler/targets, bindings, job-budget calculations,
+- [x] Extend typed jobs, compiler/targets, bindings, job-budget calculations,
   preparation validation, and image-switch guards for state resources. Validate
   MIDI resources independently of audio counts; preserve full owner generations.
-- [ ] Track each source once; take recording-start snapshots before frame-zero
+- [x] Track each source once; take recording-start snapshots before frame-zero
   events. Publish content/snapshot pairs together through the existing fence.
-- [ ] Emit restore/cleanup work from actual SP transitions: play, explicit
+- [x] Emit restore/cleanup work from actual SP transitions: play, explicit
   retrigger, wrap, seek, stop, play-to-record, clear, replacement, and route changes.
   Derive nonzero seek targets once. Preserve capture-finish ordering and callback
   partitioning; do not add a per-quantum MIDI service pass.
-- [ ] Route every accepted ordinary/corrective output through one state-update
+- [x] Route every accepted ordinary/corrective output through one state-update
   path. Rejected packets leave that path untouched; failure retains the existing
   latched-fault/invalid-quantum contract. Preserve progress across output stalls.
-- [ ] Document Rust work/memory bounds and the hardware-mapping review before RTL.
+- [x] Document Rust work/memory bounds and the hardware-mapping review before RTL.
 
 Verification: compiled MIDI-only and mixed programs, exact job/packet ordering,
 all supported quantum sizes, multiple outputs/channel masks, same-channel writers,
@@ -418,3 +418,13 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
   and [production restoration reference](src/rust/shoop_loops/src/midi_restore.rs).
 - [Event-only 64-loop results](docs/fpga/midi-data-jobs-benchmarks.md) and
   [Vivado evidence](docs/fpga/midi-data-jobs.md).
+
+## Rust gate evidence
+
+- State interpreter, prepared snapshots, bitmap service and compiled SP/JP jobs
+  implemented. Core semantic fixtures, randomized fresh-comparison oracle, an
+  independent receiver, 128-loop no-heap checks, and full reference/compiler
+  all-feature suites pass locally with warnings denied.
+- State binding changes across live image switches are explicitly refused; re-prepare
+  at a stopped boundary instead. This bounds lifecycle work and avoids silent routing
+  changes. Prefix seeks are best effort and linear only at the discontinuity.

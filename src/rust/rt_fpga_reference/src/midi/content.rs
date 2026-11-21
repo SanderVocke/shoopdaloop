@@ -57,6 +57,7 @@ pub struct ContentStore {
     free_views: Vec<u32>,
     retired: VecDeque<ViewId>,
     work: u64,
+    snapshots: Option<Box<[super::performance::State]>>,
 }
 fn prepared<T>(count: usize, mut value: impl FnMut() -> T) -> Result<Vec<T>, Error> {
     let mut v = Vec::new();
@@ -130,10 +131,42 @@ impl ContentStore {
             free_views: free_ids(limits.views)?,
             retired,
             work: 0,
+            snapshots: None,
         })
     }
     pub fn limits(&self) -> StoreLimits {
         self.limits
+    }
+    pub fn prepare_state(&mut self) -> Result<(), Error> {
+        if self.snapshots.is_some() || self.usage().views != 0 {
+            return Err(Error::Busy);
+        }
+        let states: Vec<_> = (0..self.limits.views)
+            .map(|_| super::performance::State::new())
+            .collect();
+        self.snapshots = Some(states.into_boxed_slice());
+        Ok(())
+    }
+    pub fn snapshot(&self, id: ViewId) -> Result<&super::performance::State, Error> {
+        self.view(id)?;
+        self.snapshots
+            .as_ref()
+            .map(|s| &s[id.slot as usize])
+            .ok_or(Error::Unsupported)
+    }
+    pub fn seed_snapshot(
+        &mut self,
+        id: ViewId,
+        state: &super::performance::State,
+        channels: u16,
+    ) -> Result<(), Error> {
+        let view = self.view(id)?;
+        if view.description.status != TakeStatus::Recording || view.description.events != 0 {
+            return Err(Error::Busy);
+        }
+        self.snapshots.as_mut().ok_or(Error::Unsupported)?[id.slot as usize]
+            .copy_from(state, channels);
+        Ok(())
     }
     pub fn work(&self) -> u64 {
         self.work
@@ -158,6 +191,9 @@ impl ContentStore {
                 .sum::<usize>()
             + self.free_views.capacity() * size_of::<u32>()
             + self.retired.capacity() * size_of::<ViewId>()
+            + self.snapshots.as_ref().map_or(0, |s| {
+                s.len() * (super::performance::FIELDS * 4 + size_of::<super::performance::State>())
+            })
     }
     fn view(&self, id: ViewId) -> Result<&View, Error> {
         let v = self
@@ -189,6 +225,9 @@ impl ContentStore {
             frames: 0,
             status: TakeStatus::Recording,
         };
+        if let Some(states) = self.snapshots.as_mut() {
+            states[slot as usize].clear();
+        }
         Ok(ViewId { slot, generation })
     }
     pub fn writer(&mut self) -> Result<ViewId, Error> {
@@ -402,6 +441,22 @@ impl ContentStore {
             frames: end - start,
             status: TakeStatus::Complete,
         };
+        if let Some(states) = self.snapshots.as_mut() {
+            let (source, target) = if source.slot < id.slot {
+                let (a, b) = states.split_at_mut(id.slot as usize);
+                (&a[source.slot as usize], &mut b[0])
+            } else {
+                let (a, b) = states.split_at_mut(source.slot as usize);
+                (&b[0], &mut a[id.slot as usize])
+            };
+            target.copy_from(source, u16::MAX);
+        }
+        if self.snapshots.is_some() {
+            for index in 0..first_event {
+                let message = self.read(source, index)?.unwrap().message;
+                self.snapshots.as_mut().unwrap()[id.slot as usize].apply(message);
+            }
+        }
         self.work = self.work.saturating_add(blocks as u64);
         Ok(id)
     }
@@ -419,6 +474,13 @@ impl ContentStore {
         if v.description.status != TakeStatus::Recording || count > v.description.events {
             return Err(Error::InvalidState);
         }
+        if self.snapshots.is_some() {
+            for index in 0..count {
+                let message = self.read(id, index)?.ok_or(Error::InvalidState)?.message;
+                self.snapshots.as_mut().unwrap()[id.slot as usize].apply(message);
+            }
+        }
+        let v = self.view(id)?;
         let at = v.first + count as usize;
         let remove = at / self.limits.block_events as usize;
         for i in 0..remove {

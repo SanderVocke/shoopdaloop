@@ -1,9 +1,12 @@
 //! Timestamped MIDI storage and data operations for the common job processor.
 pub(crate) mod buffers;
 mod content;
+mod expression;
 mod memory;
+pub mod performance;
 pub(crate) use buffers::Buffers;
 pub use content::{ContentStore, Description, StoreLimits, StoreUsage, ViewId};
+pub use expression::{Expression, StateBinding, StateLimits, StateWork};
 pub use memory::MidiMemory;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

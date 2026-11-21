@@ -182,6 +182,19 @@ impl StateProgramTarget for RtlTarget<'_> {
                     let byte =
                         |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
                     match operation {
+                        M::State {
+                            loop_id,
+                            sequence,
+                            input,
+                            outputs,
+                            channels,
+                        } => component::Instruction::MidiState {
+                            loop_id: id(loop_id),
+                            sequence: byte(sequence)?,
+                            input: byte(input)?,
+                            outputs,
+                            channels,
+                        },
                         M::Input { port, destination } => {
                             component::Instruction::MidiInput { port, destination }
                         }

@@ -57,6 +57,8 @@ pub struct LoopSlot {
     pub(crate) mode_plan: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) midi_capture_open: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) midi_playing: bool,
     pub(crate) mode_failures: u32,
 }
 impl LoopSlot {
@@ -71,6 +73,7 @@ impl LoopSlot {
             protected: None,
             mode_plan,
             midi_capture_open: false,
+            midi_playing: false,
             mode_failures: 0,
         }
     }
@@ -116,6 +119,7 @@ impl LoopMemory {
                     protected: None,
                     mode_plan: false,
                     midi_capture_open: false,
+                    midi_playing: false,
                     mode_failures: 0,
                 })
             })

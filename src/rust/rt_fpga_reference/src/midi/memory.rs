@@ -4,6 +4,7 @@ use alloc::{boxed::Box, vec};
 /// Sequence slots own views; cursors borrow their identity until the next ordered job.
 pub struct MidiMemory {
     pub store: ContentStore,
+    pub expression: Option<super::Expression>,
     sequences: Box<[Option<ViewId>]>,
 }
 impl MidiMemory {
@@ -13,8 +14,33 @@ impl MidiMemory {
         }
         Ok(Self {
             store: ContentStore::prepare(limits)?,
+            expression: None,
             sequences: vec![None; usize::from(sequences)].into_boxed_slice(),
         })
+    }
+    pub fn prepare_state(&mut self, inputs: u16, outputs: u16) -> Result<(), Error> {
+        if self.expression.is_some() {
+            return Err(Error::Busy);
+        }
+        let expression = super::Expression::prepare(super::StateLimits {
+            inputs,
+            outputs,
+            sequences: self.sequences.len() as u16,
+        })?;
+        self.store.prepare_state()?;
+        self.expression = Some(expression);
+        Ok(())
+    }
+    pub fn bind_state(
+        &mut self,
+        id: SequenceId,
+        binding: super::StateBinding,
+    ) -> Result<(), Error> {
+        let view = self.view(id)?;
+        self.expression
+            .as_mut()
+            .ok_or(Error::Unsupported)?
+            .bind(id.0, binding, view, &self.store)
     }
     pub fn view(&self, id: SequenceId) -> Result<Option<ViewId>, Error> {
         self.sequences
@@ -38,6 +64,9 @@ impl MidiMemory {
             self.store.release(v)?;
         }
         self.sequences[usize::from(id.0)] = view;
+        if let Some(state) = self.expression.as_mut() {
+            state.rebind(id.0, view, &self.store)?;
+        }
         Ok(())
     }
     pub(crate) fn begin_capture(&mut self, id: SequenceId) -> Result<(), Error> {
@@ -50,6 +79,14 @@ impl MidiMemory {
             self.store.release(v)?;
         }
         self.sequences[usize::from(id.0)] = Some(view);
+        if let Some(state) = self.expression.as_mut() {
+            if let Err(error) = state.capture(id.0, view, &mut self.store) {
+                if error != Error::InvalidState {
+                    return Err(error);
+                }
+            }
+            state.rebind(id.0, Some(view), &self.store)?;
+        }
         Ok(())
     }
     pub(crate) fn finish_capture(&mut self, id: SequenceId) -> Result<(), Error> {

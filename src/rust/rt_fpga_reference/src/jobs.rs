@@ -44,6 +44,15 @@ pub struct BufferId(
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Job {
+    MidiRestoreState {
+        owner: crate::records::Identity,
+        sequence: crate::midi::SequenceId,
+        position: u64,
+    },
+    MidiCleanupState {
+        owner: crate::records::Identity,
+        sequence: crate::midi::SequenceId,
+    },
     MidiInput {
         port: u16,
         destination: crate::midi::BufferId,
@@ -312,7 +321,9 @@ impl JobProcessor {
                 | Job::MidiAppend { .. }
                 | Job::MidiFinishCapture { .. }
                 | Job::MidiMerge { .. }
-                | Job::MidiOutput { .. } => {
+                | Job::MidiOutput { .. }
+                | Job::MidiRestoreState { .. }
+                | Job::MidiCleanupState { .. } => {
                     self.execute_midi(job, midi.as_deref_mut().ok_or(Error::UnsupportedJob)?, base)
                         .map_err(Error::Midi)?;
                 }
@@ -394,7 +405,9 @@ impl JobProcessor {
             | Job::MidiAppend { .. }
             | Job::MidiFinishCapture { .. }
             | Job::MidiMerge { .. }
-            | Job::MidiOutput { .. } => return Err(Error::UnsupportedJob),
+            | Job::MidiOutput { .. }
+            | Job::MidiRestoreState { .. }
+            | Job::MidiCleanupState { .. } => return Err(Error::UnsupportedJob),
             Job::Constant { value, destination } => {
                 self.destination(destination)?;
                 self.buffers[destination.0].fill(Fixed(value));

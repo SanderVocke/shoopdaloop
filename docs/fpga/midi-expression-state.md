@@ -48,3 +48,46 @@ have independent pedals or independent same-key synthesizer voices. Cleanup is
 targeted to tracked playback activity; unrelated outputs/channels are untouched.
 Use separate channels for independent articulation. The SP decides transitions;
 JP receives concrete owner, sequence, position, scope, and destination information.
+
+## Prepared Rust layout and work bounds
+
+A channel has 512 fixed u32 field locations: keys 0–127, controller values
+128–255, pitch at 256, pressure at 257, and reserved padding. Bit 31 means known.
+Note words contain velocity, key-down, sostenuto capture, sustain hold, and known
+poly-pressure. Each state occupies 32 KiB; one is prepared per input, output, view,
+and one seek scratch target. View generations protect the snapshot in that slot.
+Snapshots are copied only at capture/import/range operations, not every quantum.
+
+Each sequence/output has an 8,192-bit difference map, a 128-bit nonempty-word
+summary, count, and 272 bytes of owner activity. The 128 × 8 comparison profile is
+about 1.4 MiB in Rust. Each output/channel directory is a 128-bit sequence set.
+A changed ordinary controller visits only its field and the relevant directory;
+returning to the target value clears the bit immediately. Pedal/reset operations
+may affect 128 keys on their channel. Restoration traverses dirty fields; only
+complex pedal repair inspects the bounded channel group. A seek interprets the
+stored prefix once and uses prepared scratch memory. None of these jobs allocates.
+
+The compiled `State` binding supplies the owner generation, sequence, direct input,
+outputs and channel mask. Prepare it outside rendering. SP submits restore on
+play/start/repeat/seek and cleanup on leaving playback. JP performs concrete data
+work without reading loop modes. Existing state bindings must be identical across
+live image switches; changing them requires a stopped engine and fresh preparation.
+This deliberately avoids an implicit route-change cleanup pass in the callback.
+
+| Scenario | Checked behaviour |
+| --- | --- |
+| Control changes then returns | Bit sets, stays set, then clears without a restore. |
+| Unrelated channel/output | No comparison visits. |
+| Pressure-only difference | Pressure packet, no note restart. |
+| Sustain/sostenuto repair | Pedal releases precede reconstruction; capture membership is correct. |
+| Same-key velocity difference | Off/on then known pressure. |
+| Recording starts on an input event | Snapshot precedes that event. |
+| Repeat | Restore before ordinary frame-zero packets. |
+| Refused packet | Accepted prefix updates output and all comparison maps. |
+| Range/export followed by retake | Prefix-derived snapshot and retained original remain valid. |
+| Unknown target | No invented value; raw events and owner stop cleanup still operate. |
+
+RTL mapping review: bulk state/snapshots/bitmap words belong in DDR. Connection
+masks and summary counts are bounded, prepared metadata. The RTL can serialize
+field access and reuse its memory port while Rust uses normal indexed arrays and
+word operations. Do not synthesize these heap arrays as resettable registers.

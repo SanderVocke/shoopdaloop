@@ -10,6 +10,7 @@ pub(crate) struct Span {
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Cursor {
     pub owner: Option<crate::records::Identity>,
+    pub sequence: Option<super::SequenceId>,
     pub view: Option<ViewId>,
     pub index: u32,
     pub next: Option<Record>,
@@ -21,6 +22,7 @@ pub(crate) struct Buffers {
     pub cursors: Box<[Cursor]>,
     pub events: Vec<Event>,
     pub work: Work,
+    pub observed_inputs: Box<[bool]>,
 }
 impl Buffers {
     pub fn prepare(limits: BufferLimits) -> Result<Self, Error> {
@@ -37,10 +39,12 @@ impl Buffers {
             cursors: vec![Cursor::default(); usize::from(limits.cursors)].into_boxed_slice(),
             events,
             work: Work::default(),
+            observed_inputs: vec![false; limits.input_ports as usize].into_boxed_slice(),
         })
     }
     pub fn begin(&mut self) {
         self.events.clear();
+        self.observed_inputs.fill(false);
         self.spans.fill(Span::default());
     }
     pub fn source(&self, id: BufferId) -> Result<Span, Error> {
