@@ -685,6 +685,7 @@ pub struct ProcessorLimits {
     pub channels: u8,
     pub builtin_latency_frames: u32,
     pub carla_latency_frames: u32,
+    pub remote_carla_latency_frames: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

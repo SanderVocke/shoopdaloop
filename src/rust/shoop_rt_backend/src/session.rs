@@ -708,13 +708,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         for track in &session.tracks {
             check_track(track, u32::from(limits.strip_audio_channels), &composites)?;
         }
-        for kind in [
-            shoop_rt_protocol::ProcessorKind::BuiltInFx,
-            shoop_rt_protocol::ProcessorKind::OxiSynth,
-            shoop_rt_protocol::ProcessorKind::CarlaRack,
-            shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
-            shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x,
-        ] {
+        for kind in shoop_rt_protocol::ProcessorKind::HOSTED {
             let requested = session
                 .tracks
                 .iter()
@@ -742,22 +736,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     "Carla checkpoint restoration is unavailable on this host"
                 ));
             }
-            let available = self.processors.map_or(0, |limits| match kind {
-                shoop_rt_protocol::ProcessorKind::BuiltInFx => limits.effective.fx_instances,
-                shoop_rt_protocol::ProcessorKind::OxiSynth => limits.effective.synth_instances,
-                shoop_rt_protocol::ProcessorKind::CarlaRack => {
-                    limits.effective.carla.rack_instances
-                }
-                shoop_rt_protocol::ProcessorKind::CarlaPatchbay => {
-                    limits.effective.carla.patchbay_instances
-                }
-                shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x => {
-                    limits.effective.carla.patchbay16x_instances
-                }
-                shoop_rt_protocol::ProcessorKind::External => {
-                    unreachable!("external requires no hosted processor slot")
-                }
-            });
+            let available = self
+                .processors
+                .map_or(0, |limits| limits.effective.instances(kind));
             if requested > available as usize {
                 return Err(anyhow!("session requires {requested} {kind:?} instances; the host prepared {available}"));
             }

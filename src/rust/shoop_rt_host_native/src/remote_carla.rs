@@ -18,15 +18,25 @@ pub(crate) fn prepare(
     remote: Option<RemoteCarla>,
     mut processors: PreparedProcessors,
 ) -> (PreparedProcessors, Vec<Client>) {
+    let mixed =
+        description.processors.carla.hosting == shoop_rt_protocol::processors::CarlaHosting::Mixed;
     match prepare_banks(description, period, remote, &processors) {
         Ok((instances, services, bytes, effective)) => {
             processors.instances.extend(instances);
             processors.reserved_bytes = bytes;
-            processors.effective.carla = effective;
+            if mixed {
+                processors.effective.remote_carla = effective;
+            } else {
+                processors.effective.carla = effective;
+            }
             (processors, services)
         }
         Err(reason) => {
-            processors.effective.carla = EffectiveCarla::unavailable(reason);
+            if mixed {
+                processors.effective.remote_carla = EffectiveCarla::unavailable(reason);
+            } else {
+                processors.effective.carla = EffectiveCarla::unavailable(reason);
+            }
             (processors, Vec::new())
         }
     }
@@ -41,6 +51,13 @@ fn prepare_banks(
     processors: &PreparedProcessors,
 ) -> Result<Prepared, Unavailable> {
     let remote = remote.ok_or(Unavailable::Remote)?;
+    let mixed =
+        description.processors.carla.hosting == shoop_rt_protocol::processors::CarlaHosting::Mixed;
+    let reconnect = match (remote.retain_chain, remote.auto_reconnect) {
+        (_, false) => shoop_remote_fx::Reconnect::Manual,
+        (true, true) => shoop_remote_fx::Reconnect::Resume,
+        (false, true) => shoop_remote_fx::Reconnect::Recreate,
+    };
     let settings = description.processors.carla;
     if settings.configured_instances() == 0 {
         return Err(Unavailable::NoCapacity);
@@ -76,17 +93,29 @@ fn prepare_banks(
     let banks = [
         (
             Kind::Rack,
-            ProcessorKind::CarlaRack,
+            if mixed {
+                ProcessorKind::RemoteCarlaRack
+            } else {
+                ProcessorKind::CarlaRack
+            },
             effective.rack_instances,
         ),
         (
             Kind::Patchbay,
-            ProcessorKind::CarlaPatchbay,
+            if mixed {
+                ProcessorKind::RemoteCarlaPatchbay
+            } else {
+                ProcessorKind::CarlaPatchbay
+            },
             effective.patchbay_instances,
         ),
         (
             Kind::Patchbay16x,
-            ProcessorKind::CarlaPatchbay16x,
+            if mixed {
+                ProcessorKind::RemoteCarlaPatchbay16x
+            } else {
+                ProcessorKind::CarlaPatchbay16x
+            },
             effective.patchbay16x_instances,
         ),
     ];
@@ -132,11 +161,17 @@ fn prepare_banks(
     for _ in 0..2 {
         for &(chain, kind, count, config) in &configurations {
             for _ in 0..count {
-                let (endpoint, client) =
-                    Client::prepare(remote.address, chain, config).map_err(|error| {
-                        eprintln!("Remote Carla at {}: {error}", remote.address);
-                        Unavailable::Remote
-                    })?;
+                let (endpoint, client) = Client::prepare_slot(
+                    remote.address,
+                    chain,
+                    config,
+                    reconnect,
+                    remote.dry_on_loss,
+                )
+                .map_err(|error| {
+                    eprintln!("Remote Carla at {}: {error}", remote.address);
+                    Unavailable::Remote
+                })?;
                 instances.push(PreparedProcessor {
                     kind,
                     backend: Box::new(endpoint),
@@ -178,8 +213,18 @@ impl Controls {
 }
 
 impl HostedProcessorControls for Controls {
+    fn claim_ready(&self, slot: shoop_rt_protocol::ProcessorSlot) -> Result<bool, Refusal> {
+        let Ok(client) = self.client(slot.index) else {
+            return Ok(true);
+        };
+        match client.claimed(slot.generation) {
+            Some(true) => Ok(true),
+            Some(false) => Err(Refusal::NotConnected),
+            None => Ok(false),
+        }
+    }
     fn has_editors(&self) -> bool {
-        true
+        !self.clients.is_empty()
     }
 
     fn has_logs(&self) -> bool {
@@ -187,7 +232,7 @@ impl HostedProcessorControls for Controls {
     }
 
     fn has_checkpoints(&self) -> bool {
-        true
+        !self.clients.is_empty()
     }
 
     fn status(&self, index: u16) -> Option<HostedProcessorObservation> {
@@ -307,5 +352,84 @@ impl HostedCheckpointTicket for Checkpoint {
                 .map_err(|_| Refusal::Internal)?
                 .ok_or(Refusal::Internal)
         })
+    }
+}
+
+pub(crate) struct Providers {
+    pub(crate) remote_first_slot: usize,
+    pub(crate) remote: Controls,
+    pub(crate) local: crate::carla::Controls,
+}
+
+impl Providers {
+    fn at(&self, index: u16) -> &dyn HostedProcessorControls {
+        if usize::from(index) < self.remote_first_slot {
+            &self.local
+        } else {
+            &self.remote
+        }
+    }
+}
+
+impl HostedProcessorControls for Providers {
+    fn has_editors(&self) -> bool {
+        self.local.has_editors() || self.remote.has_editors()
+    }
+    fn has_logs(&self) -> bool {
+        self.local.has_logs()
+    }
+    fn has_checkpoints(&self) -> bool {
+        self.local.has_checkpoints() || self.remote.has_checkpoints()
+    }
+    fn status(&self, index: u16) -> Option<HostedProcessorObservation> {
+        self.at(index).status(index)
+    }
+    fn claim_ready(&self, slot: shoop_rt_protocol::ProcessorSlot) -> Result<bool, Refusal> {
+        self.at(slot.index).claim_ready(slot)
+    }
+    fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal> {
+        self.at(index).set_visible(index, visible)
+    }
+    fn recover(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        self.at(index).recover(index, owner, generation)
+    }
+    fn clear_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        self.at(index).clear_logs(index, owner, generation)
+    }
+    fn read_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedLogTicket>, Refusal> {
+        self.at(index).read_logs(index, owner, generation)
+    }
+    fn capture_checkpoint(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedCheckpointTicket>, Refusal> {
+        self.at(index).capture_checkpoint(index, owner, generation)
+    }
+    fn restore_candidate(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+        state: String,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        self.at(index)
+            .restore_candidate(index, owner, generation, state)
     }
 }

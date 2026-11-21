@@ -13075,6 +13075,15 @@ fn fx_chain_type_for_processor(
         shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
+        shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_RACK => {
+            Ok(FxChainTypeDocument::RemoteCarlaRack)
+        }
+        shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY => {
+            Ok(FxChainTypeDocument::RemoteCarlaPatchbay)
+        }
+        shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X => {
+            Ok(FxChainTypeDocument::RemoteCarlaPatchbay16x)
+        }
         shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => Ok(FxChainTypeDocument::BuiltInFx),
         shoop_app_api::TrackProcessorTypeId::OXISYNTH => Ok(FxChainTypeDocument::OxiSynth),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
@@ -13092,6 +13101,15 @@ fn processor_for_fx_chain_type(
         FxChainTypeDocument::CarlaPatchbay => shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY,
         FxChainTypeDocument::CarlaPatchbay16x => {
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
+        }
+        FxChainTypeDocument::RemoteCarlaRack => {
+            shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_RACK
+        }
+        FxChainTypeDocument::RemoteCarlaPatchbay => {
+            shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY
+        }
+        FxChainTypeDocument::RemoteCarlaPatchbay16x => {
+            shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
         }
         FxChainTypeDocument::BuiltInFx => shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
         FxChainTypeDocument::OxiSynth => shoop_app_api::TrackProcessorTypeId::OXISYNTH,

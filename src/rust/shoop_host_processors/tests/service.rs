@@ -666,6 +666,11 @@ fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
                 ProcessorKind::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
                 ProcessorKind::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
                 ProcessorKind::CarlaPatchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+                ProcessorKind::RemoteCarlaRack => TrackProcessorTypeId::REMOTE_CARLA_RACK,
+                ProcessorKind::RemoteCarlaPatchbay => TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY,
+                ProcessorKind::RemoteCarlaPatchbay16x => {
+                    TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
+                }
                 ProcessorKind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
                 ProcessorKind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
             };

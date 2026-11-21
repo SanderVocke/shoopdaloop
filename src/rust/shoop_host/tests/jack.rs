@@ -200,6 +200,8 @@ impl Fixture {
                     copies: std::env::var("SHOOP_REMOTE_FX_COPIES")
                         .ok()
                         .map_or(2, |value| value.parse().unwrap()),
+                    reconnect: Default::default(),
+                    dry_on_loss: false,
                 });
             }
             if matches!(mode, DeliveryMode::Tcp) {

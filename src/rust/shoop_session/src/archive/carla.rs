@@ -40,6 +40,9 @@ fn is_carla(kind: FxChainTypeDocument) -> bool {
         FxChainTypeDocument::CarlaRack
             | FxChainTypeDocument::CarlaPatchbay
             | FxChainTypeDocument::CarlaPatchbay16x
+            | FxChainTypeDocument::RemoteCarlaRack
+            | FxChainTypeDocument::RemoteCarlaPatchbay
+            | FxChainTypeDocument::RemoteCarlaPatchbay16x
     )
 }
 

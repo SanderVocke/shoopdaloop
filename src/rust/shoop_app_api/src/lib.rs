@@ -90,6 +90,9 @@ impl TrackProcessorTypeId {
     pub const CARLA_RACK: &'static str = "carla_rack";
     pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
     pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
+    pub const REMOTE_CARLA_RACK: &'static str = "remote_carla_rack";
+    pub const REMOTE_CARLA_PATCHBAY: &'static str = "remote_carla_patchbay";
+    pub const REMOTE_CARLA_PATCHBAY_16X: &'static str = "remote_carla_patchbay_16x";
     pub const OXISYNTH: &'static str = "oxisynth";
     pub const BUILTIN_FX: &'static str = "builtin_fx";
 
@@ -104,7 +107,12 @@ impl TrackProcessorTypeId {
     pub fn is_carla(&self) -> bool {
         matches!(
             self.as_str(),
-            Self::CARLA_RACK | Self::CARLA_PATCHBAY | Self::CARLA_PATCHBAY_16X
+            Self::CARLA_RACK
+                | Self::CARLA_PATCHBAY
+                | Self::CARLA_PATCHBAY_16X
+                | Self::REMOTE_CARLA_RACK
+                | Self::REMOTE_CARLA_PATCHBAY
+                | Self::REMOTE_CARLA_PATCHBAY_16X
         )
     }
 }

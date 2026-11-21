@@ -78,7 +78,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             })
                             .count(),
                     ) as u16,
-                buffering_frames: if kind.is_carla() {
+                buffering_frames: if kind.is_remote_carla() {
+                    limits.remote_carla_latency_frames
+                } else if kind.is_carla() {
                     limits.carla_latency_frames
                 } else {
                     limits.builtin_latency_frames
@@ -101,7 +103,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     available,
                     limits
                         .effective
-                        .carla
+                        .carla_limits(kind)
                         .unavailable
                         .or(Some(Unavailable::NoCapacity)),
                 )
@@ -200,6 +202,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             carla(ProcessorKind::CarlaRack, "Carla Rack"),
             carla(ProcessorKind::CarlaPatchbay, "Carla Patchbay"),
             carla(ProcessorKind::CarlaPatchbay16x, "Carla Patchbay 16x"),
+            carla(ProcessorKind::RemoteCarlaRack, "Remote Carla Rack"),
+            carla(ProcessorKind::RemoteCarlaPatchbay, "Remote Carla Patchbay"),
+            carla(
+                ProcessorKind::RemoteCarlaPatchbay16x,
+                "Remote Carla Patchbay 16x",
+            ),
         ])
     }
 }

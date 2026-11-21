@@ -730,11 +730,13 @@ fn engine_samples() -> Vec<EngineMessage> {
                 synth_unavailable: None,
                 memory_bytes: 256 << 20,
                 carla: Default::default(),
+                remote_carla: Default::default(),
             },
             reserved_bytes: 4 << 20,
             channels: 8,
             builtin_latency_frames: 32,
             carla_latency_frames: 0,
+            remote_carla_latency_frames: 0,
         })),
         EngineMessage::State(StateRecord::ProcessorPreset(ProcessorPreset {
             bank: 128,
@@ -1053,11 +1055,13 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
             synth_unavailable: Some(processors::Unavailable::Disabled),
             memory_bytes: 256 << 20,
             carla: Default::default(),
+            remote_carla: Default::default(),
         },
         reserved_bytes: 4 << 20,
         channels: MAX_STRIP_CHANNELS as u8,
         builtin_latency_frames: 32,
         carla_latency_frames: 0,
+        remote_carla_latency_frames: 0,
     };
     let mut bytes = [0; MAX_RECORD_BYTES];
     for invalid in 0..4 {

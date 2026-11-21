@@ -80,6 +80,11 @@ impl Encoder {
         }
     }
 
+    pub(crate) fn set_format(&mut self, config: Config, format: MediaLimits) {
+        self.config = config;
+        self.format = format;
+    }
+
     pub(crate) fn send(
         &mut self,
         socket: &UdpSocket,
@@ -226,6 +231,12 @@ impl Assembly {
             config,
             format,
         }
+    }
+
+    pub(crate) fn set_format(&mut self, config: Config, format: MediaLimits) {
+        self.reset();
+        self.config = config;
+        self.format = format;
     }
 
     pub(crate) fn reset(&mut self) {

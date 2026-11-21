@@ -92,6 +92,14 @@ impl ClientMedia {
         self.counters
     }
 
+    pub(crate) fn set_config(&mut self, config: Config) {
+        self.config = config;
+        self.outgoing.set_format(config, config.input);
+        for pending in &mut self.pending {
+            pending.assembly.set_format(config, config.output);
+        }
+    }
+
     pub fn disconnect(&mut self) {
         self.generation = None;
         for pending in &mut self.pending {
@@ -140,7 +148,11 @@ impl ClientMedia {
                 Receipt::Pending => {}
                 Receipt::Complete => {
                     if let Some((mut job, submitted)) = pending.job.take() {
+                        let frames = job.input().frames;
                         let (audio, midi) = job.output_mut();
+                        let (audio, unused) =
+                            audio.split_at_mut(frames * usize::from(self.config.output.channels));
+                        unused.fill(0.0);
                         let result = pending.assembly.decode(audio, midi);
                         let _ = self.worker.finish(job, result);
                         pending.assembly.reset();
@@ -196,7 +208,7 @@ impl ClientMedia {
                 first_sequence,
                 AsyncOutput {
                     frames: input.frames,
-                    audio: input.audio,
+                    audio: &input.audio[..input.frames * usize::from(self.config.input.channels)],
                     midi: input.midi,
                 },
             );

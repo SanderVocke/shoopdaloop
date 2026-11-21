@@ -56,6 +56,8 @@ pub enum EngineOp {
     },
     ProcessorClaim {
         generation: u32,
+        inputs: u8,
+        outputs: u8,
     },
     ProcessorBindBus {
         generation: u32,
@@ -695,7 +697,11 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
     ) -> Result<(), Error> {
         if let Self::Processor(node) = self {
             return match operation {
-                EngineOp::ProcessorClaim { generation } => node.claim(context.frame, generation),
+                EngineOp::ProcessorClaim {
+                    generation,
+                    inputs,
+                    outputs,
+                } => node.claim(context.frame, generation, inputs, outputs),
                 EngineOp::ProcessorBindBus {
                     generation,
                     bus,

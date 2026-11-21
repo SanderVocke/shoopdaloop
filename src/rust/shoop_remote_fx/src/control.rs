@@ -1,4 +1,4 @@
-use crate::{wire::VERSION, Config, Counters};
+use crate::{Config, Counters};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     io::{self, Read, Write},
@@ -7,8 +7,9 @@ use std::{
 };
 
 pub const DEFAULT_COPIES: u8 = 2;
+pub const CONTROL_VERSION: u8 = 2;
 pub const INITIAL_LIMIT: usize = 4096;
-pub(crate) const DESCRIPTION_LIMIT: usize = 32 * 1024;
+pub(crate) const DESCRIPTION_LIMIT: usize = 64 * 1024;
 pub const STATE_LIMIT: usize = 23 * 1024 * 1024;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 pub(crate) const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -24,6 +25,13 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Rack => "Rack",
+            Self::Patchbay => "Patchbay",
+            Self::Patchbay16x => "Patchbay 16x",
+        }
+    }
     pub fn channels(self) -> u8 {
         match self {
             Self::Rack | Self::Patchbay => 2,
@@ -63,6 +71,24 @@ pub struct Description {
     pub active: usize,
     pub kinds: Vec<Kind>,
     pub streams: Vec<Counters>,
+    pub chains: Vec<ChainDescription>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChainDescription {
+    pub id: String,
+    pub kind: Kind,
+    pub config: Config,
+    pub attached: bool,
+    pub status: Status,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Credential {
+    pub chain: String,
+    pub secret: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -75,7 +101,7 @@ pub(crate) struct Greeting {
 impl Greeting {
     pub(crate) fn new(intent: Intent) -> Self {
         Self {
-            version: VERSION,
+            version: CONTROL_VERSION,
             intent,
         }
     }
@@ -85,8 +111,25 @@ impl Greeting {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Intent {
     Describe,
-    Shutdown { instance: String },
-    Open { kind: Kind, config: Config },
+    Shutdown {
+        instance: String,
+    },
+    Open {
+        kind: Kind,
+        config: Config,
+        retain: bool,
+    },
+    Resume {
+        credential: Credential,
+    },
+    Release {
+        credential: Credential,
+    },
+    Editor {
+        instance: String,
+        chain: String,
+        visible: bool,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -97,11 +140,15 @@ pub(crate) enum Welcome {
         description: Description,
     },
     Shutdown,
+    Confirmed {},
+    Pending {},
+    Missing {},
     Ready {
         version: u8,
         config: Config,
         udp_port: u16,
         stream: String,
+        credential: Option<Credential>,
     },
     Refused(String),
 }
@@ -117,6 +164,7 @@ pub(crate) struct Request {
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Status,
+    Close,
     Active(bool),
     Editor(bool),
     Save,
@@ -211,10 +259,31 @@ pub(crate) fn connect(address: SocketAddr, intent: Intent) -> io::Result<(TcpStr
 pub fn describe(address: SocketAddr) -> io::Result<Description> {
     match connect(address, Intent::Describe)?.1 {
         Welcome::Description {
-            version: VERSION,
+            version: CONTROL_VERSION,
             description,
         } => Ok(description),
         _ => Err(io::Error::other("Incompatible FX service description")),
+    }
+}
+
+pub fn set_editor(
+    address: SocketAddr,
+    instance: String,
+    chain: String,
+    visible: bool,
+) -> io::Result<()> {
+    match connect(
+        address,
+        Intent::Editor {
+            instance,
+            chain,
+            visible,
+        },
+    )?
+    .1
+    {
+        Welcome::Confirmed {} => Ok(()),
+        _ => Err(io::Error::other("Incompatible FX service reply")),
     }
 }
 
@@ -305,6 +374,7 @@ mod tests {
             active: 32,
             kinds: vec![Kind::Rack],
             streams: vec![Counters::default(); 32],
+            chains: vec![],
         };
         thread::scope(|scope| {
             let server = scope.spawn(|| {
@@ -313,7 +383,7 @@ mod tests {
                     read_frame(&mut peer, INITIAL_LIMIT, CONTROL_TIMEOUT).unwrap();
                 assert!(matches!(greeting.intent, Intent::Describe));
                 let response = Welcome::Description {
-                    version: VERSION,
+                    version: CONTROL_VERSION,
                     description: report.clone(),
                 };
                 write_frame(&mut peer, &response, DESCRIPTION_LIMIT).unwrap();

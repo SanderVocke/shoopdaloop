@@ -77,6 +77,9 @@ pub(crate) fn processor_kind(id: &str) -> Option<Kind> {
         TrackProcessorTypeId::CARLA_RACK => Some(Kind::CarlaRack),
         TrackProcessorTypeId::CARLA_PATCHBAY => Some(Kind::CarlaPatchbay),
         TrackProcessorTypeId::CARLA_PATCHBAY_16X => Some(Kind::CarlaPatchbay16x),
+        TrackProcessorTypeId::REMOTE_CARLA_RACK => Some(Kind::RemoteCarlaRack),
+        TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY => Some(Kind::RemoteCarlaPatchbay),
+        TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X => Some(Kind::RemoteCarlaPatchbay16x),
         _ => None,
     }
 }
@@ -88,6 +91,9 @@ pub(crate) fn processor_id(kind: Kind) -> &'static str {
         Kind::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
         Kind::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
         Kind::CarlaPatchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+        Kind::RemoteCarlaRack => TrackProcessorTypeId::REMOTE_CARLA_RACK,
+        Kind::RemoteCarlaPatchbay => TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY,
+        Kind::RemoteCarlaPatchbay16x => TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X,
     }
 }
 
@@ -348,7 +354,12 @@ fn fx_state(
                 .collect::<Vec<_>>()
                 .into(),
         }),
-        Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
+        Kind::CarlaRack
+        | Kind::CarlaPatchbay
+        | Kind::CarlaPatchbay16x
+        | Kind::RemoteCarlaRack
+        | Kind::RemoteCarlaPatchbay
+        | Kind::RemoteCarlaPatchbay16x => {
             let visible = snapshot
                 .hosted
                 .and_then(|status| status.editor_visible)

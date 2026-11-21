@@ -133,7 +133,7 @@ async def relay(mode):
 
 
 def service_request(intent):
-    request = json.dumps({"version": 1, "intent": intent}).encode()
+    request = json.dumps({"version": 2, "intent": intent}).encode()
     with socket.create_connection((DESKTOP, SERVICE_PORT), timeout=1) as sock:
         sock.sendall(len(request).to_bytes(4, "little") + request)
         with sock.makefile("rb") as reply:
@@ -266,9 +266,12 @@ def run_fixture(args, root):
         run(enter + ["ip", "link", "set", "fx-desktop", "up"])
 
         def start_service():
+            service_args = [str(args.host), "--fx-service", "--lan", "--listen", f"{DESKTOP}:{SERVICE_PORT}"]
+            if args.isolated:
+                service_args.append("--isolated")
             with log_path.open("a") as log:
                 service = subprocess.Popen(
-                    affinity(desktop_cpus) + enter + [str(args.host), "--fx-service", "--lan", "--listen", f"{DESKTOP}:{SERVICE_PORT}"],
+                    affinity(desktop_cpus) + enter + service_args,
                     env=env, stdout=log, stderr=subprocess.STDOUT,
                 )
             try:
@@ -369,6 +372,7 @@ def main():
     parser.add_argument("--slack", type=int)
     parser.add_argument("--impairment", choices=["one-copy", "burst"])
     parser.add_argument("--restart", action="store_true")
+    parser.add_argument("--isolated", action="store_true")
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--width", nargs="+", type=int, choices=[2, 16], default=[2, 16])
     parser.add_argument("--network-ready", action="store_true", help=argparse.SUPPRESS)

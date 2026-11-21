@@ -116,7 +116,7 @@ macro_rules! tags {
     };
 }
 
-tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth, 3 => ProcessorKind::CarlaRack, 4 => ProcessorKind::CarlaPatchbay, 5 => ProcessorKind::CarlaPatchbay16x });
+tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth, 3 => ProcessorKind::CarlaRack, 4 => ProcessorKind::CarlaPatchbay, 5 => ProcessorKind::CarlaPatchbay16x, 6 => ProcessorKind::RemoteCarlaRack, 7 => ProcessorKind::RemoteCarlaPatchbay, 8 => ProcessorKind::RemoteCarlaPatchbay16x });
 tags!(LoopMode { 0 => LoopMode::Stopped, 1 => LoopMode::Playing, 2 => LoopMode::Recording, 3 => LoopMode::PlayingDryThroughWet, 4 => LoopMode::RecordingDryIntoWet, 5 => LoopMode::Replacing });
 tags!(PortKind { 0 => PortKind::AudioIn, 1 => PortKind::AudioOut, 2 => PortKind::MidiIn, 3 => PortKind::MidiOut, 4 => PortKind::AudioSend, 5 => PortKind::AudioReturn, 6 => PortKind::MidiSend });
 tags!(Refusal {
@@ -2397,33 +2397,43 @@ impl Wire for ProcessorLimits {
         w.u16(self.effective.synth_instances)?;
         self.effective.fx_unavailable.put(w)?;
         self.effective.synth_unavailable.put(w)?;
-        w.u16(self.effective.carla.rack_instances)?;
-        w.u16(self.effective.carla.patchbay_instances)?;
-        w.u16(self.effective.carla.patchbay16x_instances)?;
-        self.effective.carla.unavailable.put(w)?;
+        for carla in [self.effective.carla, self.effective.remote_carla] {
+            w.u16(carla.rack_instances)?;
+            w.u16(carla.patchbay_instances)?;
+            w.u16(carla.patchbay16x_instances)?;
+            carla.unavailable.put(w)?;
+        }
         w.u64(self.effective.memory_bytes)?;
         w.u64(self.reserved_bytes)?;
         w.u8(self.channels)?;
         w.u32(self.builtin_latency_frames)?;
-        w.u32(self.carla_latency_frames)
+        w.u32(self.carla_latency_frames)?;
+        w.u32(self.remote_carla_latency_frames)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let fx_instances = r.u16()?;
         let synth_instances = r.u16()?;
         let fx_unavailable = Option::get(r)?;
         let synth_unavailable = Option::get(r)?;
-        let carla = crate::processors::EffectiveCarla {
-            rack_instances: r.u16()?,
-            patchbay_instances: r.u16()?,
-            patchbay16x_instances: r.u16()?,
-            unavailable: Option::get(r)?,
-        };
-        let carla_instances = carla.instances();
+        fn carla_limits(
+            r: &mut Reader<'_>,
+        ) -> Result<crate::processors::EffectiveCarla, CodecError> {
+            Ok(crate::processors::EffectiveCarla {
+                rack_instances: r.u16()?,
+                patchbay_instances: r.u16()?,
+                patchbay16x_instances: r.u16()?,
+                unavailable: Option::get(r)?,
+            })
+        }
+        let carla = carla_limits(r)?;
+        let remote_carla = carla_limits(r)?;
+        let carla_instances = carla.instances() + remote_carla.instances();
         let memory_bytes = r.u64()?;
         let reserved_bytes = r.u64()?;
         let channels = r.u8()?;
         let builtin_latency_frames = r.u32()?;
         let carla_latency_frames = r.u32()?;
+        let remote_carla_latency_frames = r.u32()?;
         if u32::from(fx_instances) + u32::from(synth_instances) + carla_instances
             > u32::from(crate::processors::MAX_INSTANCES)
             || reserved_bytes > memory_bytes
@@ -2431,8 +2441,10 @@ impl Wire for ProcessorLimits {
             || builtin_latency_frames == 0
             || (fx_instances > 0 && fx_unavailable.is_some())
             || (synth_instances > 0 && synth_unavailable.is_some())
-            || (carla_instances == 0) != carla.unavailable.is_some()
-            || (carla_instances == 0) != (carla_latency_frames == 0)
+            || (carla.instances() == 0) != carla.unavailable.is_some()
+            || (remote_carla.instances() == 0) != remote_carla.unavailable.is_some()
+            || (carla.instances() == 0) != (carla_latency_frames == 0)
+            || (remote_carla.instances() == 0) != (remote_carla_latency_frames == 0)
         {
             return Err(CodecError::Invalid);
         }
@@ -2444,11 +2456,13 @@ impl Wire for ProcessorLimits {
                 synth_unavailable,
                 memory_bytes,
                 carla,
+                remote_carla,
             },
             reserved_bytes,
             channels,
             builtin_latency_frames,
             carla_latency_frames,
+            remote_carla_latency_frames,
         })
     }
 }

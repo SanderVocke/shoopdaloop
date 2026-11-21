@@ -34,19 +34,31 @@ pub(super) fn canonical_state(chain: FxChainTypeDocument, encoded: &str) -> Resu
 
 pub(super) fn carla_chain(chain: FxChainTypeDocument) -> Option<CarlaChainType> {
     match chain {
-        FxChainTypeDocument::CarlaRack => Some(CarlaChainType::Rack),
-        FxChainTypeDocument::CarlaPatchbay => Some(CarlaChainType::Patchbay),
-        FxChainTypeDocument::CarlaPatchbay16x => Some(CarlaChainType::Patchbay16x),
+        FxChainTypeDocument::CarlaRack | FxChainTypeDocument::RemoteCarlaRack => {
+            Some(CarlaChainType::Rack)
+        }
+        FxChainTypeDocument::CarlaPatchbay | FxChainTypeDocument::RemoteCarlaPatchbay => {
+            Some(CarlaChainType::Patchbay)
+        }
+        FxChainTypeDocument::CarlaPatchbay16x | FxChainTypeDocument::RemoteCarlaPatchbay16x => {
+            Some(CarlaChainType::Patchbay16x)
+        }
         _ => None,
     }
 }
 
-pub(super) fn carla_processor_type(chain: CarlaChainType) -> &'static str {
-    match chain {
-        CarlaChainType::Rack => TrackProcessorTypeId::CARLA_RACK,
-        CarlaChainType::Patchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
-        CarlaChainType::Patchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
-    }
+pub(super) fn carla_processor_type(chain: FxChainTypeDocument) -> Option<&'static str> {
+    Some(match chain {
+        FxChainTypeDocument::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
+        FxChainTypeDocument::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
+        FxChainTypeDocument::CarlaPatchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+        FxChainTypeDocument::RemoteCarlaRack => TrackProcessorTypeId::REMOTE_CARLA_RACK,
+        FxChainTypeDocument::RemoteCarlaPatchbay => TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY,
+        FxChainTypeDocument::RemoteCarlaPatchbay16x => {
+            TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
+        }
+        _ => return None,
+    })
 }
 
 fn document_chain(processor_type: &str) -> Result<Option<FxChainTypeDocument>> {
@@ -56,6 +68,11 @@ fn document_chain(processor_type: &str) -> Result<Option<FxChainTypeDocument>> {
         TrackProcessorTypeId::CARLA_RACK => FxChainTypeDocument::CarlaRack,
         TrackProcessorTypeId::CARLA_PATCHBAY => FxChainTypeDocument::CarlaPatchbay,
         TrackProcessorTypeId::CARLA_PATCHBAY_16X => FxChainTypeDocument::CarlaPatchbay16x,
+        TrackProcessorTypeId::REMOTE_CARLA_RACK => FxChainTypeDocument::RemoteCarlaRack,
+        TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY => FxChainTypeDocument::RemoteCarlaPatchbay,
+        TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X => {
+            FxChainTypeDocument::RemoteCarlaPatchbay16x
+        }
         TrackProcessorTypeId::EXTERNAL => return Ok(None),
         _ => bail!("unsupported processor type {processor_type}"),
     }))
@@ -144,7 +161,13 @@ pub(super) fn image_topology(
                 dry <= width && wet <= width,
                 "track exceeds its Carla chain width"
             );
-            (dry, wet, midi, carla_processor_type(carla))
+            (
+                dry,
+                wet,
+                midi,
+                carla_processor_type(chain_type)
+                    .ok_or_else(|| anyhow!("unsupported Carla track processor"))?,
+            )
         }
     };
     ensure!(

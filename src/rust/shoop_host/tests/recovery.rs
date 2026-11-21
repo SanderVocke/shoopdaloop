@@ -105,7 +105,7 @@ fn spawn_host(config: &HostConfig, real_device: bool) -> Host {
     };
 
     let stderr_path = log_path.with_extension("stderr.log");
-    let remote = config.processors.carla.hosting == CarlaHosting::Remote;
+    let remote = config.processors.carla.hosting.uses_remote();
     let exe = remote
         .then(|| std::env::var_os("SHOOP_REMOTE_FX_HOST"))
         .flatten()
@@ -161,7 +161,10 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
         (CarlaHosting::Subprocess, AppTransport::Socket),
     ];
     if std::env::var_os("SHOOP_REMOTE_FX_TEST_ADDRESS").is_some() {
-        modes = vec![(CarlaHosting::Remote, AppTransport::Socket)];
+        modes = vec![
+            (CarlaHosting::Remote, AppTransport::Socket),
+            (CarlaHosting::Mixed, AppTransport::Socket),
+        ];
     } else {
         shoop_carla::native::carla_runtime_availability().unwrap();
     }
@@ -200,6 +203,31 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
         let Outcome::TrackCreated { track, .. } = outcome else {
             panic!("{outcome:?}")
         };
+        if hosting == CarlaHosting::Mixed {
+            let outcome = command(
+                &mut client,
+                &mut connection,
+                Command::AddTrack(TrackSpec {
+                    name: "Remote Carla Rack".into(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 2,
+                        dry_midi: false,
+                        processor_type: TrackProcessorTypeId::new(
+                            TrackProcessorTypeId::REMOTE_CARLA_RACK,
+                        ),
+                        default_playback_mode: Default::default(),
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: Vec::new(),
+                    creation_request_id: None,
+                }),
+            );
+            assert!(
+                matches!(outcome, Outcome::TrackCreated { .. }),
+                "{outcome:?}"
+            );
+        }
         let outcome = command(
             &mut client,
             &mut connection,
@@ -207,7 +235,11 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
                 name: "Carla Patchbay".into(),
                 channel_count: 2,
                 fx: Some(BusFxSpec {
-                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::CARLA_PATCHBAY),
+                    processor_type: TrackProcessorTypeId::new(if hosting == CarlaHosting::Mixed {
+                        TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY
+                    } else {
+                        TrackProcessorTypeId::CARLA_PATCHBAY
+                    }),
                 }),
                 creation_request_id: None,
             }),

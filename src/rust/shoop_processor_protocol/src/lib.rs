@@ -127,14 +127,39 @@ pub enum Kind {
     CarlaRack = 3,
     CarlaPatchbay = 4,
     CarlaPatchbay16x = 5,
+    RemoteCarlaRack = 6,
+    RemoteCarlaPatchbay = 7,
+    RemoteCarlaPatchbay16x = 8,
 }
 pub const BUILTIN_FX_MAX_AUDIO_CHANNELS: usize = 8;
 
 impl Kind {
+    pub const HOSTED: [Self; 8] = [
+        Self::BuiltInFx,
+        Self::OxiSynth,
+        Self::CarlaRack,
+        Self::CarlaPatchbay,
+        Self::CarlaPatchbay16x,
+        Self::RemoteCarlaRack,
+        Self::RemoteCarlaPatchbay,
+        Self::RemoteCarlaPatchbay16x,
+    ];
+
     pub const fn is_carla(self) -> bool {
         matches!(
             self,
-            Self::CarlaRack | Self::CarlaPatchbay | Self::CarlaPatchbay16x
+            Self::CarlaRack
+                | Self::CarlaPatchbay
+                | Self::CarlaPatchbay16x
+                | Self::RemoteCarlaRack
+                | Self::RemoteCarlaPatchbay
+                | Self::RemoteCarlaPatchbay16x
+        )
+    }
+    pub const fn is_remote_carla(self) -> bool {
+        matches!(
+            self,
+            Self::RemoteCarlaRack | Self::RemoteCarlaPatchbay | Self::RemoteCarlaPatchbay16x
         )
     }
     pub const fn supports_bus(self) -> bool {
@@ -142,8 +167,12 @@ impl Kind {
     }
     pub const fn fixed_audio_channels(self) -> Option<usize> {
         match self {
-            Self::OxiSynth | Self::CarlaRack | Self::CarlaPatchbay => Some(2),
-            Self::CarlaPatchbay16x => Some(16),
+            Self::OxiSynth
+            | Self::CarlaRack
+            | Self::CarlaPatchbay
+            | Self::RemoteCarlaRack
+            | Self::RemoteCarlaPatchbay => Some(2),
+            Self::CarlaPatchbay16x | Self::RemoteCarlaPatchbay16x => Some(16),
             Self::BuiltInFx | Self::External => None,
         }
     }
@@ -155,9 +184,9 @@ impl Kind {
     }
     pub const fn scalar_count(self) -> usize {
         match self {
-            Self::External | Self::CarlaRack | Self::CarlaPatchbay | Self::CarlaPatchbay16x => 0,
             Self::BuiltInFx => 56,
             Self::OxiSynth => 5,
+            _ => 0,
         }
     }
     pub const fn scalar_id(self, index: usize) -> Option<u32> {
@@ -177,7 +206,7 @@ impl Kind {
                 3..=4 => Some(CC_BASE + (index - 3) as u32),
                 _ => None,
             },
-            Self::External | Self::CarlaRack | Self::CarlaPatchbay | Self::CarlaPatchbay16x => None,
+            _ => None,
         }
     }
 }
@@ -209,6 +238,13 @@ pub enum CarlaHosting {
     InProcess = 1,
     Subprocess = 2,
     Remote = 3,
+    Mixed = 4,
+}
+
+impl CarlaHosting {
+    pub const fn uses_remote(self) -> bool {
+        matches!(self, Self::Remote | Self::Mixed)
+    }
 }
 
 // Native Carla v2 accepts up to 1,024 short packets per block. The engine may
@@ -231,13 +267,13 @@ pub struct CarlaSettings {
 
 impl CarlaSettings {
     pub const fn configured_instances(self) -> u32 {
+        let count = self.rack_instances as u32
+            + self.patchbay_instances as u32
+            + self.patchbay16x_instances as u32;
         match self.hosting {
             CarlaHosting::Disabled => 0,
-            _ => {
-                self.rack_instances as u32
-                    + self.patchbay_instances as u32
-                    + self.patchbay16x_instances as u32
-            }
+            CarlaHosting::Mixed => 2 * count,
+            _ => count,
         }
     }
 }
@@ -356,6 +392,7 @@ impl Settings {
                 CarlaHosting::Disabled => Unavailable::Disabled,
                 _ => Unavailable::NotCompiled,
             }),
+            remote_carla: EffectiveCarla::default(),
         })
     }
 }
@@ -399,12 +436,14 @@ pub struct Effective {
     pub synth_unavailable: Option<Unavailable>,
     pub memory_bytes: u64,
     pub carla: EffectiveCarla,
+    pub remote_carla: EffectiveCarla,
 }
 impl Effective {
     pub const fn slots(self) -> usize {
         2 * (self.fx_instances as usize
             + self.synth_instances as usize
-            + self.carla.instances() as usize)
+            + self.carla.instances() as usize
+            + self.remote_carla.instances() as usize)
     }
 
     pub const fn instances(self, kind: Kind) -> u16 {
@@ -414,7 +453,18 @@ impl Effective {
             Kind::CarlaRack => self.carla.rack_instances,
             Kind::CarlaPatchbay => self.carla.patchbay_instances,
             Kind::CarlaPatchbay16x => self.carla.patchbay16x_instances,
+            Kind::RemoteCarlaRack => self.remote_carla.rack_instances,
+            Kind::RemoteCarlaPatchbay => self.remote_carla.patchbay_instances,
+            Kind::RemoteCarlaPatchbay16x => self.remote_carla.patchbay16x_instances,
             Kind::External => 0,
+        }
+    }
+
+    pub const fn carla_limits(self, kind: Kind) -> EffectiveCarla {
+        if kind.is_remote_carla() {
+            self.remote_carla
+        } else {
+            self.carla
         }
     }
 }

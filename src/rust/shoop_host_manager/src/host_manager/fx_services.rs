@@ -26,6 +26,7 @@ pub(super) struct Panel {
     pub(super) open: bool,
     bind: String,
     lan: bool,
+    isolated: bool,
     manual: String,
     addresses: Vec<SocketAddr>,
     services: Vec<Service>,
@@ -40,6 +41,7 @@ impl Default for Panel {
             open: false,
             bind: "127.0.0.1:0".into(),
             lan: false,
+            isolated: false,
             manual: String::new(),
             addresses: Vec::new(),
             services: Vec::new(),
@@ -79,6 +81,7 @@ impl Panel {
         let mut selected = None;
         let mut open = self.open;
         let mut stop = None;
+        let mut editor = None;
         egui::Window::new("FX services")
             .open(&mut open)
             .show(context, |ui| {
@@ -92,14 +95,16 @@ impl Panel {
                     {
                         let bind = self.bind.clone();
                         let lan = self.lan;
+                        let isolated = self.isolated;
                         self.refresh(move || {
                             let address =
                                 bind.parse().context("Invalid FX service listen address")?;
-                            launch_service(address, lan)?;
+                            launch_service(address, lan, isolated)?;
                             Ok(())
                         });
                     }
                 });
+                ui.checkbox(&mut self.isolated, "One process per chain");
                 ui.horizontal(|ui| {
                     ui.label("Service address");
                     ui.text_edit_singleline(&mut self.manual);
@@ -131,11 +136,7 @@ impl Panel {
                                 description
                                     .kinds
                                     .iter()
-                                    .map(|kind| match kind {
-                                        shoop_remote_fx::Kind::Rack => "Rack",
-                                        shoop_remote_fx::Kind::Patchbay => "Patchbay",
-                                        shoop_remote_fx::Kind::Patchbay16x => "Patchbay 16x",
-                                    })
+                                    .map(|kind| kind.label())
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             ));
@@ -159,6 +160,48 @@ impl Panel {
                                     }
                                 }
                             });
+                            for chain in &description.chains {
+                                ui.horizontal(|ui| {
+                                    let id = chain.id.split('-').next().unwrap_or(&chain.id);
+                                    ui.label(format!(
+                                        "{} {id} · {} in / {} out",
+                                        chain.kind.label(),
+                                        chain.config.input.channels,
+                                        chain.config.output.channels
+                                    ));
+                                    if !chain.attached {
+                                        ui.label("Waiting for owner");
+                                    } else if chain.status.active {
+                                        ui.label("Active");
+                                    } else {
+                                        ui.label("Idle");
+                                    }
+                                    if let (Some(identity), Some(visible)) =
+                                        (&service.identity, chain.status.editor_visible)
+                                    {
+                                        let label = if visible {
+                                            "Close editor"
+                                        } else {
+                                            "Open editor"
+                                        };
+                                        if ui
+                                            .add_enabled(
+                                                self.pending.is_none(),
+                                                egui::Button::new(label),
+                                            )
+                                            .clicked()
+                                        {
+                                            editor = Some((
+                                                service.address,
+                                                identity.clone(),
+                                                description.instance.clone(),
+                                                chain.id.clone(),
+                                                !visible,
+                                            ));
+                                        }
+                                    }
+                                });
+                            }
                         }
                         Err(error) => {
                             ui.colored_label(egui::Color32::LIGHT_RED, error);
@@ -168,6 +211,16 @@ impl Panel {
             });
         if let Some((address, identity, instance)) = stop {
             self.refresh(move || stop_service(address, &identity, instance));
+        }
+        if let Some((address, identity, instance, chain, visible)) = editor {
+            self.refresh(move || {
+                ensure!(
+                    shoop_host_processes::identity(identity.pid)?.as_ref() == Some(&identity),
+                    "FX service identity changed"
+                );
+                shoop_remote_fx::set_editor(address, instance, chain, visible)?;
+                Ok(())
+            });
         }
         self.open = open && selected.is_none();
         selected
@@ -223,7 +276,11 @@ fn scan(addresses: Vec<SocketAddr>) -> Result<Vec<Service>> {
     Ok(services)
 }
 
-fn launch_service(address: SocketAddr, lan: bool) -> Result<(SocketAddr, Description)> {
+fn launch_service(
+    address: SocketAddr,
+    lan: bool,
+    isolated: bool,
+) -> Result<(SocketAddr, Description)> {
     ensure!(
         lan || address.ip().is_loopback(),
         "Enable LAN access for a non-loopback service"
@@ -236,6 +293,9 @@ fn launch_service(address: SocketAddr, lan: bool) -> Result<(SocketAddr, Descrip
         .arg(address.to_string());
     if lan {
         command.arg("--lan");
+    }
+    if isolated {
+        command.arg("--isolated");
     }
     launch::independent(&mut command);
     command.stdout(Stdio::piped());
@@ -287,7 +347,7 @@ fn stop_service(address: SocketAddr, identity: &Identity, instance: String) -> R
 pub(super) fn probe() -> Result<()> {
     const LAUNCH_ONLY: &str = "SHOOP_FX_PROBE_LAUNCH_ONLY";
     if std::env::var_os(LAUNCH_ONLY).is_some() {
-        let (address, _) = launch_service("127.0.0.1:0".parse()?, false)?;
+        let (address, _) = launch_service("127.0.0.1:0".parse()?, false, false)?;
         println!("{address}");
         return Ok(());
     }
@@ -323,8 +383,8 @@ pub(super) fn probe() -> Result<()> {
             .map_err(anyhow::Error::from)
             .and_then(|status| {
                 ensure!(
-                    status.reserved == 2,
-                    "Native host did not reserve the remote Carla banks"
+                    status.reserved == 0,
+                    "Native host opened a remote Carla chain before assignment"
                 );
                 Ok(())
             });

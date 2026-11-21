@@ -125,7 +125,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .count();
             if available == 0 {
                 let reason = if kind.is_carla() {
-                    processors.effective.carla.unavailable
+                    processors.effective.carla_limits(kind).unavailable
                 } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
                     processors.effective.fx_unavailable
                 } else {

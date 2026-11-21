@@ -1,5 +1,7 @@
 # Remote Carla FX on the Native Backend
 
+This plan records the initial delivery and its acceptance evidence. The current on-demand lifecycle and mixed placement are covered in the setup guide. [Remote Carla setup](docs/remote-fx.md)
+
 Run Carla chains on the desktop that runs the ShoopDaLoop UI while the production Native session host owns the audio clock, routing, and loop media. Use the existing buffered processor to schedule wet returns from a duplicated UDP stream. Deliver a deterministic transport fixture, stereo Carla over two isolated network endpoints, wider and concurrent chains, and setup and inspection in Host Manager.
 
 Base the implementation on `feat/backend-replacement`, inspected at `55bd4475a8ce5e5809f0c57ce132ce61ed08e56e`. Scope covers the independent Native session host, native desktop UI, desktop FX service, and Host Manager. FreeRTOS, FPGA, and other embedded integrations are excluded. [Native backend and launch roles](src/rust/shoopdaloop/README.md#native-roles-and-delivery) · [Carla hosting contract](docs/native_session_recovery/track-processors.md#carla-development-builds) · [Planning instructions](.agents/prompts/write_plan.md)

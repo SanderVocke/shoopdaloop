@@ -98,6 +98,8 @@ pub(super) struct Dialog {
     processors: shoop_app_api::ProcessorSettings,
     fx_address: String,
     fx_slack_quanta: Option<u16>,
+    fx_reconnect: shoop_host::serve::RemoteReconnect,
+    fx_dry_on_loss: bool,
     master_auto_connect: bool,
     smoothing: u32,
     lan: bool,
@@ -142,6 +144,8 @@ impl Default for Dialog {
             processors: Default::default(),
             fx_address: String::new(),
             fx_slack_quanta: None,
+            fx_reconnect: Default::default(),
+            fx_dry_on_loss: false,
             master_auto_connect: true,
             smoothing: 3,
             lan: false,
@@ -253,7 +257,7 @@ impl Dialog {
         options.management_endpoint = management;
         options.lan = self.lan;
         options.log_file = log_file;
-        if self.processors.carla.hosting == shoop_app_api::CarlaHosting::Remote {
+        if self.processors.carla.hosting.uses_remote() {
             let address = self
                 .fx_address
                 .parse()
@@ -262,6 +266,8 @@ impl Dialog {
                 address,
                 slack_quanta: self.fx_slack_quanta,
                 copies: shoop_remote_fx::DEFAULT_COPIES,
+                reconnect: self.fx_reconnect,
+                dry_on_loss: self.fx_dry_on_loss,
             });
         }
         if self.lan && !self.advertised_host.trim().is_empty() {
@@ -642,6 +648,7 @@ impl Dialog {
                     (CarlaHosting::InProcess, "In session host"),
                     (CarlaHosting::Subprocess, "One subprocess per chain"),
                     (CarlaHosting::Remote, "Remote FX service"),
+                    (CarlaHosting::Mixed, "Local and remote Carla"),
                 ];
                 ui.horizontal(|ui| {
                     ui.label("Carla hosting");
@@ -658,7 +665,7 @@ impl Dialog {
                             }
                         });
                 });
-                if carla.hosting == CarlaHosting::Remote {
+                if carla.hosting.uses_remote() {
                     ui.horizontal(|ui| {
                         ui.label("FX service address");
                         ui.text_edit_singleline(&mut self.fx_address);
@@ -670,6 +677,37 @@ impl Dialog {
                     if let Some(slack) = &mut self.fx_slack_quanta {
                         ui.add(egui::DragValue::new(slack).range(0..=255).suffix(" quanta"));
                     }
+                    use shoop_host::serve::RemoteReconnect;
+                    let choices = [
+                        (RemoteReconnect::Recreate, "Restore checkpoint"),
+                        (RemoteReconnect::Resume, "Resume live chain when possible"),
+                        (RemoteReconnect::Manual, "Wait for manual recovery"),
+                    ];
+                    ui.horizontal(|ui| {
+                        ui.label("On service disconnect");
+                        egui::ComboBox::from_id_salt("carla_fx_reconnect")
+                            .selected_text(
+                                choices
+                                    .iter()
+                                    .find(|(mode, _)| *mode == self.fx_reconnect)
+                                    .unwrap()
+                                    .1,
+                            )
+                            .show_ui(ui, |ui| {
+                                for (mode, label) in choices {
+                                    ui.selectable_value(&mut self.fx_reconnect, mode, label);
+                                }
+                            });
+                    });
+                    if carla.hosting == CarlaHosting::Mixed {
+                        ui.label("Instance limits apply separately to local and remote Carla.");
+                    }
+                }
+                if carla.hosting.uses_remote() {
+                    ui.checkbox(
+                        &mut self.fx_dry_on_loss,
+                        "Play delayed dry audio when FX is missing",
+                    );
                 }
                 if carla.hosting != CarlaHosting::Disabled {
                     for (label, count) in [

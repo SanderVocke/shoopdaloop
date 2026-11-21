@@ -968,6 +968,8 @@ impl ControlEndpoint {
                 for operation in [
                     Some(EngineOp::ProcessorClaim {
                         generation: slot.generation,
+                        inputs: strip.shape.audio_inputs,
+                        outputs: strip.shape.audio_outputs,
                     }),
                     (owner.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx).then_some(
                         EngineOp::ProcessorParameter {
@@ -1025,6 +1027,8 @@ impl ControlEndpoint {
                 for operation in [
                     Some(EngineOp::ProcessorClaim {
                         generation: slot.generation,
+                        inputs: bus.channels,
+                        outputs: bus.channels,
                     }),
                     (owner.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx).then_some(
                         EngineOp::ProcessorParameter {
@@ -1066,6 +1070,29 @@ impl ControlEndpoint {
             }
             if count + bus_count > 0 {
                 return true;
+            }
+        }
+        if let Some(controls) = &self.hosted_processors {
+            let tracks = self.next.strips.iter().flatten().filter_map(|strip| {
+                (self.model.strip(strip.id).and_then(|old| old.processor) != strip.processor)
+                    .then_some(strip.processor?.slot?)
+            });
+            let buses = self.next.buses.iter().flatten().filter_map(|bus| {
+                (self.model.bus(bus.id).and_then(|old| old.processor) != bus.processor)
+                    .then_some(bus.processor?.slot?)
+            });
+            let mut waiting = false;
+            for slot in tracks.chain(buses) {
+                match controls.claim_ready(slot) {
+                    Ok(ready) => waiting |= !ready,
+                    Err(reason) => {
+                        job.fail(reason);
+                        return true;
+                    }
+                }
+            }
+            if waiting {
+                return false;
             }
         }
         if job.replacing() {

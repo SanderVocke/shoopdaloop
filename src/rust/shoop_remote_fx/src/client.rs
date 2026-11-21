@@ -1,10 +1,9 @@
 use crate::{
     control::{
-        connect, prove_client, read_frame, write_frame, Action, Intent, Kind, Request, Response,
-        Status, Welcome, CONTROL_TIMEOUT, HEARTBEAT, STATE_LIMIT,
+        connect, prove_client, read_frame, write_frame, Action, Credential, Intent, Kind, Request,
+        Response, Status, Welcome, CONTROL_TIMEOUT, CONTROL_VERSION, HEARTBEAT, STATE_LIMIT,
     },
     media::POLL,
-    wire::VERSION,
     ClientMedia, Config, Counters, Lifecycle,
 };
 use rt_buffered::{AsyncBatch, AsyncCompletion, AsyncTransport, Backend, Batch, LocalTransport};
@@ -24,19 +23,65 @@ use std::{
 const RETRY_INTERVAL: Duration = Duration::from_millis(500);
 const COMMANDS: usize = 8;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Reconnect {
+    #[default]
+    Recreate,
+    Resume,
+    Manual,
+}
+
 struct Connection {
     tcp: TcpStream,
     next: u64,
 }
 
 impl Connection {
-    fn open(address: SocketAddr, kind: Kind, config: Config) -> io::Result<(Self, MediaSession)> {
-        let (tcp, reply) = connect(address, Intent::Open { kind, config })?;
+    fn open(
+        address: SocketAddr,
+        kind: Kind,
+        config: Config,
+        policy: Reconnect,
+        credential: Option<&Credential>,
+    ) -> io::Result<(Self, MediaSession, Option<Credential>, bool)> {
+        let (tcp, reply, resumed) = if let Some(credential) = credential {
+            match connect(
+                address,
+                Intent::Resume {
+                    credential: credential.clone(),
+                },
+            )? {
+                (_, Welcome::Pending {}) => return Err(io::ErrorKind::WouldBlock.into()),
+                (_, Welcome::Missing {}) => {
+                    let (tcp, reply) = connect(
+                        address,
+                        Intent::Open {
+                            kind,
+                            config,
+                            retain: true,
+                        },
+                    )?;
+                    (tcp, reply, false)
+                }
+                (tcp, reply) => (tcp, reply, true),
+            }
+        } else {
+            let (tcp, reply) = connect(
+                address,
+                Intent::Open {
+                    kind,
+                    config,
+                    retain: policy != Reconnect::Recreate,
+                },
+            )?;
+            (tcp, reply, false)
+        };
         let Welcome::Ready {
-            version: VERSION,
+            version: CONTROL_VERSION,
             config: accepted,
             udp_port,
             stream,
+            credential,
         } = reply
         else {
             return Err(io::Error::other("Incompatible FX stream reply"));
@@ -50,7 +95,16 @@ impl Connection {
         let mut udp = address;
         udp.set_port(udp_port);
         let socket = prove_client(udp, token)?;
-        Ok((Self { tcp, next: 0 }, MediaSession { socket, token }))
+        Ok((
+            Self { tcp, next: 0 },
+            MediaSession {
+                socket,
+                token,
+                config,
+            },
+            credential,
+            resumed,
+        ))
     }
 
     fn call(&mut self, action: Action) -> io::Result<Response> {
@@ -68,6 +122,7 @@ impl Connection {
 struct MediaSession {
     socket: UdpSocket,
     token: u128,
+    config: Config,
 }
 
 enum Operation {
@@ -112,6 +167,8 @@ struct Shared {
     observation: Mutex<Observation>,
     closing: AtomicBool,
     desired_active: AtomicBool,
+    claim: AtomicU64,
+    claim_result: AtomicU64,
     reset_requested: AtomicU64,
     reset_done: AtomicU64,
     media_changed: AtomicBool,
@@ -157,6 +214,7 @@ pub struct RenderEndpoint {
     lifetime: Arc<Lifetime>,
     transport: LocalTransport,
     ports: PortCounts,
+    dry_on_loss: bool,
 }
 
 impl Client {
@@ -165,27 +223,62 @@ impl Client {
         kind: Kind,
         config: Config,
     ) -> io::Result<(RenderEndpoint, Self)> {
-        let (transport, media_worker) =
-            ClientMedia::prepare(config).map_err(|error| io::Error::other(format!("{error:?}")))?;
-        let (mut connection, media) = Connection::open(address, kind, config)?;
+        let (mut connection, media, _, _) =
+            Connection::open(address, kind, config, Reconnect::Recreate, None)?;
         let inactive = connection.call(Action::Active(false))?;
         inactive.result.map_err(io::Error::other)?;
-        let status = inactive.status;
+        Self::spawn(
+            address,
+            kind,
+            config,
+            Reconnect::Recreate,
+            false,
+            Some((connection, media, inactive.status)),
+        )
+    }
+
+    pub fn prepare_slot(
+        address: SocketAddr,
+        kind: Kind,
+        config: Config,
+        policy: Reconnect,
+        dry_on_loss: bool,
+    ) -> io::Result<(RenderEndpoint, Self)> {
+        Self::spawn(address, kind, config, policy, dry_on_loss, None)
+    }
+
+    fn spawn(
+        address: SocketAddr,
+        kind: Kind,
+        config: Config,
+        policy: Reconnect,
+        dry_on_loss: bool,
+        initial: Option<(Connection, MediaSession, Status)>,
+    ) -> io::Result<(RenderEndpoint, Self)> {
+        let (transport, media_worker) =
+            ClientMedia::prepare(config).map_err(|error| io::Error::other(format!("{error:?}")))?;
+        let (connection, media, status) = match initial {
+            Some((connection, media, status)) => (Some(connection), Some(media), status),
+            None => (None, None, Status::default()),
+        };
+        let eager = connection.is_some();
         let shared = Arc::new(Shared {
             observation: Mutex::new(Observation {
                 owner: 1,
-                generation: 1,
+                generation: u64::from(eager),
                 status,
-                connected: true,
+                connected: eager,
                 ..Observation::default()
             }),
             closing: AtomicBool::new(false),
             desired_active: AtomicBool::new(false),
+            claim: AtomicU64::new(0),
+            claim_result: AtomicU64::new(0),
             reset_requested: AtomicU64::new(0),
             reset_done: AtomicU64::new(0),
             media_changed: AtomicBool::new(true),
             media_failed: AtomicBool::new(false),
-            media: Mutex::new(Some(media)),
+            media: Mutex::new(media),
         });
         let lifetime = Arc::new(Lifetime {
             shared: Arc::clone(&shared),
@@ -197,17 +290,25 @@ impl Client {
             .spawn(move || media_loop(&media_shared, media_worker))?;
         thread::Builder::new()
             .name("remote-fx-client".into())
-            .spawn(move || control_loop(shared, requested, connection, address, kind, config))?;
+            .spawn(move || {
+                control_loop(shared, requested, connection, address, kind, config, policy)
+            })?;
         let endpoint = RenderEndpoint {
             lifetime: Arc::clone(&lifetime),
             transport,
             ports: config.ports(),
+            dry_on_loss,
         };
         Ok((endpoint, Self { lifetime, commands }))
     }
 
     pub fn observation(&self) -> Observation {
         *self.lifetime.shared.observation.lock().unwrap()
+    }
+
+    pub fn claimed(&self, generation: u32) -> Option<bool> {
+        let result = self.lifetime.shared.claim_result.load(Ordering::Acquire);
+        (result >> 1 == u64::from(generation)).then_some(result & 1 != 0)
     }
 
     pub fn request(&self, owner: u64, generation: u64, action: Action) -> Result<Ticket, String> {
@@ -246,6 +347,14 @@ impl AsyncTransport for RenderEndpoint {
 }
 
 impl Backend for RenderEndpoint {
+    fn dry_on_missing(&self) -> bool {
+        self.dry_on_loss
+    }
+    fn claim(&mut self, generation: u32, inputs: u8, outputs: u8) {
+        let shared = &self.lifetime.shared;
+        let claim = (u64::from(generation) << 16) | (u64::from(outputs) << 8) | u64::from(inputs);
+        shared.claim.store(claim, Ordering::Release);
+    }
     fn ports(&self) -> PortCounts {
         self.ports
     }
@@ -274,6 +383,7 @@ impl Backend for RenderEndpoint {
         let shared = &self.lifetime.shared;
         if step == 0 {
             shared.desired_active.store(false, Ordering::Release);
+            shared.claim.store(0, Ordering::Release);
             shared.reset_requested.fetch_add(1, Ordering::Release);
             return Ok(false);
         }
@@ -293,6 +403,9 @@ fn media_loop(shared: &Shared, mut worker: ClientMedia) {
         if let Some(next) = shared.take_media_update() {
             if session.is_some() {
                 worker.disconnect();
+            }
+            if let Some(link) = &next {
+                worker.set_config(link.config);
             }
             session = next;
         }
@@ -320,17 +433,20 @@ fn media_loop(shared: &Shared, mut worker: ClientMedia) {
 fn control_loop(
     shared: Arc<Shared>,
     commands: Receiver<Command>,
-    initial: Connection,
+    mut connection: Option<Connection>,
     address: SocketAddr,
     kind: Kind,
     config: Config,
+    policy: Reconnect,
 ) {
-    let mut connection = Some(initial);
+    let eager = connection.is_some();
     let mut checkpoint = None;
     let mut notified_active = false;
     let mut owner_reset = 0;
     let mut heartbeat = Instant::now();
     let mut retry = Instant::now();
+    let mut claim = 0;
+    let mut credential = None;
     while !shared.closing.load(Ordering::Acquire) {
         let command = match commands.recv_timeout(Duration::from_millis(10)) {
             Ok(command) => Some(command),
@@ -347,8 +463,14 @@ fn control_loop(
             && command
                 .as_ref()
                 .is_some_and(|command| matches!(command.operation, Operation::Recover));
-        if shared.media_failed.swap(false, Ordering::AcqRel) || reset || recover {
+        if reset {
+            close_chain(address, &mut connection, credential.take());
+        }
+        if shared.media_failed.swap(false, Ordering::AcqRel) || reset {
             disconnect(&shared, &mut connection);
+            retry = Instant::now() - RETRY_INTERVAL;
+        }
+        if recover {
             retry = Instant::now() - RETRY_INTERVAL;
         }
         if reset {
@@ -356,20 +478,42 @@ fn control_loop(
             owner_reset = requested;
             let mut observation = shared.observation.lock().unwrap();
             observation.owner = observation.owner.wrapping_add(1);
+            shared.claim_result.store(0, Ordering::Release);
+            if !eager {
+                shared.reset_done.store(owner_reset, Ordering::Release);
+            }
         }
         let desired = shared.desired_active.load(Ordering::Acquire);
-        if connection.is_none() && retry.elapsed() >= RETRY_INTERVAL {
+        let requested_claim = shared.claim.load(Ordering::Acquire);
+        if requested_claim != claim {
+            claim = requested_claim;
+            retry = Instant::now() - RETRY_INTERVAL;
+        }
+        let claimed_generation = claim >> 16;
+        let first_open = shared.claim_result.load(Ordering::Relaxed) == 0;
+        if connection.is_none()
+            && (eager || claim != 0)
+            && (policy != Reconnect::Manual || first_open || recover)
+            && retry.elapsed() >= RETRY_INTERVAL
+        {
             retry = Instant::now();
-            let opened = Connection::open(address, kind, config).and_then(|(mut link, media)| {
-                if let Some(project) = &checkpoint {
-                    link.call(Action::Restore(String::clone(project)))?
-                        .result
-                        .map_err(io::Error::other)?;
-                }
-                let ready = link.call(Action::Active(desired))?;
-                ready.result.map_err(io::Error::other)?;
-                Ok((link, media, ready.status))
-            });
+            let mut config = config;
+            if !eager {
+                config.input.channels = claim as u8;
+                config.output.channels = (claim >> 8) as u8;
+            }
+            let opened = Connection::open(address, kind, config, policy, credential.as_ref())
+                .and_then(|(mut link, media, next, resumed)| {
+                    credential = next;
+                    if let Some(project) = checkpoint.as_ref().filter(|_| !resumed) {
+                        link.call(Action::Restore(String::clone(project)))?
+                            .result
+                            .map_err(io::Error::other)?;
+                    }
+                    let ready = link.call(Action::Active(desired))?;
+                    ready.result.map_err(io::Error::other)?;
+                    Ok((link, media, ready.status))
+                });
             if let Ok((link, media, status)) = opened {
                 connection = Some(link);
                 notified_active = desired;
@@ -378,6 +522,16 @@ fn control_loop(
                 observation.status = status;
                 observation.generation = observation.generation.wrapping_add(1);
                 shared.replace_media(Some(media));
+                shared
+                    .claim_result
+                    .store((claimed_generation << 1) | 1, Ordering::Release);
+            } else if claimed_generation != 0 && shared.claim_result.load(Ordering::Relaxed) == 0 {
+                if let Err(error) = opened {
+                    eprintln!("Remote Carla at {address}: {error}");
+                }
+                shared
+                    .claim_result
+                    .store(claimed_generation << 1, Ordering::Release);
             }
         }
         if connection.is_some() && owner_reset != shared.reset_done.load(Ordering::Relaxed) {
@@ -390,6 +544,7 @@ fn control_loop(
                 Operation::Remote(Action::Editor(visible)) => Action::Editor(*visible),
                 Operation::Remote(Action::Save) => Action::Save,
                 Operation::Remote(Action::Status) => Action::Status,
+                Operation::Remote(Action::Close) => Action::Close,
                 Operation::Recover => Action::Editor(true),
             })
         } else {
@@ -440,7 +595,24 @@ fn control_loop(
             let _ = command.reply.send(result);
         }
     }
+    close_chain(address, &mut connection, credential);
     disconnect(&shared, &mut connection);
+}
+
+fn close_chain(
+    address: SocketAddr,
+    connection: &mut Option<Connection>,
+    credential: Option<Credential>,
+) {
+    if connection
+        .take()
+        .is_some_and(|mut link| link.call(Action::Close).is_ok())
+    {
+        return;
+    }
+    if let Some(credential) = credential {
+        let _ = connect(address, Intent::Release { credential });
+    }
 }
 
 fn disconnect(shared: &Shared, connection: &mut Option<Connection>) {
@@ -452,4 +624,176 @@ fn disconnect(shared: &Shared, connection: &mut Option<Connection>) {
         ..Status::default()
     };
     shared.replace_media(None);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{describe, serve, set_editor, shutdown, Chain, ChainControls, Dsp, MediaLimits};
+    use rt_runtime::buffer::MidiBuffer;
+    use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
+    use std::net::TcpListener;
+
+    #[global_allocator]
+    static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
+        shoop_wasm_test_support::heap::TrackingAllocator;
+
+    #[derive(Default)]
+    struct TestChain(Status);
+
+    impl ChainControls for TestChain {
+        fn status(&self) -> Status {
+            self.0
+        }
+        fn active(&mut self, active: bool) -> Result<(), String> {
+            self.0.active = active;
+            self.0.lifecycle = Lifecycle::Running;
+            Ok(())
+        }
+        fn editor(&mut self, visible: bool) -> Result<(), String> {
+            self.0.editor_visible = Some(visible);
+            Ok(())
+        }
+        fn save(&mut self) -> Result<String, String> {
+            Ok(String::new())
+        }
+        fn restore(&mut self, _: String) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    impl Dsp for TestChain {
+        fn process(
+            &mut self,
+            batch: AsyncBatch<'_>,
+            output: &mut [f32],
+            _: &mut [MidiBuffer],
+        ) -> Result<(), Error> {
+            assert_eq!(batch.audio.len(), 3 * batch.frames);
+            assert_eq!(output.len(), 5 * batch.frames);
+            output[..batch.audio.len()].copy_from_slice(batch.audio);
+            Ok(())
+        }
+    }
+
+    fn wait_for(mut ready: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !ready() {
+            assert!(
+                Instant::now() < deadline,
+                "FX chain did not reach the expected state"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[shoop_test]
+    fn owner_claims_asymmetric_chain_and_resumes_the_live_editor_state() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            serve(listener, 2, Arc::new(AtomicBool::new(false)), |_, _| {
+                Ok(Chain {
+                    dsp: Box::new(TestChain::default()),
+                    controls: Box::new(TestChain::default()),
+                })
+            })
+            .unwrap();
+        });
+        let ports = MediaLimits {
+            channels: 16,
+            midi: true,
+            midi_events: 4,
+            midi_bytes: 16,
+        };
+        let config = Config {
+            sample_rate: 8_000,
+            quantum: 32,
+            batch_quanta: 1,
+            slack_quanta: 12,
+            input: ports,
+            output: ports,
+            copies: 2,
+            datagram_bytes: 1200,
+        };
+        for policy in [Reconnect::Resume, Reconnect::Manual] {
+            let (mut endpoint, client) =
+                Client::prepare_slot(address, Kind::Patchbay16x, config, policy, false).unwrap();
+            let empty = describe(address).unwrap();
+            assert_eq!(empty.reserved, 0);
+            assert_no_heap(|| endpoint.claim(1, 3, 5));
+            wait_for(|| client.claimed(1) == Some(true));
+            let started = describe(address).unwrap();
+            let chain = &started.chains[0];
+            assert_eq!(
+                (chain.config.input.channels, chain.config.output.channels),
+                (3, 5)
+            );
+            assert!(chain.attached);
+            set_editor(address, started.instance.clone(), chain.id.clone(), true).unwrap();
+            assert_eq!(
+                describe(address).unwrap().chains[0].status.editor_visible,
+                Some(true)
+            );
+
+            let observed = client.observation();
+            if policy == Reconnect::Manual {
+                client
+                    .lifetime
+                    .shared
+                    .media_failed
+                    .store(true, Ordering::Release);
+                wait_for(|| !describe(address).unwrap().chains[0].attached);
+                assert!(!client.observation().connected);
+                client
+                    .recover(observed.owner, observed.generation)
+                    .unwrap()
+                    .wait()
+                    .unwrap();
+            } else {
+                client
+                    .lifetime
+                    .shared
+                    .media_failed
+                    .store(true, Ordering::Release);
+            }
+            wait_for(|| client.observation().generation > observed.generation);
+            let resumed = describe(address).unwrap();
+            assert_eq!(resumed.chains[0].id, chain.id);
+            assert_eq!(resumed.chains[0].status.editor_visible, Some(true));
+
+            let midi = [MidiBuffer::new(4, 16).unwrap()];
+            let input = [0.5; 32 * 16];
+            assert_no_heap(|| {
+                endpoint
+                    .try_submit(AsyncBatch {
+                        tag: rt_buffered::BatchTag {
+                            generation: 1,
+                            sequence: 0,
+                            source: rt_runtime::Frame(0),
+                        },
+                        frames: 32,
+                        audio: &input,
+                        midi: &midi,
+                        parameters: &[],
+                    })
+                    .unwrap()
+            });
+            wait_for(|| {
+                let Some(completion) = endpoint.try_completion() else {
+                    return false;
+                };
+                let output = completion.output.unwrap();
+                assert!(output.audio[..3 * 32].iter().all(|value| *value == 0.5));
+                assert!(output.audio[3 * 32..].iter().all(|value| *value == 0.0));
+                true
+            });
+            assert_eq!(endpoint.reset_step(0), Ok(false));
+            wait_for(|| endpoint.reset_step(1) == Ok(true));
+            assert!(describe(address).unwrap().chains.is_empty());
+        }
+        let instance = describe(address).unwrap().instance;
+        shutdown(address, instance).unwrap();
+        server.join().unwrap();
+    }
 }

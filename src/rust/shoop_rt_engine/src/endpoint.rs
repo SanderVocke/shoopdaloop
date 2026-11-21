@@ -168,6 +168,9 @@ pub trait HostedProcessorControls: Send {
         false
     }
     fn status(&self, index: u16) -> Option<HostedProcessorObservation>;
+    fn claim_ready(&self, _slot: shoop_rt_protocol::ProcessorSlot) -> Result<bool, Refusal> {
+        Ok(true)
+    }
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
     fn recover(
         &self,

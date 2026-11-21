@@ -40,6 +40,7 @@ impl Default for PreparedProcessors {
                 synth_unavailable: Some(Unavailable::Disabled),
                 memory_bytes: 0,
                 carla: Default::default(),
+                remote_carla: Default::default(),
             },
             reserved_bytes: 0,
             instances: Vec::new(),
@@ -55,6 +56,7 @@ pub struct ProcessorCatalog {
     pub presets: Box<[ProcessorPreset]>,
     pub(crate) worker_delays: Box<[usize]>,
     pub(crate) carla_delay: u32,
+    pub(crate) remote_carla_delay: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ProcessorState {
@@ -381,13 +383,22 @@ impl HostedProcessor {
         }
         Ok(())
     }
-    pub(crate) fn claim(&mut self, frame: Frame, generation: u32) -> Result<(), Error> {
+    pub(crate) fn claim(
+        &mut self,
+        frame: Frame,
+        generation: u32,
+        inputs: u8,
+        outputs: u8,
+    ) -> Result<(), Error> {
         if self.phase != ProcessorPhase::Free {
             return Err(Error::Busy);
         }
         if self.generation.checked_add(1) != Some(generation) {
             return Err(Error::InvalidId);
         }
+        self.buffered
+            .inactive_backend_mut()?
+            .claim(generation, inputs, outputs);
         self.generation = generation;
         self.phase = ProcessorPhase::Owned;
         self.publish(frame);
@@ -987,7 +998,7 @@ mod tests {
             .owner_generation
             .store(1, Ordering::Relaxed);
         hosted.attach(signal.clone());
-        hosted.claim(Frame(0), 1).unwrap();
+        hosted.claim(Frame(0), 1, 2, 2).unwrap();
         hosted.binding = Some(ProcessorTarget::Track {
             source: 0,
             generation: 1,
@@ -1193,8 +1204,8 @@ mod tests {
             16,
         ));
         assert_no_heap(|| {
-            assert_eq!(node.claim(Frame(0), 0), Err(Error::InvalidId));
-            node.claim(Frame(0), 1).unwrap();
+            assert_eq!(node.claim(Frame(0), 0, 2, 2), Err(Error::InvalidId));
+            node.claim(Frame(0), 1, 2, 2).unwrap();
             node.bind_bus(1, shoop_rt_protocol::BusId::MASTER, rt_runtime::Epoch(1))
                 .unwrap();
             assert_eq!(
@@ -1204,7 +1215,7 @@ mod tests {
             node.binding = node.pending_binding.take().map(|(_, target)| target);
             assert_eq!(node.track_binding(), None);
             assert_eq!(node.routing_state(), 0);
-            assert_eq!(node.claim(Frame(0), 2), Err(Error::Busy));
+            assert_eq!(node.claim(Frame(0), 2, 2, 2), Err(Error::Busy));
             node.parameter(Frame(0), 1, 0, 0.75).unwrap();
             assert_eq!(cells.read().unwrap().values[0], 0.75);
             node.retire(Frame(0), 1).unwrap();
@@ -1214,11 +1225,11 @@ mod tests {
                 node.maintain(Frame(frame)).unwrap();
             }
             assert_eq!(cells.read().unwrap().phase, ProcessorPhase::Retiring);
-            assert_eq!(node.claim(Frame(64), 2), Err(Error::Busy));
+            assert_eq!(node.claim(Frame(64), 2, 2, 2), Err(Error::Busy));
             node.maintain(Frame(80)).unwrap();
             assert_eq!(cells.read().unwrap().phase, ProcessorPhase::Free);
             assert_eq!(cells.read().unwrap().values[0], 0.);
-            node.claim(Frame(80), 2).unwrap();
+            node.claim(Frame(80), 2, 2, 2).unwrap();
             assert_eq!(node.parameter(Frame(80), 1, 0, 0.5), Err(Error::InvalidId));
             node.parameter(Frame(80), 2, 0, 0.25).unwrap();
             node.start(Frame(80), 2).unwrap();

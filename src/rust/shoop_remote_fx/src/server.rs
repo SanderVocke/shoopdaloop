@@ -1,10 +1,9 @@
 use crate::{
     control::{
-        read_frame, write_frame, Action, Description, Greeting, Intent, Kind, Lifecycle, Request,
-        Response, Status, Welcome, CONTROL_TIMEOUT, DESCRIPTION_LIMIT, INITIAL_LIMIT, LEASE,
-        STATE_LIMIT,
+        read_frame, write_frame, Action, ChainDescription, Credential, Description, Greeting,
+        Intent, Kind, Lifecycle, Request, Response, Status, Welcome, CONTROL_TIMEOUT,
+        CONTROL_VERSION, DESCRIPTION_LIMIT, INITIAL_LIMIT, LEASE, STATE_LIMIT,
     },
-    wire::VERSION,
     Config, Counters, Dsp, ServerMedia,
 };
 use std::{
@@ -22,6 +21,7 @@ use std::{
 const MAX_CONNECTIONS: usize = 64;
 const MEDIA_BUDGET: usize = 512 * 1024 * 1024;
 const WIRE_BUDGET: usize = 256 * 1024 * 1024;
+const RETAIN_CHAIN: Duration = Duration::from_secs(30);
 
 pub trait ChainControls: Send {
     fn status(&self) -> Status;
@@ -45,10 +45,9 @@ struct Resources {
 struct Server {
     instance: String,
     slots: usize,
-    resources: Mutex<Resources>,
+    resources: Arc<Mutex<Resources>>,
     pending: AtomicUsize,
-    active: AtomicUsize,
-    streams: Mutex<BTreeMap<u128, Arc<Mutex<Counters>>>>,
+    chains: Mutex<BTreeMap<String, RegisteredChain>>,
     stopping: Arc<AtomicBool>,
     factory: Box<dyn Fn(Kind, Config) -> Result<Chain, String> + Send + Sync>,
 }
@@ -61,25 +60,45 @@ impl Drop for Connection {
     }
 }
 
-struct Reservation<'a> {
-    server: &'a Server,
+struct Reservation {
+    resources: Arc<Mutex<Resources>>,
     media: usize,
     wire: usize,
 }
 
-impl Drop for Reservation<'_> {
+impl Drop for Reservation {
     fn drop(&mut self) {
-        let mut resources = self.server.resources.lock().unwrap();
+        let mut resources = self.resources.lock().unwrap();
         resources.slots -= 1;
         resources.media -= self.media;
         resources.wire -= self.wire;
     }
 }
 
+struct RegisteredChain {
+    chain: ChainInfo,
+    parked: Option<ParkedChain>,
+}
+
+#[derive(Clone)]
+struct ChainInfo {
+    kind: Kind,
+    config: Config,
+    secret: Option<String>,
+    controls: Arc<Mutex<Box<dyn ChainControls>>>,
+    status: Arc<Mutex<Status>>,
+}
+
+struct ParkedChain {
+    dsp: Box<dyn Dsp>,
+    reservation: Reservation,
+    expires: Instant,
+}
+
 impl Server {
-    fn reserve(&self, kind: Kind, config: Config) -> io::Result<Reservation<'_>> {
-        if config.input.channels != kind.channels()
-            || config.output.channels != kind.channels()
+    fn reserve(&self, kind: Kind, config: Config) -> io::Result<Reservation> {
+        if config.input.channels > kind.channels()
+            || config.output.channels > kind.channels()
             || !config.input.midi
             || !config.output.midi
         {
@@ -122,27 +141,54 @@ impl Server {
         resources.media += media;
         resources.wire += wire;
         Ok(Reservation {
-            server: self,
+            resources: Arc::clone(&self.resources),
             media,
             wire,
         })
     }
 
     fn describe(&self) -> Description {
+        let reserved = self.resources.lock().unwrap().slots;
+        let chains: Vec<_> = self
+            .chains
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, entry)| ChainDescription {
+                id: id.clone(),
+                kind: entry.chain.kind,
+                config: entry.chain.config,
+                attached: entry.parked.is_none(),
+                status: *entry.chain.status.lock().unwrap(),
+            })
+            .collect();
         Description {
             instance: self.instance.clone(),
             pid: std::process::id(),
             slots: self.slots,
-            reserved: self.resources.lock().unwrap().slots,
-            active: self.active.load(Ordering::Relaxed),
+            reserved,
+            active: chains
+                .iter()
+                .filter(|chain| chain.attached && chain.status.active)
+                .count(),
             kinds: vec![Kind::Rack, Kind::Patchbay, Kind::Patchbay16x],
-            streams: self
-                .streams
-                .lock()
-                .unwrap()
-                .values()
-                .map(|counters| *counters.lock().unwrap())
+            streams: chains
+                .iter()
+                .filter(|chain| chain.attached)
+                .map(|chain| chain.status.counters)
                 .collect(),
+            chains,
+        }
+    }
+
+    fn local_management(&self, tcp: &TcpStream, instance: &str) -> io::Result<()> {
+        let peer = tcp.peer_addr()?.ip();
+        if instance == self.instance && (peer.is_loopback() || peer == tcp.local_addr()?.ip()) {
+            Ok(())
+        } else {
+            Err(io::Error::other(
+                "FX management requires the service's local identity",
+            ))
         }
     }
 
@@ -151,92 +197,233 @@ impl Server {
         tcp.set_write_timeout(Some(CONTROL_TIMEOUT))?;
         let Greeting { version, intent } =
             read_frame(&mut tcp, INITIAL_LIMIT, Duration::from_secs(2))?;
-        if version != VERSION {
-            return write_frame(
-                &mut tcp,
-                &Welcome::Refused("Incompatible FX service version".into()),
-                INITIAL_LIMIT,
-            );
+        if version != CONTROL_VERSION {
+            return self.refuse(&mut tcp, "Incompatible FX service version".into());
         }
         match intent {
             Intent::Describe => write_frame(
                 &mut tcp,
                 &Welcome::Description {
-                    version: VERSION,
+                    version: CONTROL_VERSION,
                     description: self.describe(),
                 },
                 DESCRIPTION_LIMIT,
             ),
             Intent::Shutdown { instance } => {
-                let peer = tcp.peer_addr()?.ip();
-                if instance != self.instance
-                    || !(peer.is_loopback() || peer == tcp.local_addr()?.ip())
-                {
-                    return write_frame(
-                        &mut tcp,
-                        &Welcome::Refused("FX service shutdown requires its local identity".into()),
-                        INITIAL_LIMIT,
-                    );
+                if let Err(error) = self.local_management(&tcp, &instance) {
+                    return self.refuse(&mut tcp, error.to_string());
                 }
                 write_frame(&mut tcp, &Welcome::Shutdown, INITIAL_LIMIT)?;
                 self.stopping.store(true, Ordering::Release);
                 Ok(())
             }
-            Intent::Open { kind, config } => self.open_chain(tcp, kind, config),
+            Intent::Editor {
+                instance,
+                chain,
+                visible,
+            } => {
+                let result = self.local_management(&tcp, &instance).and_then(|()| {
+                    let chain = self
+                        .chains
+                        .lock()
+                        .unwrap()
+                        .get(&chain)
+                        .map(|entry| entry.chain.clone())
+                        .ok_or_else(|| io::Error::other("FX chain has closed"))?;
+                    let mut controls = chain.controls.lock().unwrap();
+                    controls.editor(visible).map_err(io::Error::other)?;
+                    let visible = controls.status().editor_visible;
+                    chain.status.lock().unwrap().editor_visible = visible;
+                    Ok(())
+                });
+                match result {
+                    Ok(()) => write_frame(&mut tcp, &Welcome::Confirmed {}, INITIAL_LIMIT),
+                    Err(error) => self.refuse(&mut tcp, error.to_string()),
+                }
+            }
+            Intent::Open {
+                kind,
+                config,
+                retain,
+            } => self.open_chain(tcp, kind, config, retain),
+            Intent::Resume { credential } => self.resume_chain(tcp, credential),
+            Intent::Release { credential } => {
+                let removed = {
+                    let mut chains = self.chains.lock().unwrap();
+                    if chains.get(&credential.chain).is_some_and(|entry| {
+                        entry.parked.is_some()
+                            && entry.chain.secret.as_ref() == Some(&credential.secret)
+                    }) {
+                        chains.remove(&credential.chain)
+                    } else {
+                        None
+                    }
+                };
+                let reply = if removed.is_some() {
+                    Welcome::Confirmed {}
+                } else {
+                    Welcome::Missing {}
+                };
+                drop(removed);
+                write_frame(&mut tcp, &reply, INITIAL_LIMIT)
+            }
         }
     }
 
-    fn open_chain(&self, mut tcp: TcpStream, kind: Kind, config: Config) -> io::Result<()> {
+    fn refuse(&self, tcp: &mut TcpStream, message: String) -> io::Result<()> {
+        write_frame(tcp, &Welcome::Refused(message), INITIAL_LIMIT)
+    }
+
+    fn open_chain(
+        &self,
+        mut tcp: TcpStream,
+        kind: Kind,
+        config: Config,
+        retain: bool,
+    ) -> io::Result<()> {
         let prepared = self.reserve(kind, config).and_then(|reservation| {
             let chain = (self.factory)(kind, config).map_err(io::Error::other)?;
-            let server = ServerMedia::prepare(config)
-                .map_err(|error| io::Error::other(format!("{error:?}")))?;
-            Ok((reservation, chain, server))
+            Ok((reservation, chain))
         });
-        let (
-            _reservation,
-            Chain {
-                mut dsp,
-                mut controls,
-            },
-            mut server,
-        ) = match prepared {
+        let (reservation, Chain { dsp, controls }) = match prepared {
             Ok(prepared) => prepared,
-            Err(error) => {
-                return write_frame(
-                    &mut tcp,
-                    &Welcome::Refused(error.to_string()),
-                    INITIAL_LIMIT,
-                )
-            }
+            Err(error) => return self.refuse(&mut tcp, error.to_string()),
         };
+        let id = uuid::Uuid::new_v4().to_string();
+        let chain = ChainInfo {
+            kind,
+            config,
+            secret: retain.then(|| uuid::Uuid::new_v4().to_string()),
+            controls: Arc::new(Mutex::new(controls)),
+            status: Arc::new(Mutex::new(Status::default())),
+        };
+        self.chains.lock().unwrap().insert(
+            id.clone(),
+            RegisteredChain {
+                chain: chain.clone(),
+                parked: None,
+            },
+        );
+        self.attach(tcp, id, chain, reservation, dsp, false)
+    }
+
+    fn resume_chain(&self, mut tcp: TcpStream, credential: Credential) -> io::Result<()> {
+        let mut chains = self.chains.lock().unwrap();
+        let Some(entry) = chains
+            .get_mut(&credential.chain)
+            .filter(|entry| entry.chain.secret.as_ref() == Some(&credential.secret))
+        else {
+            drop(chains);
+            return write_frame(&mut tcp, &Welcome::Missing {}, INITIAL_LIMIT);
+        };
+        let Some(parked) = entry.parked.take() else {
+            drop(chains);
+            return write_frame(&mut tcp, &Welcome::Pending {}, INITIAL_LIMIT);
+        };
+        if Instant::now() >= parked.expires {
+            chains.remove(&credential.chain);
+            drop(chains);
+            drop(parked);
+            return write_frame(&mut tcp, &Welcome::Missing {}, INITIAL_LIMIT);
+        }
+        let chain = entry.chain.clone();
+        drop(chains);
+        self.attach(
+            tcp,
+            credential.chain,
+            chain,
+            parked.reservation,
+            parked.dsp,
+            true,
+        )
+    }
+
+    fn reap_expired(&self) {
+        let mut chains = self.chains.lock().unwrap();
+        let expired = chains.iter().find_map(|(id, entry)| {
+            entry
+                .parked
+                .as_ref()
+                .filter(|parked| Instant::now() >= parked.expires)
+                .map(|_| id.clone())
+        });
+        let removed = expired.and_then(|id| chains.remove(&id));
+        drop(chains);
+        drop(removed);
+    }
+
+    fn attach(
+        &self,
+        mut tcp: TcpStream,
+        id: String,
+        chain: ChainInfo,
+        reservation: Reservation,
+        mut dsp: Box<dyn Dsp>,
+        mut retainable: bool,
+    ) -> io::Result<()> {
+        let result = self.run_attachment(&mut tcp, &id, &chain, dsp.as_mut(), &mut retainable);
+        let mut chains = self.chains.lock().unwrap();
+        if let Ok(Some(reply)) = result {
+            chains.remove(&id);
+            drop(chains);
+            drop(chain);
+            drop(dsp);
+            drop(reservation);
+            return write_frame(&mut tcp, &reply, STATE_LIMIT);
+        }
+        if chain.secret.is_some() && retainable && !self.stopping.load(Ordering::Acquire) {
+            let entry = chains.get_mut(&id).unwrap();
+            chain.status.lock().unwrap().lifecycle = Lifecycle::Unavailable;
+            entry.parked = Some(ParkedChain {
+                dsp,
+                reservation,
+                expires: Instant::now() + RETAIN_CHAIN,
+            });
+        } else {
+            chains.remove(&id);
+        }
+        drop(chains);
+        result.map(|_| ())
+    }
+
+    fn run_attachment(
+        &self,
+        tcp: &mut TcpStream,
+        id: &str,
+        chain: &ChainInfo,
+        dsp: &mut dyn Dsp,
+        retainable: &mut bool,
+    ) -> io::Result<Option<Response>> {
+        let config = chain.config;
+        let mut server =
+            ServerMedia::prepare(config).map_err(|error| io::Error::other(format!("{error:?}")))?;
         let socket = UdpSocket::bind((tcp.local_addr()?.ip(), 0))?;
         let stream = uuid::Uuid::new_v4().as_u128();
         write_frame(
-            &mut tcp,
+            tcp,
             &Welcome::Ready {
-                version: VERSION,
+                version: CONTROL_VERSION,
                 config,
                 udp_port: socket.local_addr()?.port(),
                 stream: format!("{stream:032x}"),
+                credential: chain.secret.as_ref().map(|secret| Credential {
+                    chain: id.to_owned(),
+                    secret: secret.clone(),
+                }),
             },
             INITIAL_LIMIT,
         )?;
         crate::control::prove_server(&socket, tcp.peer_addr()?.ip(), stream)?;
+        *retainable = true;
         socket.set_read_timeout(Some(Duration::from_millis(1)))?;
-
         let closed = AtomicBool::new(false);
-        let counters = Arc::new(Mutex::new(Counters::default()));
-        self.streams
-            .lock()
-            .unwrap()
-            .insert(stream, Arc::clone(&counters));
-        let result = thread::scope(|scope| {
+        let counters = Mutex::new(Counters::default());
+        thread::scope(|scope| {
             let media = scope.spawn(|| {
                 let mut published = Instant::now();
                 while !closed.load(Ordering::Acquire) && !self.stopping.load(Ordering::Acquire) {
                     if wait_for_media(&socket)
-                        .and_then(|()| server.poll(&socket, stream, dsp.as_mut()))
+                        .and_then(|()| server.poll(&socket, stream, dsp))
                         .is_err()
                     {
                         closed.store(true, Ordering::Release);
@@ -248,27 +435,20 @@ impl Server {
                     }
                 }
             });
-            let mut active = false;
-            let result = self.control(&mut tcp, controls.as_mut(), &closed, &mut active, &counters);
-            if active {
-                self.active.fetch_sub(1, Ordering::Relaxed);
-            }
+            let result = self.control(tcp, chain, &closed, &counters);
             closed.store(true, Ordering::Release);
             let _ = media.join();
             result
-        });
-        self.streams.lock().unwrap().remove(&stream);
-        result
+        })
     }
 
     fn control(
         &self,
         tcp: &mut TcpStream,
-        chain: &mut dyn ChainControls,
+        chain: &ChainInfo,
         closed: &AtomicBool,
-        active: &mut bool,
         counters: &Mutex<Counters>,
-    ) -> io::Result<()> {
+    ) -> io::Result<Option<Response>> {
         let mut previous: Option<Response> = None;
         while !closed.load(Ordering::Acquire) && !self.stopping.load(Ordering::Acquire) {
             let Request { id, action } = read_frame(tcp, STATE_LIMIT, LEASE)?;
@@ -281,22 +461,17 @@ impl Server {
                     return Err(io::ErrorKind::InvalidData.into());
                 }
             }
+            let closing = matches!(action, Action::Close);
+            let mut controls = chain.controls.lock().unwrap();
             let result = match action {
-                Action::Status => Ok(None),
-                Action::Active(active) => chain.active(active).map(|()| None),
-                Action::Editor(visible) => chain.editor(visible).map(|()| None),
-                Action::Save => chain.save().map(Some),
-                Action::Restore(state) => chain.restore(state).map(|()| None),
+                Action::Status | Action::Close => Ok(None),
+                Action::Active(active) => controls.active(active).map(|()| None),
+                Action::Editor(visible) => controls.editor(visible).map(|()| None),
+                Action::Save => controls.save().map(Some),
+                Action::Restore(state) => controls.restore(state).map(|()| None),
             };
-            let mut status = chain.status();
-            if status.active != *active {
-                if status.active {
-                    self.active.fetch_add(1, Ordering::Relaxed);
-                } else {
-                    self.active.fetch_sub(1, Ordering::Relaxed);
-                }
-                *active = status.active;
-            }
+            let mut status = controls.status();
+            drop(controls);
             status.counters = *counters.lock().unwrap();
             if status.lifecycle == Lifecycle::Running
                 && previous.as_ref().is_some_and(|previous| {
@@ -305,11 +480,15 @@ impl Server {
             {
                 status.lifecycle = Lifecycle::Degraded;
             }
+            *chain.status.lock().unwrap() = status;
             let reply = Response { id, status, result };
+            if closing {
+                return Ok(Some(reply));
+            }
             write_frame(tcp, &reply, STATE_LIMIT)?;
             previous = Some(reply);
         }
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -344,19 +523,19 @@ pub fn serve(
     let server = Arc::new(Server {
         instance: uuid::Uuid::new_v4().to_string(),
         slots,
-        resources: Mutex::new(Resources {
+        resources: Arc::new(Mutex::new(Resources {
             slots: 0,
             media: 0,
             wire: 0,
-        }),
+        })),
         pending: AtomicUsize::new(0),
-        active: AtomicUsize::new(0),
-        streams: Mutex::new(BTreeMap::new()),
+        chains: Mutex::new(BTreeMap::new()),
         stopping,
         factory: Box::new(factory),
     });
     let mut connections = Vec::with_capacity(MAX_CONNECTIONS);
     while !server.stopping.load(Ordering::Acquire) {
+        server.reap_expired();
         connections.retain(|thread: &thread::JoinHandle<_>| !thread.is_finished());
         match listener.accept() {
             Ok((socket, _)) if server.pending.load(Ordering::Relaxed) < MAX_CONNECTIONS => {

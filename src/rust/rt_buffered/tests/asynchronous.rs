@@ -63,6 +63,7 @@ struct Job {
 struct Worker {
     jobs: Vec<Job>,
     step: Arc<AtomicUsize>,
+    dry_on_missing: bool,
 }
 
 impl AsyncTransport for Worker {
@@ -127,6 +128,9 @@ impl AsyncTransport for Worker {
 }
 
 impl Backend for Worker {
+    fn dry_on_missing(&self) -> bool {
+        self.dry_on_missing
+    }
     fn ports(&self) -> PortCounts {
         PORTS
     }
@@ -163,6 +167,10 @@ struct Harness {
 
 impl Harness {
     fn new(m: usize, s: usize, capacity: usize) -> Self {
+        Self::with_fallback(m, s, capacity, false)
+    }
+
+    fn with_fallback(m: usize, s: usize, capacity: usize, dry_on_missing: bool) -> Self {
         let quantum = Quantum::new(Q).unwrap();
         let timing = Timing {
             batch_quanta: m,
@@ -178,6 +186,7 @@ impl Harness {
                 })
                 .collect(),
             step: step.clone(),
+            dry_on_missing,
         };
         let node = BufferedProcessor::with_backend(worker, quantum, timing, LIMITS).unwrap();
         assert_eq!(
@@ -291,6 +300,20 @@ fn async_buffering_expires_whole_batches_and_resumes_after_recovering_notes() {
     assert_eq!(stats.last_completion_frames, Q as u64);
     assert_eq!(stats.peak_completion_frames, Q as u64);
     assert_eq!(host.node.lifecycle(), Lifecycle::Running);
+}
+
+#[shoop_test]
+fn delayed_dry_fallback_keeps_missing_wet_release_unavailable() {
+    let mut host = Harness::with_fallback(2, 1, 3, true);
+    assert_eq!(host.tick([1.; Q]), [0.; Q]);
+    assert_eq!(host.tick([2.; Q]), [0.; Q]);
+    assert_eq!(host.tick([3.; Q]), [0.; Q]);
+    assert_eq!(host.tick([4.; Q]), [1.; Q]);
+    assert!(host.output.is_recovery());
+    assert!(!host.node.last_release().unwrap().available);
+    assert!(host.node.completed_audio(Frame(0), 0).is_none());
+    assert_eq!(host.tick([5.; Q]), [2.; Q]);
+    assert!(!host.node.last_release().unwrap().available);
 }
 
 #[shoop_test]

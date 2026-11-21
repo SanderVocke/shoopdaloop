@@ -478,22 +478,16 @@ fn prepare_complete_using<R>(
     }
     if processors.instances.len() != processors.effective.slots()
         || processors.reserved_bytes > processors.effective.memory_bytes
-        || [
-            shoop_rt_protocol::ProcessorKind::BuiltInFx,
-            shoop_rt_protocol::ProcessorKind::OxiSynth,
-            shoop_rt_protocol::ProcessorKind::CarlaRack,
-            shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
-            shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x,
-        ]
-        .into_iter()
-        .any(|kind| {
-            processors
-                .instances
-                .iter()
-                .filter(|processor| processor.kind == kind)
-                .count()
-                != 2 * usize::from(effective.instances(kind))
-        })
+        || shoop_rt_protocol::ProcessorKind::HOSTED
+            .into_iter()
+            .any(|kind| {
+                processors
+                    .instances
+                    .iter()
+                    .filter(|processor| processor.kind == kind)
+                    .count()
+                    != 2 * usize::from(effective.instances(kind))
+            })
     {
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
@@ -528,6 +522,7 @@ fn prepare_complete_using<R>(
     let midi_bytes = description.midi_bytes;
     let mut worker_delay = 0;
     let mut carla_delay = 0;
+    let mut remote_carla_delay = 0;
     let mut worker_delays = Vec::with_capacity(processors.instances.len());
     for processor in &mut processors.instances {
         let delay = if processor.backend.async_transport().is_some() {
@@ -538,7 +533,9 @@ fn prepare_complete_using<R>(
             0
         };
         worker_delay = worker_delay.max(delay);
-        if processor.kind.is_carla() {
+        if processor.kind.is_remote_carla() {
+            remote_carla_delay = remote_carla_delay.max(delay as u32);
+        } else if processor.kind.is_carla() {
             carla_delay = carla_delay.max(delay as u32);
         }
         worker_delays.push(delay);
@@ -708,6 +705,7 @@ fn prepare_complete_using<R>(
         effective: processors.effective,
         reserved_bytes: processors.reserved_bytes,
         carla_delay,
+        remote_carla_delay,
         kinds: processors.instances.iter().map(|p| p.kind).collect(),
         presets: processors.presets,
         worker_delays: worker_delays.into_boxed_slice(),
