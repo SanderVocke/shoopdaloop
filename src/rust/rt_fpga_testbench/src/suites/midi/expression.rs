@@ -121,6 +121,7 @@ pub fn scaling() -> crate::Result<serde_json::Value> {
         m.store.seed_snapshot(view, &state, 1).unwrap();
         m.store.finish(view, 64).unwrap();
         let mut bound = 0;
+        let mut unrelated_cycle_baseline = None;
         for n in [1, 8, 64, 128] {
             for seq in bound..n {
                 let owner = rt_fpga_reference::records::Identity {
@@ -226,6 +227,11 @@ pub fn scaling() -> crate::Result<serde_json::Value> {
             let unrelated_cycles = sim.cycles - start;
             let unrelated_requests = memory.borrow().transfers - requests;
             assert_eq!(unrelated_requests, 2);
+            assert_eq!(
+                *unrelated_cycle_baseline.get_or_insert(unrelated_cycles),
+                unrelated_cycles,
+                "unrelated channel work must not grow with the number of bindings"
+            );
             measurements.push(serde_json::json!({"trackers":n,"service_delay_clocks_per_word":delay,"update_cycles":update_cycles,"update_requests":update_requests,
                 "restore_cycles":restore_cycles,"restore_requests":restore_requests,"quiet_restore_cycles":quiet_cycles,"unrelated_update_cycles":unrelated_cycles,
                 "cpu_update_ns":cpu_update_ns,"cpu_restore_ns":cpu_restore_ns,"corrections":1,"tracker_visits_including_correction":engine.work.tracker_visits}));

@@ -323,7 +323,8 @@ module midi_expression_state #(
             DIRECTORY: phase<=DIRECTORY_READ;
             DIRECTORY_READ: phase<=DIRECTORY_WRITE;
             DIRECTORY_WRITE: begin
-                if(scan==32'(DESTINATIONS*16)-1) phase<=REBIND;else scan<=32'(SCAN_BITS'(scan+1));
+                if(scan==32'(DESTINATIONS*16)-1) phase<=REBIND;
+                else begin scan<=32'(SCAN_BITS'(scan+1));phase<=DIRECTORY;end
             end
             REBIND: begin active_binding.view<=work_view;output_id<=32'(OUTPUT_BITS'(0));phase<=REBIND_NEXT;end
             REBIND_NEXT: if(output_id==32'(DESTINATIONS)) phase<=op==12 ? BIND : REPLY;

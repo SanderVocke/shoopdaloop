@@ -402,6 +402,45 @@ fn expression_bounded_tables_and_relocated_arena_restore_last_owner() {
                 .iter()
                 .all(|v| *v == 0xdeadbeef)
         );
+        if loops == 3 {
+            assert_eq!(
+                command(&mut sim, 2, [0, packed(&[0xb0, 1, 20]), u32::MAX as u64, 0]),
+                0
+            );
+            for seq in 0..2 {
+                let owner = (1u64 << 32) | seq;
+                assert_eq!(command(&mut sim, 9, [seq, 0, owner, 0x10500]), 0);
+                assert_eq!(command(&mut sim, 3, [seq, (1u64 << 32) | seq, 0, 0]), 0);
+            }
+            for seq in [0, 1] {
+                assert_eq!(
+                    command(&mut sim, 2, [2, packed(&[0xb0, 1, 90]), u32::MAX as u64, 0]),
+                    0
+                );
+                packets.borrow_mut().packets.clear();
+                assert_eq!(
+                    command(
+                        &mut sim,
+                        5,
+                        [seq, (1u64 << 32) | seq, 0, (1u64 << 32) | seq]
+                    ),
+                    0
+                );
+                assert_eq!(packets.borrow().packets, vec![vec![0xb0, 1, 20]]);
+                assert_eq!(sim.model.get("destination"), 2);
+                packets.borrow_mut().packets.clear();
+                let other = 1 - seq;
+                assert_eq!(
+                    command(
+                        &mut sim,
+                        5,
+                        [other, (1u64 << 32) | other, 0, (1u64 << 32) | other]
+                    ),
+                    0
+                );
+                assert!(packets.borrow().packets.is_empty());
+            }
+        }
     }
 }
 
