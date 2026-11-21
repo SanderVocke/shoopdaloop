@@ -423,6 +423,7 @@ impl Service {
                 dry_midi,
                 processor_type,
                 default_playback_mode,
+                remote_fx,
             } => {
                 if !self
                     .backend
@@ -444,6 +445,7 @@ impl Service {
                         dry_audio_channels: *dry_audio_channels,
                         wet_audio_channels: *wet_audio_channels,
                         dry_midi: *dry_midi,
+                        remote_fx: *remote_fx,
                     }
                 };
                 let ports = u64::from(*dry_audio_channels)

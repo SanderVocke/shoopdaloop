@@ -2,6 +2,10 @@
 
 Remote Carla uses a versioned TCP control connection and a dedicated UDP socket pair per prepared chain. The looper owns time and instantiates the graph with the accepted timing. The desktop service applies Carla processing to complete batches in source order.
 
+## Discovery
+
+IPv4 services with LAN access join multicast group `239.255.74.80:24509` on their listening interface. The desktop sends `SHOOPFX?`, the one-byte control protocol version, and a random 16-byte query ID with a hop limit of one. The service echoes the query over unicast with its two-byte big-endian TCP port appended. The desktop verifies the service with a TCP description and uses the reply's source IP and advertised port. Loopback services are found through local process inspection.
+
 ## Control
 
 TCP records carry a 32-bit little-endian byte count followed by UTF-8 JSON. Each record is a named object with known fields, except for the string `"shutdown"` used to acknowledge shutdown. A version 2 greeting selects inspection, local service or editor management, opening a chain, resuming a retained chain, or releasing a retained chain. A request to open a chain includes its kind, retention policy, sample rate, quantum and batch lengths, slack in quanta, ordered audio widths and MIDI limits for both directions, datagram size, and copy count. The service echoes the accepted configuration. Greetings and setup replies have a 4 KiB limit. Inspection replies have a 64 KiB limit and include the registered chains and their status. Opened stream control records have a 23 MiB limit to accommodate encoded Carla checkpoints.

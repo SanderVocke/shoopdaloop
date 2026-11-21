@@ -12,6 +12,8 @@ rt_buffered = { path = "../rt_buffered" }
 rt_runtime = { path = "../rt_runtime" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+shoop_processor_protocol = { path = "../shoop_processor_protocol" }
+socket2 = "0.6"
 uuid = { workspace = true }
 
 [dev-dependencies]

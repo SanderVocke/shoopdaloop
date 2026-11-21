@@ -224,6 +224,8 @@ pub enum TrackTopologyDocument {
         dry_audio_channels: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wet_audio_channels: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remote_fx: Option<shoop_app_api::RemoteFxTarget>,
     },
     BuiltInFx {
         #[serde(default = "default_builtin_fx_audio_channels")]

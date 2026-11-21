@@ -496,6 +496,74 @@ impl Fixture {
 }
 
 #[cfg(feature = "carla")]
+#[shoop_test(no_wasm = "native remote Carla companion")]
+fn remote_carla_track_selects_a_service_after_a_default_host_starts() {
+    let Ok(address) = std::env::var("SHOOP_REMOTE_FX_TEST_ADDRESS") else {
+        return;
+    };
+    let target = shoop_app_api::RemoteFxTarget {
+        address: address.parse().unwrap(),
+        reconnect: Default::default(),
+        dry_on_loss: true,
+    };
+    let settings = HostSettings {
+        driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            buffer_size: 128,
+            ..Default::default()
+        }),
+        pools: NewEnginePools {
+            tracks: 4,
+            loops: 32,
+            loop_memory_mb: 16,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut fixture = Fixture::with_settings(settings, DeliveryMode::Socket);
+    let processor_type = TrackProcessorTypeId::new(TrackProcessorTypeId::REMOTE_CARLA_RACK);
+    let snapshot = fixture.client.snapshot().unwrap();
+    let processor = snapshot
+        .track_processors
+        .iter()
+        .find(|entry| entry.id == processor_type)
+        .unwrap();
+    assert!(processor.available, "{processor:?}");
+    assert!(!snapshot
+        .bus_processors
+        .iter()
+        .any(|entry| entry.id == processor_type));
+    let topology = TrackSpecTopology::DryWet {
+        dry_audio_channels: 1,
+        wet_audio_channels: 2,
+        dry_midi: false,
+        processor_type,
+        default_playback_mode: Default::default(),
+        remote_fx: Some(target),
+    };
+    fixture.command(Command::AddTrack(TrackSpec {
+        name: "Per-track service".into(),
+        topology,
+        latency: Default::default(),
+        initial_output_bus_names: Vec::new(),
+        creation_request_id: None,
+    }));
+    let has_track = |client: &mut Client| {
+        client.snapshot().unwrap().tracks.iter().any(|track| {
+            track.name == "Per-track service"
+                && matches!(
+                    &track.topology,
+                    shoop_app_api::TrackTopology::DryWet { remote_fx: Some(remote), .. }
+                        if *remote == target
+                )
+        })
+    };
+    fixture.until(has_track);
+    let image = fixture.capture(1);
+    fixture.load(image);
+    fixture.until(has_track);
+}
+
+#[cfg(feature = "carla")]
 #[shoop_test(no_wasm = "native Carla session companion and driver replacement")]
 fn native_carla_session_archive_survives_driver_rate_and_period_change() {
     use persistence_image as image;
@@ -579,6 +647,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 dry_midi: true,
                 processor_type: patchbay.clone(),
                 default_playback_mode: Default::default(),
+                remote_fx: None,
             },
             latency: Default::default(),
             initial_output_bus_names: vec![],
@@ -2298,6 +2367,7 @@ fn native_jack_processed_tracks_publish_real_roles_and_record_host_dsp() {
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(kind),
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    remote_fx: None,
                 },
                 latency: Default::default(),
                 initial_output_bus_names: vec![],

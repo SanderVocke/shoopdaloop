@@ -376,16 +376,12 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
             )
         };
         let remote_first_slot = processors.instances.len();
-        let (processors, remote) = if hosting.uses_remote() {
-            remote_carla::prepare(
-                &description,
-                driver.buffer_frames as usize,
-                factory.carla.remote,
-                processors,
-            )
-        } else {
-            (processors, Vec::new())
-        };
+        let (processors, remote) = remote_carla::prepare(
+            &description,
+            driver.buffer_frames as usize,
+            factory.carla.remote,
+            processors,
+        );
         (processors, local, remote, remote_first_slot)
     };
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
@@ -395,6 +391,7 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
             .endpoint
             .install_hosted_processor_controls(Box::new(remote_carla::Providers {
                 remote_first_slot,
+                remote_has_default: factory.carla.remote.is_some() && !remote_services.is_empty(),
                 remote: remote_carla::Controls::new(remote_first_slot, remote_services),
                 local: carla::Controls::new(carla_first_slot, &carla_services),
             }));

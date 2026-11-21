@@ -178,6 +178,7 @@ fn topology(track: &image::Track) -> BackendTrackTopology {
             wet_audio_channels,
             dry_midi,
             processor_type,
+            ..
         } if processor_type.as_str() == TrackProcessorTypeId::EXTERNAL => {
             BackendTrackTopology::DryWetExternal {
                 dry_audio_channels: *dry_audio_channels,
@@ -190,11 +191,13 @@ fn topology(track: &image::Track) -> BackendTrackTopology {
             wet_audio_channels,
             dry_midi,
             processor_type,
+            remote_fx,
         } => BackendTrackTopology::DryWetProcessor {
             dry_audio_channels: *dry_audio_channels,
             wet_audio_channels: *wet_audio_channels,
             dry_midi: *dry_midi,
             processor_type: processor_type.as_str().into(),
+            remote_fx: *remote_fx,
         },
     }
 }
@@ -349,12 +352,14 @@ impl Candidate {
                     wet_audio_channels,
                     dry_midi,
                     processor_type,
+                    remote_fx,
                 } => TrackSpecTopology::DryWet {
                     dry_audio_channels: *dry_audio_channels,
                     wet_audio_channels: *wet_audio_channels,
                     dry_midi: *dry_midi,
                     processor_type: processor_type.clone(),
                     default_playback_mode: track.default_playback_mode,
+                    remote_fx: *remote_fx,
                 },
             };
             TrackSpec {

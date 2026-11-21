@@ -88,7 +88,11 @@ impl Panel {
                 ui.horizontal(|ui| {
                     ui.label("Listen address");
                     ui.text_edit_singleline(&mut self.bind);
-                    ui.checkbox(&mut self.lan, "LAN access");
+                    if ui.checkbox(&mut self.lan, "LAN access").changed()
+                        && matches!(self.bind.as_str(), "127.0.0.1:0" | "0.0.0.0:0")
+                    {
+                        self.bind = if self.lan { "0.0.0.0:0" } else { "127.0.0.1:0" }.into();
+                    }
                     if ui
                         .add_enabled(self.pending.is_none(), egui::Button::new("Start service"))
                         .clicked()
@@ -276,6 +280,26 @@ fn scan(addresses: Vec<SocketAddr>) -> Result<Vec<Service>> {
     Ok(services)
 }
 
+pub fn discover_fx_services() -> Vec<SocketAddr> {
+    let mut instances = HashSet::new();
+    let mut addresses = Vec::new();
+    for address in shoop_remote_fx::discover_lan().unwrap_or_default() {
+        if let Ok(description) = describe(address) {
+            if instances.insert(description.instance) {
+                addresses.push(address);
+            }
+        }
+    }
+    for service in scan(Vec::new()).unwrap_or_default() {
+        if let Ok(description) = service.description {
+            if instances.insert(description.instance) {
+                addresses.push(service.address);
+            }
+        }
+    }
+    addresses
+}
+
 fn launch_service(
     address: SocketAddr,
     lan: bool,
@@ -345,6 +369,14 @@ fn stop_service(address: SocketAddr, identity: &Identity, instance: String) -> R
 }
 
 pub(super) fn probe() -> Result<()> {
+    if let Ok(address) = std::env::var("SHOOP_FX_PROBE_DISCOVER_ADDRESS") {
+        let address = address.parse()?;
+        ensure!(
+            discover_fx_services().contains(&address),
+            "FX service at {address} was not discovered"
+        );
+        return Ok(());
+    }
     const LAUNCH_ONLY: &str = "SHOOP_FX_PROBE_LAUNCH_ONLY";
     if std::env::var_os(LAUNCH_ONLY).is_some() {
         let (address, _) = launch_service("127.0.0.1:0".parse()?, false, false)?;
@@ -365,6 +397,10 @@ pub(super) fn probe() -> Result<()> {
     let identity =
         shoop_host_processes::identity(started.pid)?.context("FX service locally unavailable")?;
     let result = scan(vec![address]).and_then(|services| {
+        ensure!(
+            discover_fx_services().contains(&address),
+            "The Add Track picker could not discover the local FX service"
+        );
         let count = services
             .iter()
             .filter(|service| {

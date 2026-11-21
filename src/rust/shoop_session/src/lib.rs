@@ -559,6 +559,7 @@ mod tests {
                     midi: true,
                     dry_audio_channels: None,
                     wet_audio_channels: None,
+                    remote_fx: None,
                 },
                 default_playback_mode: DefaultPlaybackModeDocument::Regular,
                 controls: TrackControlsDocument::default(),

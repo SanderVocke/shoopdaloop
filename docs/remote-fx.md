@@ -4,13 +4,15 @@ A Native session host can process Carla Rack, Patchbay, and Patchbay 16x on a de
 
 Use Carla-enabled Native companions from the same build on the desktop and looper. The looper loads saved projects on the service through the existing Carla state format.
 
-## Start through Host Manager
+## Choose a service when adding a track
 
-1. On the desktop, open **Host Manager → FX services**. Set the listen address and start the service. Enable **LAN access** when the service needs to accept a looper from another machine. **One process per chain** enables supervised Carla subprocesses.
-2. On the looper machine, inspect the desktop's service address and choose **Use for new host…**. Choose **Remote FX service** or **Local and remote Carla**, then set the per-type instance limits and audio settings. Mixed mode applies the configured limits separately to local and remote processors.
-3. Attach the UI to that Native host. Add a dry/wet track or set the FX on a bus, and select an available Carla type. In mixed mode, choose a **Remote Carla** entry to run it on the service. The track or bus FX control opens its editor on the machine that runs that chain.
+1. On the desktop, open **Host Manager → FX services** and start a service. Enable **LAN access** if the looper runs on another machine. **One process per chain** enables supervised Carla subprocesses.
+2. Open the session on a Carla-enabled Native host using its normal startup settings. In **Add track**, choose **Dry/wet** and a **Remote Carla** processor. Choose a discovered service or enter its IP address and TCP port. Set the disconnect behavior for that track.
+3. Add the track. The Native host opens the chain on the selected service. Each track can use a different service. If local Carla is enabled on the Native host, use the regular **Carla** entries for tracks that process locally.
 
-The Native host prepares bounded audio buffers at startup. It opens a connection and creates a remote chain when a track or bus needs it. Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. Host Manager lists current chains and their negotiated audio widths. From Host Manager on the service machine, use **Open editor** or **Close editor** for an individual chain, or **Stop service** to stop the service and its chains. Closing either user interface leaves the services and session running.
+The desktop picker discovers services on the same machine and IPv4 services on the local network. Use a manual address for a service across a routed network or on an IPv6-only network. The service address must be reachable from the Native host. The default Native pools prepare up to two remote Rack slots and two remote Patchbay slots within the available processor memory. Hosts configured for 16 channels can also prepare one Patchbay 16x slot.
+
+Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
 
 ## Start from the command line
 
@@ -20,14 +22,14 @@ On the desktop, bind the FX service to its address on the trusted network.
 shoop_host --fx-service --lan --listen 192.168.1.50:24510
 ```
 
-On the Native looper, select remote hosting and allocate one Rack chain.
+For sessions and buses that use a host-wide FX service, set a default endpoint on the Native looper.
 
 ```sh
 shoop_host --backend native --carla-hosting remote \
   --carla-fx-address 192.168.1.50:24510 --carla-rack-instances 1
 ```
 
-Use `--carla-hosting mixed` to expose local and remote Carla selections in one session. Start the FX service with `--isolated` for one supervised Carla worker process per chain. The default runs Carla in the service process with a dedicated media thread for each chain.
+Use `--carla-hosting mixed` to configure custom per-type limits for both local and remote Carla. Supply `--carla-fx-address` if buses need a default service. The address in an individual track takes precedence over the host default. Start the FX service with `--isolated` for one supervised Carla worker process per chain. The default runs Carla in the service process with a dedicated media thread for each chain.
 
 Control uses TCP on the configured port. Each chain uses an OS-assigned UDP port on the desktop and a UDP socket on the looper. Input and output widths are negotiated separately from the track or bus layout. Rack and stereo Patchbay support up to two lanes on each side and Patchbay 16x supports up to sixteen. Use a trusted network that allows both directions. The default service binding is loopback.
 
@@ -35,9 +37,9 @@ The looper groups one driver period of graph quanta per DSP batch and defaults t
 
 ## Session state and failure
 
-Session files retain Carla chain kinds and their confirmed projects. Explicit remote processor selections in a mixed session are saved with the track or bus. Sessions that use the original Carla processor identifiers follow the Native host's selected mode. Load a mixed session on a host with both providers enabled and the required plugin resources present.
+Session files retain Carla chain kinds and their confirmed projects. A remote track also saves its selected service address and disconnect behavior. Earlier sessions that use a host-wide endpoint still use that default. The required plugin resources must be installed wherever the chain runs.
 
-The **On service disconnect** setting controls recovery. From the command line, pass `--carla-fx-reconnect` with one of these values.
+The **On disconnect** setting in Add Track controls recovery. For a host-wide endpoint, pass `--carla-fx-reconnect` with one of these values.
 
 - `recreate` opens a new chain and restores the last confirmed checkpoint. This is the default.
 - `resume` first tries to reattach to the running chain on the service. The service retains a disconnected chain for 30 seconds once its control connection ends, and reattachment gives it a fresh UDP identity. If the chain is gone, the host recreates it from the last confirmed checkpoint.

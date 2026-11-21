@@ -602,6 +602,7 @@ impl ControlEndpoint {
                 .ok_or(Staged::Refused(Refusal::Capacity))?;
             return Ok(crate::model::ProcessorOwner {
                 kind,
+                remote_fx: None,
                 slot: Some(shoop_rt_protocol::ProcessorSlot {
                     index: index as u16,
                     generation,
@@ -704,7 +705,13 @@ impl ControlEndpoint {
             },
             Request::CreateStrip { strip, shape }
             | Request::CreateProcessedStrip { strip, shape, .. } => {
-                let processor = if let Request::CreateProcessedStrip { kind, .. } = request {
+                let processor = if let Request::CreateProcessedStrip {
+                    kind, remote_fx, ..
+                } = request
+                {
+                    if remote_fx.is_some_and(|target| !kind.is_remote_carla() || !target.valid()) {
+                        return Staged::Refused(Refusal::InvalidValue);
+                    }
                     if kind == shoop_rt_protocol::ProcessorKind::External {
                         if !self.settings.external_dry_wet {
                             return Staged::Refused(Refusal::Unsupported);
@@ -716,7 +723,11 @@ impl ControlEndpoint {
                         {
                             return Staged::Refused(Refusal::InvalidValue);
                         }
-                        Some(crate::model::ProcessorOwner { kind, slot: None })
+                        Some(crate::model::ProcessorOwner {
+                            kind,
+                            slot: None,
+                            remote_fx: None,
+                        })
                     } else {
                         if kind.is_carla() {
                             let width = kind.fixed_audio_channels().unwrap_or_default();
@@ -741,7 +752,10 @@ impl ControlEndpoint {
                             return Staged::Refused(Refusal::InvalidValue);
                         }
                         match self.reserve_processor(kind, None) {
-                            Ok(owner) => Some(owner),
+                            Ok(mut owner) => {
+                                owner.remote_fx = remote_fx;
+                                Some(owner)
+                            }
                             Err(staged) => return staged,
                         }
                     }

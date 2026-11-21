@@ -1,9 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+mod discovery;
 mod media;
 mod transport;
 mod wire;
 
+pub use discovery::discover_lan;
 pub use transport::{transport_bytes, ClientMedia, Counters, Dsp, ServerMedia};
 pub use wire::{Config, MediaLimits};
 

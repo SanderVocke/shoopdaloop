@@ -261,6 +261,7 @@ def run_fixture(args, root):
         run(["ip", "link", "set", "fx-desktop", "netns", str(peer.pid)])
         run(["ip", "addr", "add", f"{LOOPER}/30", "dev", "fx-looper"])
         run(["ip", "link", "set", "fx-looper", "up"])
+        run(["ip", "route", "add", "239.255.74.80/32", "dev", "fx-looper"])
         run(enter + ["ip", "link", "set", "lo", "up"])
         run(enter + ["ip", "addr", "add", f"{DESKTOP}/30", "dev", "fx-desktop"])
         run(enter + ["ip", "link", "set", "fx-desktop", "up"])
@@ -288,6 +289,10 @@ def run_fixture(args, root):
             broker = start_service()
 
         broker = start_service()
+        if args.manager:
+            run([args.manager, "--probe-fx-service"], env={
+                **env, "SHOOP_FX_PROBE_DISCOVER_ADDRESS": env["SHOOP_REMOTE_FX_TEST_ADDRESS"],
+            }, timeout=20)
         print(
             f"Remote Carla on {platform.platform()}, {len(os.sched_getaffinity(0))} CPUs, "
             f"{args.host}, virtual Ethernet, 48 kHz, 128-frame period, 32-frame quantum. "
@@ -305,6 +310,11 @@ def run_fixture(args, root):
             run(
                 affinity(args.looper_cpus) + [args.recovery_test, "--exact", "carla_editor_controls_follow_the_confirmed_track_and_bus", "--nocapture"],
                 env=env, timeout=120,
+            )
+        if args.archive_test:
+            run(
+                affinity(args.looper_cpus) + [args.archive_test, "--exact", "remote_carla_track_selects_a_service_after_a_default_host_starts", "--nocapture"],
+                env=env, timeout=30,
             )
         for width in args.width:
             run_archive(args, env, width)

@@ -23,6 +23,7 @@ mod optimistic_value;
 mod oxisynth_editor;
 mod piano_pane;
 mod profiling;
+mod remote_fx;
 mod script_dialogs;
 mod script_resource_loader;
 mod settings_dialog;

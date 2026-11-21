@@ -848,6 +848,7 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
                 dry_midi: true,
                 processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                remote_fx: None,
             },
         ),
         (
@@ -858,6 +859,7 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
                 dry_midi: true,
                 processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
                 default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                remote_fx: None,
             },
         ),
     ] {

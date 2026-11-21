@@ -107,12 +107,14 @@ impl TrackProcessorTypeId {
     pub fn is_carla(&self) -> bool {
         matches!(
             self.as_str(),
-            Self::CARLA_RACK
-                | Self::CARLA_PATCHBAY
-                | Self::CARLA_PATCHBAY_16X
-                | Self::REMOTE_CARLA_RACK
-                | Self::REMOTE_CARLA_PATCHBAY
-                | Self::REMOTE_CARLA_PATCHBAY_16X
+            Self::CARLA_RACK | Self::CARLA_PATCHBAY | Self::CARLA_PATCHBAY_16X
+        ) || self.is_remote_carla()
+    }
+
+    pub fn is_remote_carla(&self) -> bool {
+        matches!(
+            self.as_str(),
+            Self::REMOTE_CARLA_RACK | Self::REMOTE_CARLA_PATCHBAY | Self::REMOTE_CARLA_PATCHBAY_16X
         )
     }
 }
@@ -1596,6 +1598,8 @@ pub enum TrackTopology {
         wet_audio_channels: u32,
         dry_midi: bool,
         processor_type: TrackProcessorTypeId,
+        #[cfg_attr(feature = "serde", serde(default))]
+        remote_fx: Option<RemoteFxTarget>,
     },
 }
 impl TrackTopology {
@@ -2412,6 +2416,8 @@ pub enum TrackSpecTopology {
         dry_midi: bool,
         processor_type: TrackProcessorTypeId,
         default_playback_mode: DefaultPlaybackMode,
+        #[cfg_attr(feature = "serde", serde(default))]
+        remote_fx: Option<RemoteFxTarget>,
     },
 }
 
@@ -2480,6 +2486,7 @@ impl TrackSpec {
             dry_midi,
             processor_type,
             default_playback_mode,
+            remote_fx,
         } = &self.topology
         else {
             return Ok(());
@@ -2487,6 +2494,9 @@ impl TrackSpec {
         if *default_playback_mode == DefaultPlaybackMode::DryThroughWet && *wet_audio_channels == 0
         {
             return Err(TrackSpecError::UnsupportedShape);
+        }
+        if remote_fx.is_some_and(|target| !processor_type.is_remote_carla() || !target.valid()) {
+            return Err(TrackSpecError::InvalidRemoteFx);
         }
         let processor = processors
             .iter()
@@ -2511,6 +2521,7 @@ pub enum TrackSpecError {
     InvalidLatency,
     ProcessorUnavailable,
     UnsupportedShape,
+    InvalidRemoteFx,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3404,6 +3415,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
                 default_playback_mode: DefaultPlaybackMode::Regular,
+                remote_fx: None,
             },
             latency: TrackLatencySpec::default(),
             initial_output_bus_names: Vec::new(),
@@ -3433,6 +3445,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
                 default_playback_mode: DefaultPlaybackMode::Regular,
+                remote_fx: None,
             },
             ..spec.clone()
         };
@@ -3448,6 +3461,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
                 default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                remote_fx: None,
             },
             ..spec
         };
@@ -4343,6 +4357,6 @@ impl HostSettings {
 }
 
 pub use shoop_processor_protocol::{
-    CarlaHosting, Policy as ProcessorPolicy, Settings as ProcessorSettings,
-    MAX_OPAQUE_STATE_ENVELOPE_BYTES,
+    CarlaHosting, Policy as ProcessorPolicy, RemoteFxReconnect, RemoteFxTarget,
+    Settings as ProcessorSettings, MAX_OPAQUE_STATE_ENVELOPE_BYTES,
 };

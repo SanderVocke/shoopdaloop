@@ -653,6 +653,7 @@ async fn remote_builtin_synth_state_round_trips_through_session() {
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
             default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            remote_fx: None,
         },
         latency: Default::default(),
         initial_output_bus_names: Vec::new(),

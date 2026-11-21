@@ -5,7 +5,7 @@ use crate::{
     engine,
     remote::{identity, RemoteProfile, Target},
 };
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, ensure, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
@@ -409,7 +409,8 @@ pub fn run_with_ready(
         "LAN hosts require socket delivery"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
-    if config.settings.processors.carla.hosting.uses_remote() {
+    let hosting = config.settings.processors.carla.hosting;
+    if hosting.uses_remote() || options.remote_carla.is_some() {
         ensure!(
             cfg!(feature = "carla"),
             "Remote Carla requires a Carla-enabled Native host"
@@ -418,9 +419,17 @@ pub fn run_with_ready(
             config.settings.backend == shoop_app_api::BackendType::Native,
             "Remote Carla requires the Native backend"
         );
-        let remote = options
-            .remote_carla
-            .context("Remote Carla requires an FX endpoint")?;
+    }
+    ensure!(
+        hosting != shoop_app_api::CarlaHosting::Remote || options.remote_carla.is_some(),
+        "Remote-only Carla requires a default FX endpoint"
+    );
+    if let Some(remote) = options.remote_carla {
+        let address = remote.address;
+        ensure!(
+            address.port() != 0 && !address.ip().is_unspecified() && !address.ip().is_multicast(),
+            "Invalid desktop FX service address"
+        );
         ensure!(
             (1..=2).contains(&remote.copies),
             "Remote Carla packet copies must be 1 or 2"
@@ -428,7 +437,7 @@ pub fn run_with_ready(
     }
     #[cfg(feature = "carla")]
     let (mut carla_ui, carla_dispatcher) = matches!(
-        config.settings.processors.carla.hosting,
+        hosting,
         shoop_app_api::CarlaHosting::InProcess | shoop_app_api::CarlaHosting::Mixed
     )
     .then(shoop_carla::native::CarlaMainThreadUiService::new)

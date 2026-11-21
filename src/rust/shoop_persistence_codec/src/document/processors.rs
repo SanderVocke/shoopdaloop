@@ -151,6 +151,7 @@ pub(super) fn image_topology(
             midi,
             dry_audio_channels,
             wet_audio_channels,
+            ..
         } => {
             let carla = carla_chain(chain_type)
                 .ok_or_else(|| anyhow!("Carla track has an unsupported chain type"))?;
@@ -176,12 +177,22 @@ pub(super) fn image_topology(
             && (dry != 0 || wet != 0 || midi),
         "invalid dry/wet shape"
     );
+    let processor_type = TrackProcessorTypeId::new(processor_type);
+    let remote_fx = match topology {
+        TrackTopologyDocument::Carla { remote_fx, .. } => *remote_fx,
+        _ => None,
+    };
+    ensure!(
+        remote_fx.is_none_or(|target| processor_type.is_remote_carla() && target.valid()),
+        "invalid remote FX target"
+    );
     Ok((
         TrackTopology::DryWet {
             dry_audio_channels: dry,
             wet_audio_channels: wet,
             dry_midi: midi,
-            processor_type: TrackProcessorTypeId::new(processor_type),
+            processor_type,
+            remote_fx,
         },
         wet,
         midi,
@@ -201,10 +212,15 @@ pub(super) fn document_topology(track: &image::Track) -> Result<TrackTopologyDoc
             wet_audio_channels: wet,
             dry_midi: midi,
             processor_type,
+            remote_fx,
         } => {
             ensure!(
                 track.audio_channels == *wet && track.midi == *midi,
                 "inconsistent track topology"
+            );
+            ensure!(
+                remote_fx.is_none_or(|target| processor_type.is_remote_carla() && target.valid()),
+                "invalid remote FX target"
             );
             match processor_type.as_str() {
                 TrackProcessorTypeId::EXTERNAL => TrackTopologyDocument::DryWetExternal {
@@ -232,6 +248,7 @@ pub(super) fn document_topology(track: &image::Track) -> Result<TrackTopologyDoc
                         midi: *midi,
                         dry_audio_channels: Some(*dry),
                         wet_audio_channels: Some(*wet),
+                        remote_fx: *remote_fx,
                     }
                 }
             }

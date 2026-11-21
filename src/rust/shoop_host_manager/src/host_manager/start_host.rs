@@ -257,7 +257,10 @@ impl Dialog {
         options.management_endpoint = management;
         options.lan = self.lan;
         options.log_file = log_file;
-        if self.processors.carla.hosting.uses_remote() {
+        if self.processors.carla.hosting == shoop_app_api::CarlaHosting::Remote
+            || (self.processors.carla.hosting == shoop_app_api::CarlaHosting::Mixed
+                && !self.fx_address.trim().is_empty())
+        {
             let address = self
                 .fx_address
                 .parse()
@@ -644,7 +647,7 @@ impl Dialog {
                 use shoop_app_api::CarlaHosting;
                 let carla = &mut self.processors.carla;
                 let choices = [
-                    (CarlaHosting::Disabled, "Disabled"),
+                    (CarlaHosting::Disabled, "No local Carla"),
                     (CarlaHosting::InProcess, "In session host"),
                     (CarlaHosting::Subprocess, "One subprocess per chain"),
                     (CarlaHosting::Remote, "Remote FX service"),
@@ -667,7 +670,11 @@ impl Dialog {
                 });
                 if carla.hosting.uses_remote() {
                     ui.horizontal(|ui| {
-                        ui.label("FX service address");
+                        ui.label(if carla.hosting == CarlaHosting::Mixed {
+                            "Default FX service address (optional)"
+                        } else {
+                            "Default FX service address"
+                        });
                         ui.text_edit_singleline(&mut self.fx_address);
                     });
                     let mut custom = self.fx_slack_quanta.is_some();

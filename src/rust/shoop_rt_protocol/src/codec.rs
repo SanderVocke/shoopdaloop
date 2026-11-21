@@ -13,6 +13,8 @@ use crate::{
     DspMeasurement, ProcessorKind, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES,
     MAX_NAME_BYTES, MAX_RECORD_BYTES, MAX_STRIP_CHANNELS,
 };
+use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use shoop_processor_protocol::{RemoteFxReconnect, RemoteFxTarget};
 
 pub use shoop_transport::CodecError;
 
@@ -195,6 +197,55 @@ impl<T: Wire> Wire for Option<T> {
             1 => Ok(Some(T::get(r)?)),
             _ => Err(CodecError::Invalid),
         }
+    }
+}
+
+tags!(RemoteFxReconnect {
+    0 => RemoteFxReconnect::Recreate, 1 => RemoteFxReconnect::Resume, 2 => RemoteFxReconnect::Manual,
+});
+
+impl Wire for RemoteFxTarget {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self.address {
+            SocketAddr::V4(address) => {
+                w.u8(4)?;
+                w.bytes(&address.ip().octets())?;
+                w.u16(address.port())?;
+            }
+            SocketAddr::V6(address) => {
+                w.u8(6)?;
+                w.bytes(&address.ip().octets())?;
+                w.u16(address.port())?;
+                w.u32(address.flowinfo())?;
+                w.u32(address.scope_id())?;
+            }
+        }
+        self.reconnect.put(w)?;
+        w.bool(self.dry_on_loss)
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let address = match r.u8()? {
+            4 => SocketAddrV4::new(
+                Ipv4Addr::from(<[u8; 4]>::try_from(r.bytes(4)?).unwrap()),
+                r.u16()?,
+            )
+            .into(),
+            6 => SocketAddrV6::new(
+                Ipv6Addr::from(<[u8; 16]>::try_from(r.bytes(16)?).unwrap()),
+                r.u16()?,
+                r.u32()?,
+                r.u32()?,
+            )
+            .into(),
+            _ => return Err(CodecError::Invalid),
+        };
+        let target = Self {
+            address,
+            reconnect: RemoteFxReconnect::get(r)?,
+            dry_on_loss: r.bool()?,
+        };
+        target.valid().then_some(target).ok_or(CodecError::Invalid)
     }
 }
 
@@ -1184,11 +1235,17 @@ impl Wire for Request {
                 w.u8(18)?;
                 w.u64(id)
             }
-            Self::CreateProcessedStrip { strip, shape, kind } => {
+            Self::CreateProcessedStrip {
+                strip,
+                shape,
+                kind,
+                remote_fx,
+            } => {
                 w.u8(38)?;
                 strip.put(w)?;
                 shape.put(w)?;
-                kind.put(w)
+                kind.put(w)?;
+                remote_fx.put(w)
             }
             Self::CreateStrip { strip, shape } => {
                 w.u8(0)?;
@@ -1381,6 +1438,7 @@ impl Wire for Request {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
                 kind: ProcessorKind::get(r)?,
+                remote_fx: Option::get(r)?,
             },
             72 => Self::CreateProcessedBus {
                 bus: BusId::get(r)?,
@@ -1639,6 +1697,7 @@ impl Wire for crate::ReplacementEdit {
                 shape,
                 controls,
                 kind,
+                remote_fx,
                 default_dry,
                 state,
             } => {
@@ -1647,6 +1706,7 @@ impl Wire for crate::ReplacementEdit {
                 shape.put(w)?;
                 controls.put(w)?;
                 kind.put(w)?;
+                remote_fx.put(w)?;
                 w.bool(default_dry)?;
                 state.put(w)
             }
@@ -1748,6 +1808,7 @@ impl Wire for crate::ReplacementEdit {
                 shape: StripShape::get(r)?,
                 controls: crate::StripPreset::get(r)?,
                 kind: ProcessorKind::get(r)?,
+                remote_fx: Option::get(r)?,
                 default_dry: r.bool()?,
                 state: Option::get(r)?,
             },
@@ -2408,7 +2469,8 @@ impl Wire for ProcessorLimits {
         w.u8(self.channels)?;
         w.u32(self.builtin_latency_frames)?;
         w.u32(self.carla_latency_frames)?;
-        w.u32(self.remote_carla_latency_frames)
+        w.u32(self.remote_carla_latency_frames)?;
+        w.bool(self.remote_carla_has_default)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let fx_instances = r.u16()?;
@@ -2434,6 +2496,7 @@ impl Wire for ProcessorLimits {
         let builtin_latency_frames = r.u32()?;
         let carla_latency_frames = r.u32()?;
         let remote_carla_latency_frames = r.u32()?;
+        let remote_carla_has_default = r.bool()?;
         if u32::from(fx_instances) + u32::from(synth_instances) + carla_instances
             > u32::from(crate::processors::MAX_INSTANCES)
             || reserved_bytes > memory_bytes
@@ -2463,6 +2526,7 @@ impl Wire for ProcessorLimits {
             builtin_latency_frames,
             carla_latency_frames,
             remote_carla_latency_frames,
+            remote_carla_has_default,
         })
     }
 }

@@ -8,7 +8,10 @@ use shoop_rt_engine::{
     PreparedProcessors,
 };
 use shoop_rt_protocol::{
-    processors::{EffectiveCarla, HostedFailure, HostedLifecycle, HostedStatus, Unavailable},
+    processors::{
+        CarlaHosting, EffectiveCarla, HostedFailure, HostedLifecycle, HostedStatus,
+        RemoteFxReconnect, RemoteFxTarget, Unavailable, MAX_INSTANCES,
+    },
     ProcessorKind, Refusal,
 };
 
@@ -18,24 +21,23 @@ pub(crate) fn prepare(
     remote: Option<RemoteCarla>,
     mut processors: PreparedProcessors,
 ) -> (PreparedProcessors, Vec<Client>) {
-    let mixed =
-        description.processors.carla.hosting == shoop_rt_protocol::processors::CarlaHosting::Mixed;
+    let legacy_remote_only = description.processors.carla.hosting == CarlaHosting::Remote;
     match prepare_banks(description, period, remote, &processors) {
         Ok((instances, services, bytes, effective)) => {
             processors.instances.extend(instances);
             processors.reserved_bytes = bytes;
-            if mixed {
-                processors.effective.remote_carla = effective;
-            } else {
+            if legacy_remote_only {
                 processors.effective.carla = effective;
+            } else {
+                processors.effective.remote_carla = effective;
             }
             (processors, services)
         }
         Err(reason) => {
-            if mixed {
-                processors.effective.remote_carla = EffectiveCarla::unavailable(reason);
-            } else {
+            if legacy_remote_only {
                 processors.effective.carla = EffectiveCarla::unavailable(reason);
+            } else {
+                processors.effective.remote_carla = EffectiveCarla::unavailable(reason);
             }
             (processors, Vec::new())
         }
@@ -50,36 +52,53 @@ fn prepare_banks(
     remote: Option<RemoteCarla>,
     processors: &PreparedProcessors,
 ) -> Result<Prepared, Unavailable> {
-    let remote = remote.ok_or(Unavailable::Remote)?;
-    let mixed =
-        description.processors.carla.hosting == shoop_rt_protocol::processors::CarlaHosting::Mixed;
-    let reconnect = match (remote.retain_chain, remote.auto_reconnect) {
-        (_, false) => shoop_remote_fx::Reconnect::Manual,
-        (true, true) => shoop_remote_fx::Reconnect::Resume,
-        (false, true) => shoop_remote_fx::Reconnect::Recreate,
-    };
+    let default_target = remote.map(|remote| RemoteFxTarget {
+        address: remote.address,
+        reconnect: match (remote.retain_chain, remote.auto_reconnect) {
+            (_, false) => RemoteFxReconnect::Manual,
+            (true, true) => RemoteFxReconnect::Resume,
+            (false, true) => RemoteFxReconnect::Recreate,
+        },
+        dry_on_loss: remote.dry_on_loss,
+    });
     let settings = description.processors.carla;
-    if settings.configured_instances() == 0 {
-        return Err(Unavailable::NoCapacity);
+    let legacy_remote_only = settings.hosting == CarlaHosting::Remote;
+    if legacy_remote_only && default_target.is_none() {
+        return Err(Unavailable::Remote);
+    }
+    if processors.effective.memory_bytes == 0 {
+        return Err(Unavailable::Disabled);
     }
     if description.strip_channels < 2 {
         return Err(Unavailable::ChannelCapacity);
     }
-    let effective = EffectiveCarla {
-        rack_instances: settings.rack_instances,
-        patchbay_instances: settings.patchbay_instances,
-        patchbay16x_instances: if description.strip_channels >= 16 {
-            settings.patchbay16x_instances
+    let explicit = settings.hosting.uses_remote();
+    let rack = if explicit { settings.rack_instances } else { 2 };
+    let patchbay = if explicit {
+        settings.patchbay_instances
+    } else {
+        2
+    };
+    let wide = if explicit {
+        settings.patchbay16x_instances
+    } else {
+        1
+    };
+    let wanted = [
+        rack,
+        patchbay,
+        if description.strip_channels >= 16 {
+            wide
         } else {
             0
         },
-        unavailable: None,
-    };
-    if effective.instances() == 0 {
-        return Err(Unavailable::ChannelCapacity);
-    }
-    let timing = timing(description.quantum, period, remote.slack_quanta)
-        .map_err(|_| Unavailable::Memory)?;
+    ];
+    let timing = timing(
+        description.quantum,
+        period,
+        remote.and_then(|remote| remote.slack_quanta),
+    )
+    .map_err(|_| Unavailable::Memory)?;
     let limits = description
         .processor_buffer_limits(ProcessorKind::CarlaRack)
         .map_err(|_| Unavailable::Memory)?;
@@ -93,35 +112,35 @@ fn prepare_banks(
     let banks = [
         (
             Kind::Rack,
-            if mixed {
-                ProcessorKind::RemoteCarlaRack
-            } else {
+            if legacy_remote_only {
                 ProcessorKind::CarlaRack
+            } else {
+                ProcessorKind::RemoteCarlaRack
             },
-            effective.rack_instances,
         ),
         (
             Kind::Patchbay,
-            if mixed {
-                ProcessorKind::RemoteCarlaPatchbay
-            } else {
+            if legacy_remote_only {
                 ProcessorKind::CarlaPatchbay
+            } else {
+                ProcessorKind::RemoteCarlaPatchbay
             },
-            effective.patchbay_instances,
         ),
         (
             Kind::Patchbay16x,
-            if mixed {
-                ProcessorKind::RemoteCarlaPatchbay16x
-            } else {
+            if legacy_remote_only {
                 ProcessorKind::CarlaPatchbay16x
+            } else {
+                ProcessorKind::RemoteCarlaPatchbay16x
             },
-            effective.patchbay16x_instances,
         ),
     ];
     let mut configurations = Vec::new();
-    let mut bytes = processors.reserved_bytes;
-    for (chain, kind, count) in banks.into_iter().filter(|(_, _, count)| *count > 0) {
+    for (index, (chain, kind)) in banks
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| wanted[*index] > 0)
+    {
         let channels = usize::from(chain.channels());
         let ports = PortCounts {
             audio_inputs: channels,
@@ -134,7 +153,7 @@ fn prepare_banks(
             timing,
             ports,
             limits,
-            remote.copies,
+            remote.map_or(shoop_remote_fx::DEFAULT_COPIES, |remote| remote.copies),
         )
         .map_err(|_| Unavailable::Memory)?;
         let adapter = limits
@@ -144,34 +163,53 @@ fn prepare_banks(
         let slot =
             (adapter + transfer + auxiliary + shoop_rt_protocol::MAX_PROCESSOR_CHECKPOINT_BYTES)
                 as u64;
-        bytes = bytes
-            .checked_add(slot * u64::from(count) * 2)
-            .ok_or(Unavailable::Memory)?;
-        configurations.push((chain, kind, count, config));
+        configurations.push((index, chain, kind, config, slot * 2));
     }
     let capture = description
         .worker_capture_storage_bytes(timing.latency_frames())
         .map_err(|_| Unavailable::Memory)? as u64;
-    if bytes.saturating_add(capture) > processors.effective.memory_bytes {
+    let budget = processors.effective.memory_bytes.saturating_sub(capture);
+    let mut free = MAX_INSTANCES.saturating_sub((processors.effective.slots() / 2) as u16);
+    let mut bytes = processors.reserved_bytes;
+    let mut counts = [0; 3];
+    // Share the default budget between chain types before preparing additional banks.
+    for round in 0..wanted.into_iter().max().unwrap_or_default() {
+        for &(index, _, _, _, cost) in &configurations {
+            if round < wanted[index] && free > 0 && bytes.saturating_add(cost) <= budget {
+                counts[index] += 1;
+                bytes += cost;
+                free -= 1;
+            }
+        }
+    }
+    if explicit && counts != wanted {
         return Err(Unavailable::Memory);
+    }
+    let [rack_instances, patchbay_instances, patchbay16x_instances] = counts;
+    let effective = EffectiveCarla {
+        rack_instances,
+        patchbay_instances,
+        patchbay16x_instances,
+        unavailable: None,
+    };
+    if effective.instances() == 0 {
+        return Err(if wanted == [0; 3] {
+            Unavailable::NoCapacity
+        } else {
+            Unavailable::Memory
+        });
     }
     let slots = effective.instances() as usize * 2;
     let mut instances = Vec::with_capacity(slots);
     let mut services = Vec::with_capacity(slots);
     for _ in 0..2 {
-        for &(chain, kind, count, config) in &configurations {
-            for _ in 0..count {
-                let (endpoint, client) = Client::prepare_slot(
-                    remote.address,
-                    chain,
-                    config,
-                    reconnect,
-                    remote.dry_on_loss,
-                )
-                .map_err(|error| {
-                    eprintln!("Remote Carla at {}: {error}", remote.address);
-                    Unavailable::Remote
-                })?;
+        for &(index, chain, kind, config, _) in &configurations {
+            for _ in 0..counts[index] {
+                let (endpoint, client) = Client::prepare_slot(chain, config, default_target)
+                    .map_err(|error| {
+                        eprintln!("Prepare remote Carla: {error}");
+                        Unavailable::Remote
+                    })?;
                 instances.push(PreparedProcessor {
                     kind,
                     backend: Box::new(endpoint),
@@ -213,6 +251,16 @@ impl Controls {
 }
 
 impl HostedProcessorControls for Controls {
+    fn configure_claim(
+        &self,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        target: Option<RemoteFxTarget>,
+    ) -> Result<(), Refusal> {
+        self.client(slot.index)?
+            .configure_claim(slot.generation, target);
+        Ok(())
+    }
+
     fn claim_ready(&self, slot: shoop_rt_protocol::ProcessorSlot) -> Result<bool, Refusal> {
         let Ok(client) = self.client(slot.index) else {
             return Ok(true);
@@ -357,6 +405,7 @@ impl HostedCheckpointTicket for Checkpoint {
 
 pub(crate) struct Providers {
     pub(crate) remote_first_slot: usize,
+    pub(crate) remote_has_default: bool,
     pub(crate) remote: Controls,
     pub(crate) local: crate::carla::Controls,
 }
@@ -372,6 +421,9 @@ impl Providers {
 }
 
 impl HostedProcessorControls for Providers {
+    fn has_default_remote_target(&self) -> bool {
+        self.remote_has_default
+    }
     fn has_editors(&self) -> bool {
         self.local.has_editors() || self.remote.has_editors()
     }
@@ -386,6 +438,13 @@ impl HostedProcessorControls for Providers {
     }
     fn claim_ready(&self, slot: shoop_rt_protocol::ProcessorSlot) -> Result<bool, Refusal> {
         self.at(slot.index).claim_ready(slot)
+    }
+    fn configure_claim(
+        &self,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        target: Option<RemoteFxTarget>,
+    ) -> Result<(), Refusal> {
+        self.at(slot.index).configure_claim(slot, target)
     }
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal> {
         self.at(index).set_visible(index, visible)

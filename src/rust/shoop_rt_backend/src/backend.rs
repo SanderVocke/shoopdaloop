@@ -1452,6 +1452,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .filter(|entry| {
                 crate::processor_controls::processor_kind(entry.id.as_str())
                     .is_some_and(|kind| kind.supports_bus())
+                    && (!entry.id.is_remote_carla()
+                        || self
+                            .processors
+                            .is_some_and(|limits| limits.remote_carla_has_default))
             })
             .cloned()
             .collect();

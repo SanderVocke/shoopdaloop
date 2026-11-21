@@ -39,6 +39,7 @@ fn setup_kind(q: usize, processed: bool) -> Harness {
                 ..shape(1, 1, true)
             },
             kind: ProcessorKind::External,
+            remote_fx: None,
         }
     } else {
         Request::CreateStrip {

@@ -84,6 +84,7 @@ fn create(h: &mut OfflineHost, dry: u8, wet: u8, midi: bool) {
                 midi_output: false,
             },
             kind: ProcessorKind::External,
+            remote_fx: None,
         },
     );
     for c in 0..dry {
@@ -309,6 +310,7 @@ fn global_external_controls_are_additive_and_never_enter_the_recorded_dry_lane()
                 midi_input: true,
                 midi_output: false,
             },
+            remote_fx: None,
         },
     );
     connect(&mut h, PortKind::MidiIn, 0, 32);
@@ -675,7 +677,8 @@ fn a_minimal_host_refuses_external_admission_before_mutating_its_pool() {
                     midi_input: false,
                     midi_output: false
                 },
-                kind: ProcessorKind::External
+                kind: ProcessorKind::External,
+                remote_fx: None,
             }
         ),
         Outcome::Refused(Refusal::Unsupported)

@@ -217,6 +217,7 @@ pub enum Request {
         strip: StripId,
         shape: StripShape,
         kind: crate::ProcessorKind,
+        remote_fx: Option<shoop_processor_protocol::RemoteFxTarget>,
     },
     CreateComposite {
         loop_id: LoopSlotId,
@@ -686,6 +687,7 @@ pub struct ProcessorLimits {
     pub builtin_latency_frames: u32,
     pub carla_latency_frames: u32,
     pub remote_carla_latency_frames: u32,
+    pub remote_carla_has_default: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

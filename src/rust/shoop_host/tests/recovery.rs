@@ -106,9 +106,7 @@ fn spawn_host(config: &HostConfig, real_device: bool) -> Host {
 
     let stderr_path = log_path.with_extension("stderr.log");
     let remote = config.processors.carla.hosting.uses_remote();
-    let exe = remote
-        .then(|| std::env::var_os("SHOOP_REMOTE_FX_HOST"))
-        .flatten()
+    let exe = std::env::var_os("SHOOP_REMOTE_FX_HOST")
         .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoop_host").into());
     let mut launch = Process::new(exe);
     if remote {
@@ -160,10 +158,14 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
         (CarlaHosting::Subprocess, AppTransport::SharedMemory),
         (CarlaHosting::Subprocess, AppTransport::Socket),
     ];
-    if std::env::var_os("SHOOP_REMOTE_FX_TEST_ADDRESS").is_some() {
+    let fx_address = std::env::var("SHOOP_REMOTE_FX_TEST_ADDRESS")
+        .ok()
+        .map(|address| address.parse().unwrap());
+    if fx_address.is_some() {
         modes = vec![
             (CarlaHosting::Remote, AppTransport::Socket),
             (CarlaHosting::Mixed, AppTransport::Socket),
+            (CarlaHosting::InProcess, AppTransport::Socket),
         ];
     } else {
         shoop_carla::native::carla_runtime_availability().unwrap();
@@ -194,16 +196,23 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
                     dry_midi: false,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::CARLA_RACK),
                     default_playback_mode: Default::default(),
+                    remote_fx: None,
                 },
                 latency: Default::default(),
                 initial_output_bus_names: Vec::new(),
                 creation_request_id: None,
             }),
         );
-        let Outcome::TrackCreated { track, .. } = outcome else {
+        let Outcome::TrackCreated { mut track, .. } = outcome else {
             panic!("{outcome:?}")
         };
-        if hosting == CarlaHosting::Mixed {
+        let per_track = fx_address.filter(|_| hosting == CarlaHosting::InProcess);
+        if per_track.is_some() || hosting == CarlaHosting::Mixed {
+            let remote_fx = per_track.map(|address| shoop_app_api::RemoteFxTarget {
+                address,
+                reconnect: Default::default(),
+                dry_on_loss: true,
+            });
             let outcome = command(
                 &mut client,
                 &mut connection,
@@ -217,16 +226,34 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
                             TrackProcessorTypeId::REMOTE_CARLA_RACK,
                         ),
                         default_playback_mode: Default::default(),
+                        remote_fx,
                     },
                     latency: Default::default(),
                     initial_output_bus_names: Vec::new(),
                     creation_request_id: None,
                 }),
             );
-            assert!(
-                matches!(outcome, Outcome::TrackCreated { .. }),
-                "{outcome:?}"
-            );
+            let Outcome::TrackCreated {
+                track: remote_track,
+                ..
+            } = outcome
+            else {
+                panic!("{outcome:?}");
+            };
+            if let Some(target) = remote_fx {
+                let snapshot = client.snapshot().unwrap();
+                let topology = &snapshot
+                    .tracks
+                    .iter()
+                    .find(|entry| entry.id == remote_track)
+                    .unwrap()
+                    .topology;
+                assert!(matches!(topology,
+                    shoop_app_api::TrackTopology::DryWet { remote_fx: Some(actual), .. }
+                        if *actual == target));
+                assert!(snapshot.tracks.iter().any(|entry| entry.id == track));
+                track = remote_track;
+            }
         }
         let outcome = command(
             &mut client,

@@ -5744,7 +5744,9 @@ dependencies = [
  "rt_runtime",
  "serde",
  "serde_json",
+ "shoop_processor_protocol",
  "shoop_wasm_test_support",
+ "socket2",
  "uuid",
 ]
 

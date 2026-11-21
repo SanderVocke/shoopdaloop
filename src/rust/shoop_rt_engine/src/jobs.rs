@@ -964,6 +964,15 @@ impl ControlEndpoint {
                 let Some(slot) = owner.slot else {
                     continue;
                 };
+                let target = owner.remote_fx;
+                let configured = self.hosted_processors.as_ref().map_or_else(
+                    || target.map_or(Ok(()), |_| Err(Refusal::Unsupported)),
+                    |controls| controls.configure_claim(slot, target),
+                );
+                if let Err(reason) = configured {
+                    job.fail(reason);
+                    return true;
+                }
                 let node = self.pool.processor(slot.index as usize);
                 for operation in [
                     Some(EngineOp::ProcessorClaim {
@@ -1023,6 +1032,14 @@ impl ControlEndpoint {
                 let Some(slot) = owner.slot else {
                     continue;
                 };
+                if let Err(reason) = self
+                    .hosted_processors
+                    .as_ref()
+                    .map_or(Ok(()), |controls| controls.configure_claim(slot, None))
+                {
+                    job.fail(reason);
+                    return true;
+                }
                 let node = self.pool.processor(slot.index as usize);
                 for operation in [
                     Some(EngineOp::ProcessorClaim {

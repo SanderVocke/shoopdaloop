@@ -366,6 +366,10 @@ impl ControlEndpoint {
                             builtin_latency_frames: self.limits.quantum,
                             carla_latency_frames: self.processor_catalog.carla_delay,
                             remote_carla_latency_frames: self.processor_catalog.remote_carla_delay,
+                            remote_carla_has_default: self
+                                .hosted_processors
+                                .as_ref()
+                                .is_some_and(|controls| controls.has_default_remote_target()),
                         },
                     ));
                 }

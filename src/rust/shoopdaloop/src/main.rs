@@ -535,6 +535,8 @@ impl UnifiedApp {
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone(), args);
         let mut widget = AppWidget::new(std::sync::Arc::new(settings_registry));
+        #[cfg(not(target_arch = "wasm32"))]
+        widget.set_fx_service_discovery(shoop_host_manager::discover_fx_services);
         let runtime = make_runtime(&settings.active(), args)?;
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {

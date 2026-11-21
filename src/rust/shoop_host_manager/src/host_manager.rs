@@ -1,5 +1,6 @@
 mod discovery;
 mod fx_services;
+pub use fx_services::discover_fx_services;
 mod start_host;
 
 use crate::ManagerArgs;

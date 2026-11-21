@@ -514,6 +514,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     shape,
                     controls,
                     kind,
+                    remote_fx: track.topology.remote_fx(),
                     default_dry: track.default_playback_mode
                         == BackendDefaultPlaybackMode::DryThroughWet,
                     state: processor_states[track_id].0,

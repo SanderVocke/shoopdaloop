@@ -168,6 +168,16 @@ pub trait HostedProcessorControls: Send {
         false
     }
     fn status(&self, index: u16) -> Option<HostedProcessorObservation>;
+    fn has_default_remote_target(&self) -> bool {
+        false
+    }
+    fn configure_claim(
+        &self,
+        _slot: shoop_rt_protocol::ProcessorSlot,
+        target: Option<shoop_processor_protocol::RemoteFxTarget>,
+    ) -> Result<(), Refusal> {
+        target.map_or(Ok(()), |_| Err(Refusal::Unsupported))
+    }
     fn claim_ready(&self, _slot: shoop_rt_protocol::ProcessorSlot) -> Result<bool, Refusal> {
         Ok(true)
     }

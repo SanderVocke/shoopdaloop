@@ -225,7 +225,12 @@ fn client_samples() -> Vec<ClientMessage> {
                 midi_input: true,
                 midi_output: false,
             },
-            kind: ProcessorKind::OxiSynth,
+            kind: ProcessorKind::RemoteCarlaRack,
+            remote_fx: Some(processors::RemoteFxTarget {
+                address: "192.168.10.5:24510".parse().unwrap(),
+                reconnect: processors::RemoteFxReconnect::Resume,
+                dry_on_loss: true,
+            }),
         },
         Request::LoopTransition {
             loop_id: loop_id(0),
@@ -461,11 +466,13 @@ fn client_samples() -> Vec<ClientMessage> {
                     output_balance: 0.,
                     output_mute: false,
                 },
-                kind: ProcessorKind::BuiltInFx,
+                kind: ProcessorKind::RemoteCarlaPatchbay16x,
                 default_dry: true,
-                state: Some(processors::Control::Restore {
-                    values: [0.; 64],
-                    replace_mappings: true,
+                state: None,
+                remote_fx: Some(processors::RemoteFxTarget {
+                    address: "[fd00::a]:24510".parse().unwrap(),
+                    reconnect: processors::RemoteFxReconnect::Manual,
+                    dry_on_loss: false,
                 }),
             },
         },
@@ -737,6 +744,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             builtin_latency_frames: 32,
             carla_latency_frames: 0,
             remote_carla_latency_frames: 0,
+            remote_carla_has_default: false,
         })),
         EngineMessage::State(StateRecord::ProcessorPreset(ProcessorPreset {
             bank: 128,
@@ -1062,6 +1070,7 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
         builtin_latency_frames: 32,
         carla_latency_frames: 0,
         remote_carla_latency_frames: 0,
+        remote_carla_has_default: false,
     };
     let mut bytes = [0; MAX_RECORD_BYTES];
     for invalid in 0..4 {

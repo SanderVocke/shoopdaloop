@@ -520,6 +520,11 @@ pub fn serve(
         return Err(io::Error::other("FX service needs 1–32 prepared slots"));
     }
     listener.set_nonblocking(true)?;
+    let advertiser =
+        crate::discovery::Advertiser::bind(listener.local_addr()?).unwrap_or_else(|error| {
+            eprintln!("FX service discovery unavailable: {error}");
+            None
+        });
     let server = Arc::new(Server {
         instance: uuid::Uuid::new_v4().to_string(),
         slots,
@@ -535,6 +540,9 @@ pub fn serve(
     });
     let mut connections = Vec::with_capacity(MAX_CONNECTIONS);
     while !server.stopping.load(Ordering::Acquire) {
+        if let Some(advertiser) = &advertiser {
+            advertiser.answer();
+        }
         server.reap_expired();
         connections.retain(|thread: &thread::JoinHandle<_>| !thread.is_finished());
         match listener.accept() {

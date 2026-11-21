@@ -8,13 +8,15 @@ use crate::{
 };
 use rt_buffered::{AsyncBatch, AsyncCompletion, AsyncTransport, Backend, Batch, LocalTransport};
 use rt_runtime::{graph::PortCounts, Error};
+pub use shoop_processor_protocol::RemoteFxReconnect as Reconnect;
+use shoop_processor_protocol::RemoteFxTarget;
 use std::{
     io,
     net::{SocketAddr, TcpStream, UdpSocket},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, SyncSender, TryRecvError},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
     thread,
     time::{Duration, Instant},
@@ -22,14 +24,6 @@ use std::{
 
 const RETRY_INTERVAL: Duration = Duration::from_millis(500);
 const COMMANDS: usize = 8;
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum Reconnect {
-    #[default]
-    Recreate,
-    Resume,
-    Manual,
-}
 
 struct Connection {
     tcp: TcpStream,
@@ -167,12 +161,15 @@ struct Shared {
     observation: Mutex<Observation>,
     closing: AtomicBool,
     desired_active: AtomicBool,
+    dry_on_loss: AtomicBool,
+    target: Mutex<Option<(u32, RemoteFxTarget)>>,
     claim: AtomicU64,
     claim_result: AtomicU64,
     reset_requested: AtomicU64,
     reset_done: AtomicU64,
     media_changed: AtomicBool,
     media_failed: AtomicBool,
+    media_thread: OnceLock<thread::Thread>,
     media: Mutex<Option<MediaSession>>,
 }
 
@@ -181,6 +178,9 @@ impl Shared {
         let mut pending = self.media.lock().unwrap();
         *pending = session;
         self.media_changed.store(true, Ordering::Release);
+        if let Some(worker) = self.media_thread.get() {
+            worker.unpark();
+        }
     }
 
     fn take_media_update(&self) -> Option<Option<MediaSession>> {
@@ -214,7 +214,6 @@ pub struct RenderEndpoint {
     lifetime: Arc<Lifetime>,
     transport: LocalTransport,
     ports: PortCounts,
-    dry_on_loss: bool,
 }
 
 impl Client {
@@ -228,31 +227,29 @@ impl Client {
         let inactive = connection.call(Action::Active(false))?;
         inactive.result.map_err(io::Error::other)?;
         Self::spawn(
-            address,
             kind,
             config,
-            Reconnect::Recreate,
-            false,
+            Some(RemoteFxTarget {
+                address,
+                reconnect: Reconnect::Recreate,
+                dry_on_loss: false,
+            }),
             Some((connection, media, inactive.status)),
         )
     }
 
     pub fn prepare_slot(
-        address: SocketAddr,
         kind: Kind,
         config: Config,
-        policy: Reconnect,
-        dry_on_loss: bool,
+        default_target: Option<RemoteFxTarget>,
     ) -> io::Result<(RenderEndpoint, Self)> {
-        Self::spawn(address, kind, config, policy, dry_on_loss, None)
+        Self::spawn(kind, config, default_target, None)
     }
 
     fn spawn(
-        address: SocketAddr,
         kind: Kind,
         config: Config,
-        policy: Reconnect,
-        dry_on_loss: bool,
+        default_target: Option<RemoteFxTarget>,
         initial: Option<(Connection, MediaSession, Status)>,
     ) -> io::Result<(RenderEndpoint, Self)> {
         let (transport, media_worker) =
@@ -272,12 +269,15 @@ impl Client {
             }),
             closing: AtomicBool::new(false),
             desired_active: AtomicBool::new(false),
+            dry_on_loss: AtomicBool::new(default_target.is_some_and(|target| target.dry_on_loss)),
+            target: Mutex::new(None),
             claim: AtomicU64::new(0),
             claim_result: AtomicU64::new(0),
             reset_requested: AtomicU64::new(0),
             reset_done: AtomicU64::new(0),
             media_changed: AtomicBool::new(true),
             media_failed: AtomicBool::new(false),
+            media_thread: OnceLock::new(),
             media: Mutex::new(media),
         });
         let lifetime = Arc::new(Lifetime {
@@ -291,13 +291,12 @@ impl Client {
         thread::Builder::new()
             .name("remote-fx-client".into())
             .spawn(move || {
-                control_loop(shared, requested, connection, address, kind, config, policy)
+                control_loop(shared, requested, connection, kind, config, default_target)
             })?;
         let endpoint = RenderEndpoint {
             lifetime: Arc::clone(&lifetime),
             transport,
             ports: config.ports(),
-            dry_on_loss,
         };
         Ok((endpoint, Self { lifetime, commands }))
     }
@@ -309,6 +308,10 @@ impl Client {
     pub fn claimed(&self, generation: u32) -> Option<bool> {
         let result = self.lifetime.shared.claim_result.load(Ordering::Acquire);
         (result >> 1 == u64::from(generation)).then_some(result & 1 != 0)
+    }
+
+    pub fn configure_claim(&self, generation: u32, target: Option<RemoteFxTarget>) {
+        *self.lifetime.shared.target.lock().unwrap() = target.map(|target| (generation, target));
     }
 
     pub fn request(&self, owner: u64, generation: u64, action: Action) -> Result<Ticket, String> {
@@ -348,7 +351,7 @@ impl AsyncTransport for RenderEndpoint {
 
 impl Backend for RenderEndpoint {
     fn dry_on_missing(&self) -> bool {
-        self.dry_on_loss
+        self.lifetime.shared.dry_on_loss.load(Ordering::Relaxed)
     }
     fn claim(&mut self, generation: u32, inputs: u8, outputs: u8) {
         let shared = &self.lifetime.shared;
@@ -397,6 +400,7 @@ impl Backend for RenderEndpoint {
 }
 
 fn media_loop(shared: &Shared, mut worker: ClientMedia) {
+    let _ = shared.media_thread.set(thread::current());
     let mut session: Option<MediaSession> = None;
     let mut published = Instant::now();
     while !shared.closing.load(Ordering::Acquire) {
@@ -422,11 +426,15 @@ fn media_loop(shared: &Shared, mut worker: ClientMedia) {
             shared.observation.lock().unwrap().media = worker.counters();
             published = Instant::now();
         }
-        thread::sleep(if shared.desired_active.load(Ordering::Relaxed) {
-            POLL
+        if session.is_none() {
+            thread::park_timeout(Duration::from_millis(10));
         } else {
-            Duration::from_millis(1)
-        });
+            thread::sleep(if shared.desired_active.load(Ordering::Relaxed) {
+                POLL
+            } else {
+                Duration::from_millis(1)
+            });
+        }
     }
 }
 
@@ -434,10 +442,9 @@ fn control_loop(
     shared: Arc<Shared>,
     commands: Receiver<Command>,
     mut connection: Option<Connection>,
-    address: SocketAddr,
     kind: Kind,
     config: Config,
-    policy: Reconnect,
+    default_target: Option<RemoteFxTarget>,
 ) {
     let eager = connection.is_some();
     let mut checkpoint = None;
@@ -447,6 +454,7 @@ fn control_loop(
     let mut retry = Instant::now();
     let mut claim = 0;
     let mut credential = None;
+    let mut target = default_target;
     while !shared.closing.load(Ordering::Acquire) {
         let command = match commands.recv_timeout(Duration::from_millis(10)) {
             Ok(command) => Some(command),
@@ -464,7 +472,9 @@ fn control_loop(
                 .as_ref()
                 .is_some_and(|command| matches!(command.operation, Operation::Recover));
         if reset {
-            close_chain(address, &mut connection, credential.take());
+            if let Some(target) = target {
+                close_chain(target.address, &mut connection, credential.take());
+            }
         }
         if shared.media_failed.swap(false, Ordering::AcqRel) || reset {
             disconnect(&shared, &mut connection);
@@ -488,13 +498,37 @@ fn control_loop(
         if requested_claim != claim {
             claim = requested_claim;
             retry = Instant::now() - RETRY_INTERVAL;
+            let generation = (claim >> 16) as u32;
+            target = shared
+                .target
+                .lock()
+                .unwrap()
+                .filter(|(configured, _)| generation == *configured)
+                .map(|(_, target)| target)
+                .or(default_target);
+            shared.dry_on_loss.store(
+                target.is_some_and(|target| target.dry_on_loss),
+                Ordering::Relaxed,
+            );
+            if claim != 0 && target.is_none() {
+                shared
+                    .claim_result
+                    .store(u64::from(generation) << 1, Ordering::Release);
+            }
         }
         let claimed_generation = claim >> 16;
         let first_open = shared.claim_result.load(Ordering::Relaxed) == 0;
-        if connection.is_none()
-            && (eager || claim != 0)
-            && (policy != Reconnect::Manual || first_open || recover)
-            && retry.elapsed() >= RETRY_INTERVAL
+        let open_target = target.filter(|target| {
+            connection.is_none()
+                && (eager || claim != 0)
+                && (target.reconnect != Reconnect::Manual || first_open || recover)
+                && retry.elapsed() >= RETRY_INTERVAL
+        });
+        if let Some(RemoteFxTarget {
+            address,
+            reconnect: policy,
+            ..
+        }) = open_target
         {
             retry = Instant::now();
             let mut config = config;
@@ -595,7 +629,9 @@ fn control_loop(
             let _ = command.reply.send(result);
         }
     }
-    close_chain(address, &mut connection, credential);
+    if let Some(target) = target {
+        close_chain(target.address, &mut connection, credential);
+    }
     disconnect(&shared, &mut connection);
 }
 
@@ -718,11 +754,20 @@ mod tests {
         };
         for policy in [Reconnect::Resume, Reconnect::Manual] {
             let (mut endpoint, client) =
-                Client::prepare_slot(address, Kind::Patchbay16x, config, policy, false).unwrap();
+                Client::prepare_slot(Kind::Patchbay16x, config, None).unwrap();
             let empty = describe(address).unwrap();
             assert_eq!(empty.reserved, 0);
+            client.configure_claim(
+                1,
+                Some(RemoteFxTarget {
+                    address,
+                    reconnect: policy,
+                    dry_on_loss: true,
+                }),
+            );
             assert_no_heap(|| endpoint.claim(1, 3, 5));
             wait_for(|| client.claimed(1) == Some(true));
+            assert!(endpoint.dry_on_missing());
             let started = describe(address).unwrap();
             let chain = &started.chains[0];
             assert_eq!(

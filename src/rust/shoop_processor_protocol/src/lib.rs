@@ -253,6 +253,34 @@ pub const CARLA_MIDI_EVENTS: usize = 1024;
 pub const CARLA_MIDI_BYTES: usize = CARLA_MIDI_EVENTS * 4;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum RemoteFxReconnect {
+    #[default]
+    Recreate,
+    Resume,
+    Manual,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RemoteFxTarget {
+    pub address: core::net::SocketAddr,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reconnect: RemoteFxReconnect,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub dry_on_loss: bool,
+}
+
+impl RemoteFxTarget {
+    pub fn valid(self) -> bool {
+        self.address.port() != 0
+            && !self.address.ip().is_unspecified()
+            && !self.address.ip().is_multicast()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
