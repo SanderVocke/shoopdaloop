@@ -1,152 +1,46 @@
-name: FPGA execution components
+name: RT backend benchmarks
+run-name: RT benchmark · ${{ inputs.variant }} · ${{ github.ref_name }}
 
 on:
-  pull_request:
-    paths:
-      - 'fpga/**'
-      - 'PLAN_SIM_MEM.md'
-      - 'PLAN_METADATA_CACHE.md'
-      - 'PLAN_RETAKE_CLEAR.md'
-      - 'AUDIO_IO.md'
-      - 'scripts/rt_backend_testbench/**'
-      - 'scripts/*fpga*'
-      - 'Cargo.lock'
-      - 'src/rust/rt_audio_math/**'
-      - 'src/rust/rt_backend_testbench/**'
-      - 'src/rust/shoop_graph/**'
-      - 'src/rust/rt_fpga_compiler/**'
-      - 'src/rust/rt_fpga_testbench/**'
-      - 'src/rust/rt_fpga_rtl/**'
-      - 'src/rust/shoop_rt_host_marlin/**'
-      - 'src/rust/shoop_rt_host_reference/**'
-      - 'src/rust/shoop_audio_drivers/**'
-      - 'src/rust/shoop_rt_host_worklet/**'
-      - 'src/rust/rt_fpga_reference/**'
-      - 'src/rust/shoop_rt_benchmark/**'
-      - 'scripts/benchmark_rt.py'
-      - 'scripts/tests/test_benchmark_rt.py'
-      - 'third_party/marlin-verilator/**'
-      - 'src/rust/rt_runtime/**'
-      - 'src/rust/shoop_loops/**'
-      - 'src/rust/shoop_rt_engine/**'
-      - 'src/rust/shoop_rt_backend/**'
-      - 'src/rust/shoop_rt_transport/**'
-      - '.github/workflows/fpga_simulation.yml'
-      - 'src/rust/shoop_host/**'
-      - 'src/rust/shoop_host_manager/**'
-      - 'src/rust/shoop_app/**'
-      - 'src/rust/shoop_app_client/**'
-      - 'src/rust/shoop_backend/**'
-      - 'src/rust/shoopdaloop/**'
-      - 'src/rust/shoop_app_api/**'
-      - 'src/rust/shoop_rt_protocol/**'
-      - 'src/rust/shoop_app_protocol/**'
-      - 'src/rust/shoop_egui/**'
-      - 'scripts/build_verilator.sh'
-      - 'scripts/check_dependency_boundaries.py'
-      - 'PLAN_FPGA_RTL_BACKEND.md'
-      - 'PLAN_MARLIN_TESTBENCHES.md'
-  push:
-    branches: [master, proto/fpga-rust-reference, feat/backend-replacement]
-    paths:
-      - 'fpga/**'
-      - 'src/rust/rt_fpga_testbench/**'
-      - 'src/rust/rt_fpga_rtl/**'
-      - 'src/rust/shoop_rt_host_marlin/**'
-      - 'src/rust/shoop_rt_host_reference/**'
-      - 'src/rust/shoop_audio_drivers/**'
-      - 'src/rust/shoop_rt_host_worklet/**'
-      - 'src/rust/shoop_graph/**'
-      - 'src/rust/rt_fpga_compiler/**'
-      - 'src/rust/rt_fpga_reference/**'
-      - 'src/rust/shoop_rt_benchmark/**'
-      - 'scripts/benchmark_rt.py'
-      - 'scripts/tests/test_benchmark_rt.py'
-      - 'src/rust/shoop_rt_backend/**'
-      - 'src/rust/shoop_rt_transport/**'
-      - 'src/rust/shoop_app/**'
-      - 'src/rust/shoop_app_client/**'
-      - 'src/rust/shoop_backend/**'
-      - 'third_party/marlin-verilator/**'
-      - '.github/workflows/fpga_simulation.yml'
-      - 'scripts/build_verilator.sh'
-      - 'src/rust/shoop_host/**'
-      - 'src/rust/shoopdaloop/**'
   workflow_dispatch:
+    inputs:
+      variant:
+        description: Benchmark coverage and runtime
+        type: choice
+        required: true
+        default: tiny
+        options: [tiny, quick, full]
 
 permissions:
   contents: read
 
 concurrency:
-  group: fpga-memory-${{ github.ref }}
-  cancel-in-progress: true
+  group: rt-benchmark-${{ github.ref }}-${{ inputs.variant }}
+  cancel-in-progress: false
 
 jobs:
-  rust-reference:
-    name: Rust reference and application integration
+  benchmark:
+    name: ${{ inputs.variant }} · 64 loops · audio, MIDI and combined
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       RUSTFLAGS: -D warnings
       CARGO_BUILD_JOBS: "2"
       CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
+      BENCH_VARIANT: ${{ inputs.variant }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: fpga-rust-reference
-      - name: Check shared compiler and functional processors
-        run: |
-          cargo test --locked -p shoop_graph -p rt_fpga_compiler
-          cargo build --locked -p rt_fpga_reference --no-default-features
-          cargo test --locked -p rt_fpga_reference --no-default-features
-          cargo test --locked -p rt_fpga_reference --all-features
-      - name: Check portable rendering and reference worklet transport
-        run: |
-          cargo test --locked -p shoop_rt_host_reference
-          cargo test --locked -p shoop_rt_host_worklet --no-default-features --features fpga-reference,exports
-      - name: Check command transport and protocol
-        run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
-      - name: Install native application and UI dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev libudev-dev libxkbcommon-dev
-      - name: Exercise live loading through the application API
-        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
-      - name: Exercise the reference backend through the UI runtime
-        run: |
-          cargo test --locked -p shoop_egui --lib
-          cargo test --locked -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_
-          cargo test --locked -p shoop_host_manager --no-default-features --features fpga-reference --lib
-      - name: Validate shared RT benchmark fixture and Rust adapters
-        run: cargo test --locked -p shoop_rt_benchmark
-
-  marlin:
-    name: Complete native Marlin verification
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180
-    env:
-      RUSTFLAGS: -D warnings
-      CARGO_BUILD_JOBS: "2"
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: production-fpga
-      - name: Install simulation tools
+          shared-key: rt-benchmark-release
+          cache-on-failure: true
+      - name: Install simulation and reporting tools
         run: |
           sudo apt-get update
           sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv \
             libasound2-dev libjack-jackd2-dev
           python3 -m venv .venv
-          .venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
           .venv/bin/pip install 'matplotlib>=3.9,<4'
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Cache Verilator 5.032
@@ -160,78 +54,65 @@ jobs:
         run: bash scripts/build_verilator.sh
       - name: Select Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Cache DRAMsim3 source
+        uses: actions/cache@v4
+        with:
+          path: work/dramsim3/source
+          key: rt-benchmark-dramsim3-${{ runner.os }}-${{ hashFiles('fpga/axi_memory/dramsim3.lock') }}
       - name: Build DRAMsim3
-        run: python fpga/axi_memory/build_dramsim3.py
-      - name: Check coverage and generated RTL
-        run: |
-          python scripts/check_fpga_testbench_coverage.py
-          python scripts/check_shoop_test_usage.py
-          python fpga/axi_memory/generate_tops.py --check
-          python fpga/host_bridge/generate_registers.py --check
-          python fpga/host_bridge/generate_top.py --check
-      - name: Run retained component and execution matrices
-        run: |
-          mkdir -p work/marlin-suite
-          set -o pipefail
-          cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
-          cargo check --locked -p rt_fpga_testbench
-      - name: Verify 16 and 64 loops with the Z-turn V2 DDR3 model
-        env:
-          SHOOP_DRAMSIM3_CONFIG: ${{ github.workspace }}/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini
+        run: python3 fpga/axi_memory/build_dramsim3.py
+      - name: Cache compiled RTL models
+        uses: actions/cache@v4
+        with:
+          path: work/rt-benchmark-model
+          key: rt-benchmark-rtl-${{ runner.os }}-${{ hashFiles('fpga/**/*.sv', 'src/rust/shoop_rt_benchmark/src/rtl.rs', 'src/rust/rt_fpga_rtl/src/model.rs', 'third_party/marlin-verilator/**') }}
+      - name: Run selected benchmark and generate PDF
         run: |
           set -o pipefail
-          cargo test --locked -p rt_fpga_testbench --features sim --test loading \
-            looping_workloads_with_thirty_two_frame_chunks_and_dram_timing -- --nocapture \
-            2>&1 | tee work/marlin-suite/zturn-v2-ddr3.log
-      - name: Check serialized Marlin application and bridge
-        run: |
-          cargo test --locked -p rt_fpga_rtl --features sim,rt-interface
-          cargo test --locked -p shoop_rt_host_marlin --features sim
-          cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers --test reference_resources
-      - name: Verify production CPU numeric checks
-        run: |
-          cargo test --locked -p rt_backend_testbench
-          python -m unittest discover -s scripts/tests -p test_rt_backend_testbench.py
-      - name: Validate shared benchmark reporting
-        run: python -m unittest discover -s scripts/tests -p test_benchmark_rt.py
-      - name: Run shared 64-loop audio and MIDI RT smoke campaign
-        run: python scripts/benchmark_rt.py --preset smoke --rtl-jobs 2 --output work/shared-rt-smoke
-      - uses: actions/upload-artifact@v7
+          python3 scripts/benchmark_rt.py --preset "$BENCH_VARIANT" --rtl-jobs 3 \
+            --host-profile --output work/rt-report 2>&1 | tee work/rt-benchmark.log
+      - name: Downloadable PDF report
+        id: pdf
+        if: always() && hashFiles('work/rt-report/report.pdf') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-benchmark-${{ inputs.variant }}-PDF
+          path: work/rt-report/report.pdf
+          if-no-files-found: error
+          retention-days: 30
+      - name: Raw measurements, runtime breakdown and logs
         if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: marlin-fpga-verification
+          name: rt-benchmark-${{ inputs.variant }}-data
           path: |
-            work/marlin-suite/**/*.log
-            work/marlin-suite/**/*.json
-            work/shared-rt-smoke/**
+            work/rt-report/**
+            work/rt-benchmark.log
           if-no-files-found: warn
-
-  components-synthesis:
-    name: Standalone execution and memory synthesis
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install pinned synthesis tools
-        uses: YosysHQ/setup-oss-cad-suite@853bb54f52246aa8fb4fab963f104cfb6676197a
-        with:
-          version: '2025-04-15'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Synthesize retained components
+          retention-days: 30
+      - name: Link report from run summary
+        if: always()
+        env:
+          PDF_URL: ${{ steps.pdf.outputs.artifact-url }}
         run: |
-          bash fpga/state_processor/check.sh
-          bash fpga/job_processor/check.sh
-          bash fpga/media_store/check.sh
-          bash fpga/axi_memory/check_pipeline.sh
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-  default-isolation:
-    name: Default application dependency isolation
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Check default dependency isolation
-        run: |
-          cargo tree --locked -p shoop_host -p shoopdaloop -e normal,build > default-tree.txt
-          if grep -i marlin default-tree.txt; then exit 1; fi
-          python3 scripts/check_dependency_boundaries.py --package shoop_host --package shoopdaloop
+          lines = [f"## RT benchmark: {os.environ['BENCH_VARIANT']}", ""]
+          url = os.environ.get('PDF_URL')
+          lines += [f"[Download the PDF report]({url})" if url else "PDF unavailable; inspect the data artifact and logs.", ""]
+          lines += ["The data artifact includes JSON, callback CSV, host-phase timings and logs.",
+                    "FPGA times use simulated fabric cycles at 150 MHz. Host runtime is recorded separately.", ""]
+          runtime = Path('work/rt-report/runtime.json')
+          if runtime.exists():
+              data = json.loads(runtime.read_text())
+              lines += [f"Capture and report wall time: **{data['elapsed_s'] / 60:.2f} minutes**.", "",
+                        "| Phase | Host seconds |", "| --- | ---: |"]
+              lines += [f"| {name} | {seconds:.2f} |" for name, seconds in data['phases_s'].items()]
+          if os.environ['BENCH_VARIANT'] == 'tiny':
+              lines += ["", "Tiny RTL intentionally omits playback wraps, planned transitions and mixed recording/playback."]
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('\n'.join(lines) + '\n')
+          PY

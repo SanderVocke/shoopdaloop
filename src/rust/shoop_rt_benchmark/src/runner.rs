@@ -379,6 +379,7 @@ fn execute<E: Endpoint, D: Driver>(
     let mut midi_dense_callbacks = 0u64;
     let mut cold_midi_events = 0usize;
     let mut midi_block_boundary_verified = false;
+    let mut mixed_record_play_verified = false;
     let mut delayed: [std::collections::VecDeque<f32>; 2] = std::array::from_fn(|_| {
         let mut queue = std::collections::VecDeque::with_capacity(driver.latency_frames() + 1);
         queue.extend(std::iter::repeat_n(0., driver.latency_frames()));
@@ -654,6 +655,7 @@ fn execute<E: Endpoint, D: Driver>(
             None
         };
         replaced_takes += callback_replaced;
+        mixed_record_play_verified |= recording == LOOPS / 2 && playing == LOOPS / 2;
         retired_plans += callback_retired;
         last_storage = measurement.storage_bytes;
         total_wraps += wraps;
@@ -680,21 +682,41 @@ fn execute<E: Endpoint, D: Driver>(
         growth > 1,
         "recordings did not grow across allocation boundaries"
     );
-    ensure!(total_wraps >= LOOPS, "insufficient playback wrap coverage");
+    let tiny_stress = report.fixture.preset == fixture::Preset::Tiny
+        && report.fixture.pattern == fixture::Pattern::Stress;
+    if !tiny_stress {
+        ensure!(total_wraps >= LOOPS, "insufficient playback wrap coverage");
+    }
     if report.fixture.media.audio() && !matches!(report.fixture.pattern, fixture::Pattern::Grab) {
         ensure!(
             cold_block_boundary_verified,
             "missing cold block-boundary coverage"
         );
     }
-    if matches!(report.fixture.pattern, fixture::Pattern::Lifecycle) {
+    if matches!(
+        report.fixture.pattern,
+        fixture::Pattern::Lifecycle | fixture::Pattern::Stress
+    ) {
         ensure!(
             replaced_takes >= u64::from(LOOPS),
             "completed takes were not replaced"
         );
+        if !tiny_stress {
+            ensure!(
+                retired_plans >= 2 * u64::from(LOOPS),
+                "scheduled transitions were not exercised"
+            );
+        }
+    }
+    let stop_all_verified = previous.iter().all(|state| state.mode == 0);
+    ensure!(
+        stop_all_verified,
+        "fixture did not finish with all loops stopped"
+    );
+    if report.fixture.pattern == fixture::Pattern::Stress && !tiny_stress {
         ensure!(
-            retired_plans >= 2 * u64::from(LOOPS),
-            "scheduled transitions were not exercised"
+            mixed_record_play_verified,
+            "missing mixed record/play coverage"
         );
     }
     if report.fixture.media.midi() {
@@ -712,6 +734,8 @@ fn execute<E: Endpoint, D: Driver>(
         "stereo_samples_checked":report.fixture.media.audio(),
         "midi_events_checked":midi_events_checked,"midi_bytes_timestamps_order_checked":report.fixture.media.midi(),
         "midi_silent_playback_callbacks":midi_silent_callbacks,"midi_dense_playback_callbacks":midi_dense_callbacks,
-        "midi_block_boundary_verified":midi_block_boundary_verified,"cold_midi_events_per_loop":cold_midi_events,"commands_verified":report.events.iter().map(|e| e.commands).sum::<usize>()});
+        "midi_block_boundary_verified":midi_block_boundary_verified,"cold_midi_events_per_loop":cold_midi_events,"commands_verified":report.events.iter().map(|e| e.commands).sum::<usize>(),
+        "stop_all_verified":stop_all_verified,"mixed_record_play_verified":mixed_record_play_verified,
+        "omitted_scenarios":if tiny_stress {vec!["playback-wrap", "planned-transitions", "mixed-record-play"]} else {vec![]}});
     Ok(())
 }

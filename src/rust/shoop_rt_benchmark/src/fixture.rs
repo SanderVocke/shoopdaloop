@@ -44,6 +44,7 @@ impl Media {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Pattern {
+    Stress,
     Lifecycle,
     Mixed,
     Grab,
@@ -52,8 +53,9 @@ pub enum Pattern {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Preset {
-    Smoke,
-    Standard,
+    Tiny,
+    Quick,
+    Full,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -155,11 +157,41 @@ impl Fixture {
             })
         };
         let span = FPGA_BLOCK_FRAMES / QUANTUM + 1;
-        let iterations = match preset {
-            Preset::Smoke => 2,
-            Preset::Standard => 8,
-        };
+        let iterations = 2;
         let callbacks = match pattern {
+            Pattern::Stress => {
+                add(0, "cold-record-all", Action::Record, 0, LOOPS);
+                add(span, "play-all", Action::Play, 0, LOOPS);
+                add(span + 1, "gain-all", Action::Gain(GAIN / 2.), 0, LOOPS);
+                if preset == Preset::Tiny {
+                    add(span + 9, "stop-all", Action::Stop, 0, LOOPS);
+                    add(48, "reuse-record-all", Action::Record, 0, LOOPS);
+                    add(50, "stop-all", Action::Stop, 0, LOOPS);
+                    52
+                } else {
+                    add(2 * span - 1, "plan-all", Action::Planned, 0, LOOPS);
+                    add(3 * span + 1, "stop-all", Action::Stop, 0, LOOPS);
+                    let retake = 3 * span + 2;
+                    add(retake, "reuse-record-all", Action::Record, 0, LOOPS);
+                    add(retake + span, "play-all", Action::Play, 0, LOOPS);
+                    add(
+                        retake + span + 1,
+                        "record-half",
+                        Action::Record,
+                        0,
+                        LOOPS / 2,
+                    );
+                    add(
+                        retake + 2 * span + 1,
+                        "play-half",
+                        Action::Play,
+                        0,
+                        LOOPS / 2,
+                    );
+                    add(retake + 2 * span + 2, "stop-all", Action::Stop, 0, LOOPS);
+                    retake + 2 * span + 5
+                }
+            }
             Pattern::Lifecycle => {
                 for i in 0..iterations {
                     let base = i * (4 * span + 1);
@@ -215,7 +247,7 @@ impl Fixture {
             }
         };
         Self {
-            version: 4,
+            version: 5,
             preset,
             pattern,
             media,
@@ -294,21 +326,21 @@ mod tests {
     #[shoop_test]
     fn fixture_preserves_layout_and_replays_identically() {
         for pattern in [Pattern::Lifecycle, Pattern::Mixed, Pattern::Grab] {
-            let f = Fixture::new(Preset::Smoke, pattern);
+            let f = Fixture::new(Preset::Full, pattern);
             assert_eq!((f.loops, f.channels, f.quantum), (64, 2, 32));
             assert_eq!(
                 (f.version, f.fpga_chunk_frames, f.fpga_block_chunks),
-                (4, 32, 32)
+                (5, 32, 32)
             );
             assert!(f.record_frames > f.fpga_chunk_frames * f.fpga_block_chunks);
             assert!(f.events.windows(2).all(|v| v[0].callback < v[1].callback));
             assert!(f.events.last().unwrap().callback < f.callbacks);
             assert_eq!(
                 serde_json::to_string(&f).unwrap(),
-                serde_json::to_string(&Fixture::new(Preset::Smoke, pattern)).unwrap()
+                serde_json::to_string(&Fixture::new(Preset::Full, pattern)).unwrap()
             );
         }
-        let commands = Fixture::new(Preset::Smoke, Pattern::Lifecycle).events[0].commands();
+        let commands = Fixture::new(Preset::Full, Pattern::Lifecycle).events[0].commands();
         assert_eq!(
             commands
                 .chunks(shoop_rt_protocol::immediate::COMMANDS)
@@ -318,5 +350,27 @@ mod tests {
         );
         assert_eq!(cycles_us(100_000), 666.6666666666666);
         assert_ne!(input(0, 0), input(1, 0));
+    }
+
+    #[shoop_test]
+    fn compact_stress_preserves_the_dense_peak_prefix_and_cold_geometry() {
+        let full = Fixture::with_media(Preset::Full, Pattern::Lifecycle, Media::AudioMidi);
+        assert_eq!(full.callbacks, 298);
+        for preset in [Preset::Tiny, Preset::Quick] {
+            let compact = Fixture::with_media(preset, Pattern::Stress, Media::AudioMidi);
+            let prefix = |fixture: &Fixture| {
+                serde_json::to_value(
+                    fixture
+                        .events
+                        .iter()
+                        .filter(|event| event.callback < 42)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+            };
+            assert_eq!(prefix(&compact), prefix(&full));
+            assert_eq!(compact.record_frames, 1056);
+            assert_eq!(compact.events.last().unwrap().label, "stop-all");
+        }
     }
 }

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 struct Args {
     #[arg(long, default_value = "cpu")]
     backend: String,
-    #[arg(long, value_enum, default_value = "standard")]
+    #[arg(long, value_enum, default_value = "full")]
     preset: Preset,
     #[arg(long, value_enum, default_value = "lifecycle")]
     pattern: Pattern,

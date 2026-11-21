@@ -12,9 +12,67 @@ use shoop_wasm_test_support::{
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
+#[shoop_test(no_wasm = "native dummy driver and host timing")]
+fn compact_stress_checks_required_coverage_and_labels_intentional_omissions() {
+    for preset in [Preset::Tiny, Preset::Quick] {
+        for media in [Media::Audio, Media::Midi, Media::AudioMidi] {
+            let fixture = Fixture::with_media(preset, Pattern::Stress, media);
+            assert_eq!(
+                fixture.callbacks,
+                if preset == Preset::Tiny { 52 } else { 172 }
+            );
+            let (control, driver) = cpu::prepare(&fixture).unwrap();
+            let cpu = runner::run("cpu", fixture.clone(), control, Guard(driver));
+            assert_eq!(
+                cpu.status,
+                if media.midi() {
+                    "unsupported"
+                } else {
+                    "completed"
+                },
+                "{:?}",
+                cpu.error
+            );
+            let (control, driver) = reference::prepare(media).unwrap();
+            let reference = runner::run("fpga-reference", fixture, control, Guard(driver));
+            assert_eq!(reference.status, "completed", "{:?}", reference.error);
+            assert_eq!(reference.fixture_sha256, cpu.fixture_sha256);
+            for run in [cpu, reference]
+                .into_iter()
+                .filter(|run| run.status == "completed")
+            {
+                assert_eq!(run.coverage["stop_all_verified"], true);
+                assert!(run.coverage["replaced_takes"].as_u64().unwrap() >= 64);
+                assert_eq!(run.coverage["cold_block_boundary_verified"], media.audio());
+                if media.midi() {
+                    assert_eq!(run.coverage["midi_block_boundary_verified"], true);
+                    assert_eq!(
+                        run.callbacks.iter().map(|row| row.midi_output_events).max(),
+                        Some(2560)
+                    );
+                }
+                if preset == Preset::Tiny {
+                    assert_eq!(
+                        run.coverage["omitted_scenarios"].as_array().unwrap().len(),
+                        3
+                    );
+                } else {
+                    assert!(run.coverage["omitted_scenarios"]
+                        .as_array()
+                        .unwrap()
+                        .is_empty());
+                    assert!(run.coverage["wraps"].as_u64().unwrap() >= 64);
+                    assert!(run.coverage["retired_plan_slots"].as_u64().unwrap() >= 128);
+                    assert_eq!(run.coverage["mixed_record_play_verified"], true);
+                }
+            }
+        }
+    }
+}
+
 #[shoop_test(no_wasm = "host runtime phase accounting")]
 fn host_profiling_preserves_the_fixture_and_accounts_for_each_callback() {
-    let fixture = Fixture::with_media(Preset::Smoke, Pattern::Lifecycle, Media::Midi);
+    let fixture = Fixture::with_media(Preset::Full, Pattern::Lifecycle, Media::Midi);
     let (control, driver) = reference::prepare(Media::Midi).unwrap();
     let original = runner::run("fpga-reference", fixture.clone(), control, driver);
     shoop_rt_benchmark::host_timing::enable();
@@ -88,7 +146,7 @@ impl<D: Driver> Driver for Guard<D> {
 fn common_fixture_checks_stereo_samples_and_simultaneous_transitions_on_both_rust_backends() {
     for media in [Media::Audio, Media::Midi, Media::AudioMidi] {
         for pattern in [Pattern::Lifecycle, Pattern::Mixed] {
-            let fixture = Fixture::with_media(Preset::Smoke, pattern, media);
+            let fixture = Fixture::with_media(Preset::Full, pattern, media);
             let (control, driver) = cpu::prepare(&fixture).unwrap();
             let cpu = runner::run("cpu", fixture.clone(), control, Guard(driver));
             assert!(
@@ -141,7 +199,7 @@ fn unsupported_grabs_do_not_turn_into_a_cheaper_workload() {
     let (control, driver) = reference::prepare(Media::Audio).unwrap();
     let run = runner::run(
         "fpga-reference",
-        Fixture::new(Preset::Smoke, Pattern::Grab),
+        Fixture::new(Preset::Full, Pattern::Grab),
         control,
         driver,
     );
@@ -151,7 +209,7 @@ fn unsupported_grabs_do_not_turn_into_a_cheaper_workload() {
 
 #[shoop_test(no_wasm = "native dummy history capture")]
 fn audio_grab_fixture_retains_exact_stereo_after_history_wrap_without_heap_work() {
-    let fixture = Fixture::new(Preset::Smoke, Pattern::Grab);
+    let fixture = Fixture::new(Preset::Full, Pattern::Grab);
     let (control, driver) = cpu::prepare(&fixture).unwrap();
     let run = runner::run("cpu", fixture, control, Guard(driver));
     assert_eq!(run.status, "completed", "{:?}", run.error);

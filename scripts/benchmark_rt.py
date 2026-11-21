@@ -20,7 +20,14 @@ FPGA_CLOCK_HZ = 150_000_000
 BUDGET_US = 32 / 48_000 * 1_000_000
 BACKENDS = ("cpu", "fpga-reference", "fpga-rtl")
 PATTERNS = ("lifecycle", "mixed", "grab")
+PRESETS = ("tiny", "quick", "full")
 MEDIA = ("audio", "midi", "audio-midi")
+
+
+def campaign_patterns(preset, backend):
+    if preset == "full":
+        return PATTERNS
+    return ("stress", "grab") if backend == "fpga-rtl" else ("stress", *PATTERNS)
 
 def media_kind(run):
     fixture = run.get("fixture", {})
@@ -143,6 +150,22 @@ def validate(run):
             raise ValueError("event execution differs from the fixture")
     if not run["coverage"]["complete_samples"]:
         raise ValueError("measurement capture was incomplete")
+    if f.get("version", 0) >= 5:
+        c = run["coverage"]
+        tiny_stress = f["preset"] == "tiny" and f["pattern"] == "stress"
+        omitted = ["playback-wrap", "planned-transitions", "mixed-record-play"] if tiny_stress else []
+        if c.get("omitted_scenarios") != omitted or not c.get("stop_all_verified") or rows[-1]["recording"] or rows[-1]["playing"]:
+            raise ValueError("invalid omitted coverage or final stopped state")
+        if not tiny_stress and c.get("wraps", 0) < 64:
+            raise ValueError("missing playback wrap coverage")
+        if f["pattern"] in ("stress", "lifecycle"):
+            if c.get("replaced_takes", 0) < 64 or (not tiny_stress and c.get("retired_plan_slots", 0) < 128):
+                raise ValueError("missing simultaneous retake or planned transition coverage")
+        if f["pattern"] == "stress":
+            if not tiny_stress and not c.get("mixed_record_play_verified"):
+                raise ValueError("missing mixed recording/playback coverage")
+            if kind != "audio" and max(row["midi_output_events"] for row in rows) != 2560:
+                raise ValueError("stress fixture did not reach the full 64-loop MIDI merge")
 
 
 def summarize(run, filename):
@@ -432,6 +455,11 @@ def render(output, manifest, runs, summary):
         block(fig, .525, .833, provenance_lines, width=66, lines=22, size=8)
         issues = Counter((r["backend"], r["status"], r.get("error") or "") for r in runs if r["status"] != "completed")
         notes = [f'{count}× {backend}: {state}. {error}' for (backend, state, error), count in sorted(issues.items())]
+        omitted = sorted({name for run in completed for name in run.get("coverage", {}).get("omitted_scenarios", [])})
+        if omitted:
+            notes.insert(0, "Tiny stress intentionally omits: " + ", ".join(omitted) + ". Native statistics use separate lifecycle/mixed/grab runs.")
+        if manifest.get("skipped_cpu_runs"):
+            notes.insert(0, f'{len(manifest["skipped_cpu_runs"])} optional CPU run slots omitted at repetition boundaries by the host-time budget.')
         if not summary["fixture_comparisons_match"]: notes.insert(0, "Different fixture hashes within a media/pattern comparison; see summary.json.")
         if not summary["complete"]: notes.insert(0, "Campaign capture is incomplete: some requested run slots are missing or the campaign was interrupted.")
         if not notes: notes = ["All requested operations completed; no unsupported or failed runs."]
@@ -514,10 +542,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backends", default=",".join(BACKENDS))
     parser.add_argument("--media", default=",".join(MEDIA))
-    parser.add_argument("--patterns", default=",".join(PATTERNS))
-    parser.add_argument("--preset", choices=("smoke", "standard"), default="standard")
+    parser.add_argument("--patterns", help="override variant-specific patterns for every selected backend")
+    parser.add_argument("--preset", choices=PRESETS, default="full")
     parser.add_argument("--repeats", type=int)
-    parser.add_argument("--rtl-jobs", type=int, default=1, help="independent RTL simulations after all serial host timing runs")
+    parser.add_argument("--cpu-budget-seconds", type=float, help="soft CPU repetition budget; always complete the first pass and each started pass")
+    parser.add_argument("--rtl-jobs", type=int, default=3, help="independent RTL simulations after all serial host timing runs")
     parser.add_argument("--output", type=Path, default=ROOT / "work/rt-benchmark")
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--binary", type=Path)
@@ -534,10 +563,17 @@ def main():
     if args.profile_rtl and shutil.which("gprofng") is None:
         parser.error("--profile-rtl requires gprofng")
     args.host_profile = args.host_profile or args.profile_rtl
-    backends = args.backends.split(","); patterns = args.patterns.split(","); media = args.media.split(",")
-    repeats = {b: args.repeats if args.repeats is not None else (1 if args.preset == "smoke" or b == "fpga-rtl" else 3) for b in backends}
-    if args.rtl_jobs < 1 or any(n < 1 for n in repeats.values()) or not backends or len(set(backends)) != len(backends) or len(set(patterns)) != len(patterns) or any(b not in BACKENDS for b in backends) or any(p not in PATTERNS for p in patterns) or len(set(media)) != len(media) or any(m not in MEDIA for m in media):
+    backends = args.backends.split(","); media = args.media.split(",")
+    patterns = args.patterns.split(",") if args.patterns else None
+    repeats = {b: args.repeats if args.repeats is not None else (dict(tiny=2, quick=3, full=1)[args.preset] if b == "cpu" else 1) for b in backends}
+    cpu_budget = args.cpu_budget_seconds if args.cpu_budget_seconds is not None else dict(tiny=30., quick=45., full=None)[args.preset]
+    if args.rtl_jobs < 1 or any(n < 1 for n in repeats.values()) or not backends or len(set(backends)) != len(backends) or any(b not in BACKENDS for b in backends) or (patterns is not None and (len(set(patterns)) != len(patterns) or any(p not in (*PATTERNS, "stress") for p in patterns))) or len(set(media)) != len(media) or any(m not in MEDIA for m in media) or (cpu_budget is not None and (not math.isfinite(cpu_budget) or cpu_budget <= 0)):
         parser.error("select known backends/patterns/media and positive repeats")
+    selected_patterns = {b: patterns or campaign_patterns(args.preset, b) for b in backends}
+    tasks = [(backend, kind, pattern, repeat)
+        for repeat in range(max(repeats.values()))
+        for backend in backends[::1 if repeat % 2 == 0 else -1] if repeat < repeats[backend]
+        for kind in media for pattern in selected_patterns[backend]]
     if any(output.iterdir()):
         parser.error("output already contains a campaign; select a fresh directory or --report-only")
     dram_config = args.dram_config.resolve()
@@ -545,8 +581,9 @@ def main():
         worktree=capture("git", "status", "--porcelain"), rustc=capture("rustc", "--version"),
         python=capture("python3", "--version"), platform=capture("uname", "-a"),
         affinity=sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
-        preset=args.preset, repeats=repeats, backends=backends, patterns=patterns, media=media,
-        expected_runs=sum(repeats.values()) * len(patterns) * len(media), complete=False,
+        preset=args.preset, repeats=repeats, backends=backends, patterns=selected_patterns, media=media,
+        planned_runs=len(tasks), expected_runs=len(tasks), complete=False,
+        cpu_budget_seconds=cpu_budget, skipped_cpu_runs=[],
         fpga_clock_hz=FPGA_CLOCK_HZ, memory_model=args.memory_model, rtl_jobs=args.rtl_jobs,
         scheduling="serial CPU/reference repeats, then independent RTL simulations",
         dram_config=str(dram_config), dram_config_sha256=hashlib.sha256(dram_config.read_bytes()).hexdigest() if dram_config.is_file() else None, files=[])
@@ -623,10 +660,10 @@ def main():
             except (OSError, ValueError) as error:
                 timing["host_profile_error"] = str(error)
         f = value.get("fixture", {})
-        if value["status"] in ("completed", "unsupported") and (f.get("version"), f.get("fpga_chunk_frames"), f.get("fpga_block_chunks"), f.get("media"), f.get("preset"), f.get("pattern")) != (4, 32, 32, kind, args.preset, pattern):
+        if value["status"] in ("completed", "unsupported") and (f.get("version"), f.get("fpga_chunk_frames"), f.get("fpga_block_chunks"), f.get("media"), f.get("preset"), f.get("pattern")) != (5, 32, 32, kind, args.preset, pattern):
             path.rename(path.with_suffix(".incompatible.json"))
             value = dict(backend=backend, fixture=dict(pattern=pattern, media=kind), repeat=repeat, status="incorrect-results",
-                error="new campaigns require fixture revision 4 with the requested media/preset/pattern, 32-frame chunks and 32-chunk blocks; original result retained as .incompatible.json")
+                error="new campaigns require fixture revision 5 with the requested media/preset/pattern, 32-frame chunks and 32-chunk blocks; original result retained as .incompatible.json")
             path.write_text(json.dumps(value, indent=2) + "\n")
             f = value["fixture"]
         timing["status"] = value["status"]
@@ -634,10 +671,6 @@ def main():
         timing["total_s"] = time.perf_counter() - started
         return filename, f, timing
 
-    tasks = [(backend, kind, pattern, repeat)
-        for repeat in range(max(repeats.values()))
-        for backend in backends[::1 if repeat % 2 == 0 else -1] if repeat < repeats[backend]
-        for kind in media for pattern in patterns]
     def retain(result):
         filename, f, timing = result
         if "fpga_chunk_frames" in f:
@@ -648,8 +681,23 @@ def main():
         runtime_report(output, runtime)
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     hosts_started = time.perf_counter()
+    cpu_seconds = 0.
+    cpu_pass_allowed = {0: True}
     for task in tasks:
-        if task[0] != "fpga-rtl": retain(run_one(task))
+        backend, kind, pattern, repeat = task
+        if backend == "fpga-rtl":
+            continue
+        if backend == "cpu":
+            if repeat not in cpu_pass_allowed:
+                cpu_pass_allowed[repeat] = cpu_budget is None or cpu_seconds < cpu_budget
+            if not cpu_pass_allowed[repeat]:
+                manifest["skipped_cpu_runs"].append(dict(media=kind, pattern=pattern, repeat=repeat, reason="CPU repetition budget"))
+                manifest["expected_runs"] -= 1
+                continue
+        result = run_one(task)
+        if backend == "cpu":
+            cpu_seconds += result[2]["total_s"]
+        retain(result)
     runtime["phases_s"]["serial_host_cases"] = time.perf_counter() - hosts_started
     rtl_started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.rtl_jobs) as executor:

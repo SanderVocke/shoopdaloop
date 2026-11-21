@@ -8,6 +8,46 @@ with small adapters for backend preparation, processing, and measurement**.
 The fixture and entry point live in
 [`shoop_rt_benchmark`](src/rust/shoop_rt_benchmark/README.md).
 
+**Current variants (revision 5).** Supported presets are `tiny`, `quick` and
+`full` (default). `full` is the former smoke workload: two lifecycle iterations,
+one repetition, 298 lifecycle and 232 mixed RTL callbacks per media profile.
+The former standard preset is removed, with no compatibility CLI aliases.
+Historical reports retain their original labels and remain regenerable.
+
+Tiny runs one 52-callback RTL stress sequence per media: cold audio/MIDI growth,
+the full 2,560-message playback merge, quiet playback, simultaneous retake
+allocation and stopping. It explicitly omits playback wraps, planned transitions
+and mixed loads. Quick combines those omitted checks, full-length retakes and
+half-record/half-play contention into one 172-callback sequence. Targets are
+roughly five and twenty minutes with three RTL workers and warm caches; cold
+compilation adds setup time. Native CPU retains separate full-pattern statistics:
+up to two passes with a 30-second soft budget for tiny, three with 45 seconds for
+quick. Budgets are checked between complete passes; optional skips are recorded.
+The reference validates the same fixtures once. Required RTL coverage is checked
+by the common runner and reporter, rather than stopping when a timer expires.
+
+The [RT backend benchmarks workflow](.github/workflows/fpga_simulation.yml) runs
+only by manual dispatch, with a `tiny`/`quick`/`full` selector. Its summary links
+to a downloadable PDF, with a separate raw-data/log artifact retained for 30 days.
+Automatic FPGA component checks moved to
+[fpga_components.yml](.github/workflows/fpga_components.yml); they no longer launch
+the benchmark campaign. Existing published captures below are historical evidence.
+
+Revision 5 validation passed nine scoped Rust tests, including both compact
+sequences on all media through both Rust backends, and 15 reporter/scheduling
+tests. A complete local tiny campaign took 235.5 seconds (3:56), retaining 13,372
+callbacks: 20 completed slots, 22 unsupported, no failures. The first 42 RTL
+callbacks in all three media profiles exactly match the previous capture's
+cycle/traffic/stage records. MIDI and combined peaks remain 1,989,492 and 2,031,651
+cycles; the tiny audio retake reaches 113,777 cycles, slightly above the prior
+113,424-cycle peak. Its PDF remains five pages and labels omitted RTL scenarios.
+All nine full fixtures match the former smoke fixtures apart from preset name
+and version. A separate quick audio RTL replay passed all 172 callbacks in
+138.4 seconds, including 128 planned-slot retirements, 160 wraps and mixed
+record/play coverage. The complete quick matrix's twenty-minute target remains
+an estimate pending its Actions run. Formatting, warning-denying build, test-policy checks and Actions
+workflow lint also passed.
+
 **Upstream refresh and MIDI matrix (revision 4).** The benchmark now selects
 `audio`, `midi`, or `audio-midi`; the default campaign runs all three. Each uses
 64 loops and Q=callback=32. Audio loops remain genuinely stereo, with 32-frame
@@ -83,8 +123,8 @@ checks; and warning-denying release builds. The full workspace suite was not
 rerun. Capture took about 54 minutes with three RTL workers and a prebuilt
 binary/model cache; report-only regeneration took 2.4 seconds. This published
 campaign uses the shorter smoke preset, with two lifecycle iterations and one
-repetition. The default standard campaign retains eight iterations and three
-independent CPU/reference repetitions.
+repetition. The then-default standard campaign retained eight iterations and three
+independent CPU/reference repetitions; that preset has since been removed.
 
 After capture, the final duplicate packed-plan decoder was replaced with
 upstream's passive `loop_plan` helper. A fresh 298-callback RTL audio lifecycle
@@ -284,14 +324,14 @@ pass.
 ```bash
 python3 scripts/benchmark_rt.py \
   --backends cpu,fpga-reference,fpga-rtl \
-  --preset standard \
+  --preset quick \
   --output work/rt-benchmark
 ```
 
 This command checks prerequisites, builds optimized binaries, runs backends
 sequentially, validates results, and generates `report.pdf`, `summary.json`, raw
 callback/event records, and a provenance manifest. Include a report-only mode and
-a smoke preset that reduces repetitions while preserving the 64-stereo layout.
+the three preset schedules while preserving the 64-stereo layout.
 
 Missing prerequisites, unsupported operations, incorrect results, and processing
 failures need distinct statuses. Finish reports for completed runs, but return a
@@ -368,8 +408,8 @@ memory-model seed is fixed at `20261117`.
 
 The implementation and CI evidence are tracked in
 [PR #1004](https://github.com/SanderVocke/shoopdaloop/pull/1004), targeting
-`feat/backend-replacement`. CI also runs and uploads the complete shared smoke
-campaign. Ordinary generated campaigns remain in the requested output folder.
+`feat/backend-replacement`. The manual benchmark workflow runs and uploads the
+selected campaign. Ordinary generated campaigns remain in the requested output folder.
 The validated 32×32 [PDF and compressed raw bundle](benchmarks/rt-standard-32x32/README.md)
 are published with this PR so the report can be downloaded and regenerated.
 
@@ -386,9 +426,9 @@ Fixture revision 3 supersedes revision 2's one-frame chunks, 128-chunk blocks an
 blocks, with 1,056-frame mandatory recordings; mixed turnover also uses 1,088 and
 1,152 frames. The complete-callback timing boundary, 64-stereo/Q32 layout and
 150 MHz memory timing are unchanged. Older reports remain regenerable with their
-original geometry labels, while fresh campaigns now require revision 4. Grab storms
+original geometry labels, while fresh campaigns now require revision 5. Grab storms
 retain adjacent 32,768-frame history windows after filling the ring. Deterministic
-RTL replay defaults to one run; CPU timing retains three independent repetitions.
+RTL replay defaults to one run; CPU repetition counts follow the selected preset.
 Simulation uses an optimized model without waveform compilation.
 
 Use targeted tests and smoke runs during implementation; reserve expensive full

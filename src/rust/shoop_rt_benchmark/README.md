@@ -6,20 +6,56 @@ with Matplotlib installed:
 ```sh
 python3 -m pip install 'matplotlib>=3.9,<4'
 python3 scripts/benchmark_rt.py --output work/rt-benchmark
-python3 scripts/benchmark_rt.py --preset smoke --rtl-jobs 3 --output work/rt-smoke
+python3 scripts/benchmark_rt.py --preset tiny --output work/rt-tiny
+python3 scripts/benchmark_rt.py --preset quick --output work/rt-quick
+python3 scripts/benchmark_rt.py --preset full --output work/rt-full
 python3 scripts/benchmark_rt.py --media audio --backends cpu,fpga-reference --output work/rt-audio
 python3 scripts/benchmark_rt.py --report-only --output work/rt-benchmark
-python3 scripts/benchmark_rt.py --preset smoke --rtl-jobs 3 --profile-rtl --output work/rt-profiled
+python3 scripts/benchmark_rt.py --preset full --profile-rtl --output work/rt-profiled
 ```
 
-`--media audio,midi,audio-midi` is the default matrix. `--patterns
-lifecycle,mixed,grab` selects simultaneous starts/retakes, half-loop recording
-while other loops play, and capability-dependent history grabs. Each selected
-backend runs each media/pattern pair. Unsupported cases remain explicit run
-slots. Missing prerequisites, build/processing failures and incorrect results
+`--media audio,midi,audio-midi` is the default matrix. `--preset` accepts only
+`tiny`, `quick` and `full` (default). The old smoke workload is now `full`;
+the former standard preset and both old CLI names are removed. Historical
+archives still regenerate with `--report-only`.
+
+| Preset | RTL per media profile | Native CPU statistics | Warm-cache target |
+| --- | --- | --- | --- |
+| `tiny` | One 52-callback stress sequence: cold recording across audio/MIDI blocks, full 2,560-message merge, quiet playback, simultaneous retake allocation, stop | Up to two complete passes, 30-second soft budget | About 5 minutes |
+| `quick` | One 172-callback stress sequence: tiny's scenarios plus two planned retirements per loop, wraps, full-length retakes and half-record/half-play contention | Up to three complete passes, 45-second soft budget | About 20 minutes |
+| `full` | Original two-iteration lifecycle (298 callbacks), mixed turnover (232), and capability-dependent grabs | One complete pass, matching the former smoke campaign | About 40 minutes |
+
+Short presets retain separate native lifecycle/mixed/history-grab patterns for
+statistics, in addition to the compact common stress sequence. The functional
+reference runs each selected pattern once for cross-backend comparison. RTL runs
+the stress sequence once per media profile, plus explicit unsupported grab slots.
+`full` runs lifecycle/mixed/grab on every selected backend. `--patterns` overrides
+these variant-specific selections; `--repeats` overrides repetition counts for all
+backends, including RTL. These overrides can exceed the targets above.
+
+CPU budgets include preparation, stimulus, endpoint service and validation.
+`--cpu-budget-seconds` overrides the preset budget. The first pass always completes;
+an optional pass starts only while the budget remains and finishes once started.
+The limit is soft by at most one complete pass. Intentionally skipped optional
+slots are recorded in the manifest and PDF, separately from unsupported cases or
+failures. Required RTL scenarios are never truncated by a timer.
+
+Tiny explicitly omits playback wraps, planned transitions and mixed loads in the
+stress sequence; its JSON and PDF label those omissions. Quick requires all three.
+All stress runs must reach synchronized retakes and, when MIDI is enabled, the
+full 64-loop merge. Both compact sequences preserve the initial full-workload
+stimulus through the first dense playback peak.
+
+Three RTL workers are used by default, after serial CPU/reference timing finishes.
+Targets assume the measured host's CPU capacity and warm build/model caches;
+cold Actions toolchain, Rust and RTL compilation adds setup time. Fabric-cycle
+measurements remain independent of host scheduling.
+
+Unsupported cases remain explicit run slots. Missing prerequisites,
+build/processing failures and incorrect results
 produce distinct statuses and a nonzero campaign result.
 
-Fixture revision 4 uses **64 loops, Q=callback=32, and 48 kHz**:
+Fixture revision 5 uses **64 loops, Q=callback=32, and 48 kHz**:
 
 | Media | Loop contents and routing |
 | --- | --- |
@@ -34,14 +70,11 @@ have been removed. Native execution calls the production renderer synchronously
 with prepared dummy buffers. No driver thread, UI, plugin or physical device is
 started, and no deadline is attached.
 
-Both presets record for 1,056 frames, crossing an audio allocation block.
-Mixed turnover also records for 1,088 and 1,152 frames. Smoke performs two
-lifecycle iterations; standard performs eight. Standard uses three independent
-CPU/reference repetitions and one deterministic RTL replay. Smoke uses one
-repetition. `--repeats` overrides these counts. Host timing runs finish serially
-before any RTL simulations start; optional `--rtl-jobs N` then runs independent
-RTL processes concurrently. Fabric-cycle measurements are independent of host
-scheduling; simulator wall time is retained separately.
+All presets initially record for 1,056 frames, crossing an audio allocation block.
+The full mixed pattern also records for 1,088 frames. Tiny's retake records two
+quanta beginning on a 40-message input burst. Quick's retakes cross a second audio
+block and combine 32 recording loops with 32 playing loops. `--rtl-jobs N`
+controls independent RTL processes; simulator wall time is retained separately.
 
 MIDI input repeats a 16-quantum cycle: 40 messages in the first quantum, 16 in
 each of the next seven, then eight silent quanta. Messages are complete three-byte
@@ -126,7 +159,7 @@ records remain in run JSON and CSV. Timelines are omitted from the PDF. Percenti
 require enough observations, and maxima describe this fixture rather than proven
 worst-case bounds.
 
-Fresh campaigns require revision 4 and a fresh output directory. Report-only mode
+Fresh campaigns require revision 5 and a fresh output directory. Report-only mode
 needs no backend/compiler and still accepts older fixture versions with their
 original media and geometry labels. Revisions 2/3 and the pre-refresh audio report
 are historical configurations; rerun the matrix for an upstream performance
@@ -160,6 +193,21 @@ and exported CPU sampling tables. Signal access and its callees consumed 64.2%
 of sampled RTL-process CPU. All 1,590 RTL callback cycle/traffic/stage records
 match the preceding capture. Host conditions and sampling affect wall time;
 the replay applied no simulator-speed optimization.
+
+Manual workflow:
+
+The **RT backend benchmarks** Actions workflow is manual-only. Select a branch
+and `tiny`, `quick` or `full` under Actions → Run workflow. Its run summary links
+directly to the PDF artifact; a separate data artifact retains JSON/CSV, runtime
+breakdowns and logs for 30 days, including evidence from failed campaigns.
+Each variant has a separate concurrency group, so launching all three does not
+cancel any of them. The workflow keeps the registered `fpga_simulation.yml` path
+so it can be dispatched on an unmerged PR; automatic component verification now
+lives in `fpga_components.yml` and does not run these benchmarks.
+
+```sh
+gh workflow run fpga_simulation.yml --ref <branch> -f variant=tiny
+```
 
 Validation:
 

@@ -191,7 +191,7 @@ class BenchmarkReportTests(unittest.TestCase):
                 calls.append(backend)
                 path = Path(command[command.index("--output") + 1])
                 path.write_text(json.dumps(dict(backend=backend, status="completed", fixture=dict(
-                    version=4, media="audio", preset="standard", pattern="lifecycle",
+                    version=5, media="audio", preset="full", pattern="lifecycle",
                     fpga_chunk_frames=32, fpga_block_chunks=32))))
                 return mock.Mock(returncode=0)
             arguments = ["benchmark_rt.py", "--binary", str(binary), "--backends", "fpga-rtl,cpu,fpga-reference",
@@ -222,6 +222,74 @@ class BenchmarkReportTests(unittest.TestCase):
             (output / "manifest.json").write_text(json.dumps(dict(files=["run.json"], complete=False, expected_runs=2)))
             self.assertFalse(BENCH.report(output))
             self.assertFalse(json.loads((output / "summary.json").read_text())["complete"])
+
+    def test_variant_patterns_keep_native_statistics_and_avoid_duplicate_rtl_replays(self):
+        self.assertEqual(BENCH.PRESETS, ("tiny", "quick", "full"))
+        for variant in BENCH.PRESETS:
+            self.assertEqual(BENCH.campaign_patterns(variant, "fpga-rtl"),
+                BENCH.PATTERNS if variant == "full" else ("stress", "grab"))
+            for backend in ("cpu", "fpga-reference"):
+                self.assertEqual(BENCH.campaign_patterns(variant, backend),
+                    BENCH.PATTERNS if variant == "full" else ("stress", *BENCH.PATTERNS))
+
+    def test_cpu_budget_skips_only_optional_complete_passes_and_retains_the_rtl_matrix(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name); binary = root / "benchmark"; binary.write_bytes(b"benchmark")
+            output = root / "campaign"
+            calls = []
+            def execute(command, **kwargs):
+                backend = command[command.index("--backend") + 1]
+                pattern = command[command.index("--pattern") + 1]
+                calls.append((backend, pattern))
+                path = Path(command[command.index("--output") + 1])
+                path.write_text(json.dumps(dict(backend=backend, status="completed", fixture=dict(
+                    version=5, media="audio", preset="quick", pattern=pattern,
+                    fpga_chunk_frames=32, fpga_block_chunks=32))))
+                return mock.Mock(returncode=0)
+            arguments = ["benchmark_rt.py", "--preset", "quick", "--binary", str(binary),
+                "--media", "audio", "--cpu-budget-seconds", "0.000000001", "--memory-model", "fixed", "--output", str(output)]
+            with mock.patch("sys.argv", arguments), mock.patch.object(BENCH, "capture", return_value="Verilator 5.032"), \
+                    mock.patch.object(BENCH.subprocess, "run", side_effect=execute), mock.patch.object(BENCH, "report", return_value=True):
+                self.assertEqual(BENCH.main(), 0)
+            self.assertEqual([p for b, p in calls if b == "cpu"], ["stress", *BENCH.PATTERNS])
+            self.assertEqual([p for b, p in calls if b == "fpga-rtl"], ["stress", "grab"])
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["planned_runs"], 18)
+            self.assertEqual(manifest["expected_runs"], 10)
+            self.assertEqual(len(manifest["skipped_cpu_runs"]), 8)
+            self.assertTrue(all(row["repeat"] in (1, 2) for row in manifest["skipped_cpu_runs"]))
+            self.assertEqual(len(manifest["files"]), 10)
+
+    def test_compact_coverage_cannot_hide_omitted_scenarios_or_miss_the_peak_merge(self):
+        run = midi_result()
+        run["backend"] = "fpga-reference"
+        run["fixture"].update(version=5, preset="tiny", pattern="stress")
+        run["fixture_sha256"] = hashlib.sha256(json.dumps(run["fixture"], separators=(",", ":")).encode()).hexdigest()
+        run["callbacks"][0]["midi_output_events"] = run["callbacks"][0]["measurement"]["midi_output_events"] = 2560
+        run["callbacks"][-1].update(recording=0, playing=0)
+        run["coverage"].update(midi_events_checked=42160, replaced_takes=64, stop_all_verified=True,
+            omitted_scenarios=["playback-wrap", "planned-transitions", "mixed-record-play"])
+        BENCH.validate(run)
+        for change in (lambda r: r["coverage"].update(omitted_scenarios=[]),
+                       lambda r: r["coverage"].update(replaced_takes=0),
+                       lambda r: r["coverage"].update(stop_all_verified=False)):
+            changed = copy.deepcopy(run); change(changed)
+            with self.assertRaises(ValueError):
+                BENCH.validate(changed)
+        run["callbacks"][0]["midi_output_events"] = run["callbacks"][0]["measurement"]["midi_output_events"] = 400
+        run["coverage"]["midi_events_checked"] = 40000
+        with self.assertRaisesRegex(ValueError, "full 64-loop MIDI merge"):
+            BENCH.validate(run)
+        run["callbacks"][0]["midi_output_events"] = run["callbacks"][0]["measurement"]["midi_output_events"] = 2560
+        run["fixture"]["preset"] = "quick"
+        run["fixture_sha256"] = hashlib.sha256(json.dumps(run["fixture"], separators=(",", ":")).encode()).hexdigest()
+        run["coverage"].update(midi_events_checked=42160, omitted_scenarios=[], wraps=128,
+            retired_plan_slots=128, mixed_record_play_verified=True)
+        BENCH.validate(run)
+        for field in ("wraps", "retired_plan_slots", "mixed_record_play_verified"):
+            changed = copy.deepcopy(run); changed["coverage"][field] = 0
+            with self.assertRaises(ValueError):
+                BENCH.validate(changed)
 
     def test_new_campaign_rejects_an_old_binary_but_retains_its_original_data(self):
         with tempfile.TemporaryDirectory() as name:
