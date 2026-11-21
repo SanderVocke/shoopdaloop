@@ -412,7 +412,6 @@ impl Expression {
             if binding.outputs & (1 << output) == 0 {
                 continue;
             }
-            let index = self.index(sequence, output);
             let mut temporary = Bits::new();
             if !persistent {
                 for ch in 0..16 {
@@ -446,16 +445,6 @@ impl Expression {
                 temporary: if persistent { None } else { Some(temporary) },
             };
             p::restore(target, binding.channels, policy, &mut io)?;
-            for ch in 0..16 {
-                if binding.channels & (1 << ch) == 0 {
-                    continue;
-                }
-                for key in 0..128 {
-                    if target.word(ch * p::STRIDE + key) & 127 != 0 {
-                        self.trackers[index].activity.keys[ch] |= 1 << key;
-                    }
-                }
-            }
         }
         Ok(())
     }

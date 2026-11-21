@@ -76,6 +76,24 @@ pub fn logical(q: u32, mixed: bool) -> rt_fpga_compiler::LogicalStateProgram {
     ])
     .unwrap()
 }
+pub fn logical_expression(q: u32, mixed: bool) -> rt_fpga_compiler::LogicalStateProgram {
+    logical(q, mixed)
+        .with_midi_data(
+            &(0..2)
+                .map(|slot| M::State {
+                    loop_id: rt_fpga_compiler::Identity {
+                        slot,
+                        generation: 1,
+                    },
+                    sequence: slot as u16,
+                    input: slot as u16,
+                    outputs: 1,
+                    channels: 1 << slot,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap()
+}
 pub fn limits() -> StoreLimits {
     StoreLimits {
         block_events: 8,
@@ -118,7 +136,14 @@ pub struct Oracle {
 }
 impl Oracle {
     pub fn new(q: u32, mixed: bool) -> Self {
-        let logical = logical(q, mixed);
+        Self::build(q, mixed, false)
+    }
+    pub fn build(q: u32, mixed: bool, expression: bool) -> Self {
+        let logical = if expression {
+            logical_expression(q, mixed)
+        } else {
+            logical(q, mixed)
+        };
         let mut audio = MediaStore::new(q as usize).unwrap();
         let views: Vec<_> = (0..2)
             .map(|_| audio.create_recording().unwrap().0 as u64)
@@ -150,10 +175,15 @@ impl Oracle {
             output_ports: 2,
         })
         .unwrap();
+        let mut midi = MidiMemory::prepare(limits(), 2).unwrap();
+        if expression {
+            midi.prepare_state(2, 2).unwrap();
+            pipeline.prepare_midi_state(&mut midi).unwrap();
+        }
         Self {
             pipeline,
             jobs,
-            midi: MidiMemory::prepare(limits(), 2).unwrap(),
+            midi,
             audio,
             emitted: Vec::new(),
             q,
@@ -312,6 +342,26 @@ pub fn job_bits(job: Job) -> Option<Bits> {
             right,
             destination,
         } => (0x26, left.0, right.0, u64::from(destination.0), 0, 0),
+        Job::MidiRestoreState {
+            owner,
+            sequence,
+            position,
+        } => (
+            0x28,
+            sequence.0,
+            0,
+            position,
+            u64::from(owner.slot) | (u64::from(owner.generation) << 32),
+            0,
+        ),
+        Job::MidiCleanupState { owner, sequence } => (
+            0x29,
+            sequence.0,
+            0,
+            0,
+            u64::from(owner.slot) | (u64::from(owner.generation) << 32),
+            0,
+        ),
         Job::MidiOutput { source, port } => (0x27, source.0, port, 0, 0, 0),
         _ => return None,
     };

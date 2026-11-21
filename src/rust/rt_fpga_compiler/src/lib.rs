@@ -637,6 +637,17 @@ impl LogicalStateProgram {
             let mut captures = Vec::new();
             let mut cursors = Vec::new();
             let mut states = Vec::new();
+            let last_capture = self
+                .work_pass
+                .iter()
+                .rposition(|op| matches!(op, Operation::MidiData(MidiOperation::Capture { .. })));
+            let first_state = self
+                .work_pass
+                .iter()
+                .position(|op| matches!(op, Operation::MidiData(MidiOperation::State { .. })));
+            if matches!((last_capture,first_state),(Some(last),Some(first)) if last>first) {
+                return Err(InvalidProgram);
+            }
             for op in &self.work_pass {
                 match op {
                     Operation::MidiData(MidiOperation::Capture {

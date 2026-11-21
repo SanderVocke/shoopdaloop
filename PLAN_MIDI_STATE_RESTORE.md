@@ -428,3 +428,8 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
 - State binding changes across live image switches are explicitly refused; re-prepare
   at a stopped boundary instead. This bounds lifecycle work and avoids silent routing
   changes. Prefix seeks are best effort and linear only at the discontinuity.
+
+- Hardware-mapping refinement: continuation does not claim matching starting notes
+  for stop cleanup. Only accepted messages create owner activity. This avoids a
+  full key scan during an otherwise single-controller restore, and preserves live
+  matching notes on stop. Revalidated the Rust suites before continuing this port.

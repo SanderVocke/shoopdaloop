@@ -18,7 +18,7 @@ def prepare(output, revision, mhz, profile):
     assert (config['loops'], config['audio_channels_per_loop'], config['quantum_frames'], config['chunk_frames']) == (64, 2, 32, 32)
     audio = dict(AUDIO, PROGRAM_DEPTH=2048, JOB_DEPTH=2048, READ_HINT_DEPTH=256)
     parameters = audio | {'MIDI_'+k: v for k, v in MIDI.items() if k != 'DATA_WIDTH'}
-    parameters |= dict(MIDI_AXI_DATA_WIDTH=64, MIDI_PHYSICAL_BASE=0x30000000,
+    parameters |= dict(MIDI_STATE_SUPPORTED=int(config.get('midi_state_hardware',False)),MIDI_AXI_DATA_WIDTH=64, MIDI_PHYSICAL_BASE=0x30000000,
                        MIDI_PHYSICAL_BYTES_LIMIT=64*1024*1024)
     assert config['compiled_instructions'] <= audio['PROGRAM_DEPTH']
     assert config['jobs_per_quantum'] <= audio['JOB_DEPTH']

@@ -9,7 +9,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'axi_memory'))
 from generate_tops import header
 
-MIDI_PARAMS = dict(LOOPS=128, INPUTS=1, DESTINATIONS=8, BUFFERS=256,
+MIDI_PARAMS = dict(STATE_SUPPORTED=0, LOOPS=128, INPUTS=1, DESTINATIONS=8, BUFFERS=256,
                    CURSORS=128, SCRATCH_EVENTS=131072, BLOCK_EVENTS=256,
                    BLOCKS=4864, MAX_EVENTS=8192, VIEWS=512,
                    RETIREMENTS=256, MAINTENANCE=64)

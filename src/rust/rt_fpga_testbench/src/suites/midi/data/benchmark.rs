@@ -51,7 +51,7 @@ fn control(sim: &mut Sim<'_>, op: u64, args: [u64; 5]) -> [u64; 4] {
     });
     sim.idle(1);
     sim.model.set("midi_command_valid", 0);
-    sim.until(2_000_000, "benchmark control response", |m| {
+    sim.until(10_000_000, "benchmark control response", |m| {
         m.get("midi_response_valid") != 0
     });
     assert_eq!(sim.model.get("midi_response_error"), 0, "command {op}");
@@ -141,16 +141,30 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Shared, reference: &Reference) {
         & !15;
     assert_eq!(
         sim.model.get("midi_arena_bytes") as usize,
-        bytes + 131072 * 16
+        bytes + 131072 * 16 + (1 + 8 + 256 + 1) * 32768 + (64 * 8 + 1) * 2048
     );
     control(sim, 0, [0; 5]);
     if !reference.has_midi {
         return;
     }
+    if reference.state_enabled {
+        for output in 0..8 {
+            for ch in 0..8 {
+                control(sim, 22, [1, output, ch * 512 + 129, 0x80000000 | 20, 0]);
+            }
+        }
+    }
     let helper = control(sim, 8, [0; 5])[0];
     for slot in 0..reference.loops {
         let view = control(sim, 8, [0; 5])[0];
         let view_slot = view as u32 as usize;
+        if reference.state_enabled {
+            control(
+                sim,
+                22,
+                [2, view, (slot % 8 * 512 + 129) as u64, 0x80000000 | 20, 0],
+            );
+        }
         let records = records(slot, reference.frames);
         for (ordinal, chunk) in records.chunks(limits.block_events as usize).enumerate() {
             let first = chunk[0];
@@ -195,6 +209,19 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Shared, reference: &Reference) {
         }
         control(sim, 5, [slot as u64, view, 0, 0, 0]);
         control(sim, 13, [view, 0, 0, 0, 0]);
+        if reference.state_enabled {
+            control(
+                sim,
+                21,
+                [
+                    slot as u64,
+                    (1 << 32) | slot as u64,
+                    ((1u64 << (slot / 8)) << 8) | ((1u64 << (slot % 8)) << 16),
+                    0,
+                    0,
+                ],
+            );
+        }
         eprintln!("Prepared RTL MIDI loop {}/{}", slot + 1, reference.loops);
     }
     control(sim, 13, [helper, 0, 0, 0, 0]);
@@ -216,6 +243,17 @@ pub fn run(
     quanta: usize,
     delay: u64,
 ) -> Result<Value> {
+    run_config(audio, midi, loops, frames, quanta, delay, false)
+}
+pub fn run_config(
+    audio: bool,
+    midi: bool,
+    loops: usize,
+    frames: usize,
+    quanta: usize,
+    delay: u64,
+    state: bool,
+) -> Result<Value> {
     assert!(quanta > 0 && (quanta + 17) * QUANTUM <= frames);
     let cap = [2048, 256, 2048, QUANTUM as u64, 512, 2, 2];
     let mut geometry = Geometry::new([512, 5_763_072, QUANTUM as u64], 32);
@@ -229,6 +267,7 @@ pub fn run(
         "midi_audio_pipeline_axi",
         "midi_audio_pipeline",
         "midi_data_jobs",
+        "midi_expression_state",
         "midi_store",
     ] {
         design
@@ -236,6 +275,7 @@ pub fn run(
             .push(crate::root().join(format!("fpga/midi/rtl/{name}.sv")));
     }
     for (name, value) in [
+        ("MIDI_STATE_SUPPORTED", 1),
         ("MIDI_LOOPS", 64),
         ("MIDI_INPUTS", 1),
         ("MIDI_DESTINATIONS", 8),
@@ -276,7 +316,7 @@ pub fn run(
     if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
         memory.timing = Box::new(Fixed::new(delay));
     }
-    let mut reference = Reference::new(audio, midi, loops, frames);
+    let mut reference = Reference::prepare(audio, midi, loops, frames, state);
     let views: Vec<_> = (0..if audio { loops * 2 } else { 0 })
         .map(|i| i as u64)
         .collect();
@@ -397,6 +437,36 @@ pub fn run(
         "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
         "compiled_instructions":image.instructions.len(), "maximum_jobs":image.jobs_per_quantum,
         "validation":"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
-        "midi_state_tracking":false, "measurements":measurements,
+        "midi_state_hardware":true, "midi_state_tracking":state&&midi, "measurements":measurements,
     }))
+}
+
+pub fn cpu(audio: bool, midi: bool, state: bool, samples: usize) -> Value {
+    let mut r = Reference::prepare(audio, midi, 64, 1_440_000, state);
+    r.pipeline.trace_jobs(false);
+    r.play();
+    let t = std::time::Instant::now();
+    r.callback();
+    let startup = t.elapsed().as_nanos() as u64;
+    r.validate();
+    for _ in 0..16 {
+        r.callback();
+        r.validate();
+    }
+    let mut timings = Vec::with_capacity(samples);
+    let mut messages = 0;
+    for _ in 0..samples {
+        let t = std::time::Instant::now();
+        r.callback();
+        timings.push(t.elapsed().as_nanos() as u64);
+        r.validate();
+        messages += r.emitted.len();
+    }
+    let mut sorted = timings.clone();
+    sorted.sort_unstable();
+    json!({"audio":audio,"midi":midi,"state":state&&midi,"loops":64,"frames":1440000,"quantum":32,"sample_rate":48000,
+        "samples_ns":timings,"startup_ns":startup,"median_ns":sorted[samples/2],"p99_ns":sorted[(samples-1)*99/100],"max_ns":sorted[samples-1],
+        "messages":messages,"validation":"each completed callback independently checks MIDI, audio, loop position; checks outside timer; prepared engine, tracing disabled",
+        "cpu":std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default().lines().find(|line|line.starts_with("model name")).unwrap_or("unknown"),
+        "os":std::env::consts::OS,"architecture":std::env::consts::ARCH})
 }

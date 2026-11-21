@@ -353,7 +353,25 @@ impl Pipeline {
         &self,
         memory: &mut crate::midi::MidiMemory,
     ) -> Result<(), crate::midi::Error> {
+        let limits = memory
+            .expression
+            .as_ref()
+            .ok_or(crate::midi::Error::Unsupported)?
+            .limits;
         for instruction in &self.program.instructions {
+            match instruction {
+                crate::state::Instruction::ProcessMidiInput { port, .. }
+                    if *port >= limits.inputs =>
+                {
+                    return Err(crate::midi::Error::InvalidState)
+                }
+                crate::state::Instruction::ProcessMidiOutput { port, .. }
+                    if *port >= limits.outputs =>
+                {
+                    return Err(crate::midi::Error::InvalidState)
+                }
+                _ => {}
+            }
             if let crate::state::Instruction::ProcessMidiState {
                 loop_id,
                 sequence,

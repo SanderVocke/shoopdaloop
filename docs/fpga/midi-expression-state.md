@@ -91,3 +91,8 @@ RTL mapping review: bulk state/snapshots/bitmap words belong in DDR. Connection
 masks and summary counts are bounded, prepared metadata. The RTL can serialize
 field access and reuse its memory port while Rust uses normal indexed arrays and
 word operations. Do not synthesize these heap arrays as resettable registers.
+
+Cleanup owns notes/pedals actually emitted by a loop, including repairs. A matching
+starting note that merely continues is not newly claimed. This keeps stopping a
+loop from releasing a player's unchanged live note and removes a full key scan
+from ordinary controller restoration. Shared-channel articulation remains coupled.
