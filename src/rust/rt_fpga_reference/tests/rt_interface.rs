@@ -875,3 +875,84 @@ fn invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups()
         Some(EngineMessage::Disconnected(DisconnectReason::Fault))
     );
 }
+
+#[shoop_test]
+fn invalid_midi_input_preserves_pending_endpoint_commands_for_retry() {
+    use rt_fpga_reference::midi::{BufferLimits, InputEvent, Message, MidiMemory, StoreLimits};
+    let config = Configuration {
+        graph: 1,
+        topology: 2,
+        frame: 0,
+    };
+    let (mut control, mut processor, mut jobs, mut audio) = prepare(32, config, 1);
+    jobs.prepare_midi(BufferLimits {
+        buffers: 2,
+        cursors: 1,
+        scratch_events: 256,
+        input_ports: 1,
+        output_ports: 1,
+    })
+    .unwrap();
+    let mut midi = MidiMemory::prepare(
+        StoreLimits {
+            block_events: 16,
+            blocks: 16,
+            max_events: 256,
+            views: 4,
+            retirements: 4,
+        },
+        1,
+    )
+    .unwrap();
+    control
+        .submit(
+            Batch::new(
+                1,
+                2,
+                &[Command::Transition(0, TransitionMode::Recording.into())],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(control.response().is_none());
+    let invalid = [InputEvent {
+        input: 0,
+        offset: 32,
+        message: Message::parse(&[0xb0, 1, 42]).unwrap(),
+    }];
+    let input = [Fixed::ZERO; 32];
+    let mut output = [Fixed::from_f32(1.); 32];
+    let result = assert_no_heap(|| {
+        processor.process_with_midi(
+            &mut jobs,
+            &mut audio,
+            &[&input],
+            &mut [&mut output],
+            32,
+            &mut midi,
+            &invalid,
+            &mut |_| Ok(()),
+        )
+    });
+    assert!(result.is_err());
+    assert_eq!(processor.pipeline().state().frame(), 0);
+    assert!(processor.pipeline().fault().is_none());
+    assert!(output.iter().all(|&sample| sample == Fixed::ZERO));
+    assert!(control.response().is_none());
+    processor
+        .process_with_midi(
+            &mut jobs,
+            &mut audio,
+            &[&input],
+            &mut [&mut output],
+            32,
+            &mut midi,
+            &[],
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(processor.pipeline().state().frame(), 32);
+    let response = control.response().unwrap();
+    assert_eq!(response.header.frame(), 0);
+    assert_eq!(response.records()[0].code(), Code::Applied);
+}

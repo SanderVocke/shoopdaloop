@@ -5759,6 +5759,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_benchmark"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "arrayvec",
+ "clap",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "rt_fpga_rtl",
+ "rt_fpga_testbench",
+ "rt_runtime",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [

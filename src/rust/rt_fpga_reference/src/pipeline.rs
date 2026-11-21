@@ -386,7 +386,7 @@ impl Pipeline {
     ) -> Result<(), PipelineError> {
         self.process_quantum_mixed(jobs, memory, inputs, outputs, base, observer, publish, None)
     }
-    fn process_quantum_mixed(
+    pub(crate) fn process_quantum_mixed(
         &mut self,
         jobs: &mut JobProcessor,
         memory: &mut impl Memory,

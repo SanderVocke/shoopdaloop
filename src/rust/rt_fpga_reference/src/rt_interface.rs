@@ -182,6 +182,48 @@ impl Processor {
         outputs: &mut [&mut [Fixed]],
         frames: usize,
     ) -> Result<(), PipelineError> {
+        self.process_block_mixed(jobs, memory, inputs, outputs, frames, None)
+    }
+    pub fn process_with_midi(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        midi: &mut crate::midi::MidiMemory,
+        events: &[crate::midi::InputEvent],
+        sink: &mut impl FnMut(crate::midi::OutputEvent) -> Result<(), crate::midi::Error>,
+    ) -> Result<crate::midi::Work, PipelineError> {
+        if let Some(error) = self.engine.pipeline.fault() {
+            for output in outputs {
+                output.fill(Fixed::ZERO);
+            }
+            return Err(error);
+        }
+        if let Err(error) = jobs.begin_midi_callback(events, frames) {
+            for output in outputs {
+                output.fill(Fixed::ZERO);
+            }
+            return Err(PipelineError::Jobs(Error::Midi(error)));
+        }
+        let mut io = crate::midi::Io {
+            memory: midi,
+            inputs: events,
+            sink,
+        };
+        self.process_block_mixed(jobs, memory, inputs, outputs, frames, Some(&mut io))?;
+        Ok(jobs.midi_work())
+    }
+    fn process_block_mixed(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        mut midi: Option<&mut crate::midi::Io<'_>>,
+    ) -> Result<(), PipelineError> {
         let quantum = self.engine.pipeline.program().quantum as usize;
         if frames == 0
             || frames % quantum != 0
@@ -332,15 +374,28 @@ impl Processor {
                 bytes: &mut self.snapshot_bytes,
                 publisher: &mut self.ports.snapshots,
             };
-            self.engine.pipeline.process_quantum(
-                jobs,
-                memory,
-                inputs,
-                outputs,
-                base,
-                &mut observer,
-                base == 0 || switched,
-            )
+            if let Some(io) = midi.as_deref_mut() {
+                self.engine.pipeline.process_quantum_mixed(
+                    jobs,
+                    memory,
+                    inputs,
+                    outputs,
+                    base,
+                    &mut observer,
+                    base == 0 || switched,
+                    Some(io),
+                )
+            } else {
+                self.engine.pipeline.process_quantum(
+                    jobs,
+                    memory,
+                    inputs,
+                    outputs,
+                    base,
+                    &mut observer,
+                    base == 0 || switched,
+                )
+            }
         });
         if let Err(error) = result {
             self.engine.pipeline.latch_fault(error);

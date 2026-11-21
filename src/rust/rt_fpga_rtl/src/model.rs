@@ -29,6 +29,9 @@ impl Probe {
             inject: false,
         }
     }
+    pub fn array(path: &str) -> Self {
+        Self::observe(&format!("{path}[*]"))
+    }
     pub fn inject(path: &str) -> Self {
         Self {
             path: path.into(),
@@ -293,8 +296,20 @@ impl Design {
                     .ok_or("instance definition not found")?;
             }
             let field = parts.last().unwrap();
+            let indexed = field.ends_with("[*]");
+            if indexed && probe.inject {
+                return Err("indexed array probes are observation-only".into());
+            }
+            let mut array_bounds = None;
             let (field, index) = if let Some((name, index)) = field.split_once('[') {
-                (name, Some(index.trim_end_matches(']').parse::<usize>()?))
+                (
+                    name,
+                    Some(if indexed {
+                        0
+                    } else {
+                        index.trim_end_matches(']').parse::<usize>()?
+                    }),
+                )
             } else {
                 (*field, None)
             };
@@ -334,11 +349,13 @@ impl Design {
                     })
                     .collect::<Result<_>>()?;
                 if bounds.len() != 2
-                    || index < *bounds.iter().min().unwrap()
-                    || index > *bounds.iter().max().unwrap()
+                    || (!indexed
+                        && (index < *bounds.iter().min().unwrap()
+                            || index > *bounds.iter().max().unwrap()))
                 {
                     return Err(format!("probe index outside array: {}", probe.path).into());
                 }
+                array_bounds = Some((*bounds.iter().min().unwrap(), *bounds.iter().max().unwrap()));
                 dtype = ty.attr("sub_dtype_id").ok_or("array has no element type")?;
             }
             let width = type_width(types, dtype)?;
@@ -349,9 +366,31 @@ impl Design {
                     .replace('.', "_p_")
                     .replace('[', "_i_")
                     .replace(']', "")
+                    .replace('*', "array")
             );
             declarations.push(declaration(&name, width, false));
-            body.push_str(&format!("    assign {name} = dut.{};\n", probe.path));
+            if indexed {
+                let address = format!("{name}_index");
+                let (minimum, maximum) = array_bounds.unwrap();
+                let path = probe.path.strip_suffix("[*]").unwrap();
+                declarations.push(declaration(&address, 32, true));
+                ports.push(Port {
+                    name: address.clone(),
+                    width: 32,
+                    input: true,
+                });
+                aliases.insert(format!("{}_index", probe.path), address.clone());
+                let guard = if minimum == 0 {
+                    format!("{address} <= {maximum}")
+                } else {
+                    format!("{address} >= {minimum} && {address} <= {maximum}")
+                };
+                body.push_str(&format!(
+                    "    assign {name} = ({guard}) ? dut.{path}[{address}] : '0;\n"
+                ));
+            } else {
+                body.push_str(&format!("    assign {name} = dut.{};\n", probe.path));
+            }
             ports.push(Port {
                 name: name.clone(),
                 width,
@@ -446,6 +485,18 @@ pub struct Compiled {
 }
 impl Compiled {
     pub fn session(&self, waveform: Option<&Path>) -> Result<Model<'_>> {
+        self.session_configured(waveform, 0, true)
+    }
+    /// Optimize long campaigns without compiling waveform instrumentation.
+    pub fn benchmark_session(&self) -> Result<Model<'_>> {
+        self.session_configured(None, 3, false)
+    }
+    fn session_configured(
+        &self,
+        waveform: Option<&Path>,
+        optimization: usize,
+        tracing: bool,
+    ) -> Result<Model<'_>> {
         self._lock.lock()?;
         struct Lease<'a>(&'a std::fs::File);
         impl Drop for Lease<'_> {
@@ -463,7 +514,11 @@ impl Compiled {
                 .to_str()
                 .unwrap(),
         );
-        let waveform = waveform.or(default_waveform.as_deref());
+        let waveform = if tracing {
+            waveform.or(default_waveform.as_deref())
+        } else {
+            None
+        };
         if let Some(path) = waveform {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
@@ -485,8 +540,10 @@ impl Compiled {
                 )
             })
             .collect();
-        // Keep trace support in cached models; a file opens only for an explicit path.
-        let config = VerilatedModelConfig::default().enable_tracing(Some(Waveform::Vcd));
+        // Trace capability is independent of whether a waveform file is opened.
+        let config = VerilatedModelConfig::default()
+            .verilator_optimization(optimization)
+            .enable_tracing(tracing.then_some(Waveform::Vcd));
         let mut model = self.runtime.create_dyn_model(
             "bench_top",
             self.wrapper.to_str().ok_or("non-UTF8 source path")?,
@@ -599,6 +656,12 @@ impl Model<'_> {
         } else {
             self.model.read_scalar(name).unwrap()
         }
+    }
+    pub fn read_indexed(&mut self, path: &str, index: u64) -> u64 {
+        let probe = format!("{path}[*]");
+        self.set(&format!("{probe}_index"), index);
+        self.eval();
+        self.get(&probe)
     }
     pub fn set_all(&mut self, values: &[(&str, u64)]) {
         for &(name, value) in values {
