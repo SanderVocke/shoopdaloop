@@ -380,7 +380,7 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
 - [x] Update Rust/RTL architecture, protocol/layout, supported-state policy, and
   benchmark documentation with a storage/ownership figure and clear before/after
   results. Keep historical evidence intact and label it by implementation.
-- [ ] Commit remaining milestones, push, and create/update PR(s) targeting
+- [x] Commit remaining milestones, push, and create/update PR(s) targeting
   `feat/backend-replacement`. Describe functionality, local evidence, performance,
   and physical timing limits. Stop at reviewable delivery; do not merge.
 
@@ -491,3 +491,8 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
   hold slack +0.008 / +0.005 ns. Existing audio metadata remains the worst path.
   This completes the requested measurement; no unrelated clock-closure project
   is implied. The report makes the remaining physical limits explicit.
+
+- Reviewable delivery: https://github.com/SanderVocke/shoopdaloop/pull/1024,
+  targeting `feat/backend-replacement`. No merge performed; CI/review feedback
+  remains outside this task as requested. All plan steps are complete under the
+  documented limited musical-state and local-validation scope.
