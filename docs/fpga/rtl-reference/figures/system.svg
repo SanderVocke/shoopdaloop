@@ -57,7 +57,7 @@
   <g inkscape:label="MIDI data-job unit">
     <rect x="657" y="326" width="247" height="63" rx="9" fill="#f0eafd" stroke="#7458a3" stroke-width="2"/>
   <text x="780.5" y="353.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">MIDI data-job unit</text>
-  <text x="780.5" y="375.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Handles, lists and cursors</text>
+  <text x="780.5" y="375.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Events + optional expression</text>
   </g>
   <path d="M 644,205 L 619,205 L 619,289 L 548,289 L 548,326" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <path d="M 904,205 L 918,205 L 918,345 L 904,345" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
@@ -72,6 +72,6 @@
   <path d="M 473,389 L 473,434" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <path d="M 781,389 L 781,434" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <text x="473" y="462" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">Audio samples and metadata</text>
-  <text x="781" y="462" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">MIDI events and scratch lists</text>
+  <text x="781" y="462" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">MIDI events, scratch + state</text>
   </g>
 </svg>

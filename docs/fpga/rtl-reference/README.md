@@ -1,7 +1,8 @@
 # FPGA RTL technical reference
 
 Read [the manual](manual.md) and the [opcode appendices](opcodes.md) in the
-repository, or build the standalone HTML and paginated PDF. Markdown is the master text. The SVGs in [figures](figures/) are
+repository, including the [musical-state chapter](manual.md#midi-expression-state-and-restoration)
+and [state ABI appendix](opcodes.md#midi-expression-state-abi), or build the standalone HTML and paginated PDF. Markdown is the master text. The SVGs in [figures](figures/) are
 the editable Inkscape sources and are used directly by both builds. Labels,
 blocks and connectors remain separate SVG objects.
 

@@ -17,8 +17,13 @@ JP queue. A capture prepass queues writer transitions before the data jobs.
 `midi_audio_pipeline_axi` connects the shared pipeline to a directly sequenced
 MIDI data-job unit. It holds sequence handles, list descriptors and reader
 cursors on chip. DDR holds recorded events, shared views and scratch lists.
-The current implementation plays event bytes and has no instrument-state
-tracking or restoration. Audio keeps its caches. The application's MIDI host
+Default raw mode plays event bytes. The optional expression-state extension
+adds per-view starting snapshots, current input/output state, per-sequence/output
+difference maps, and explicit shared-JP restore/cleanup jobs. Bulk state stays
+in DDR; small binding/directory/count tables and working channels use on-chip
+memory. Audio keeps its caches. See the [musical-state chapter](docs/fpga/rtl-reference/manual.md#midi-expression-state-and-restoration)
+and [state ABI](docs/fpga/rtl-reference/opcodes.md#midi-expression-state-abi)
+for the supported controllers, pedal/note behaviour, encodings and limits. The application's MIDI host
 wiring and SoC embedding remain separate. See the [MIDI protocol](fpga/midi/PROTOCOL.md),
 [implementation and validation](docs/fpga/midi-data-jobs.md), and
 [64-loop measurements](docs/fpga/midi-data-jobs-benchmarks.md).

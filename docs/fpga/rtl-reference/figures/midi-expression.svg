@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 650" width="960" height="650" role="img" aria-labelledby="title desc">
+<title id="title">MIDI expression state ownership and accepted-output tracking</title>
+<desc id="desc">The shared SP and JP schedule state data jobs. Input context supplies an immutable view snapshot at capture. Accepted packets update current output state and the relevant sequence/output difference bits. Restore reads the snapshot and dirty fields, sends ordered repairs, and routes them through the same acceptance path.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/></marker></defs>
+<rect x="1" y="1" width="958" height="648" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+
+<g inkscape:label="SP loop decisions"><rect x="35" y="30" width="260" height="80" rx="9" fill="#eaf1fb" stroke="#456a9f" stroke-width="1.5"/>
+<text x="48" y="57" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">SP: loop decisions</text>
+<text x="48" y="82" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Start, repeat, seek, stop</text>
+</g>
+<g inkscape:label="Common queue and JP"><rect x="355" y="30" width="260" height="80" rx="9" fill="#eaf1fb" stroke="#456a9f" stroke-width="1.5"/>
+<text x="368" y="57" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Shared queue + JP</text>
+<text x="368" y="82" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Audio, event and state jobs</text>
+</g>
+<g inkscape:label="State data operations"><rect x="675" y="30" width="250" height="80" rx="9" fill="#f0eafd" stroke="#7458a3" stroke-width="1.5"/>
+<text x="688" y="57" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">MIDI state operations</text>
+<text x="688" y="82" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">One serialized data unit</text>
+</g>
+<path d="M 295,70 L 355,70" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 615,70 L 675,70" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="35" y="155" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">MUSICAL STATE AND REPAIR FLOW</text>
+<g inkscape:label="Input state in DDR"><rect x="35" y="195" width="260" height="100" rx="9" fill="#fff2d9" stroke="#ac8038" stroke-width="1.5"/>
+<text x="48" y="222" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Input source context</text>
+<text x="48" y="247" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">One state per input port</text>
+<text x="48" y="269" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Observed even while stopped</text>
+</g>
+<g inkscape:label="Snapshot in DDR"><rect x="355" y="195" width="260" height="100" rx="9" fill="#fff2d9" stroke="#ac8038" stroke-width="1.5"/>
+<text x="368" y="222" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">View start snapshot</text>
+<text x="368" y="247" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Known / unknown fields</text>
+<text x="368" y="269" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Immutable with view generation</text>
+</g>
+<g inkscape:label="Output state in DDR"><rect x="675" y="195" width="250" height="100" rx="9" fill="#fff2d9" stroke="#ac8038" stroke-width="1.5"/>
+<text x="688" y="222" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Current output state</text>
+<text x="688" y="247" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">One state per output port</text>
+<text x="688" y="269" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Follows accepted packets</text>
+</g>
+<path d="M 295,245 L 355,245" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="296" y="228" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="400" fill="#1b3244">capture</text>
+<g inkscape:label="Index and counts in BRAM"><rect x="35" y="365" width="260" height="100" rx="9" fill="#f0eafd" stroke="#7458a3" stroke-width="1.5"/>
+<text x="48" y="392" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Directory + counts</text>
+<text x="48" y="417" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">BRAM: relevant loop bindings</text>
+<text x="48" y="439" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Select by output and channel</text>
+</g>
+<g inkscape:label="Difference maps in DDR"><rect x="355" y="365" width="260" height="100" rx="9" fill="#fff2d9" stroke="#ac8038" stroke-width="1.5"/>
+<text x="368" y="392" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Sequence/output diffs</text>
+<text x="368" y="417" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Dirty bits, not MIDI messages</text>
+<text x="368" y="439" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Snapshot values stay above</text>
+</g>
+<g inkscape:label="Restore step"><rect x="675" y="365" width="250" height="100" rx="9" fill="#f0eafd" stroke="#7458a3" stroke-width="1.5"/>
+<text x="688" y="392" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Ordered repair</text>
+<text x="688" y="417" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Read target and dirty fields</text>
+<text x="688" y="439" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Controls, pedals, notes, pressure</text>
+</g>
+<path d="M 485,295 L 485,365" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="411" y="337" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="400" fill="#1b3244">snapshot</text>
+<path d="M 730,295 L 730,325 L 555,325 L 555,365" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 295,415 L 355,415" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 615,415 L 675,415" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 615,218 L 642,218 L 642,345 L 800,345 L 800,365" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="651" y="333" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="400" fill="#1b3244">target values</text>
+<g inkscape:label="Normal and corrective output acceptance"><rect x="675" y="525" width="250" height="88" rx="9" fill="#e4f3ed" stroke="#30775f" stroke-width="1.5"/>
+<text x="688" y="552" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#1b3244">Packet accepted</text>
+<text x="688" y="577" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Ordinary + repair packets</text>
+<text x="688" y="599" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Update output state and diffs</text>
+</g>
+<path d="M 800,465 L 800,525" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 925,568 L 944,568 L 944,245 L 925,245" fill="none" stroke="#4b626f" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="35" y="535" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">Only acknowledged output advances the model.</text>
+<text x="35" y="565" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Example: target CC1 = 20; current CC1 = 90.</text>
+<text x="35" y="588" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Set one dirty bit. Restore sends CC1 = 20.</text>
+<text x="35" y="611" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">That accepted correction updates every relevant tracker.</text>
+</svg>
