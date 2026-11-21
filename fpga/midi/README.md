@@ -6,6 +6,8 @@ Raw event mode replays messages unchanged. Optional expression support
 (`MIDI_STATE_SUPPORTED=1`) adds view snapshots, output state, difference maps,
 and ordered restoration through explicit shared-JP data jobs. See the
 [state contract](../../docs/fpga/midi-expression-state.md).
+The [expression hardware report](../../docs/fpga/midi-expression-hardware.md)
+describes the serialized DDR path, BRAM metadata and measured resource tradeoffs.
 
 ```mermaid
 flowchart LR

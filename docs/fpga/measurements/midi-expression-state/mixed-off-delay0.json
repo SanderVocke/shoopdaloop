@@ -1,0 +1,680 @@
+{
+  "chunk_frames": 32,
+  "compiled_instructions": 771,
+  "ddr_added_delay_clocks": 0,
+  "loops": 64,
+  "maximum_jobs": 963,
+  "measurements": [
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        1250,
+        128,
+        6536,
+        512
+      ],
+      "cycles": 87410,
+      "jobs": 515,
+      "kind": "playback_start",
+      "midi_axi_reads_writes_native_reads_writes": [
+        1384,
+        20,
+        1384,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 0,
+      "us_at_100mhz": 874.1
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        258,
+        0,
+        2056,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 32,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 64,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 96,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 128,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 160,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 192,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 224,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 256,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 288,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 320,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 352,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 384,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 416,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 448,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 480,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 512,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 544,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 576,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 608,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 640,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 672,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 704,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 736,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 768,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 800,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 832,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 864,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 896,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 48853,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        100,
+        16,
+        100,
+        16
+      ],
+      "midi_packets": 4,
+      "position": 928,
+      "us_at_100mhz": 488.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 960,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 992,
+      "us_at_100mhz": 491.25
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "cycles": 49125,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        125,
+        20,
+        125,
+        20
+      ],
+      "midi_packets": 5,
+      "position": 1024,
+      "us_at_100mhz": 491.25
+    }
+  ],
+  "memory": "two independent 64-bit AXI ports, fixed 0-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects",
+  "midi_events_per_loop": 3000,
+  "midi_state_hardware": true,
+  "midi_state_tracking": false,
+  "preparation": "RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
+  "quantum_frames": 32,
+  "sample_rate": 48000,
+  "scenario": "stereo_and_midi",
+  "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+  "sequence_frames": 1440000,
+  "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked"
+}

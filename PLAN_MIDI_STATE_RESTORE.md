@@ -317,13 +317,13 @@ per accepted event before scaling to the session profile.
 
 ### 5. Pass connected Rust/RTL equivalence and regression gates
 
-- [ ] Run the same semantic fixtures through compiled SP/JP programs in both
+- [x] Run the same semantic fixtures through compiled SP/JP programs in both
   implementations; compare jobs, ordinary/corrective MIDI, final managed states,
   diff maps, loop state, audio samples, and fault outcomes.
-- [ ] Cover AXI32/64, ideal/delayed memory, stalls/refusal during reconstruction,
+- [x] Cover AXI32/64, ideal/delayed memory, stalls/refusal during reconstruction,
   resets, policy changes, stale IDs, publication, retained exports, and seek/range
   state derivation. Compare every accepted prefix after injected failures.
-- [ ] Demonstrate no visits to unrelated output/channel trackers, no quiet-quantum
+- [x] Demonstrate no visits to unrelated output/channel trackers, no quiet-quantum
   whole-state comparisons, and no callback allocation. Preserve dense event/block
   traversal and merge tests without adding a message cap.
 
@@ -335,28 +335,28 @@ do not substitute external automation for these tests.
 
 ### 6. Measure CPU, RTL execution, resources, and clock timing
 
-- [ ] Extend the current checked benchmark, retaining the 64-loop, stereo where
+- [x] Extend the current checked benchmark, retaining the 64-loop, stereo where
   applicable, 30-second/3,000-CC-event-per-loop, 48 kHz, chunk-32/quantum-32 profile.
   Measure audio+MIDI, audio-only, and MIDI-only with state enabled and an event-only
   control. Seed physical/model state consistently outside the timer.
-- [ ] Measure optimized Rust-reference callback times with outputs validated
+- [x] Measure optimized Rust-reference callback times with outputs validated
   outside the timer; report median, tail, and samples with host details. A matching
   production-backend run is optional context, not a required integration rewrite.
-- [ ] Run the six RTL cases with ideal zero-added-delay memory and the existing
+- [x] Run the six RTL cases with ideal zero-added-delay memory and the existing
   seven-clock native-service model, preserving AXI overhead. Report clocks and
   microseconds at nominal 100 MHz; do not label the delayed model a board-level
   DDR simulation or hide independent-port arbitration assumptions.
-- [ ] Separate steady tracking, cold/warm play starts, wraps/retriggers, stop
+- [x] Separate steady tracking, cold/warm play starts, wraps/retriggers, stop
   cleanup, and seeks. Include non-default controls and pressed/pedal-held notes
   that require actual correction; the old sparse CC-only workload alone is not
   a restoration benchmark. Include note/pedal and distinct-field bursts.
-- [ ] Measure 1/8/64/128 relevant trackers where supported, recording any justified
+- [x] Measure 1/8/64/128 relevant trackers where supported, recording any justified
   capacity changes, and measure shared-output restoration cascades.
   Count a few useful quantities: visited trackers, compared fields/dirty words,
   emitted corrections, prefix events, and memory requests. Include maintenance
   caused by emitted corrections in the full-quantum timer. Avoid an elaborate
   profiling subsystem or strict cloud-server CPU timing thresholds.
-- [ ] Build the matched 64-loop profile using the public-image Vivado 2021.1
+- [x] Build the matched 64-loop profile using the public-image Vivado 2021.1
   toolchain for `xc7z020clg484-1` at 100 and 150 MHz. Compare utilization and
   routed setup/hold timing against the verified event-only baseline; retain raw
   reports/configuration/tool hashes and separate MIDI paths from whole-design
@@ -371,13 +371,13 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
 
 ### 7. Final end-to-end validation, documentation, and delivery
 
-- [ ] Run a scripted compiled session through both engines: observe held input,
+- [x] Run a scripted compiled session through both engines: observe held input,
   record, change output state, play, repeat, seek, duplicate/range/replace, stop,
   and retake; verify snapshots/trackers, correction order, audio, and reclamation.
   Include multiple destinations and a shared-channel case under its stated policy.
-- [ ] Repeat only checks affected by final fixes. Check format, generated files,
+- [x] Repeat only checks affected by final fixes. Check format, generated files,
   warning-denying builds and local policies; summarize tested and untested scope.
-- [ ] Update Rust/RTL architecture, protocol/layout, supported-state policy, and
+- [x] Update Rust/RTL architecture, protocol/layout, supported-state policy, and
   benchmark documentation with a storage/ownership figure and clear before/after
   results. Keep historical evidence intact and label it by implementation.
 - [ ] Commit remaining milestones, push, and create/update PR(s) targeting
@@ -451,4 +451,43 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
 - The first state-enabled Vivado trial (79b4b9b9) reached 47,534 LUTs post-opt but
   failed placement (packing/control-set overhead). Replaced inferred multiport
   tables with explicit single-write/synchronous-read BRAM ports; kept bulk DDR
-  storage and the Rust behaviour. Final builds use that mapped revision.
+  storage and the Rust behaviour. This was the starting point for the further
+  hardware optimization below.
+
+
+## Resumed hardware optimization
+
+- User resumed implementation specifically to reduce hardware usage. The RTL now
+  shares a bounded region/slot/offset address path, keeps bindings in one explicit
+  synchronous BRAM table, and uses existing counts instead of duplicate large
+  nonempty-flag register banks. DDR state formats, capacities and musical rules
+  are preserved; the Rust callback architecture is unchanged.
+- Fixed stale connection-directory membership by waiting for every BRAM read
+  during setup. An unrelated channel now takes constant work across 1/8/64/128
+  bindings. Fixed a channel-rebuild flag persisting across independent restores.
+- Reference/compiler all-feature tests: 112 passing. Revised RTL suite: five
+  passing, including quantum sizes 1/16/32/64/128 and stalled AXI32/64. Additional
+  checks cover relocated arenas, uneven capacities, high-bit owner generations,
+  last-slot access and multiple shared destinations.
+- The compact isolated unit experiment saves 49.3% LUTs against the successfully
+  measured BRAM-refined baseline (8,272 to 4,194 post-opt) and routes at 100 MHz.
+  Connected 100/150 MHz builds and full-quantum results are recorded in
+  `docs/fpga/midi-expression-hardware.md`; their source/report hashes are retained.
+
+- Local regression scope at this revision: the complete affected reference/compiler
+  suites and the compiled RTL expression suite. The latter checks the shared audio
+  path, loading, sync/loop positions and retained-content lifecycle as part of its
+  quantum equivalence cases. Earlier broad repository runs encountered workspace
+  storage exhaustion; they are not counted as a passing final full-repository run.
+- The final familiar matrix preserves the previously measured unchanged unbound
+  controls and remeasures all state-enabled MIDI/mixed cases. Both musical
+  transition runs now pass, including retrigger, cleanup and prefix seek. The
+  detailed report explicitly records cold-start and seek deadline misses.
+
+- Final connected resource evidence (`462ce74e`): state unit 4,447 / 4,449 LUTs
+  at 100 / 150 MHz post-opt; whole design 42,706 / 42,721 LUTs, 77.5 BRAM tiles.
+  Both builds place and route, versus the original state's placement failure.
+  Routed slices are 13,205 / 13,294 of 13,300. Setup slack is −5.429 / −8.562 ns;
+  hold slack +0.008 / +0.005 ns. Existing audio metadata remains the worst path.
+  This completes the requested measurement; no unrelated clock-closure project
+  is implied. The report makes the remaining physical limits explicit.
