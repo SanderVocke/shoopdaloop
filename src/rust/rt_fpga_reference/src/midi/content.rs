@@ -35,6 +35,7 @@ struct View {
     generation: u32,
     refs: u32,
     retired: bool,
+    snapshot_sealed: bool,
     table: Box<[u32]>,
     blocks: usize,
     first: usize,
@@ -98,6 +99,7 @@ impl ContentStore {
                 generation: 0,
                 refs: 0,
                 retired: false,
+                snapshot_sealed: false,
                 table: prepared(table, || 0)?.into_boxed_slice(),
                 blocks: 0,
                 first: 0,
@@ -161,11 +163,19 @@ impl ContentStore {
         channels: u16,
     ) -> Result<(), Error> {
         let view = self.view(id)?;
-        if view.description.status != TakeStatus::Recording || view.description.events != 0 {
+        if view.description.status != TakeStatus::Recording
+            || view.description.events != 0
+            || view.snapshot_sealed
+        {
             return Err(Error::Busy);
         }
         self.snapshots.as_mut().ok_or(Error::Unsupported)?[id.slot as usize]
             .copy_from(state, channels);
+        Ok(())
+    }
+    pub(crate) fn seal_snapshot(&mut self, id: ViewId) -> Result<(), Error> {
+        self.view(id)?;
+        self.views[id.slot as usize].snapshot_sealed = true;
         Ok(())
     }
     pub fn work(&self) -> u64 {
@@ -216,6 +226,7 @@ impl ContentStore {
         v.generation = generation;
         v.refs = 1;
         v.retired = false;
+        v.snapshot_sealed = false;
         v.blocks = 0;
         v.first = 0;
         v.origin = 0;

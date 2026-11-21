@@ -388,7 +388,11 @@ pub fn restore(
                 }
             }
             for key in 0..128 {
-                if io.current(base + key) & 127 != 0 {
+                if io.current(base + key) & 127 != 0
+                    || desired[key] & KNOWN != 0
+                        && desired[key] & 127 == 0
+                        && io.current(base + key) & KNOWN == 0
+                {
                     send(io, &[0x80 | channel as u8, key as u8, 0])?;
                 }
             }

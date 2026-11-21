@@ -85,6 +85,7 @@ impl MidiMemory {
                     return Err(error);
                 }
             }
+            self.store.seal_snapshot(view)?;
             state.rebind(id.0, Some(view), &self.store)?;
         }
         Ok(())

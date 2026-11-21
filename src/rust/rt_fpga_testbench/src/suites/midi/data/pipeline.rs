@@ -129,6 +129,8 @@ impl<'a> Driver<'a> {
         };
         assert_eq!(d.control(0, [0; 5]), 0);
         if expression {
+            assert_eq!(d.control(31, [0; 5]), 0);
+            assert_eq!(d.sim.model.get("midi_response_count"), 0x45580100);
             for n in 0..2u64 {
                 assert_eq!(
                     d.control(

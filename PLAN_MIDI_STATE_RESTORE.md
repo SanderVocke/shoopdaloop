@@ -88,8 +88,8 @@ acceptance gates. The stable criteria still apply to any such change.
    state metadata. Restore a nonzero position's derived state, not blindly the
    original starting snapshot. Preserve silent duration and raw event ordering.
 7. Avoid unnecessary corrections under the documented note/pedal model: matching
-   known controls produce no message; matching notes continue unless explicitly
-   retriggered. Reconstruct affected pedal groups when necessary. Restore ordering
+   known controls produce no message; matching notes continue. Explicit retriggers restart the event cursor; recorded
+   Note On messages retain their normal attack behaviour. Reconstruct affected pedal groups when necessary. Restore ordering
    should reach the known target state without a full-snapshot replay or avoidable
    unrelated-note restarts. Document any deliberately approximate pedal/note
    behaviour and its reason. Do not pursue a general synthesizer-state optimizer.
@@ -297,16 +297,16 @@ continuing the port. Do not unretire excluded bank/parameter/history tests.
 
 ### 4. Port state storage and data jobs to RTL
 
-- [ ] Freeze/version the job/control/DDR layout from the working Rust contract;
+- [x] Freeze/version the job/control/DDR layout from the working Rust contract;
   size state/snapshot/comparison pools and small on-chip summaries explicitly.
-- [ ] Extend existing SP and common JP dispatch and MIDI functional units. Use
+- [x] Extend existing SP and common JP dispatch and MIDI functional units. Use
   direct state-memory operations, indexed tracker visits, dirty-word traversal,
   and phased restore/cleanup controllers; add no programmable MIDI processor.
-- [ ] Implement snapshot capture, prefix-derived targets, lifecycle/publication,
+- [x] Implement snapshot capture, prefix-derived targets, lifecycle/publication,
   and accepted-output updates. Prefer batched/sequential transfers where useful.
   Pipeline address calculations and avoid copying/resetting large per-loop tables
   during quiet playback. Keep input validation ahead of SP admission.
-- [ ] Extend generated wrappers and low-level control transfers for state seeds,
+- [x] Extend generated wrappers and low-level control transfers for state seeds,
   snapshots, policy, and capacity validation. Keep application frontend/host MIDI
   enablement and a general MIDI DDR cache outside this scope.
 
@@ -433,3 +433,22 @@ functional goals or inventing a 128-simultaneous-operation deadline requirement.
   for stop cleanup. Only accepted messages create owner activity. This avoids a
   full key scan during an otherwise single-controller restore, and preserves live
   matching notes on stop. Revalidated the Rust suites before continuing this port.
+
+- RTL cleanup refinement: keep a bounded activity count/channel summary on chip.
+  This skips owners/channels with no owned notes or hold pedals, avoiding DDR
+  scans on ordinary CC-only stops. Bulk activity and difference words remain DDR.
+- Local harness repair: Vivado's container runner needs a writable home directory;
+  mount an isolated build-local directory. The untouched vendor image/tool files
+  and device/clock constraints remain the same. Full native testing also reuses
+  the already-built local DRAMsim3 shim through an ignored work-directory link.
+
+- Continuation policy: explicit retrigger restarts recorded events and restores
+  differences; it does not force an off/on for a matching starting note. This
+  preserves held expression across repeats and avoids unnecessary repair traffic.
+- Invalid/stale seek handles are validated before borrowing scratch storage, so
+  rejection cannot destroy a prepared target or allocate on the next seek.
+- Snapshot seeds are sealed when attached to a recording, including empty takes.
+- The first state-enabled Vivado trial (79b4b9b9) reached 47,534 LUTs post-opt but
+  failed placement (packing/control-set overhead). Replaced inferred multiport
+  tables with explicit single-write/synchronous-read BRAM ports; kept bulk DDR
+  storage and the Rust behaviour. Final builds use that mapped revision.

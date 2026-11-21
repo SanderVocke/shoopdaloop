@@ -522,3 +522,224 @@ fn unknown_outputs_and_seeks_get_truthful_comparisons() {
         })
         .is_err());
 }
+
+#[shoop_test]
+fn conflicting_targets_on_one_channel_update_each_other_after_corrections() {
+    let mut m = memory(2);
+    let mut a = reset();
+    a.apply(msg(&[0xb0, 1, 20]));
+    let mut b = a.clone();
+    b.apply(msg(&[0xb0, 1, 40]));
+    install(&mut m, 0, &a);
+    install(&mut m, 1, &b);
+    output(&mut m, &[0xb0, 1, 20]);
+    assert_eq!(restore(&mut m, 1), vec![vec![0xb0, 1, 40]]);
+    assert_eq!(
+        m.expression
+            .as_ref()
+            .unwrap()
+            .differences(0, 0)
+            .unwrap()
+            .count,
+        1
+    );
+    assert_eq!(restore(&mut m, 0), vec![vec![0xb0, 1, 20]]);
+    assert_eq!(
+        m.expression
+            .as_ref()
+            .unwrap()
+            .differences(1, 0)
+            .unwrap()
+            .count,
+        1
+    );
+    fresh(&m, 0);
+    fresh(&m, 1);
+}
+#[shoop_test]
+fn matching_live_notes_are_not_claimed_by_a_controller_only_restore() {
+    let mut m = memory(1);
+    let mut s = reset();
+    s.apply(msg(&[0x90, 60, 80]));
+    s.apply(msg(&[0xb0, 1, 20]));
+    let v = install(&mut m, 0, &s);
+    m.expression
+        .as_mut()
+        .unwrap()
+        .seed_output(0, &s, &m.store)
+        .unwrap();
+    output(&mut m, &[0xb0, 1, 80]);
+    assert_eq!(restore(&mut m, 0), vec![vec![0xb0, 1, 20]]);
+    m.expression
+        .as_mut()
+        .unwrap()
+        .cleanup(0, 0, &m.store, &mut |_| {
+            panic!("matching live note was claimed")
+        })
+        .unwrap();
+    assert_eq!(
+        m.expression.as_ref().unwrap().output(0).unwrap().word(60) & 127,
+        80
+    );
+    assert!(m.store.snapshot(v).is_ok());
+}
+
+#[shoop_test]
+fn all_1024_snapshot_output_pairs_update_and_restore_without_heap_work() {
+    let mut m = memory(128);
+    m.expression = Some(
+        Expression::prepare(StateLimits {
+            inputs: 1,
+            outputs: 8,
+            sequences: 128,
+        })
+        .unwrap(),
+    );
+    let mut target = reset();
+    target.apply(msg(&[0xb0, 1, 20]));
+    for output in 0..8 {
+        m.expression
+            .as_mut()
+            .unwrap()
+            .seed_output(output, &target, &m.store)
+            .unwrap();
+    }
+    for seq in 0..128 {
+        install(&mut m, seq, &target);
+        m.bind_state(
+            SequenceId(seq),
+            StateBinding {
+                owner: Identity {
+                    slot: seq as u32,
+                    generation: 1,
+                },
+                input: 0,
+                outputs: 255,
+                channels: 1,
+            },
+        )
+        .unwrap();
+    }
+    let view = m.view(SequenceId(0)).unwrap().unwrap();
+    let mut count = 0;
+    assert_no_heap(|| {
+        for output in 0..8 {
+            m.expression
+                .as_mut()
+                .unwrap()
+                .accept(output, msg(&[0xb0, 1, 90]), None, &m.store)
+                .unwrap();
+        }
+        for seq in 0..128 {
+            for output in 0..8 {
+                assert_eq!(
+                    m.expression
+                        .as_ref()
+                        .unwrap()
+                        .differences(seq, output)
+                        .unwrap()
+                        .count,
+                    1
+                );
+            }
+        }
+        m.expression
+            .as_mut()
+            .unwrap()
+            .restore(0, view, 0, 0, &m.store, &mut |_| {
+                count += 1;
+                Ok(())
+            })
+            .unwrap();
+        for seq in 0..128 {
+            for output in 0..8 {
+                assert_eq!(
+                    m.expression
+                        .as_ref()
+                        .unwrap()
+                        .differences(seq, output)
+                        .unwrap()
+                        .count,
+                    0
+                );
+            }
+        }
+    });
+    assert_eq!(count, 8);
+}
+
+#[shoop_test]
+fn pedal_group_restore_establishes_known_silence_for_previously_unknown_keys() {
+    let mut m = memory(1);
+    install(&mut m, 0, &reset());
+    m.expression
+        .as_mut()
+        .unwrap()
+        .seed_output(0, &State::new(), &m.store)
+        .unwrap();
+    output(&mut m, &[0x90, 67, 80]);
+    output(&mut m, &[0xb0, 64, 127]);
+    output(&mut m, &[0x80, 67, 0]);
+    restore(&mut m, 0);
+    fresh(&m, 0);
+    assert_eq!(
+        m.expression
+            .as_ref()
+            .unwrap()
+            .differences(0, 0)
+            .unwrap()
+            .count,
+        0
+    );
+    assert!(restore(&mut m, 0).is_empty());
+}
+
+#[shoop_test]
+fn unbound_and_out_of_scope_playback_do_not_claim_cleanup_ownership() {
+    let mut m = memory(2);
+    install(&mut m, 0, &reset());
+    for (port, owner, bytes) in [
+        (0, Some(1), &[0x90, 60, 80][..]),
+        (1, Some(0), &[0x90, 64, 80][..]),
+        (0, Some(0), &[0x91, 67, 80][..]),
+    ] {
+        m.expression
+            .as_mut()
+            .unwrap()
+            .accept(port, msg(bytes), owner, &m.store)
+            .unwrap();
+    }
+    for seq in 0..2 {
+        m.expression
+            .as_mut()
+            .unwrap()
+            .cleanup(seq, 0, &m.store, &mut |_| {
+                panic!("claimed an out of scope note")
+            })
+            .unwrap();
+    }
+}
+
+#[shoop_test]
+fn a_stale_seek_does_not_drop_the_prepared_target_or_allocate() {
+    let mut m = memory(1);
+    let view = install(&mut m, 0, &reset());
+    let stale = ViewId {
+        slot: view.slot,
+        generation: view.generation + 1,
+    };
+    assert_no_heap(|| {
+        assert_eq!(
+            m.expression
+                .as_mut()
+                .unwrap()
+                .restore(0, stale, 16, 0, &m.store, &mut |_| Ok(())),
+            Err(Error::InvalidState)
+        );
+        m.expression
+            .as_mut()
+            .unwrap()
+            .restore(0, view, 16, 0, &m.store, &mut |_| Ok(()))
+            .unwrap();
+    });
+}

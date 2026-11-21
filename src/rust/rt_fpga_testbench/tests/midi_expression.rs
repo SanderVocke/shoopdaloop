@@ -1,69 +1,11 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use rt_fpga_reference::midi::{performance::*, *};
-use rt_fpga_testbench::{
-    clock::Edges,
-    model::{Design, Model},
-    sim::{Agent, Sim},
-    suites::midi::Memory,
-};
+use rt_fpga_testbench::suites::midi::expression::{Packets, command, packed};
+use rt_fpga_testbench::{model::Design, sim::Sim, suites::midi::Memory};
 use shoop_wasm_test_support::shoop_test;
 use std::{cell::RefCell, rc::Rc};
-#[derive(Default)]
-struct Packets {
-    packets: Vec<Vec<u8>>,
-    refused: Option<usize>,
-    ticks: u64,
-}
-impl Agent for Packets {
-    fn drive(&mut self, m: &mut Model<'_>, e: Edges) {
-        if e.rises(0) {
-            self.ticks += 1;
-            m.set("packet_ready", u64::from(self.ticks % 4 != 0));
-            m.set(
-                "packet_refused",
-                u64::from(self.refused == Some(self.packets.len())),
-            );
-        }
-    }
-    fn sample(&mut self, m: &Model<'_>, e: Edges) {
-        if e.rises(0)
-            && m.get("packet_valid") != 0
-            && m.get("packet_ready") != 0
-            && m.get("packet_refused") == 0
-        {
-            let p = m.get("packet") as u32;
-            self.packets
-                .push(p.to_le_bytes()[..((p >> 24) & 3) as usize].to_vec());
-        }
-    }
-}
 fn msg(b: &[u8]) -> Message {
     Message::parse(b).unwrap()
-}
-fn packed(b: &[u8]) -> u64 {
-    let mut p = (b.len() as u64) << 24;
-    for (i, b) in b.iter().enumerate() {
-        p |= u64::from(*b) << (8 * i);
-    }
-    p
-}
-fn command(sim: &mut Sim<'_>, op: u64, args: [u64; 4]) -> u64 {
-    sim.model.set("command_op", op);
-    for (i, v) in args.iter().enumerate() {
-        sim.model.set(&format!("arg{i}"), *v);
-    }
-    sim.model.set("command_valid", 1);
-    sim.until(100, "state command admission", |m| {
-        m.get("command_ready") != 0
-    });
-    sim.idle(1);
-    sim.model.set("command_valid", 0);
-    sim.until(5_000_000, "state command completion", |m| {
-        m.get("done") != 0
-    });
-    let e = sim.model.get("error");
-    sim.idle(1);
-    e
 }
 #[shoop_test]
 fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
@@ -80,6 +22,14 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
     .build(&rt_fpga_testbench::root().join("work/marlin-suite/midi-expression"))
     .unwrap();
     let cases: &[&[&[u8]]] = &[
+        &[],
+        &[
+            &[0x90, 60, 80],
+            &[0xa0, 60, 40],
+            &[0xe0, 22, 80],
+            &[0xd0, 60],
+            &[0xb0, 67, 90],
+        ],
         &[&[0xb0, 1, 20]],
         &[&[0x90, 60, 70], &[0xb0, 64, 127], &[0x80, 60, 0]],
         &[
@@ -120,10 +70,12 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
                 command(&mut sim, 10, [0, 0, f as u64, target.word(f) as u64]),
                 0
             );
-            assert_eq!(
-                command(&mut sim, 10, [1, 0, f as u64, target.word(f) as u64]),
-                0
-            );
+            if !case.is_empty() {
+                assert_eq!(
+                    command(&mut sim, 10, [1, 0, f as u64, target.word(f) as u64]),
+                    0
+                );
+            }
         }
         for bytes in *case {
             target.apply(msg(bytes));
@@ -142,7 +94,9 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
         .unwrap();
         m.prepare_state(1, 2).unwrap();
         let mut reset = State::new();
-        reset.known_reset(1);
+        if !case.is_empty() {
+            reset.known_reset(1);
+        }
         m.expression
             .as_mut()
             .unwrap()
@@ -223,6 +177,65 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
         packets.borrow_mut().packets.clear();
         assert_eq!(command(&mut sim, 5, [0, handle, 0, owner]), 0);
         assert!(packets.borrow().packets.is_empty());
+        if case.is_empty() {
+            let mut other = target.clone();
+            other.apply(msg(&[0xb0, 1, 40]));
+            let view1 = m.store.writer().unwrap();
+            m.store.seed_snapshot(view1, &other, 1).unwrap();
+            m.store.finish(view1, 64).unwrap();
+            m.replace(SequenceId(1), Some(view1)).unwrap();
+            m.bind_state(
+                SequenceId(1),
+                StateBinding {
+                    owner: rt_fpga_reference::records::Identity {
+                        slot: 1,
+                        generation: 1,
+                    },
+                    input: 0,
+                    outputs: 1,
+                    channels: 1,
+                },
+            )
+            .unwrap();
+            let handle1 = (u64::from(view1.generation) << 32) | u64::from(view1.slot);
+            assert_eq!(command(&mut sim, 9, [1, 0, owner | 1, 0x10100]), 0);
+            assert_eq!(command(&mut sim, 1, [0, packed(&[0xb0, 1, 40]), 0, 0]), 0);
+            assert_eq!(command(&mut sim, 3, [1, handle1, 0, 0]), 0);
+            for (seq, view, handle, owner) in
+                [(1, view1, handle1, owner | 1), (0, view, handle, owner)]
+            {
+                let mut expected = Vec::new();
+                m.expression
+                    .as_mut()
+                    .unwrap()
+                    .restore(seq, view, 0, 0, &m.store, &mut |e| {
+                        expected.push(e.message.as_bytes().to_vec());
+                        Ok(())
+                    })
+                    .unwrap();
+                packets.borrow_mut().packets.clear();
+                assert_eq!(command(&mut sim, 5, [seq as u64, handle, 0, owner]), 0);
+                assert_eq!(packets.borrow().packets, expected);
+            }
+            let before = memory.borrow().transfers;
+            assert_eq!(command(&mut sim, 6, [0, handle, 0, owner]), 0);
+            assert_eq!(memory.borrow().transfers, before);
+        }
+        let before = m.expression.as_ref().unwrap().output(0).unwrap().word(129);
+        assert_eq!(
+            command(&mut sim, 2, [0, packed(&[0xb0, 1, 99]), u32::MAX as u64, 0]),
+            0
+        );
+        packets.borrow_mut().packets.clear();
+        packets.borrow_mut().refused = Some(0);
+        assert_eq!(command(&mut sim, 5, [0, handle, 0, owner]), 9);
+        assert_eq!(command(&mut sim, 11, [1, 0, 129, 0]), 0);
+        assert_eq!(sim.model.get("result"), u64::from(KNOWN | 99));
+        assert_ne!(before, KNOWN | 99);
+        assert_eq!(command(&mut sim, 12, [0, 1 << 6, 0, 0]), 2);
+        assert_eq!(command(&mut sim, 5, [0, handle, 0, owner + (1 << 32)]), 4);
+        memory.borrow_mut().fail = Some(8192 + 129);
+        assert_eq!(command(&mut sim, 11, [1, 0, 129, 0]), 7);
     }
 }
 
@@ -245,6 +258,17 @@ fn compiled_expression_sp_jp_capture_repeat_seek_and_stop_match_rust() {
             event(0, 1, &[0xb0, 66, 127]),
         ]);
         d.command(0, Operation::Record);
+        d.quantum(&[]);
+        let open = d.reference.midi.view(SequenceId(0)).unwrap().unwrap();
+        let open_handle = (u64::from(open.generation) << 32) | u64::from(open.slot);
+        assert_eq!(
+            d.control(22, [2, open_handle, 129, u64::from(KNOWN | 99), 0]),
+            5
+        );
+        assert_eq!(
+            d.reference.midi.store.seed_snapshot(open, &State::new(), 1),
+            Err(Error::Busy)
+        );
         d.quantum(&[event(0, 0, &[0xb0, 1, 90]), event(0, 2, &[0x80, 60, 0])]);
         d.quantum(&[
             event(0, 0, &[0x90, 64, 100]),
@@ -261,6 +285,7 @@ fn compiled_expression_sp_jp_capture_repeat_seek_and_stop_match_rust() {
         d.quantum(&[]);
         d.quantum(&[]);
         d.quantum(&[]);
+        d.quantum(&[]);
         d.command(
             0,
             Operation::Seek {
@@ -271,6 +296,90 @@ fn compiled_expression_sp_jp_capture_repeat_seek_and_stop_match_rust() {
         d.quantum(&[]);
         d.command(0, Operation::Stop);
         d.quantum(&[]);
+        d.quantum(&[]);
+        let original = d.reference.midi.view(SequenceId(0)).unwrap().unwrap();
+        d.reference.midi.store.retain(original).unwrap();
+        assert_eq!(d.control(11, [0; 5]), 0);
+        let exported = d.sim.model.get("midi_response_handle");
+        let range = d.reference.midi.store.range(original, 32, 64).unwrap();
+        assert_eq!(d.control(15, [exported, 32, 64, 0, 0]), 0);
+        let ranged = d.sim.model.get("midi_response_handle");
+        for field in [60, 64, 129, 192, 194] {
+            assert_eq!(d.control(24, [2, ranged, field, 0, 0]), 0);
+            assert_eq!(
+                d.sim.model.get("midi_response_count"),
+                u64::from(
+                    d.reference
+                        .midi
+                        .store
+                        .snapshot(range)
+                        .unwrap()
+                        .word(field as usize)
+                )
+            );
+        }
+        d.reference
+            .pipeline
+            .replace_midi_view(
+                &mut d.reference.midi,
+                rt_fpga_testbench::suites::midi::data::id(0),
+                SequenceId(0),
+                Some(range),
+            )
+            .unwrap();
+        assert_eq!(d.control(5, [0, ranged, 0, 0, 0]), 0);
+        d.command(
+            0,
+            Operation::Play {
+                position: 0,
+                retrigger: true,
+            },
+        );
+        d.quantum(&[]);
+        d.command(0, Operation::Stop);
+        d.quantum(&[]);
+        d.command(0, Operation::Record);
+        d.quantum(&[event(0, 0, &[0x90, 72, 100]), event(0, 2, &[0x80, 72, 0])]);
+        d.command(0, Operation::Stop);
+        d.quantum(&[]);
+        assert_eq!(d.control(24, [2, exported, 129, 0, 0]), 0);
+        assert_eq!(
+            d.sim.model.get("midi_response_count"),
+            u64::from(KNOWN | 20)
+        );
+    }
+}
+
+#[shoop_test]
+fn expression_jobs_follow_all_supported_quantum_boundaries() {
+    use rt_fpga_reference::transitions::Operation;
+    use rt_fpga_testbench::suites::midi::data::{event, pipeline};
+    for q in [1, 16, 64, 128] {
+        let mut design = pipeline::design(q);
+        design
+            .parameters
+            .insert("MIDI_STATE_SUPPORTED".into(), "1".into());
+        let compiled = design
+            .build(&rt_fpga_testbench::root().join("work/marlin-suite/midi-expression-quanta"))
+            .unwrap();
+        let mut d = pipeline::Driver::build(&compiled, q as u32, false, true).unwrap();
+        d.quantum(&[
+            event(0, 0, &[0xb0, 1, 20]),
+            event(0, 0, &[0x90, 60, 80]),
+            event(0, 0, &[0xb0, 66, 127]),
+        ]);
+        d.command(0, Operation::Record);
+        d.quantum(&[event(0, 0, &[0xb0, 1, 90]), event(0, 0, &[0x80, 60, 0])]);
+        d.command(
+            0,
+            Operation::Play {
+                position: 0,
+                retrigger: true,
+            },
+        );
+        d.quantum(&[]);
+        d.quantum(&[]);
+        d.command(0, Operation::Stop);
         d.quantum(&[]);
     }
 }

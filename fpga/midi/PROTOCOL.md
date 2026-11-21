@@ -2,7 +2,7 @@
 
 This interface replaces the former phase-based MIDI service. Reload compiled
 programs and format a fresh arena; old control commands and memory images are not
-compatible. There is no instrument-state ABI.
+compatible. Raw event mode has no state arena; the optional expression ABI is described below.
 
 ## Jobs and compiled instructions
 

@@ -25,7 +25,7 @@ module midi_expression_state #(
         META2=META1>INPUTS ? META1 : INPUTS;
     localparam integer LB=LOOPS>1 ? $clog2(LOOPS) : 1, IB=INPUTS>1 ? $clog2(INPUTS) : 1,
         DB=DESTINATIONS>1 ? $clog2(DESTINATIONS) : 1, VB=VIEWS>1 ? $clog2(VIEWS) : 1,
-        TB=$clog2(TRACKERS+1), DIRB=$clog2(DESTINATIONS*16);
+        TB=$clog2(TRACKERS+1), AB=TRACKERS>1 ? $clog2(TRACKERS) : 1, DIRB=$clog2(DESTINATIONS*16);
     localparam [63:0] OUTPUT_BASE=64'(INPUTS)*STATE_BYTES,
         SNAPSHOT_BASE=OUTPUT_BASE+64'(DESTINATIONS)*STATE_BYTES,
         SCRATCH_BASE=SNAPSHOT_BASE+64'(VIEWS)*STATE_BYTES,
@@ -39,13 +39,13 @@ module midi_expression_state #(
         IDLE, REPLY, RD, RW, WR, WW, FORMAT, FORMAT_NEXT, FORMAT_META,
         BIND, DIRECTORY, DIRECTORY_READ, DIRECTORY_WRITE, REBIND, REBIND_NEXT, TRACK_CLEAR, TRACK_CLEARED, REFRESH, REFRESH_VALUE,
         APPLY, APPLY_VALUE, APPLY_PEDAL, APPLY_NOTES, APPLY_NOTE, APPLY_RESET, APPLY_RESET_VALUE, APPLY_FINISH, APPLY_OWNER, WATCH_DEAD, WATCH_TEMP, WATCH_TEMP_VALUE, RAM_WAIT, RAM_READY, FAST_TARGET, FAST_VALUE, RESTORE_WORD, RESTORE_WORD_VALUE, RESTORE_LOAD_CURRENT, RESTORE_OFF_PEDALS, RESTORE_CLAIM,
-        STORE_FIELD, FIELD_STORED, WATCH, WATCH_VALUE, DIFF_SUMMARY, DIFF_WORD, DIFF_COUNT, DIFF_WRITTEN, DIFF_SUM_WRITTEN,
+        STORE_FIELD, FIELD_STORED, WATCH, WATCH_MASK, WATCH_VALUE, DIFF_SUMMARY, DIFF_WORD, DIFF_COUNT, DIFF_WRITTEN, DIFF_SUM_WRITTEN,
         ACTIVITY, ACTIVITY_VALUE, ACTIVITY_WRITTEN,
-        CLONE, CLONE_NEXT, CLONE_READ, CLONE_WRITE, CLONE_FINISH, PREFIX, PREFIX_WAIT, PREFIX_APPLY,
+        CLONE, CLONE_NEXT, CLONE_READ, CLONE_WRITE, CLONE_FINISH, CLONE_START_SEEK, CLONE_START_RANGE, PREFIX, PREFIX_WAIT, PREFIX_APPLY,
         RESTORE, RESTORE_OUTPUT, RESTORE_CHANNEL, RESTORE_SUMMARY, RESTORE_LOAD, RESTORE_LOADED,
         RESTORE_DETECT, RESTORE_EDGE, RESTORE_GROUP, RESTORE_GROUP_NOTES, RESTORE_OFF,
         RESTORE_CONTROLS, RESTORE_CAPTURED, RESTORE_SOST, RESTORE_OTHER, RESTORE_RELEASE, RESTORE_PRESSURE,
-        SEND, SENT, CLEANUP, CLEANUP_OUTPUT, CLEANUP_CHANNEL, CLEANUP_WORD, CLEANUP_KEYS, CLEANUP_NOTE, CLEANUP_PEDAL, CLEANUP_LOAD, CLEANUP_ADVANCE,
+        SEND, SENT, CLEANUP, CLEANUP_OUTPUT, CLEANUP_CHANNEL, CLEANUP_WORD, CLEANUP_KEYS, CLEANUP_NOTE, CLEANUP_PEDAL, CLEANUP_LOAD, CLEANUP_ADVANCE, CLEANUP_START, CLEANUP_FINISH,
         SEED, SEEDED, SEED_CLEAR, SEED_CLEARED
     } phase_t;
     phase_t phase, after_memory, after_apply, after_field, after_diff, after_activity, after_clone, after_send, after_ram;
@@ -99,16 +99,32 @@ module midi_expression_state #(
     reg [7:0] bound_outputs[0:LOOPS-1], bound_input[0:LOOPS-1];
     reg [LOOPS-1:0] binding_valid;
     (* ram_style="block" *) reg [LOOPS-1:0] directory[0:DESTINATIONS*16-1];
-    reg [15:0] input_channels[0:INPUTS-1], view_channels[0:VIEWS-1];
+    reg [15:0] input_channels[0:INPUTS-1];
+    (* ram_style="block" *) reg [16:0] view_channels[0:VIEWS-1];
+    reg [16:0] view_mask_q;
+    wire [15:0] view_channel_bits=view_mask_q[15:0];
+    wire [VB-1:0] view_read_address=phase==IDLE ? VB'(arg1) :
+        (phase==WATCH_MASK || phase==WATCH_VALUE) ? VB'(bound_view[LB'(watched_seq)]) :
+        (op==10 || op==11) ? VB'(context_id) : VB'(work_view);
+    wire view_mask_write=(phase==FORMAT_META && scan<32'(VIEWS)) ||
+        (phase==IDLE && command_valid && command_op==8 && arg0[31:0]<32'(VIEWS)) ||
+        (phase==CLONE && clone_channel==0 && clone_field==0 && (op==3 || op==7)) ||
+        (phase==SEED && op==10 && context_kind==2 && !view_mask_q[16]);
+    wire [VB-1:0] view_write_address=phase==FORMAT_META ? VB'(scan) : phase==IDLE ? VB'(arg0) : phase==CLONE ? VB'(clone_id) : VB'(context_id);
+    wire [16:0] view_write_data=phase==CLONE ? {1'b1,clone_channels} : phase==SEED ? view_mask_q|(17'b1<<field[12:9]) : 17'b0;
     reg [127:0] policies[0:DESTINATIONS-1];
     (* ram_style="block" *) reg [13:0] counts[0:TRACKERS];
     reg [TRACKERS:0] nonempty;
+    (* ram_style="block" *) reg [31:0] activity_metadata[0:TRACKERS-1];
+    reg [31:0] activity_meta_q;
+    reg [TRACKERS-1:0] activity_nonempty;
+    wire [AB-1:0] activity_meta_address=(phase==CLEANUP_START || phase==CLEANUP_CHANNEL) ? AB'(cleanup_tracker) : AB'(activity_tracker);
     reg [13:0] count_q;
     reg [LOOPS-1:0] directory_q;
     wire [DIRB-1:0] directory_address=(phase==DIRECTORY || phase==DIRECTORY_READ || phase==DIRECTORY_WRITE) ? DIRB'(scan) : DIRB'(context_id*16+32'(field[12:9]));
     wire [7:0] status=message_word[7:0];
     wire [6:0] a=message_word[14:8], b=message_word[22:16];
-    wire [63:0] tracker_address=arena_base+TRACK_BASE+(64'(tracker)<<11);
+    wire [63:0] tracker_address=arena_base+TRACK_BASE+(64'(TB'(tracker))<<11);
     assign tracking_enabled=binding_valid!=0;
     assign command_ready=phase==IDLE && !reset;
     assign done=phase==REPLY && !reset;
@@ -134,16 +150,16 @@ module midi_expression_state #(
         reg [63:0] offset;
         begin
             case(kind)
-                0: offset=64'(id)*STATE_BYTES;
-                1: offset=OUTPUT_BASE+64'(id)*STATE_BYTES;
-                2: offset=SNAPSHOT_BASE+64'(id)*STATE_BYTES;
+                0: offset=64'(IB'(id))<<15;
+                1: offset=OUTPUT_BASE+(64'(DB'(id))<<15);
+                2: offset=SNAPSHOT_BASE+(64'(VB'(id))<<15);
                 default: offset=SCRATCH_BASE;
             endcase
             state_address=arena_base+offset+{49'b0,f,2'b0};
         end
     endfunction
     function automatic [63:0] activity_address(input [31:0] t,input [3:0] ch,input [2:0] w);
-        activity_address=arena_base+TRACK_BASE+(64'(t)<<11)+1056+64'(ch)*20+64'(w)*4;
+        activity_address=arena_base+TRACK_BASE+(64'(TB'(t))<<11)+1056+64'(ch)*20+64'(w)*4;
     endfunction
     task automatic read_word(input [63:0] address,input phase_t next);
         begin memory_address<=address;after_memory<=next;phase<=RD;end
@@ -162,7 +178,7 @@ module midi_expression_state #(
     endtask
     task automatic compare_field(input [31:0] t,input [12:0] f,input [31:0] target_value,input [31:0] actual,input phase_t next);
         begin tracker<=t;field<=f;dirty<=different(target_value,actual,f);after_diff<=next;
-            read_word(arena_base+TRACK_BASE+(64'(t)<<11)+1024+{59'b0,f[12:10],2'b0},DIFF_SUMMARY);end
+            read_word(arena_base+TRACK_BASE+(64'(TB'(t))<<11)+1024+{59'b0,f[12:10],2'b0},DIFF_SUMMARY);end
     endtask
     task automatic activity_bit(input [31:0] t,input [3:0] ch,input [2:0] w,input [6:0] key_index,input bit_value,input phase_t next);
         begin activity_tracker<=t;activity_channel<=ch;activity_index<=w;activity_key<=key_index;activity_set<=bit_value;after_activity<=next;phase<=ACTIVITY;end
@@ -173,13 +189,34 @@ module midi_expression_state #(
     task automatic clone_state(input [1:0] source_kind,input [31:0] source_id,input [15:0] mask,input phase_t next);
         begin clone_kind<=source_kind;clone_source_id<=source_id;clone_source_channels<=mask;clone_channel<=0;clone_field<=0;after_clone<=next;phase<=CLONE;end
     endtask
+    wire count_update=phase==DIFF_COUNT && ((summary_word[field[9:5]] && data[field[4:0]])!=dirty);
+    wire count_write=(phase==FORMAT_META && scan<32'(TRACKERS+1)) || phase==TRACK_CLEAR || count_update;
+    wire [TB-1:0] count_write_address=phase==FORMAT_META ? TB'(scan) : TB'(tracker);
+    wire [13:0] count_write_data=count_update ? (dirty ? count_q+14'd1 : count_q-14'd1) : 14'd0;
+    wire current_write=phase==RESTORE_LOADED || (phase==FIELD_STORED && context_kind==1 && op==5 && field[12:9]==channel && field[8:0]<=257);
+    wire [8:0] current_write_address=phase==RESTORE_LOADED ? restore_field : field[8:0];
+    wire [31:0] current_write_data=phase==RESTORE_LOADED ? load_current : value;
+    wire activity_update=phase==ACTIVITY_VALUE && data[activity_key[4:0]]!=activity_set;
+    wire activity_meta_write=(phase==FORMAT_META && scan<32'(TRACKERS)) || phase==CLEANUP_FINISH || activity_update;
+    wire [AB-1:0] activity_write_address=phase==FORMAT_META ? AB'(scan) : phase==CLEANUP_FINISH ? AB'(cleanup_tracker) : AB'(activity_tracker);
+    wire [31:0] activity_write_data=activity_update ? {activity_meta_q[31:16]|(activity_set ? (16'b1<<activity_channel) : 16'b0),4'b0,
+        (activity_set ? activity_meta_q[11:0]+12'd1 : activity_meta_q[11:0]-12'd1)} : 32'b0;
+    wire directory_write=(phase==FORMAT_META && scan<32'(DESTINATIONS*16)) || phase==DIRECTORY_WRITE;
+    wire [LOOPS-1:0] directory_write_data=phase==FORMAT_META ? LOOPS'(0) :
+        bound_outputs[LB'(seq)][scan[6:4]] && bound_channels[LB'(seq)][scan[3:0]] ? directory_q|(LOOPS'(1)<<seq) : directory_q & ~(LOOPS'(1)<<seq);
     always @(posedge clk) begin
+        if(count_write) counts[count_write_address]<=count_write_data;
+        if(current_write) current_channel[current_write_address]<=current_write_data;
+        if(activity_meta_write) activity_metadata[activity_write_address]<=activity_write_data;
+        if(directory_write) directory[DIRB'(scan)]<=directory_write_data;
+        if(view_mask_write) view_channels[view_write_address]<=view_write_data;
+        view_mask_q<=view_channels[view_read_address];
         current_q<=current_channel[ram_address];target_q<=target_channel[ram_address];
-        count_q<=counts[TB'(tracker)];directory_q<=directory[directory_address];
+        count_q<=counts[TB'(tracker)];directory_q<=directory[directory_address];activity_meta_q<=activity_metadata[activity_meta_address];
     end
     always @(posedge clk) begin
         if(reset) begin
-            phase<=IDLE;error<=0;result<=0;binding_valid<=0;nonempty<=0;memory_address<=0;memory_write_data<=0;
+            phase<=IDLE;error<=0;result<=0;binding_valid<=0;nonempty<=0;activity_nonempty<=0;memory_address<=0;memory_write_data<=0;
             op<=0;data<=0;packet<=0;destination<=0;context_kind<=0;context_id<=0;seq<=0;output_id<=0;tracker<=0;owner_seq<=32'hffffffff;
             field<=0;local_field<=0;channel<=0;message_word<=0;pedal64<=0;pedal66<=0;apply_mode<=0;old_value<=0;value<=0;
             watchers<=0;watched_seq<=0;dirty<=0;diff_word<=0;summary_word<=0;summary_index<=0;scan<=0;clear_index<=0;refresh_field<=0;
@@ -193,7 +230,7 @@ module midi_expression_state #(
                 op<=command_op;error<=0;result<=0;seq<=arg0[31:0];output_id<=0;owner_seq<=32'hffffffff;
                 work_view<=arg1;position<=arg2;owner<=arg3;seek_target<=0;cleanup_mode<=0;
                 case(command_op)
-                    0: begin scan<=0;binding_valid<=0;nonempty<=0;phase<=FORMAT;end
+                    0: begin scan<=0;binding_valid<=0;nonempty<=0;activity_nonempty<=0;phase<=FORMAT;end
                     1: if(arg0>=64'(INPUTS)) fail(4);else begin input_channels[IB'(arg0)]<=input_channels[IB'(arg0)]|(arg1[7:0]==8'hff ? 16'hffff : (16'b1<<arg1[3:0]));apply_packet(0,arg0[31:0],arg1[31:0],REPLY);end
                     2: if(arg0>=64'(DESTINATIONS)) fail(4);else begin owner_seq<=arg2[31:0];apply_packet(1,arg0[31:0],arg1[31:0],REPLY);end
                     3: if(arg0>=64'(LOOPS)) fail(4);else begin
@@ -208,11 +245,11 @@ module midi_expression_state #(
                         else if(command_op==6) begin cleanup_mode<=1;phase<=CLEANUP;end
                         else if(arg1==0 || bound_view[LB'(arg0)]!=arg1) fail(4);
                         else if(arg2!=0) begin seek_target<=1;clone_id<=0;clone_channels<=bound_channels[LB'(arg0)];source_view<=arg1;
-                            clone_state(2,arg1[31:0],view_channels[VB'(arg1[31:0])] & bound_channels[LB'(arg0)],CLONE_FINISH);end
+                            phase<=CLONE_START_SEEK;end
                         else phase<=RESTORE;
                     7: begin source_view<=arg1;work_view<=arg0;clone_id<=arg0[31:0];clone_channels<=16'hffff;
-                        clone_state(2,arg1[31:0],view_channels[VB'(arg1[31:0])],CLONE_FINISH);end
-                    8: if(arg0[31:0]>=32'(VIEWS)) fail(4);else begin view_channels[VB'(arg0[31:0])]<=0;phase<=REPLY;end
+                        phase<=CLONE_START_RANGE;end
+                    8: if(arg0[31:0]>=32'(VIEWS)) fail(4);else phase<=REPLY;
                     10,11: begin context_kind<=arg0[1:0];context_id<=arg1[31:0];field<=arg2[12:0];value<=arg3[31:0];
                         if(arg0>2 || arg2>=8192 || arg2[8:0]>257 || (arg0==0 && arg1>=64'(INPUTS)) ||
                             (arg0==1 && arg1>=64'(DESTINATIONS)) || (arg0==2 && arg1[31:0]>=32'(VIEWS))) fail(4);else phase<=SEED;end
@@ -229,24 +266,19 @@ module midi_expression_state #(
             FORMAT_NEXT: begin scan<=scan+1;phase<=FORMAT;end
             FORMAT_META: begin
                 if(scan<32'(LOOPS)) begin bound_view[LB'(scan)]<=0;bound_owner[LB'(scan)]<=0;bound_channels[LB'(scan)]<=0;bound_outputs[LB'(scan)]<=0;bound_input[LB'(scan)]<=0;end
-                if(scan<32'(VIEWS)) view_channels[VB'(scan)]<=0;
                 if(scan<32'(INPUTS)) input_channels[IB'(scan)]<=0;
                 if(scan<32'(DESTINATIONS)) policies[DB'(scan)]<=DEFAULT_CC;
-                if(scan<32'(DESTINATIONS*16)) directory[DIRB'(scan)]<=0;
-                if(scan<32'(TRACKERS+1)) counts[TB'(scan)]<=0;
                 if(scan==32'(META2)-1) begin tracker<=0;clear_index<=0;phase<=TRACK_CLEAR;end else scan<=scan+1;
             end
             DIRECTORY: phase<=DIRECTORY_READ;
             DIRECTORY_READ: phase<=DIRECTORY_WRITE;
             DIRECTORY_WRITE: begin
-                if(bound_outputs[LB'(seq)][scan[6:4]] && bound_channels[LB'(seq)][scan[3:0]]) directory[DIRB'(scan)]<=directory_q|(LOOPS'(1)<<seq);
-                else directory[DIRB'(scan)]<=directory_q & ~(LOOPS'(1)<<seq);
                 if(scan==32'(DESTINATIONS*16)-1) phase<=REBIND;else scan<=scan+1;
             end
             REBIND: begin bound_view[LB'(seq)]<=work_view;output_id<=0;phase<=REBIND_NEXT;end
             REBIND_NEXT: if(output_id==32'(DESTINATIONS)) phase<=op==12 ? BIND : REPLY;
                 else begin tracker<=seq*32'(DESTINATIONS)+output_id;clear_index<=0;refresh_field<=0;phase<=TRACK_CLEAR;end
-            TRACK_CLEAR: begin counts[TB'(tracker)]<=0;nonempty[TB'(tracker)]<=0;
+            TRACK_CLEAR: begin nonempty[TB'(tracker)]<=0;
                 if(clear_index<8) write_word(tracker_address+1024+64'(clear_index)*4,0,TRACK_CLEARED);
                 else if(op==0 && clear_index<88) write_word(tracker_address+1056+64'(clear_index-8)*4,0,TRACK_CLEARED);
                 else if(op==0) begin if(tracker==32'(TRACKERS)) phase<=REPLY;else begin tracker<=tracker+1;clear_index<=0;end end
@@ -257,7 +289,7 @@ module midi_expression_state #(
             TRACK_CLEARED: begin clear_index<=clear_index+1;phase<=TRACK_CLEAR;end
             REFRESH: if(refresh_field>=8192) begin if(op==5) begin channel<=0;phase<=RESTORE_CHANNEL;end else begin output_id<=output_id+1;phase<=REBIND_NEXT;end end
                 else if(!binding_valid[LB'(seq)] || !bound_outputs[LB'(seq)][output_id] || work_view==0 ||
-                    !bound_channels[LB'(seq)][refresh_field[12:9]] || (!seek_target && !view_channels[VB'(work_view[31:0])][refresh_field[12:9]])) begin refresh_field<=(refresh_field & 32'hfffffe00)+512;end
+                    !bound_channels[LB'(seq)][refresh_field[12:9]] || (!seek_target && !view_channel_bits[refresh_field[12:9]])) begin refresh_field<=(refresh_field & 32'hfffffe00)+512;end
                 else if(refresh_field[8:0]>257) refresh_field<=(refresh_field & 32'hfffffe00)+512;
                 else if(!managed(output_id,refresh_field[12:0])) refresh_field<=refresh_field+1;
                 else begin field<=refresh_field[12:0];read_word(state_address(seek_target ? 2'd3 : 2'd2,work_view[31:0],refresh_field[12:0]),REFRESH_VALUE);end
@@ -267,7 +299,6 @@ module midi_expression_state #(
                 else write_word(state_address(context_kind,context_id,field),value,FIELD_STORED);
             FIELD_STORED: begin
                 if(context_kind==1) begin
-                    if(op==5 && field[12:9]==channel && field[8:0]<=257) current_channel[field[8:0]]<=value;
                     watchers<=128'(directory_q);output_id<=context_id;phase<=WATCH;
                 end else phase<=after_field;
             end
@@ -279,11 +310,12 @@ module midi_expression_state #(
                 else begin
                     watched_seq<=0;
                     for(integer i=LOOPS-1;i>=0;i=i-1) if(watchers[i]) watched_seq<=32'(i);
-                    phase<=WATCH_VALUE;
+                    phase<=WATCH_MASK;
                 end
+            WATCH_MASK: phase<=WATCH_VALUE;
             WATCH_VALUE: begin
                 watchers[watched_seq]<=0;
-                if(bound_view[LB'(watched_seq)]!=0 && managed(output_id,field) && view_channels[VB'(bound_view[LB'(watched_seq)][31:0])][field[12:9]])
+                if(bound_view[LB'(watched_seq)]!=0 && managed(output_id,field) && view_channel_bits[field[12:9]])
                     read_word(state_address(2,bound_view[LB'(watched_seq)][31:0],field),DIFF_WORD);
                 else if(field[8:0]<128 && value[6:0]==0) activity_bit(watched_seq*32'(DESTINATIONS)+output_id,field[12:9],{1'b0,field[6:5]},field[6:0],0,WATCH);
                 else phase<=WATCH;
@@ -308,7 +340,6 @@ module midi_expression_state #(
                 if(summary_word[field[9:5]]) diff_word<=data;
                 if((summary_word[field[9:5]] && data[field[4:0]])==dirty) phase<=after_diff;
                 else begin
-                    counts[TB'(tracker)]<=dirty ? count_q+1'b1 : count_q-1'b1;
                     nonempty[TB'(tracker)]<=dirty || count_q!=1;
                     diff_word<=dirty ? ((summary_word[field[9:5]] ? data : 0)|(32'b1<<field[4:0])) : (data & ~(32'b1<<field[4:0]));
                     write_word(tracker_address+{54'b0,field[12:5],2'b0},dirty ? ((summary_word[field[9:5]] ? data : 0)|(32'b1<<field[4:0])) : (data & ~(32'b1<<field[4:0])),DIFF_WRITTEN);
@@ -317,8 +348,13 @@ module midi_expression_state #(
             DIFF_WRITTEN: if(summary_word[field[9:5]]==(diff_word!=0)) phase<=after_diff;
                 else write_word(tracker_address+1024+{59'b0,field[12:10],2'b0},diff_word!=0 ? summary_word|(32'b1<<field[9:5]) : summary_word & ~(32'b1<<field[9:5]),DIFF_SUM_WRITTEN);
             DIFF_SUM_WRITTEN: phase<=after_diff;
-            ACTIVITY: read_word(activity_address(activity_tracker,activity_channel,activity_index),ACTIVITY_VALUE);
-            ACTIVITY_VALUE: write_word(activity_address(activity_tracker,activity_channel,activity_index),activity_set ? data|(32'b1<<activity_key[4:0]) : data & ~(32'b1<<activity_key[4:0]),ACTIVITY_WRITTEN);
+            ACTIVITY: if(!activity_set && !activity_nonempty[AB'(activity_tracker)]) phase<=after_activity;
+                else read_word(activity_address(activity_tracker,activity_channel,activity_index),ACTIVITY_VALUE);
+            ACTIVITY_VALUE: if(data[activity_key[4:0]]==activity_set) phase<=after_activity;
+                else begin
+                    activity_nonempty[AB'(activity_tracker)]<=activity_set || activity_meta_q[11:0]!=1;
+                    write_word(activity_address(activity_tracker,activity_channel,activity_index),activity_set ? data|(32'b1<<activity_key[4:0]) : data & ~(32'b1<<activity_key[4:0]),ACTIVITY_WRITTEN);
+                end
             ACTIVITY_WRITTEN: phase<=after_activity;
             APPLY: begin
                 apply_mode<=0;
@@ -390,7 +426,7 @@ module midi_expression_state #(
             end
             APPLY_FINISH: begin
                 if(apply_mode==6 && channel!=15) begin channel<=channel+1;local_field<=128;apply_mode<=4;phase<=APPLY_RESET;end
-                else if(context_kind==1 && owner_seq<32'(LOOPS) && binding_valid[LB'(owner_seq)]) begin
+                else if(context_kind==1 && owner_seq<32'(LOOPS) && binding_valid[LB'(owner_seq)] && bound_outputs[LB'(owner_seq)][3'(context_id)] && bound_channels[LB'(owner_seq)][message_word[3:0]]) begin
                     if(status[7:4]==8 || status[7:4]==9) read_word(state_address(1,context_id,{message_word[3:0],2'b0,a}),APPLY_OWNER);
                     else if(status[7:4]==11 && (a==64 || a==66))
                         activity_bit(owner_seq*32'(DESTINATIONS)+context_id,message_word[3:0],4,a==64 ? 0 : 1,b>=64,after_apply);
@@ -398,8 +434,9 @@ module midi_expression_state #(
                 end else phase<=after_apply;
             end
             APPLY_OWNER: activity_bit(owner_seq*32'(DESTINATIONS)+context_id,message_word[3:0],{1'b0,a[6:5]},a,data[6:0]!=0,after_apply);
+            CLONE_START_SEEK: clone_state(2,source_view[31:0],view_mask_q[15:0] & bound_channels[LB'(seq)],CLONE_FINISH);
+            CLONE_START_RANGE: clone_state(2,source_view[31:0],view_mask_q[15:0],CLONE_FINISH);
             CLONE: if(clone_channel==0 && clone_field==0) begin
-                    if(op==3 || op==7) view_channels[VB'(clone_id)]<=clone_channels;
                     phase<=CLONE_NEXT;
                 end else phase<=CLONE_NEXT;
             CLONE_NEXT: if(!clone_channels[clone_channel]) begin
@@ -416,20 +453,18 @@ module midi_expression_state #(
                 if(event_error!=0) fail(event_error);
                 else if(event_packet[25:24]==0 || event_frame>=position) begin if(op==5) phase<=RESTORE;else phase<=REPLY;end
                 else begin
-                    if(op==7) view_channels[VB'(clone_id)]<=view_channels[VB'(clone_id)]|(event_packet[7:0]==8'hff ? 16'hffff : (16'b1<<event_packet[3:0]));
                     apply_packet(op==5 ? 2'd3 : 2'd2,clone_id,event_packet,PREFIX_APPLY);
                 end
             end
             PREFIX_APPLY: begin event_index<=event_index+1;phase<=PREFIX;end
             SEED: if(op==11) begin
-                    if(context_kind==2 && !view_channels[VB'(context_id)][field[12:9]]) begin result<=0;phase<=REPLY;end
+                    if(context_kind==2 && !view_channel_bits[field[12:9]]) begin result<=0;phase<=REPLY;end
                     else read_word(state_address(context_kind,context_id,field),SEEDED);
-                end else if(context_kind==1 && binding_valid!=0) fail(5);
-                else if(context_kind==2 && !view_channels[VB'(context_id)][field[12:9]]) begin
-                    local_field<=0;view_channels[VB'(context_id)][field[12:9]]<=1;phase<=SEED_CLEAR;
+                end else if((context_kind==1 && binding_valid!=0) || (context_kind==2 && view_mask_q[16])) fail(5);
+                else if(context_kind==2 && !view_channel_bits[field[12:9]]) begin
+                    local_field<=0;phase<=SEED_CLEAR;
                 end else begin
                     if(context_kind==0) input_channels[IB'(context_id)]<=input_channels[IB'(context_id)]|(16'b1<<field[12:9]);
-                    if(context_kind==2) view_channels[VB'(context_id)]<=view_channels[VB'(context_id)]|(16'b1<<field[12:9]);
                     write_word(state_address(context_kind,context_id,field),value,REPLY);
                 end
             SEED_CLEAR: write_word(state_address(2,context_id,{field[12:9],local_field}),0,SEED_CLEARED);
@@ -448,7 +483,7 @@ module midi_expression_state #(
             RESTORE_CHANNEL: begin
                 tracker<=seek_target ? 32'(TRACKERS) : seq*32'(DESTINATIONS)+32'(destination);
                 if(!restore_channels[channel]) begin if(channel==15) begin output_id<=32'(destination)+1;phase<=RESTORE_OUTPUT;end else channel<=channel+1;end
-                else read_word(arena_base+TRACK_BASE+(64'(seek_target ? 32'(TRACKERS) : 32'(seq*32'(DESTINATIONS)+32'(destination)))<<11)+1024+{59'b0,channel[3:1],2'b0},RESTORE_SUMMARY);
+                else read_word(arena_base+TRACK_BASE+(64'(TB'(seek_target ? 32'(TRACKERS) : 32'(seq*32'(DESTINATIONS)+32'(destination))))<<11)+1024+{59'b0,channel[3:1],2'b0},RESTORE_SUMMARY);
             end
             RESTORE_SUMMARY: if((channel[0] ? data[31:16] : data[15:0])==0) begin
                     if(channel==15) begin output_id<=32'(destination)+1;phase<=RESTORE_OUTPUT;end else begin channel<=channel+1;phase<=RESTORE_CHANNEL;end
@@ -468,11 +503,11 @@ module midi_expression_state #(
             RESTORE_LOAD: read_word(state_address(1,32'(destination),{channel,restore_field}),RESTORE_LOAD_CURRENT);
             RESTORE_LOAD_CURRENT: begin
                 load_current<=data;
-                if(!seek_target && !view_channels[VB'(work_view[31:0])][channel]) begin data<=0;phase<=RESTORE_LOADED;end
+                if(!seek_target && !view_channel_bits[channel]) begin data<=0;phase<=RESTORE_LOADED;end
                 else read_word(state_address(seek_target ? 2'd3 : 2'd2,work_view[31:0],{channel,restore_field}),RESTORE_LOADED);
             end
             RESTORE_LOADED: begin
-                current_channel[restore_field]<=load_current;target_channel[restore_field]<=data[31] ? data : load_current;
+                target_channel[restore_field]<=data[31] ? data : load_current;
                 if(restore_field<128 && (load_current[6:0]!=0 || (data[31] && data[6:0]!=0))) any_voice<=1;
                 if(restore_field==192) begin old64<=load_current;new64<=data[31] ? data : load_current;end
                 if(restore_field==194) begin old66<=load_current;new66<=data[31] ? data : load_current;end
@@ -498,7 +533,7 @@ module midi_expression_state #(
             RESTORE_GROUP_NOTES: if(restore_field==192) begin restore_field<=194;ram_address<=194;phase<=RAM_WAIT;after_ram<=RESTORE_OFF_PEDALS;end
                 else begin restore_field<=0;ram_address<=0;phase<=RAM_WAIT;after_ram<=RESTORE_OFF;end
             RESTORE_OFF: begin
-                if((group_repair && current_q[6:0]!=0) || (!group_repair && dirty_notes[restore_field[6:5]][restore_field[4:0]] &&
+                if((group_repair && (current_q[6:0]!=0 || target_q[31] && target_q[6:0]==0 && !current_q[31])) || (!group_repair && dirty_notes[restore_field[6:5]][restore_field[4:0]] &&
                     ((target_q[9:0]!=current_q[9:0] && current_q[6:0]!=0) || (target_q[31] && target_q[6:0]==0 && !current_q[31]))))
                     send_packet(8'h80|{4'b0,channel},restore_field[6:0],0,RESTORE_CLAIM);
                 else phase<=RESTORE_CLAIM;
@@ -570,9 +605,13 @@ module midi_expression_state #(
             end
             CLEANUP: begin output_id<=0;phase<=CLEANUP_OUTPUT;end
             CLEANUP_OUTPUT: if(output_id>=32'(DESTINATIONS)) phase<=REPLY;
-                else if(!bound_outputs[LB'(seq)][output_id]) output_id<=output_id+1;
-                else begin destination<=output_id[15:0];cleanup_tracker<=seq*32'(DESTINATIONS)+output_id;cleanup_channel<=0;cleanup_word<=4;phase<=CLEANUP_CHANNEL;end
-            CLEANUP_CHANNEL: read_word(activity_address(cleanup_tracker,cleanup_channel,cleanup_word),CLEANUP_WORD);
+                else if(!bound_outputs[LB'(seq)][output_id] || !activity_nonempty[AB'(seq*32'(DESTINATIONS)+output_id)]) output_id<=output_id+1;
+                else begin destination<=output_id[15:0];cleanup_tracker<=seq*32'(DESTINATIONS)+output_id;cleanup_channel<=0;cleanup_word<=4;phase<=CLEANUP_START;end
+            CLEANUP_START: phase<=CLEANUP_CHANNEL;
+            CLEANUP_CHANNEL: if(!activity_meta_q[16+5'(cleanup_channel)]) begin
+                    if(cleanup_channel==15) phase<=CLEANUP_FINISH;else begin cleanup_channel<=cleanup_channel+1;phase<=CLEANUP_START;end
+                end else read_word(activity_address(cleanup_tracker,cleanup_channel,cleanup_word),CLEANUP_WORD);
+            CLEANUP_FINISH: begin activity_nonempty[AB'(cleanup_tracker)]<=0;output_id<=32'(destination)+1;phase<=CLEANUP_OUTPUT;end
             CLEANUP_WORD: begin cleanup_bits<=data;if(cleanup_word==4) begin activity_key<=0;phase<=CLEANUP_PEDAL;end else phase<=CLEANUP_KEYS;end
             CLEANUP_PEDAL: if(activity_key>=2) write_word(activity_address(cleanup_tracker,cleanup_channel,4),0,CLEANUP_ADVANCE);
                 else if(!cleanup_bits[{4'b0,activity_key[0]}]) activity_key<=activity_key+1;
@@ -582,12 +621,12 @@ module midi_expression_state #(
                     for(integer i=31;i>=0;i=i-1) if(cleanup_bits[i]) begin activity_key<={cleanup_word[1:0],5'(i)};restore_field<={2'b0,cleanup_word[1:0],5'(i)};end
                     phase<=CLEANUP_LOAD;
                 end
-            CLEANUP_ADVANCE: if(cleanup_word==4) begin cleanup_word<=0;phase<=CLEANUP_CHANNEL;end
+            CLEANUP_ADVANCE: if(cleanup_word==4) begin cleanup_word<=0;phase<=CLEANUP_START;end
                 else begin
                     if(cleanup_word==3) begin
-                        if(cleanup_channel==15) begin output_id<=32'(destination)+1;phase<=CLEANUP_OUTPUT;end
-                        else begin cleanup_channel<=cleanup_channel+1;cleanup_word<=4;phase<=CLEANUP_CHANNEL;end
-                    end else begin cleanup_word<=cleanup_word+1;phase<=CLEANUP_CHANNEL;end
+                        if(cleanup_channel==15) phase<=CLEANUP_FINISH;
+                        else begin cleanup_channel<=cleanup_channel+1;cleanup_word<=4;phase<=CLEANUP_START;end
+                    end else begin cleanup_word<=cleanup_word+1;phase<=CLEANUP_START;end
                 end
             CLEANUP_LOAD: read_word(state_address(1,32'(destination),{cleanup_channel,restore_field}),CLEANUP_NOTE);
             CLEANUP_NOTE: if(cleanup_word==4) begin

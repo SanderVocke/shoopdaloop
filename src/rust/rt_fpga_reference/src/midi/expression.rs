@@ -296,7 +296,13 @@ impl Expression {
             }
             at = field + 1;
         }
-        if let Some(sequence) = owner.filter(|seq| *seq < self.limits.sequences) {
+        if let Some(sequence) = owner.filter(|seq| {
+            *seq < self.limits.sequences
+                && self.bindings[*seq as usize].is_some_and(|binding| {
+                    binding.outputs & (1 << output) != 0
+                        && binding.channels & (1 << (message.as_bytes()[0] & 15)) != 0
+                })
+        }) {
             let index = self.index(sequence, output);
             let bytes = message.as_bytes();
             let ch = (bytes[0] & 15) as usize;
@@ -383,9 +389,17 @@ impl Expression {
             .copied()
             .flatten()
             .ok_or(Error::InvalidState)?;
+        let snapshot = store.snapshot(view)?;
+        for output in 0..self.limits.outputs {
+            if binding.outputs & (1 << output) != 0
+                && self.trackers[self.index(sequence, output)].target != Some(view)
+            {
+                return Err(Error::InvalidState);
+            }
+        }
         if position != 0 {
             let mut target = self.scratch.take().ok_or(Error::Busy)?;
-            target.copy_from(store.snapshot(view)?, binding.channels);
+            target.copy_from(snapshot, binding.channels);
             let result = (|| {
                 for index in 0..store.lower_bound(view, position)? {
                     target.apply(store.read(view, index)?.unwrap().message);
@@ -396,7 +410,7 @@ impl Expression {
             self.scratch = Some(target);
             return result;
         }
-        self.restore_target(sequence, store.snapshot(view)?, offset, store, sink, true)
+        self.restore_target(sequence, snapshot, offset, store, sink, true)
     }
     fn restore_target(
         &mut self,
