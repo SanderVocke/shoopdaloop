@@ -48,6 +48,20 @@ record/play coverage. The complete quick matrix's twenty-minute target remains
 an estimate pending its Actions run. Formatting, warning-denying build, test-policy checks and Actions
 workflow lint also passed.
 
+**Very short RTL DDR comparisons.** The same manual workflow also offers
+`rtl-audio-ddr` and `rtl-midi-ddr`. Each runs exactly two RTL cases, pairing
+zero-added-delay ideal AXI service with DRAMsim3 through one 38-callback common
+endpoint fixture. Cold recording crosses allocation boundaries; one full-load
+playback, all-loop retake and final stop follow. Native statistics, quiet playback,
+wraps, planned transitions and mixed loads are omitted from these probes.
+The single-page PDF pairs callback cycles/µs, differences and ratios; raw child
+runs and all paired callbacks remain available. The existing seven-cycle fixed
+memory mode remains separate. Both cases must validate the same fixture, frozen
+binary and functional work. See `scripts/benchmark_rt_ddr.py` for the entry point.
+Complete local pairs passed in 37.6 seconds for audio and 82.9 seconds for MIDI
+with warm caches. Each retains 38 paired callbacks and produces one PDF page.
+Eleven scoped Rust tests, 18 reporter/comparison tests and Actions lint passed.
+
 **Upstream refresh and MIDI matrix (revision 4).** The benchmark now selects
 `audio`, `midi`, or `audio-midi`; the default campaign runs all three. Each uses
 64 loops and Q=callback=32. Audio loops remain genuinely stereo, with 32-frame

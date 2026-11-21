@@ -684,7 +684,8 @@ fn execute<E: Endpoint, D: Driver>(
     );
     let tiny_stress = report.fixture.preset == fixture::Preset::Tiny
         && report.fixture.pattern == fixture::Pattern::Stress;
-    if !tiny_stress {
+    let ddr_probe = report.fixture.pattern == fixture::Pattern::Ddr;
+    if !tiny_stress && !ddr_probe {
         ensure!(total_wraps >= LOOPS, "insufficient playback wrap coverage");
     }
     if report.fixture.media.audio() && !matches!(report.fixture.pattern, fixture::Pattern::Grab) {
@@ -695,13 +696,13 @@ fn execute<E: Endpoint, D: Driver>(
     }
     if matches!(
         report.fixture.pattern,
-        fixture::Pattern::Lifecycle | fixture::Pattern::Stress
+        fixture::Pattern::Lifecycle | fixture::Pattern::Stress | fixture::Pattern::Ddr
     ) {
         ensure!(
             replaced_takes >= u64::from(LOOPS),
             "completed takes were not replaced"
         );
-        if !tiny_stress {
+        if !tiny_stress && !ddr_probe {
             ensure!(
                 retired_plans >= 2 * u64::from(LOOPS),
                 "scheduled transitions were not exercised"
@@ -724,7 +725,7 @@ fn execute<E: Endpoint, D: Driver>(
             midi_block_boundary_verified
                 && midi_events_checked > 0
                 && midi_dense_callbacks > 0
-                && midi_silent_callbacks > 0,
+                && (ddr_probe || midi_silent_callbacks > 0),
             "missing MIDI block/burst/quiet validation coverage"
         );
     }
@@ -736,6 +737,6 @@ fn execute<E: Endpoint, D: Driver>(
         "midi_silent_playback_callbacks":midi_silent_callbacks,"midi_dense_playback_callbacks":midi_dense_callbacks,
         "midi_block_boundary_verified":midi_block_boundary_verified,"cold_midi_events_per_loop":cold_midi_events,"commands_verified":report.events.iter().map(|e| e.commands).sum::<usize>(),
         "stop_all_verified":stop_all_verified,"mixed_record_play_verified":mixed_record_play_verified,
-        "omitted_scenarios":if tiny_stress {vec!["playback-wrap", "planned-transitions", "mixed-record-play"]} else {vec![]}});
+        "omitted_scenarios":if ddr_probe {vec!["playback-wrap", "planned-transitions", "mixed-record-play", "quiet-playback"]} else if tiny_stress {vec!["playback-wrap", "planned-transitions", "mixed-record-play"]} else {vec![]}});
     Ok(())
 }

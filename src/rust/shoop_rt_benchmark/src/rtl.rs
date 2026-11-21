@@ -62,6 +62,7 @@ pub fn run(
     let graph = host_timing::span("prepare.graph");
     let media = fixture.media;
     let mode = match memory_model {
+        "ideal" => Mode::Instant,
         "dramsim3" => Mode::Dramsim3,
         "fixed" => Mode::Fixed,
         _ => anyhow::bail!("unsupported memory model"),
@@ -179,7 +180,7 @@ pub fn run(
             FPGA_CLOCK_HZ,
         ))?)
     } else {
-        Box::new(FixedTiming::new(7))
+        Box::new(FixedTiming::new(if mode == Mode::Instant { 0 } else { 7 }))
     };
     let controller = Rc::new(RefCell::new(timing));
     if let Backend::Axi(axi) = &mut pipeline.store.memory.borrow_mut().backend {
@@ -658,7 +659,7 @@ impl Driver for Rtl<'_> {
         Ok(value)
     }
     fn metadata(&self) -> serde_json::Value {
-        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),"memory_seed":MEMORY_SEED,"shared_memory_controller":true,"memory_topology":"audio and MIDI AXI ports share one timing controller; one advance per fabric cycle",
+        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":if self.mode == Mode::Instant {"Ideal".into()} else {format!("{:?}",self.mode)},"memory_seed":MEMORY_SEED,"shared_memory_controller":true,"memory_topology":"audio and MIDI AXI ports share one timing controller; one advance per fabric cycle",
             "chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"media_capacity_bytes":MEMORY_BYTES,
             "window":"command configuration, input upload, SP/JP/media execution, mandatory completion and queue drain; passive output/state probes do not advance clocks",
             "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_rtl::report::provenance(),"midi_memory":self.midi_memory.borrow_mut().report(false),"memory":self.pipeline.store.memory.borrow_mut().report(false)})

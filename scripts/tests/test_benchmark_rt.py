@@ -11,6 +11,10 @@ from unittest import mock
 SPEC = importlib.util.spec_from_file_location("benchmark_rt", Path(__file__).resolve().parents[1] / "benchmark_rt.py")
 BENCH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(BENCH)
+DDR_SPEC = importlib.util.spec_from_file_location("benchmark_rt_ddr", Path(__file__).resolve().parents[1] / "benchmark_rt_ddr.py")
+DDR = importlib.util.module_from_spec(DDR_SPEC)
+with mock.patch.dict("sys.modules", {"benchmark_rt": BENCH}):
+    DDR_SPEC.loader.exec_module(DDR)
 
 
 def result():
@@ -44,6 +48,87 @@ def midi_result(kind="midi"):
     run["coverage"].update(midi_bytes_timestamps_order_checked=True, midi_block_boundary_verified=True,
         midi_events_checked=40000, midi_silent_playback_callbacks=1, midi_dense_playback_callbacks=50)
     return run
+
+
+def ddr_result(model, media="audio"):
+    run = midi_result(media)
+    fixture = run["fixture"]
+    fixture.update(version=5, preset="tiny", pattern="ddr", callbacks=38,
+        events=[dict(callback=callback, count=64) for callback in (0, 33, 34, 35, 36)])
+    run["fixture_sha256"] = hashlib.sha256(json.dumps(fixture, separators=(",", ":")).encode()).hexdigest()
+    run["events"] = [dict(callback=callback, commands=64, execution_frame=3200+callback*32, same_frame=True)
+                     for callback in (0, 33, 34, 35, 36)]
+    run["callbacks"] = run["callbacks"][:38]
+    for row in run["callbacks"]:
+        callback = row["callback"]
+        count = 40 if callback % 16 == 0 else (16 if callback % 16 < 8 else 0)
+        row.update(recording=64 if callback < 33 or callback == 35 else 0,
+            playing=64 if callback == 33 else 0, midi_input_events=count if media == "midi" else 0,
+            midi_output_events=2560 if media == "midi" and callback == 33 else 0)
+        row["measurement"].update(midi_input_events=row["midi_input_events"], midi_output_events=row["midi_output_events"],
+            fabric_cycles=150*(callback+1)*(2 if model == "dramsim3" else 1))
+    run["metadata"]["memory_model"] = "Ideal" if model == "ideal" else "Dramsim3"
+    for port in ("memory", "midi_memory"):
+        run["metadata"][port]["native"]["delay"] = 0
+    run["metadata"]["finalization"]["native"]["ticks"] = round(sum(row["measurement"]["fabric_cycles"] for row in run["callbacks"]) * 1e15 / 150_000_000 / 1_875_000)
+    run["coverage"].update(midi_events_checked=2560 if media == "midi" else 0, midi_silent_playback_callbacks=0,
+        replaced_takes=64, stop_all_verified=True, omitted_scenarios=["playback-wrap", "planned-transitions", "mixed-record-play", "quiet-playback"])
+    return run
+
+
+class DdrComparisonTests(unittest.TestCase):
+    def write_pair(self, output):
+        manifest = dict(complete=True, revision="test", media="audio", binary_sha256="same-binary", runs={})
+        for model in DDR.MODELS:
+            directory = output / model; directory.mkdir()
+            (directory / "run.json").write_text(json.dumps(ddr_result(model)))
+            (directory / "manifest.json").write_text(json.dumps(dict(complete=True, expected_runs=1,
+                files=["run.json"], binary_sha256="same-binary")))
+            manifest["runs"][model] = dict(exit_code=0, wall_s=1.)
+        (output / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_comparison_pairs_callbacks_and_regenerates_one_page_with_cycles_and_microseconds(self):
+        with tempfile.TemporaryDirectory() as name:
+            output = Path(name); self.write_pair(output)
+            self.assertTrue(DDR.report(output))
+            summary = json.loads((output / "summary.json").read_text())
+            self.assertTrue(summary["fixture_comparisons_match"])
+            self.assertEqual(len(summary["callbacks"]), 38)
+            self.assertEqual(summary["callbacks"][33]["ideal_us"], 34.)
+            self.assertEqual(summary["callbacks"][33]["delta_us"], 34.)
+            self.assertEqual(summary["callbacks"][33]["ratio"], 2.)
+            self.assertEqual(len((output / "callbacks.csv").read_text().splitlines()), 39)
+            self.assertEqual(len(re.findall(rb"/Type\s*/Page\b", (output / "report.pdf").read_bytes())), 1)
+            before = (output / "summary.json").read_bytes()
+            self.assertTrue(DDR.report(output))
+            self.assertEqual(before, (output / "summary.json").read_bytes())
+
+    def test_mismatched_fixture_binary_memory_label_or_workload_cannot_pass(self):
+        def different_fixture(run):
+            run["fixture"]["signal"] = "different input"
+            run["fixture_sha256"] = hashlib.sha256(json.dumps(run["fixture"], separators=(",", ":")).encode()).hexdigest()
+        mutations = (
+            ("run.json", different_fixture),
+            ("run.json", lambda r: r["metadata"]["memory"]["native"].update(delay=7)),
+            ("run.json", lambda r: r["callbacks"][0].update(playing=1)),
+            ("manifest.json", lambda m: m.update(binary_sha256="different")),
+            ("manifest.json", lambda m: m.update(complete=False)),
+        )
+        for filename, mutate in mutations:
+            with tempfile.TemporaryDirectory() as name:
+                output = Path(name); self.write_pair(output)
+                path = output / "ideal" / filename
+                value = json.loads(path.read_text()); mutate(value); path.write_text(json.dumps(value))
+                self.assertFalse(DDR.report(output))
+                self.assertTrue(json.loads((output / "summary.json").read_text())["errors"])
+
+    def test_quiet_playback_is_omitted_only_for_the_ddr_probe(self):
+        run = ddr_result("ideal", "midi")
+        BENCH.validate(run)
+        run["fixture"]["pattern"] = "stress"
+        run["fixture_sha256"] = hashlib.sha256(json.dumps(run["fixture"], separators=(",", ":")).encode()).hexdigest()
+        with self.assertRaisesRegex(ValueError, "MIDI"):
+            BENCH.validate(run)
 
 
 class BenchmarkReportTests(unittest.TestCase):

@@ -55,6 +55,36 @@ Unsupported cases remain explicit run slots. Missing prerequisites,
 build/processing failures and incorrect results
 produce distinct statuses and a nonzero campaign result.
 
+For very short **RTL-only ideal-memory versus DRAMsim3 comparisons**:
+
+```sh
+python3 scripts/benchmark_rt_ddr.py --media audio --output work/rtl-audio-ddr
+python3 scripts/benchmark_rt_ddr.py --media midi --output work/rtl-midi-ddr
+python3 scripts/benchmark_rt_ddr.py --report-only --output work/rtl-midi-ddr
+```
+
+Each command builds once and runs two independent simulations concurrently, using
+the same 38-callback `ddr` fixture and frozen binary. It retains 64 loops and the
+normal Q32 / 32×32 geometry. Record all loops for 33 quanta to cross audio/MIDI
+block boundaries, play once (2,560 output messages for MIDI), stop, retake all
+loops and stop again. Quiet playback, wraps, planned transitions and mixed loads
+are explicitly omitted. There are no native CPU/reference runs or grab slots.
+`--jobs 1` runs the pair serially; `--binary` skips the Cargo build, and
+`--dram-config` selects the simulated DDR configuration.
+
+The one-page `report.pdf` pairs matching callbacks and shows cycles, microseconds
+at 150 MHz, differences and ratios. `callbacks.csv` retains every paired callback;
+`summary.json` retains separate model statistics. The `ideal/` and `dramsim3/`
+directories keep raw runs, per-model reports and provenance. Any missing case,
+output failure, unequal fixture, binary or functional work makes the comparison
+fail. Report-only regeneration needs no simulator.
+
+`--memory-model ideal` on the main runner uses zero-added-delay service on the
+shared AXI controller. AXI handshakes/transfers still cost cycles; there is no
+added refresh, bank contention or DRAM service delay. The existing `fixed` mode
+still adds seven cycles and is not used as the ideal baseline. DRAMsim3 retains
+the shared 150 MHz Z-turn V2 DDR3-1066 x32 configuration by default.
+
 Fixture revision 5 uses **64 loops, Q=callback=32, and 48 kHz**:
 
 | Media | Loop contents and routing |
@@ -197,7 +227,7 @@ the replay applied no simulator-speed optimization.
 Manual workflow:
 
 The **RT backend benchmarks** Actions workflow is manual-only. Select a branch
-and `tiny`, `quick` or `full` under Actions → Run workflow. Its run summary links
+and `tiny`, `quick`, `full`, `rtl-audio-ddr` or `rtl-midi-ddr` under Actions → Run workflow. Its run summary links
 directly to the PDF artifact; a separate data artifact retains JSON/CSV, runtime
 breakdowns and logs for 30 days, including evidence from failed campaigns.
 Each variant has a separate concurrency group, so launching all three does not
@@ -207,6 +237,8 @@ lives in `fpga_components.yml` and does not run these benchmarks.
 
 ```sh
 gh workflow run fpga_simulation.yml --ref <branch> -f variant=tiny
+gh workflow run fpga_simulation.yml --ref <branch> -f variant=rtl-audio-ddr
+gh workflow run fpga_simulation.yml --ref <branch> -f variant=rtl-midi-ddr
 ```
 
 Validation:

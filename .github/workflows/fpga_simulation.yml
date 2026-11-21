@@ -9,7 +9,7 @@ on:
         type: choice
         required: true
         default: tiny
-        options: [tiny, quick, full]
+        options: [tiny, quick, full, rtl-audio-ddr, rtl-midi-ddr]
 
 permissions:
   contents: read
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   benchmark:
-    name: ${{ inputs.variant }} · 64 loops · audio, MIDI and combined
+    name: ${{ inputs.variant }} · 64-loop RT benchmark
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -66,11 +66,16 @@ jobs:
         with:
           path: work/rt-benchmark-model
           key: rt-benchmark-rtl-${{ runner.os }}-${{ hashFiles('fpga/**/*.sv', 'src/rust/shoop_rt_benchmark/src/rtl.rs', 'src/rust/rt_fpga_rtl/src/model.rs', 'third_party/marlin-verilator/**') }}
+          restore-keys: rt-benchmark-rtl-${{ runner.os }}-
       - name: Run selected benchmark and generate PDF
         run: |
           set -o pipefail
-          python3 scripts/benchmark_rt.py --preset "$BENCH_VARIANT" --rtl-jobs 3 \
-            --host-profile --output work/rt-report 2>&1 | tee work/rt-benchmark.log
+          case "$BENCH_VARIANT" in
+            rtl-audio-ddr) command=(python3 scripts/benchmark_rt_ddr.py --media audio) ;;
+            rtl-midi-ddr) command=(python3 scripts/benchmark_rt_ddr.py --media midi) ;;
+            *) command=(python3 scripts/benchmark_rt.py --preset "$BENCH_VARIANT" --rtl-jobs 3 --host-profile) ;;
+          esac
+          "${command[@]}" --output work/rt-report 2>&1 | tee work/rt-benchmark.log
       - name: Downloadable PDF report
         id: pdf
         if: always() && hashFiles('work/rt-report/report.pdf') != ''
@@ -113,6 +118,8 @@ jobs:
               lines += [f"| {name} | {seconds:.2f} |" for name, seconds in data['phases_s'].items()]
           if os.environ['BENCH_VARIANT'] == 'tiny':
               lines += ["", "Tiny RTL intentionally omits playback wraps, planned transitions and mixed recording/playback."]
+          if os.environ['BENCH_VARIANT'].startswith('rtl-'):
+              lines += ["", "RTL-only DDR comparison: 38 callbacks each with zero-added-delay ideal service and DRAMsim3. The PDF pairs callback cycles, µs, differences and ratios."]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
               stream.write('\n'.join(lines) + '\n')
           PY

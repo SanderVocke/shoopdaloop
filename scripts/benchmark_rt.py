@@ -99,8 +99,10 @@ def validate(run):
             raise ValueError("cold recording block-boundary growth was not verified")
     if f.get("version", 0) >= 4 and kind != "audio":
         c = run["coverage"]
-        if not all(c.get(key) for key in ("midi_bytes_timestamps_order_checked", "midi_block_boundary_verified",
-                "midi_events_checked", "midi_silent_playback_callbacks", "midi_dense_playback_callbacks")):
+        required = ["midi_bytes_timestamps_order_checked", "midi_block_boundary_verified",
+                    "midi_events_checked", "midi_dense_playback_callbacks"]
+        if f.get("pattern") != "ddr": required.append("midi_silent_playback_callbacks")
+        if not all(c.get(key) for key in required):
             raise ValueError("missing exact MIDI event/block/burst/quiet validation")
         if c["midi_events_checked"] != sum(row["midi_output_events"] for row in run["callbacks"]):
             raise ValueError("incomplete MIDI event validation")
@@ -114,6 +116,8 @@ def validate(run):
             raise ValueError("RTL fabric clock differs from the report assumption")
         if metadata.get("memory_model") == "Dramsim3" and metadata.get("memory", {}).get("native", {}).get("fabric_hz") != FPGA_CLOCK_HZ:
             raise ValueError("DRAMsim3 fabric clock differs from the report assumption")
+        if metadata.get("memory_model") == "Ideal" and any(metadata.get(port, {}).get("native", {}).get("delay") != 0 for port in ("memory", "midi_memory")):
+            raise ValueError("ideal memory must add zero service delay on both AXI ports")
     if f.get("version", 0) >= 4 and run["backend"] == "fpga-rtl":
         metadata = run["metadata"]
         if metadata.get("shared_memory_controller") is not True:
@@ -153,16 +157,19 @@ def validate(run):
     if f.get("version", 0) >= 5:
         c = run["coverage"]
         tiny_stress = f["preset"] == "tiny" and f["pattern"] == "stress"
-        omitted = ["playback-wrap", "planned-transitions", "mixed-record-play"] if tiny_stress else []
+        ddr_probe = f["pattern"] == "ddr"
+        short = tiny_stress or ddr_probe
+        omitted = ["playback-wrap", "planned-transitions", "mixed-record-play"] if short else []
+        if ddr_probe: omitted.append("quiet-playback")
         if c.get("omitted_scenarios") != omitted or not c.get("stop_all_verified") or rows[-1]["recording"] or rows[-1]["playing"]:
             raise ValueError("invalid omitted coverage or final stopped state")
-        if not tiny_stress and c.get("wraps", 0) < 64:
+        if not short and c.get("wraps", 0) < 64:
             raise ValueError("missing playback wrap coverage")
-        if f["pattern"] in ("stress", "lifecycle"):
-            if c.get("replaced_takes", 0) < 64 or (not tiny_stress and c.get("retired_plan_slots", 0) < 128):
+        if f["pattern"] in ("stress", "lifecycle", "ddr"):
+            if c.get("replaced_takes", 0) < 64 or (not short and c.get("retired_plan_slots", 0) < 128):
                 raise ValueError("missing simultaneous retake or planned transition coverage")
-        if f["pattern"] == "stress":
-            if not tiny_stress and not c.get("mixed_record_play_verified"):
+        if f["pattern"] in ("stress", "ddr"):
+            if not short and not c.get("mixed_record_play_verified"):
                 raise ValueError("missing mixed recording/playback coverage")
             if kind != "audio" and max(row["midi_output_events"] for row in rows) != 2560:
                 raise ValueError("stress fixture did not reach the full 64-loop MIDI merge")
@@ -457,7 +464,7 @@ def render(output, manifest, runs, summary):
         notes = [f'{count}× {backend}: {state}. {error}' for (backend, state, error), count in sorted(issues.items())]
         omitted = sorted({name for run in completed for name in run.get("coverage", {}).get("omitted_scenarios", [])})
         if omitted:
-            notes.insert(0, "Tiny stress intentionally omits: " + ", ".join(omitted) + ". Native statistics use separate lifecycle/mixed/grab runs.")
+            notes.insert(0, "Short RTL fixture intentionally omits: " + ", ".join(omitted) + ". Separate lifecycle/mixed/grab runs are retained when selected.")
         if manifest.get("skipped_cpu_runs"):
             notes.insert(0, f'{len(manifest["skipped_cpu_runs"])} optional CPU run slots omitted at repetition boundaries by the host-time budget.')
         if not summary["fixture_comparisons_match"]: notes.insert(0, "Different fixture hashes within a media/pattern comparison; see summary.json.")
@@ -553,7 +560,7 @@ def main():
     parser.add_argument("--host-profile", action="store_true", help="record host preparation, execution, validation and finalization phases")
     parser.add_argument("--profile-rtl", action="store_true", help="also sample RTL-process CPU stacks with gprofng at 20 ms intervals")
     parser.add_argument("--dram-config", type=Path, default=Path(os.environ.get("SHOOP_DRAMSIM3_CONFIG", ROOT / "fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini")))
-    parser.add_argument("--memory-model", choices=("dramsim3", "fixed"), default="dramsim3")
+    parser.add_argument("--memory-model", choices=("dramsim3", "fixed", "ideal"), default="dramsim3")
     args = parser.parse_args()
     if importlib.util.find_spec("matplotlib") is None:
         parser.error("Matplotlib is required for the report; install 'matplotlib>=3.9,<4' before starting a campaign")
@@ -567,7 +574,7 @@ def main():
     patterns = args.patterns.split(",") if args.patterns else None
     repeats = {b: args.repeats if args.repeats is not None else (dict(tiny=2, quick=3, full=1)[args.preset] if b == "cpu" else 1) for b in backends}
     cpu_budget = args.cpu_budget_seconds if args.cpu_budget_seconds is not None else dict(tiny=30., quick=45., full=None)[args.preset]
-    if args.rtl_jobs < 1 or any(n < 1 for n in repeats.values()) or not backends or len(set(backends)) != len(backends) or any(b not in BACKENDS for b in backends) or (patterns is not None and (len(set(patterns)) != len(patterns) or any(p not in (*PATTERNS, "stress") for p in patterns))) or len(set(media)) != len(media) or any(m not in MEDIA for m in media) or (cpu_budget is not None and (not math.isfinite(cpu_budget) or cpu_budget <= 0)):
+    if args.rtl_jobs < 1 or any(n < 1 for n in repeats.values()) or not backends or len(set(backends)) != len(backends) or any(b not in BACKENDS for b in backends) or (patterns is not None and (len(set(patterns)) != len(patterns) or any(p not in (*PATTERNS, "stress", "ddr") for p in patterns))) or len(set(media)) != len(media) or any(m not in MEDIA for m in media) or (cpu_budget is not None and (not math.isfinite(cpu_budget) or cpu_budget <= 0)):
         parser.error("select known backends/patterns/media and positive repeats")
     selected_patterns = {b: patterns or campaign_patterns(args.preset, b) for b in backends}
     tasks = [(backend, kind, pattern, repeat)

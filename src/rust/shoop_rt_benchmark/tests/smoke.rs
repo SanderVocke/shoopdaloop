@@ -12,6 +12,29 @@ use shoop_wasm_test_support::{
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
+#[shoop_test(no_wasm = "native endpoint-driven DDR comparison fixture")]
+fn ddr_probe_preserves_peak_merge_growth_and_retakes_without_long_playback() {
+    for media in [Media::Audio, Media::Midi] {
+        let fixture = Fixture::with_media(Preset::Tiny, Pattern::Ddr, media);
+        assert_eq!(fixture.callbacks, 38);
+        let (control, driver) = reference::prepare(media).unwrap();
+        let run = runner::run("fpga-reference", fixture, control, Guard(driver));
+        assert_eq!(run.status, "completed", "{:?}", run.error);
+        assert_eq!(run.coverage["stop_all_verified"], true);
+        assert!(run.coverage["replaced_takes"].as_u64().unwrap() >= 64);
+        assert_eq!(
+            run.coverage["omitted_scenarios"].as_array().unwrap().len(),
+            4
+        );
+        if media.midi() {
+            assert_eq!(run.callbacks[33].midi_output_events, 2560);
+            assert_eq!(run.coverage["midi_block_boundary_verified"], true);
+        } else {
+            assert_eq!(run.coverage["cold_block_boundary_verified"], true);
+        }
+    }
+}
+
 #[shoop_test(no_wasm = "native dummy driver and host timing")]
 fn compact_stress_checks_required_coverage_and_labels_intentional_omissions() {
     for preset in [Preset::Tiny, Preset::Quick] {

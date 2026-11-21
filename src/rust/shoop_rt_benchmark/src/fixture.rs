@@ -44,6 +44,7 @@ impl Media {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Pattern {
+    Ddr,
     Stress,
     Lifecycle,
     Mixed,
@@ -159,6 +160,14 @@ impl Fixture {
         let span = FPGA_BLOCK_FRAMES / QUANTUM + 1;
         let iterations = 2;
         let callbacks = match pattern {
+            Pattern::Ddr => {
+                add(0, "cold-record-all", Action::Record, 0, LOOPS);
+                add(span, "play-all", Action::Play, 0, LOOPS);
+                add(span + 1, "stop-all", Action::Stop, 0, LOOPS);
+                add(span + 2, "reuse-record-all", Action::Record, 0, LOOPS);
+                add(span + 3, "stop-all", Action::Stop, 0, LOOPS);
+                span + 5
+            }
             Pattern::Stress => {
                 add(0, "cold-record-all", Action::Record, 0, LOOPS);
                 add(span, "play-all", Action::Play, 0, LOOPS);
