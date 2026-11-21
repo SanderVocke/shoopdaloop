@@ -178,13 +178,32 @@ pub struct Reference {
     pub loops: usize,
     pub frames: usize,
     pub has_midi: bool,
+    pub state_enabled: bool,
     inputs: Vec<Vec<Fixed>>,
 }
 impl Reference {
-    pub fn new(audio: bool, midi: bool, loops: usize, frames: usize) -> Self {
+    pub fn prepare(audio: bool, midi: bool, loops: usize, frames: usize, state: bool) -> Self {
         assert!((1..=64).contains(&loops) && (audio || midi));
         assert!(frames >= EVENT_PERIOD && frames % QUANTUM == 0);
-        let logical = logical(audio, midi, loops, frames);
+        let mut logical = logical(audio, midi, loops, frames);
+        if state && midi {
+            logical = logical
+                .with_midi_data(
+                    &(0..loops)
+                        .map(|slot| M::State {
+                            loop_id: Id {
+                                slot: slot as u32,
+                                generation: 1,
+                            },
+                            sequence: slot as u16,
+                            input: 0,
+                            outputs: 1 << (slot / 8),
+                            channels: 1 << (slot % 8),
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+        }
         let mut media = MediaStore::with_block_chunks(QUANTUM, 32).unwrap();
         let mut views = Vec::new();
         if audio {
@@ -221,9 +240,35 @@ impl Reference {
         })
         .unwrap();
         let mut memory = MidiMemory::prepare(limits(), 64).unwrap();
+        if state && midi {
+            memory.prepare_state(1, 8).unwrap();
+            for output in 0..8 {
+                let mut initial = rt_fpga_reference::midi::performance::State::new();
+                for ch in 0..8 {
+                    initial.set_word(ch * 512 + 129, 0x80000000 | 20).unwrap();
+                }
+                memory
+                    .expression
+                    .as_mut()
+                    .unwrap()
+                    .seed_output(output, &initial, &memory.store)
+                    .unwrap();
+            }
+            pipeline.prepare_midi_state(&mut memory).unwrap();
+        }
         if midi {
             for slot in 0..loops {
                 let view = memory.store.writer().unwrap();
+                if state {
+                    let mut initial = rt_fpga_reference::midi::performance::State::new();
+                    initial
+                        .set_word((slot % 8) * 512 + 129, 0x80000000 | 20)
+                        .unwrap();
+                    memory
+                        .store
+                        .seed_snapshot(view, &initial, 1 << (slot % 8))
+                        .unwrap();
+                }
                 for r in records(slot, frames) {
                     memory.store.append(view, r.frame, r.message).unwrap();
                 }
@@ -243,10 +288,71 @@ impl Reference {
             loops,
             frames,
             has_midi: midi,
+            state_enabled: state && midi,
             emitted: Vec::with_capacity(8192),
             outputs: vec![vec![Fixed::ZERO; QUANTUM]; if audio { 2 } else { 0 }],
             inputs: vec![vec![Fixed::ZERO; QUANTUM]; if audio { 2 } else { 0 }],
         }
+    }
+    pub fn musical_fixture(&mut self) {
+        use rt_fpga_reference::midi::performance::State;
+        let mut target = State::new();
+        target.known_reset(1);
+        for bytes in [
+            &[0xb0, 1, 20][..],
+            &[0xe0, 16, 78],
+            &[0xd0, 15],
+            &[0x90, 60, 80],
+            &[0xb0, 66, 127],
+            &[0xa0, 60, 40],
+        ] {
+            target.apply(Message::parse(bytes).unwrap());
+        }
+        let view = self.midi.store.writer().unwrap();
+        self.midi.store.seed_snapshot(view, &target, 1).unwrap();
+        for record in records(0, self.frames) {
+            self.midi
+                .store
+                .append(view, record.frame, record.message)
+                .unwrap();
+        }
+        self.midi.store.finish(view, self.frames as u64).unwrap();
+        self.pipeline
+            .replace_midi_view(&mut self.midi, id(0), SequenceId(0), Some(view))
+            .unwrap();
+        self.midi.store.release(view).unwrap();
+        self.midi.store.maintenance(64);
+        let mut current = State::new();
+        current.known_reset(1);
+        for ch in 0..8 {
+            current.set_word(ch * 512 + 129, 0x80000000 | 20).unwrap();
+        }
+        for bytes in [&[0x90, 67, 70][..], &[0xb0, 64, 127], &[0x80, 67, 0]] {
+            current.apply(Message::parse(bytes).unwrap());
+        }
+        self.midi
+            .expression
+            .as_mut()
+            .unwrap()
+            .seed_output(0, &current, &self.midi.store)
+            .unwrap();
+    }
+    pub fn command(&mut self, operation: Operation) {
+        self.pipeline
+            .write_plans(
+                id(0),
+                [
+                    Some(PlannedTransition {
+                        sequence: self.pipeline.state().frame() + 100,
+                        effective: self.pipeline.state().frame(),
+                        on_pulse: false,
+                        remaining_ticks: 0,
+                        operation,
+                    }),
+                    None,
+                ],
+            )
+            .unwrap();
     }
     pub fn play(&mut self) {
         for slot in 0..self.loops {
@@ -272,14 +378,23 @@ impl Reference {
     }
     pub fn callback(&mut self) {
         self.emitted.clear();
-        let inputs: Vec<_> = self.inputs.iter().map(Vec::as_slice).collect();
-        let mut outputs: Vec<_> = self.outputs.iter_mut().map(Vec::as_mut_slice).collect();
+        let input_refs = match self.inputs.as_slice() {
+            [l, r] => [l.as_slice(), r.as_slice()],
+            [] => [&[][..], &[][..]],
+            _ => unreachable!(),
+        };
+        let audio_ports = if self.outputs.is_empty() { 0 } else { 2 };
+        let mut output_refs = match self.outputs.as_mut_slice() {
+            [l, r] => [l.as_mut_slice(), r.as_mut_slice()],
+            [] => [&mut [][..], &mut [][..]],
+            _ => unreachable!(),
+        };
         self.pipeline
             .process_with_midi(
                 &mut self.jobs,
                 &mut self.audio,
-                &inputs,
-                &mut outputs,
+                &input_refs[..audio_ports],
+                &mut output_refs[..audio_ports],
                 QUANTUM,
                 &mut self.midi,
                 &[],

@@ -1,0 +1,16 @@
+{
+  "revision": "d2817befaf4a86cd15180ecb2509b7870bd18c60",
+  "working_tree": true,
+  "part": "xc7z020clg484-1",
+  "vivado": "2021.1",
+  "clock_mhz": 100,
+  "threads": 1,
+  "stage": "route",
+  "parameters": {
+    "LOOPS": 64,
+    "INPUTS": 1,
+    "DESTINATIONS": 8,
+    "VIEWS": 256
+  },
+  "scope": "isolated expression functional unit; registered live public boundaries; no pruning of commands or outputs"
+}

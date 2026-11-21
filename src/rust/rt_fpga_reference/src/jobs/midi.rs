@@ -53,6 +53,11 @@ impl JobProcessor {
                     .take_while(|(_, e)| (e.offset as usize) < base + self.quantum)
                 {
                     if event.input == port {
+                        if !buffers.observed_inputs[port as usize] {
+                            if let Some(state) = &mut io.memory.expression {
+                                state.observe_input(port, event.message)?;
+                            }
+                        }
                         buffers.push(Event {
                             offset: event.offset - base as u32,
                             source: 0x10000 | u32::from(port),
@@ -61,6 +66,7 @@ impl JobProcessor {
                         })?;
                     }
                 }
+                buffers.observed_inputs[port as usize] = true;
                 buffers.publish(destination, start);
             }
             Job::MidiReadView {
@@ -83,6 +89,7 @@ impl JobProcessor {
                     }
                     reader = midi::buffers::Cursor {
                         owner: Some(owner),
+                        sequence: Some(sequence),
                         view: Some(view),
                         index: if position == 0 {
                             0
@@ -127,6 +134,28 @@ impl JobProcessor {
                 }
                 buffers.cursors[at] = reader;
                 buffers.publish(destination, start);
+            }
+            Job::MidiRestoreState {
+                owner,
+                sequence,
+                position,
+            } => {
+                let view = io.memory.view(sequence)?.ok_or(Error::InvalidState)?;
+                let state = io.memory.expression.as_mut().ok_or(Error::InvalidState)?;
+                state.validate_owner(sequence.0, owner)?;
+                state.restore(
+                    sequence.0,
+                    view,
+                    position,
+                    base as u32,
+                    &io.memory.store,
+                    &mut io.sink,
+                )?;
+            }
+            Job::MidiCleanupState { owner, sequence } => {
+                let state = io.memory.expression.as_mut().ok_or(Error::InvalidState)?;
+                state.validate_owner(sequence.0, owner)?;
+                state.cleanup(sequence.0, base as u32, &io.memory.store, &mut io.sink)?;
             }
             Job::MidiBeginCapture { sequence } => io.memory.begin_capture(sequence)?,
             Job::MidiFinishCapture { sequence } => io.memory.finish_capture(sequence)?,
@@ -210,6 +239,18 @@ impl JobProcessor {
                             .ok_or(Error::Overflow)?,
                         message: event.message,
                     })?;
+                    if let Some(state) = &mut io.memory.expression {
+                        let owner = if event.source < 0x10000 {
+                            buffers
+                                .cursors
+                                .get(event.source as usize)
+                                .and_then(|c| c.sequence)
+                                .map(|s| s.0)
+                        } else {
+                            None
+                        };
+                        state.accept(port, event.message, owner, &io.memory.store)?;
+                    }
                     buffers.work.output_events += 1;
                 }
             }

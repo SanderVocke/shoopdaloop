@@ -34,6 +34,7 @@ module midi_audio_pipeline #(
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000,
     parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h100000000,
+    parameter integer MIDI_STATE_SUPPORTED = 0,
     parameter integer MIDI_LOOPS = 128,
     parameter integer MIDI_INPUTS = 1,
     parameter integer MIDI_DESTINATIONS = 8,
@@ -521,6 +522,7 @@ module midi_audio_pipeline #(
         .m_axi_rready(m_axi_rready)
     );
     midi_data_jobs #(
+        .STATE_SUPPORTED(MIDI_STATE_SUPPORTED),
         .LOOPS(MIDI_LOOPS),
         .INPUTS(MIDI_INPUTS),
         .DESTINATIONS(MIDI_DESTINATIONS),

@@ -6,8 +6,10 @@ lang: en
 
 # System architecture
 
-This reference describes the RTL at `feat/backend-replacement` revision
-`cc410f27`. For each processing quantum, the **state processor (SP)**
+This reference describes the shared audio/event pipeline at
+`feat/backend-replacement` revision `cc410f27`, extended with the optional MIDI
+expression-state implementation at `462ce74e`. Source links pin the relevant
+revision. For each processing quantum, the **state processor (SP)**
 determines which loops are playing or recording and where they are in their
 content. It writes an ordered list of jobs for the **job processor (JP)**,
 which processes samples and packets using the on-chip audio buffers and
@@ -64,15 +66,15 @@ to follow.
 | Audio allocation block | Contiguous group of physical chunks with one ownership count. Default geometry uses 32 chunks per block. |
 | MIDI event block | Fixed capacity measured in events. Event timestamps and view duration remain measured in frames. |
 
-Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/FPGA_ARCHITECTURE.md) · [Mixed top](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_audio_pipeline_axi.sv) · [Pipeline controller](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/job_processor/rtl/audio_pipeline.sv)
+Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/FPGA_ARCHITECTURE.md) · [Mixed top](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_audio_pipeline_axi.sv) · [Pipeline controller](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/job_processor/rtl/audio_pipeline.sv)
 
 # State processor
 
 The program has a sync prefix and a work section. The prefix executes one
 `ProcessLoop` instruction per loop. After the prefix, a capture prepass
-scans the work section for MIDI Capture instructions and queues writer
-transitions. SP then walks the work section again to build the audio and
-MIDI data jobs. All three scans use the same `sp_engine` hardware, including
+scans the work section for MIDI Capture and State instructions and queues
+writer transitions and optional state restore/cleanup jobs. SP then walks the
+work section again to build the audio and MIDI data jobs. All three scans use the same `sp_engine` hardware, including
 its instruction controller, working registers and 65-bit adder.
 
 ![Figure 2. One engine runs the sync prefix, capture prepass and data pass. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
@@ -213,7 +215,7 @@ payloads. Reload required records before resuming managed execution.
 | `read_intent_*` | Advisory pulse on playback enqueue, with no ready input. |
 | `sync_event_*` | Ready/valid events, held until accepted. |
 
-Sources. [SP RTL](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/state_processor.sv) · [Executor](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/sp_engine.sv) · [Loop RAM layout](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/sp_loop_defs.svh) · [Instruction and port specification](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/README.md)
+Sources. [SP RTL](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/state_processor.sv) · [Executor](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/sp_engine.sv) · [Loop RAM layout](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/sp_loop_defs.svh) · [Instruction and port specification](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/README.md)
 
 # Job processor
 
@@ -258,7 +260,7 @@ ends SP execution. `jobs_done` ends JP execution. Check the pipeline
 `midi_error_code` for the cause of a MIDI failure. A failed MIDI job ends
 the JP pass with `INVALID_JOB` and invalidates the quantum.
 
-Sources. [JP RTL](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/job_processor/rtl/job_processor.sv) · [Audio job arithmetic and interfaces](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/job_processor/README.md)
+Sources. [JP RTL](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/job_processor/rtl/job_processor.sv) · [Audio job arithmetic and interfaces](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/job_processor/README.md)
 
 # Audio media and caches
 
@@ -374,9 +376,11 @@ MIDI uses the same SP, job FIFO and JP as audio. SP chooses when a loop
 records, plays, wraps, stops or seeks. JP dispatches MIDI jobs to
 `midi_data_jobs`, a directly sequenced functional unit with a content-store
 controller. MIDI data jobs read and write lists of complete timestamped
-messages. A Stop changes the loop mode and can finalize a take. It sends
-no automatic Note Off, pedal release or controller correction. The stored
-message bytes are what playback sends.
+messages. In default raw event mode, Stop changes the loop mode and can finalize
+a take, with no automatic Note Off, pedal release or controller correction.
+The optional expression-state extension adds snapshots and explicit JP repair
+jobs, as described in the next chapter. Stored event bytes keep their normal
+playback meaning in either mode.
 
 ![Figure 7. SP puts recording transitions before data jobs. JP moves timestamped event lists through a shared DDR scratch arena and keeps list descriptors and reader cursors on chip.](figures/midi.svg)
 
@@ -390,8 +394,10 @@ message bytes are what playback sends.
    Sort the array by offset, keep offsets below Q, and preserve it until
    completion.
 2. **Settle loop timing and queue writer transitions.** SP runs its sync
-   prefix. It then scans the work program for MIDI Capture instructions
-   and queues FinishCapture or BeginCapture as needed. The writer-open
+   prefix. It then scans the work program for MIDI Capture and State instructions
+   and queues FinishCapture or BeginCapture as needed. With prepared state
+   bindings, the prepass also visits MIDI State instructions and queues Restore
+   or Cleanup ahead of the ordinary data jobs. The writer-open
    bit in SP loop RAM records the intended writer lifecycle. This pass
    completes before any regular data job is queued.
 3. **Queue and execute the data jobs.** SP walks the regular work pass in
@@ -413,7 +419,8 @@ message bytes are what playback sends.
 | MIDI Append | Source scratch list and recording interval | Timestamped records and the writer's new duration |
 | MIDI FinishCapture | Open writer and its accumulated duration | A completed view that a later Read can use |
 | MIDI Merge | Two ready scratch lists | One sorted list, or an alias of the nonempty input |
-| MIDI Output | One ready scratch list | Packet handshakes for the selected output port |
+| MIDI Output | One ready scratch list | Packet handshakes for the selected output port; optional accepted-output tracking |
+| MIDI Restore / Cleanup | Prepared binding, current output state, snapshot/differences or owned activity | Ordered correction packets and updated tracking state; requires the state extension |
 
 ## Variable event counts and the job budget
 
@@ -426,7 +433,8 @@ places no per-quantum event limit on the run.
 The compiler reserves one job for each MIDI Input, Playback, Merge, or
 Output instruction, and up to three for each MIDI Capture instruction.
 Three slots cover a retake that finishes an old writer, begins a new
-one and appends a list. This sizing depends on the graph. A burst makes
+one and appends a list. Reserve one additional job per MIDI State instruction
+for its possible Restore or Cleanup. This sizing depends on the graph. A burst makes
 the jobs run longer without adding FIFO descriptors. The RTL component
 tests record and play 3,000 messages at one sample offset and separately
 merge 1,200 messages. At the default block geometry, 3,000 stored events
@@ -477,8 +485,9 @@ The separate audio path keeps its sample and metadata caches.
 The MIDI unit holds destination, offset, length and packet bytes stable
 until `midi_packet_valid && midi_packet_ready`. A high
 `midi_packet_refused` on that transfer faults JP. Previously accepted
-packets remain delivered. There is no instrument-state tracking or
-restoration traffic.
+packets remain delivered. Raw mode has no instrument-state traffic. With the
+state extension, accepted packets also update output state and comparisons;
+restoration packets use the same acceptance rules.
 
 Malformed staged input reports an error before SP advances and can be
 corrected and retried. A memory fault during validation, a failed job,
@@ -502,7 +511,214 @@ A compatible live-loading switch preserves the sequence and cursor
 IDs it carries forward. The loading caller is responsible for preserving
 an open writer's binding across the handoff.
 
-Sources. [MIDI protocol](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/PROTOCOL.md) · [Mixed wrapper](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_audio_pipeline.sv) · [Data-job RTL](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_data_jobs.sv) · [Current validation](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/docs/fpga/midi-data-jobs.md)
+Sources. [MIDI protocol](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/PROTOCOL.md) · [Mixed wrapper](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_audio_pipeline.sv) · [Data-job RTL](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_data_jobs.sv) · [Event-only baseline validation](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/docs/fpga/midi-data-jobs.md)
+
+# MIDI expression state and restoration
+
+A MIDI recording contains messages, such as “press C” or “move the modulation
+wheel to 20”. An instrument also remembers earlier messages. A note can already
+be held when recording starts, or playback can leave a pedal down at the end of
+a loop. **Expression state** models that remembered musical condition. It is
+separate from SP's loop state, which says whether a loop is playing and where it
+is in its recording.
+
+The optional state extension restores selected musical expression. Enable
+`MIDI_STATE_SUPPORTED=1` on the mixed top (`STATE_SUPPORTED` on the data-job
+unit). Raw event mode remains the default. The loader prepares state bindings
+and a fresh arena for this image. After Format, control command 31 returns
+`0x45580100` for the state-capable ABI, or Unsupported for a raw-only image.
+Do not reuse a formatted arena between the two layouts. Hardware support alone
+does not choose a recording source or output scope: the prepared bindings and
+compiled MIDI State instructions supply those choices.
+
+![Figure 8. Starting state belongs to a content view, current state belongs to an output, and difference bits belong to a sequence/output pair. Accepted restoration packets pass through the same tracking path as ordinary output.](figures/midi-expression.svg)
+
+## Who owns each kind of state
+
+| Owner | Stored information | Lifetime and purpose |
+| --- | --- | --- |
+| Input port | The last observed musical state of that source | MIDI Input jobs observe each source once per quantum, including while loops are stopped. This supplies the next recording's starting condition. |
+| Content view | An immutable starting-state snapshot, with known/unknown fields | Captured before that take's first quantum of input is applied. It remains attached to the view generation, including an empty take. Retained exports keep the old snapshot across retakes. |
+| Output port | The modeled current state of the accepted output stream | Shared by everything routed to that output. It advances after ordinary and corrective packets are accepted. It is independent of the input state. |
+| Sequence/output pair | Difference bits relative to that sequence's current view snapshot | One bit per field, plus summaries and counts. These are neither per-event-block state nor stored lists of correction messages. |
+| Sequence/output pair | Note and hold-pedal ownership for cleanup | Records playback activity actually emitted by this owner, including repairs. It has a different purpose from the difference bits. |
+| Active seek job | One temporary target state and comparison workspace | Builds the musical condition at a nonzero position without changing the immutable starting snapshot. The shared JP serializes this work. |
+
+A binding identifies the loop slot and generation, sequence, direct input,
+output-port mask and MIDI-channel mask. The compiler puts MIDI State
+instructions after all Capture instructions. The loader installs matching
+bindings with command 21 before rendering. SP uses loop RAM to decide when to
+queue Restore or Cleanup; `midi_expression_state` performs the data work under
+the same JP used for audio. It adds no separate instruction processor or MIDI
+scheduler. The State instruction does not rebuild the routing directory every
+quantum.
+
+## How differences stay up to date
+
+For example, a view's snapshot says modulation wheel = 20, but another source
+sends value 90 to its output. After that packet is accepted:
+
+1. Update that output's current wheel value to 90.
+2. Use the output/channel directory to find only the relevant bound sequences.
+3. Compare this changed field with each sequence's known snapshot value. Set
+   its difference bit when they disagree, and clear it when they agree.
+4. Update the small count and nonempty-word summaries for those maps.
+
+A later value of 40 leaves the same bit set; it does not accumulate correction
+packets. A return to 20 clears the bit immediately. On restore, a dirty wheel
+field can generate one CC message with value 20. Matching fields emit nothing.
+That correction also updates the current output and every relevant comparison,
+so it can clear or create differences for other loops sharing the channel.
+
+Ordinary changes inspect the changed fields and relevant trackers, rather than
+comparing every loop's entire state. A pedal edge or reset can affect a channel's
+128 keys, so those messages require more work. A clean restore checks on-chip
+counts and performs no state DDR transfers.
+
+**Unknown is different from zero.** Only observed or explicitly seeded target
+values are restored. A previously unseen control is not assumed to have a reset
+value. A known target silence with unknown current note state can require a
+conservative Note Off. The engine has no instrument readback: output acceptance
+means the downstream interface accepted a packet, not that the synthesizer
+confirmed its sound. Traffic sent around the engine is outside this model.
+
+## Recording, playback and content changes
+
+| Operation | State behaviour |
+| --- | --- |
+| Begin recording | Copy the bound input context before processing that quantum's input events, then seal the snapshot. An event at offset zero belongs to the recording, not to its earlier starting state. |
+| First play or restart | SP queues Restore before the regular event jobs. Repair the known target differences, then play the recorded events. Corrections use quantum offset zero. |
+| Repeat/wrap | Restore the starting state again before the new interval's ordinary events. A matching starting note can continue without an artificial off/on. |
+| Explicit retrigger | Restart the reader and restore differences. Matching starting notes are not forcibly reattacked; a replayed recorded Note On still acts normally. |
+| Nonzero seek | Start with the view snapshot and apply stored events strictly before the requested position to a temporary target. Restore that target before reading the new interval. Events exactly at the position remain ordinary playback events. Persistent difference maps continue to describe the view start. |
+| Stop, enter recording, or leave active playback | Queue Cleanup once for the previous playback owner. Release its owned hold pedals and send Note Off for its still-active owned notes. Other controller values remain at their last output values. |
+| Duplicate or retained export | Share or retain the content view and its snapshot. A second sequence has its own output comparisons and cleanup activity. |
+| Create range | Derive a new starting snapshot by applying the source prefix before the range's start. The rebased event content can still share storage blocks. |
+| Replace, clear, or retake | Update the sequence's snapshot association and refresh comparisons. A retained old view keeps its snapshot. Follow the stopped-loop publication handshake in the MIDI storage chapter. |
+
+A note that already matched the starting snapshot and merely continued is not
+newly claimed for stop cleanup. For example, stopping a loop need not release a
+player's unchanged live note just because that note was present at loop start.
+A stop with no owned notes or hold pedals needs no cleanup packets.
+
+Direct-input recording uses its explicitly bound source context. The engine does
+not infer the complete musical state of an arbitrary merged routing graph.
+For imported or merged-source content, provide a meaningful initial seed or
+accept unknown fields. Raw event recording/playback still works for unknown
+state. Snapshot seeding is allowed only on an empty, unsealed writer before its
+first recorded event; a captured snapshot is already sealed even for an empty
+take. Completed snapshots are immutable.
+
+## Musical behaviour supported
+
+Each output has 16 MIDI channels, with one logical voice per channel/key and
+128 keys per channel. The model remembers a sounding note's Note On velocity,
+whether the key is down, whether sustain or sostenuto holds it, and known
+per-note pressure.
+
+| Message or condition | Tracking and restoration behaviour |
+| --- | --- |
+| Note On / Note Off | Note On velocity zero is Note Off. A new Note On replaces that key's logical voice and initializes modeled per-note pressure to zero. Release velocity is not retained; generated Note Off uses velocity zero. Overlapping same-key Note Ons are not a counted stack of voices. |
+| Sustain, CC64 | Values 64–127 mean down; 0–63 mean up. Releasing a key under sustain can leave it sounding. Raising the pedal removes that hold. |
+| Sostenuto, CC66 | An up-to-down edge captures the keys currently down. Notes played later are not captured by that edge. Repeated down values do not capture additional keys. Raising the pedal removes the capture hold. |
+| Soft pedal, CC67 | Restore its known value as a sound control. It does not create note-holding membership in the model. |
+| Pitch bend | Restore the known 14-bit value per channel. |
+| Channel pressure | Restore the known 7-bit channel value. A pressure-only difference does not restart notes. |
+| Polyphonic pressure | Track pressure for an active logical voice and restore its known 7-bit value after note reconstruction. A pressure-only difference does not restart notes. |
+| Other selected controls | Restore known 7-bit absolute values under the output's controller policy. |
+
+The default restored controllers are:
+
+| CC | Meaning | CC | Meaning |
+| ---: | --- | ---: | --- |
+| 1 | Modulation wheel | 11 | Expression |
+| 2 | Breath | 64 | Sustain |
+| 4 | Foot controller | 66 | Sostenuto |
+| 67 | Soft pedal | 74 | Brightness / sound control |
+
+Policy command 23 can select additional ordinary absolute CCs from **1–5,
+7–31, 64–68, 70–95 and 102–119**, for example volume CC7 or pan CC10. Sustain
+and sostenuto remain managed even if their policy bits are omitted. Notes,
+pitch and pressure remain managed within the binding's channel scope. Ordinary
+CC values can be observed even when not selected for restoration; policy changes
+refresh the comparisons between quanta.
+
+Bank/program selection, RPN/NRPN and data-entry transactions, tuning, device
+configuration, SysEx and paired high-resolution controller restoration are outside
+this contract. A selected high-resolution controller's coarse CC is treated as
+an independent 7-bit value; its fine CC is not paired with it. Supported packet
+bytes are still recorded and replayed even when their meaning is not restored.
+SysEx and byte-stream running status remain outside the packet interface itself.
+Instrument configuration is assumed stable while restoring musical expression.
+
+## Observed panic and reset messages
+
+These messages affect the model when observed on an input or accepted on an
+output. Routine restoration and cleanup use specific note/pedal repairs rather
+than generating a channel-wide panic command.
+
+| Received message | Model effect |
+| --- | --- |
+| CC120, All Sound Off | Mark all voices on that channel silent; preserve controller values. |
+| CC123, All Notes Off | Release known keys under the existing pedals. Pedal-held voices can continue. CC124–127 are modeled with the same release effect; omni/mono/poly configuration is not restored. |
+| CC121, Reset All Controllers | Release pedal-only holds and retain keys still down. Set pitch to 8192, channel/per-note pressure to zero, CC1 and CC64–67 to zero, and CC11 to 127. Preserve CC7, CC10 and CC91–95; other ordinary controller values become unknown. |
+| `0xff`, System Reset | Silence all modeled voices on all 16 channels. Establish the same pitch/pressure and CC1/64–67/11 defaults; other ordinary controller values become unknown. This is a musical-state approximation, not a device configuration reset model. |
+
+Other accepted system packets, including MIDI Clock, Start, Continue and Stop,
+remain event data. MIDI Stop `0xfc` does not apply an SP Stop plan.
+
+## How repair packets are ordered
+
+A controller-only repair sends differing managed controls. A simple note repair
+can use targeted Note Off/On. If pedal capture or holding relationships need
+reconstruction, the unit conservatively rebuilds the affected channel:
+
+1. Release current sustain/sostenuto and turn off the relevant sounding notes.
+2. Restore sound controls, pitch, channel pressure and sustain, deferring
+   sostenuto until its capture set is ready.
+3. Start the notes that must belong to the sostenuto capture set, then restore
+   sostenuto so that those keys are captured.
+4. Start the remaining notes. Send Note Off for target notes whose keys should
+   be up but whose sound should remain held by a pedal.
+5. Restore known per-note pressure.
+
+Unknown target fields retain modeled current values during reconstruction.
+This procedure can reattack otherwise matching notes on that channel. It aims
+for reasonable musical expression, not envelope/oscillator preservation or a
+provably shortest packet sequence. The straightforward controller-only case
+still avoids a full-state dump.
+
+## Work, memory and integration limits
+
+Bulk input/output state, per-view snapshots, difference words and ownership words
+live in DDR. Small binding tables, output/channel directories, counts, view masks
+and two working channel images use on-chip memory. All state requests reuse one
+region/slot/offset address path and one acknowledged word-memory interface.
+RTL serializes those accesses; Rust keeps ordinary prepared indexed arrays.
+Appendix E gives the exact RTL layout and control encoding.
+
+The directory skips unrelated outputs/channels; it does not make fan-out free.
+A changed field can require updating every relevant loop's comparison. Pedal
+edges and channel reconstruction can inspect 128 keys. Nonzero seeks interpret
+the event prefix, and range creation derives its starting state similarly.
+These are finite, best-effort operations, with no additional 256-message limit
+per quantum. A long seek or cold start can exceed the processing deadline.
+
+Packets keep the ordinary ready/valid and refusal rules. Accepting a correction
+updates the modeled output, comparisons and ownership before work continues.
+Earlier accepted packets are not rolled back after a later refusal. A DDR fault
+can interrupt tracking itself: the connected engine then requires reset and
+fresh preparation, not continued use of half-updated comparisons.
+
+Shared channels represent one physical musical state. Loops cannot have
+independent pedals or independent same-key voices there, and one loop's cleanup
+can affect another source using those notes/pedals. Use separate output/channel
+assignments where independent articulation is required. Existing bindings must
+remain identical across live program switches; changing them requires stopped
+execution and fresh preparation. The mixed core's low-level state controls are
+not an application MIDI frontend or an ARM mailbox extension.
+
+Sources. [State data unit](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_expression_state.sv) · [Shared-JP integration](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_data_jobs.sv) · [Rust musical rules](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/src/rust/rt_fpga_reference/src/midi/performance.rs) · [State ownership and tracking](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/src/rust/rt_fpga_reference/src/midi/expression.rs) · [Contract and hardware measurements](https://github.com/SanderVocke/shoopdaloop/blob/0a94aa7a/docs/fpga/midi-expression-hardware.md)
 
 # Marlin and ARM interfaces
 
@@ -512,7 +728,7 @@ contract. The mixed core independently exposes MIDI packet, command,
 publication and memory ports. Connecting them to application device routing,
 ARM configuration, and SoC DDR arbitration is a separate integration step.
 
-![Figure 8. The direct Marlin test path exposes component signals. The audio host path carries control through AXI-Lite and storage traffic through a separate AXI port.](figures/host.svg)
+![Figure 9. The direct Marlin test path exposes component signals. The audio host path carries control through AXI-Lite and storage traffic through a separate AXI port.](figures/host.svg)
 
 ## Marlin component and mailbox tests
 
@@ -593,6 +809,7 @@ revision, event count and the audio bank release.
 | Did the compiled sequence drive the intended jobs and produce the right samples? | `state`, `audio`, `pipeline`, and mixed `midi` tests |
 | Did the second read observe intervening writes? | `chunk`, `metadata`, `ownership` and `deferred` tests |
 | Did ownership survive a switch at the intended frame? | `loading` and `shoop_rt_host_marlin` mailbox tests |
+| Did snapshots and musical repairs agree, including held pedals and shared outputs? | `midi_expression` RTL suite and Rust `midi_expression` tests |
 | Did a memory or output stall cause a problem? | `axi` and `midi` tests with delayed responses and refusal cases |
 | Is the implementation fast enough for the target profile? | Routed timing report, cycle counts per tested quantum, then measured device deadlines |
 
@@ -601,6 +818,8 @@ Run individual suites from the repository root.
 ```sh
 cargo test --locked -p rt_fpga_testbench --features sim --test sync
 cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=2
+cargo test --locked -p rt_fpga_testbench --features sim --test midi_expression
+cargo test --locked -p rt_fpga_reference --test midi_expression
 cargo test --locked -p rt_fpga_rtl --test midi_target
 cargo test --locked -p shoop_rt_host_marlin --features sim --test mailbox_endpoint
 ```
@@ -612,4 +831,10 @@ backpressure and device cadence. At 48 kHz, Q=32 offers about 667 µs between
 audio quanta. Compare the available time to the full service interval,
 including bank handoff, under the intended workload.
 
-Sources. [Testbench and reproduction commands](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/src/rust/rt_fpga_testbench/README.md) · [Current MIDI RTL validation and Vivado measurements](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/docs/fpga/midi-data-jobs.md) · [64-loop quantum measurements](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/docs/fpga/midi-data-jobs-benchmarks.md)
+State-specific fixtures compare compiled SP/JP jobs, accepted corrective packets,
+snapshots and difference maps against Rust. They include all supported quanta,
+32/64-bit AXI stalls, a refused correction, generation validation, and retained
+content across replacement. See the [state measurement report](https://github.com/SanderVocke/shoopdaloop/blob/0a94aa7a/docs/fpga/midi-expression-hardware.md)
+for nominal cycle times, deadline misses and routed 100/150 MHz results.
+
+Sources. [Testbench and reproduction commands](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/src/rust/rt_fpga_testbench/README.md) · [Event-only MIDI RTL validation and measurements](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/docs/fpga/midi-data-jobs.md) · [Event-only 64-loop quantum measurements](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/docs/fpga/midi-data-jobs-benchmarks.md)

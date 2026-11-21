@@ -60,6 +60,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new(q: u32, mixed: bool) -> Self {
+        Self::build(q, mixed, false)
+    }
+    fn build(q: u32, mixed: bool, state: bool) -> Self {
         let mut logical = programs::mono_loops(q, 2);
         if !mixed {
             logical.work_pass.clear();
@@ -108,7 +111,19 @@ impl Fixture {
             },
             M::Output { source: 4, port: 0 },
         ];
-        let logical = logical.with_midi_data(&operations).unwrap();
+        let mut logical = logical.with_midi_data(&operations).unwrap();
+        if state {
+            let states: Vec<_> = (0..2)
+                .map(|n| M::State {
+                    loop_id: logical.loops[n].id,
+                    sequence: n as u16,
+                    input: n as u16,
+                    outputs: 1,
+                    channels: 1 << n,
+                })
+                .collect();
+            logical = logical.with_midi_data(&states).unwrap();
+        }
         let mut audio = MediaStore::new(q as usize).unwrap();
         let views: Vec<_> = (0..2)
             .map(|_| audio.create_recording().unwrap().0 as u64)
@@ -139,11 +154,16 @@ impl Fixture {
             output_ports: 2,
         })
         .unwrap();
+        let mut midi = MidiMemory::prepare(limits(), 2).unwrap();
+        if state {
+            midi.prepare_state(2, 2).unwrap();
+            pipeline.prepare_midi_state(&mut midi).unwrap();
+        }
         Self {
             pipeline,
             jobs,
             audio,
-            midi: MidiMemory::prepare(limits(), 2).unwrap(),
+            midi,
             emitted: Vec::with_capacity(8192),
             mixed,
             q: q as usize,
@@ -677,4 +697,116 @@ fn content_publication_checks_loop_binding_and_is_atomic_on_rejection() {
     assert_eq!(f.midi.view(SequenceId(0)).unwrap(), Some(a));
     f.tick(&[]);
     assert_eq!(f.emitted.len(), 1);
+}
+
+#[shoop_test]
+fn compiled_expression_snapshots_precede_recording_and_restore_before_events() {
+    for q in [1, 16, 32, 64, 128] {
+        for mixed in [false, true] {
+            let mut f = Fixture::build(q, mixed, true);
+            f.pipeline.trace_jobs(true);
+            f.tick(&[event(0, 0, &[0xb0, 1, 20]), event(0, 0, &[0x90, 60, 80])]);
+            f.mode(0, Mode::Recording);
+            f.tick(&[event(0, 0, &[0xb0, 1, 90]), event(0, 0, &[0x80, 60, 0])]);
+            let view = f.midi.view(SequenceId(0)).unwrap().unwrap();
+            let snapshot = f.midi.store.snapshot(view).unwrap();
+            assert_eq!(snapshot.word(129) & 127, 20);
+            assert_eq!(snapshot.word(60) & 127, 80);
+            f.mode(0, Mode::Playing);
+            assert_no_heap(|| {
+                f.tick(&[]);
+            });
+            assert_eq!(
+                f.emitted
+                    .iter()
+                    .map(|e| e.message.as_bytes().to_vec())
+                    .collect::<Vec<_>>(),
+                vec![
+                    vec![0xb0, 1, 20],
+                    vec![0x90, 60, 80],
+                    vec![0xb0, 1, 90],
+                    vec![0x80, 60, 0]
+                ]
+            );
+            let jobs = f.pipeline.emitted_jobs();
+            let finish = jobs
+                .iter()
+                .position(|j| matches!(j, Job::MidiFinishCapture { .. }))
+                .unwrap();
+            let restore = jobs
+                .iter()
+                .position(|j| matches!(j, Job::MidiRestoreState { .. }))
+                .unwrap();
+            let read = jobs
+                .iter()
+                .position(|j| matches!(j, Job::MidiReadView { .. }))
+                .unwrap();
+            assert!(finish < restore && restore < read);
+            f.tick(&[]);
+            assert_eq!(f.emitted.len(), 4);
+            f.mode(0, Mode::Stopped);
+            f.tick(&[]);
+            assert!(f.emitted.is_empty());
+        }
+    }
+}
+
+#[shoop_test]
+fn compiled_state_stop_targets_held_playback_activity_and_checks_owner_generation() {
+    let mut f = Fixture::build(32, false, true);
+    f.tick(&[event(0, 0, &[0xb0, 1, 20])]);
+    f.mode(0, Mode::Recording);
+    f.tick(&[
+        event(0, 0, &[0x90, 60, 80]),
+        event(0, 1, &[0xb0, 64, 127]),
+        event(0, 2, &[0x80, 60, 0]),
+    ]);
+    f.mode(0, Mode::Playing);
+    f.tick(&[]);
+    assert_eq!(
+        f.midi
+            .expression
+            .as_ref()
+            .unwrap()
+            .output(0)
+            .unwrap()
+            .word(60)
+            & 127,
+        80
+    );
+    f.mode(0, Mode::Stopped);
+    assert_no_heap(|| {
+        f.tick(&[]);
+    });
+    assert_eq!(
+        f.emitted
+            .iter()
+            .map(|e| e.message.as_bytes().to_vec())
+            .collect::<Vec<_>>(),
+        vec![vec![0xb0, 64, 0]]
+    );
+    assert_eq!(
+        f.midi
+            .expression
+            .as_ref()
+            .unwrap()
+            .output(0)
+            .unwrap()
+            .word(60)
+            & 127,
+        0
+    );
+    assert!(f
+        .midi
+        .expression
+        .as_ref()
+        .unwrap()
+        .validate_owner(
+            0,
+            LoopId {
+                slot: 0,
+                generation: 2
+            }
+        )
+        .is_err());
 }

@@ -24,7 +24,7 @@ writes, which buffers to merge, and which output receives a buffer. SP turns the
 instructions into jobs with concrete positions and lengths. JP never decides a
 loop's mode, advances its musical clock, or reconciles a second copy of that state.
 
-SP holds one MIDI-specific flag per loop: whether a recording writer is open.
+SP holds MIDI flags for an open recording writer and optional playback-state activity.
 It queues begin/finish jobs only when necessary. These jobs precede the ordinary
 data jobs, so a recording can become playable in the same quantum. A graph switch
 may keep an open writer, but cannot remove or rebind it until recording finishes.
@@ -118,11 +118,16 @@ Supported:
   quantum-aligned view to a matching stopped loop and sequence slot.
 - Multi-quantum callbacks with sample-relative input and output timestamps.
 
-Deliberately absent: instrument-state snapshots, differences, restoration, note
-ownership, automatic note-off/pedal cleanup, history capture/grab integration,
-overdub editing, and the former session/group-control API. Stopping playback emits
-no correction messages. SysEx and MIDI byte-stream decoding/running status are not
-implemented; callers supply complete short messages with explicit status bytes.
+Optional expression-state support adds starting snapshots, incremental comparison
+maps, restoration, and targeted note/pedal cleanup. Prepare `MidiMemory` state and
+compiled bindings outside rendering. SP submits `MidiRestoreState` and
+`MidiCleanupState` jobs. The [state contract](../../../../../docs/fpga/midi-expression-state.md)
+describes coverage, ownership and musical approximations. Raw event mode still
+stops without correction messages.
+
+History/grab, overdub editing, the former group-control API, SysEx and byte-stream
+decoding/running status remain outside scope; callers supply complete short
+messages with explicit status bytes.
 The application's host control endpoint is not wired to this new MIDI path yet.
 
 There is no fixed number of MIDI messages allowed per quantum and no instruction

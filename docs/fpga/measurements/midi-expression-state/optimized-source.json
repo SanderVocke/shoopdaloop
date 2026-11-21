@@ -1,0 +1,17 @@
+{
+  "revision": "462ce74ef733e76eaebc24ab730e5b72b6b91b42",
+  "rtl_state_sha256": "445a719d4cb2b8846fa0d942ff795a48cd8ef50d2ab5fbba7f85f4da8b78d20a",
+  "current_runs": [
+    "mixed-on-delay0.json",
+    "mixed-on-delay7.json",
+    "midi-on-delay0.json",
+    "midi-on-delay7.json",
+    "musical-delay0.json",
+    "musical-delay7.json",
+    "tracker-scaling-optimized.json"
+  ],
+  "retained_controls": "*-off-* and CPU samples predate the hardware-only optimization; see README",
+  "native_tests": 112,
+  "rtl_expression_tests": 5,
+  "verification": "compiled SP/shared-JP jobs and MIDI/audio output checked against Rust; independent note/pedal receiver fixtures; no GitHub CI/review gate"
+}

@@ -1,5 +1,6 @@
 `include "state_processor_defs.svh"
 module midi_data_jobs #(
+    parameter integer STATE_SUPPORTED=0,
     parameter integer LOOPS=128, INPUTS=1, DESTINATIONS=8,
     parameter integer BUFFERS=256, CURSORS=128, SCRATCH_EVENTS=131072,
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
@@ -24,7 +25,7 @@ module midi_data_jobs #(
     output reg [31:0] response_count, output reg [23:0] response_packet, output reg [1:0] response_length,
     output wire packet_valid, input wire packet_ready, input wire packet_refused,
     output wire [23:0] packet_data, output wire [1:0] packet_length,
-    output reg [31:0] packet_destination, output wire [31:0] packet_offset,
+    output wire [31:0] packet_destination, output wire [31:0] packet_offset,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
     input wire memory_response_valid, output wire memory_response_ready,
@@ -34,7 +35,9 @@ module midi_data_jobs #(
     localparam [63:0] RAW_CONTENT_BYTES=64'(VIEWS)*64+64'(VIEWS)*64'(TABLE_ENTRIES)*4+
         64'(BLOCKS)*8+64'(BLOCKS)*64'(BLOCK_EVENTS)*16+64'(RETIREMENTS)*8;
     localparam [63:0] CONTENT_BYTES=(RAW_CONTENT_BYTES+15)&~64'd15;
-    assign arena_bytes=CONTENT_BYTES+64'(SCRATCH_EVENTS)*16;
+    localparam [63:0] STATE_BASE=CONTENT_BYTES+64'(SCRATCH_EVENTS)*16;
+    assign arena_bytes=STATE_BASE+expression_bytes;
+    localparam integer INPUT_BITS=INPUTS>1 ? $clog2(INPUTS) : 1;
     localparam integer SEQ_BITS=LOOPS>1 ? $clog2(LOOPS) : 1;
     localparam integer BUFFER_BITS=BUFFERS>1 ? $clog2(BUFFERS) : 1;
     localparam integer CURSOR_BITS=CURSORS>1 ? $clog2(CURSORS) : 1;
@@ -55,7 +58,10 @@ module midi_data_jobs #(
         OUTPUT_BUFFER, OUTPUT_NEXT, OUTPUT_SEND,
         CONTROL_SEQUENCE, CONTROL_DUPLICATE, REPLACE_SEQUENCE, REPLACE_DESCRIBED,
         REPLACE_CHECK_OLD, REPLACE_OLD_DESCRIBED, REPLACE_RETAIN, REPLACE_RELEASE, REPLACE_WRITE, REPLACE_PUBLISH,
-        EXPORT_SEQUENCE, EXPORT_DESCRIBED, EXPORT_RETAINED, CONTROL_RESULT
+        EXPORT_SEQUENCE, EXPORT_DESCRIBED, EXPORT_RETAINED, CONTROL_RESULT,
+        EXPR_REPLACE, EXPR_REQUEST, EXPR_WAIT, EXPR_EVENT_REPLY, EXPR_JOB, EXPR_BIND, EXPR_RESULT,
+        EXPR_SEED_CHECK, INPUT_OBSERVED, OUTPUT_ADVANCE, BEGIN_PUBLISH, FORMAT_EXPRESSION,
+        CONTROL_CREATED, CONTROL_RANGE_READY, CONTROL_RANGE_RESULT
     } phase_t;
     phase_t phase, after_memory, after_store, after_record, after_copy, after_sequence, after_buffer, after_write;
     reg [1:0] reply_kind;
@@ -66,7 +72,10 @@ module midi_data_jobs #(
     wire [15:0] id0=job[23:8], id1=job[39:24];
     wire [63:0] p0=job[127:64], p1=job[191:128], p2=job[255:192];
     reg [5:0] control_op;
-    reg [63:0] a0,a1,a2;
+    reg [63:0] a0,a1,a2,a3,a4;
+    reg [31:0] normal_destination;
+    reg [INPUTS-1:0] observed_inputs;
+    reg [15:0] cursor_sequence[0:CURSORS-1];
     reg [63:0] input_address;
     reg [31:0] input_count, input_index, previous_offset, run_quantum;
     reg [31:0] used, list_start, destination, scan;
@@ -113,11 +122,45 @@ module midi_data_jobs #(
     wire store_memory_valid,store_memory_write,store_memory_response_ready;
     wire [63:0] store_memory_address;
     wire [31:0] store_memory_data;
-    assign memory_valid=store_active ? store_memory_valid : (phase==READ_REQUEST || phase==WRITE_REQUEST) && !reset;
-    assign memory_write=store_active ? store_memory_write : phase==WRITE_REQUEST;
-    assign memory_address=store_active ? store_memory_address : own_address;
-    assign memory_write_data=store_active ? store_memory_data : own_write_data;
-    assign memory_response_ready=store_active ? store_memory_response_ready : phase==READ_WAIT || phase==WRITE_WAIT;
+    wire expression_active=phase==EXPR_REQUEST || phase==EXPR_WAIT || phase==EXPR_EVENT_REPLY;
+    wire [63:0] expression_bytes;
+    wire expression_ready,expression_done,expression_enabled;
+    wire [3:0] expression_error;
+    wire [31:0] expression_result,expression_packet;
+    wire [15:0] expression_destination;
+    wire expression_packet_valid,expression_event_valid;
+    wire [63:0] expression_event_view;
+    wire [31:0] expression_event_index;
+    wire expression_memory_valid,expression_memory_write,expression_memory_response_ready;
+    wire [63:0] expression_memory_address;
+    wire [31:0] expression_memory_data;
+    reg [3:0] expression_op;
+    reg [63:0] e0,e1,e2,e3;
+    phase_t after_expression;
+    generate if(STATE_SUPPORTED!=0) begin: state_data
+        midi_expression_state #(.LOOPS(LOOPS),.INPUTS(INPUTS),.DESTINATIONS(DESTINATIONS),.VIEWS(VIEWS)) expression (
+            .clk(clk),.reset(reset),.arena_base(arena_base+STATE_BASE),.arena_bytes(expression_bytes),
+            .command_valid(phase==EXPR_REQUEST),.command_ready(expression_ready),.command_op(expression_op),
+            .arg0(e0),.arg1(e1),.arg2(e2),.arg3(e3),.done(expression_done),.error(expression_error),.result(expression_result),.tracking_enabled(expression_enabled),
+            .event_valid(expression_event_valid),.event_ready(phase==EXPR_WAIT && expression_event_valid),
+            .event_view(expression_event_view),.event_index(expression_event_index),.event_response_valid(phase==EXPR_EVENT_REPLY),
+            .event_error(4'b0),.event_frame(result_frame),.event_packet(result_packet),
+            .packet_valid(expression_packet_valid),.packet_ready(packet_ready && phase==EXPR_WAIT),.packet_refused(packet_refused),
+            .packet(expression_packet),.destination(expression_destination),
+            .memory_valid(expression_memory_valid),.memory_ready(memory_ready && expression_active && !store_active),
+            .memory_write(expression_memory_write),.memory_address(expression_memory_address),.memory_write_data(expression_memory_data),
+            .memory_response_valid(memory_response_valid && expression_active && !store_active),.memory_response_ready(expression_memory_response_ready),
+            .memory_response_error(memory_response_error),.memory_read_data(memory_read_data));
+    end else begin: no_state_data
+        assign expression_bytes=0;assign expression_ready=0;assign expression_done=0;assign expression_enabled=0;assign expression_error=2;assign expression_result=0;
+        assign expression_packet=0;assign expression_destination=0;assign expression_packet_valid=0;assign expression_event_valid=0;assign expression_event_view=0;assign expression_event_index=0;
+        assign expression_memory_valid=0;assign expression_memory_write=0;assign expression_memory_response_ready=0;assign expression_memory_address=0;assign expression_memory_data=0;
+    end endgenerate
+    assign memory_valid=store_active ? store_memory_valid : expression_active ? expression_memory_valid : (phase==READ_REQUEST || phase==WRITE_REQUEST) && !reset;
+    assign memory_write=store_active ? store_memory_write : expression_active ? expression_memory_write : phase==WRITE_REQUEST;
+    assign memory_address=store_active ? store_memory_address : expression_active ? expression_memory_address : own_address;
+    assign memory_write_data=store_active ? store_memory_data : expression_active ? expression_memory_data : own_write_data;
+    assign memory_response_ready=store_active ? store_memory_response_ready : expression_active ? expression_memory_response_ready : phase==READ_WAIT || phase==WRITE_WAIT;
     assign idle=phase==IDLE && !reset;
     assign prepare_ready=idle;
     assign finish_ready=idle && !prepare_valid;
@@ -131,10 +174,11 @@ module midi_data_jobs #(
     assign finish_error=response_error;
     assign publication_valid=phase==REPLY && reply_kind==CONTROL_REPLY && publishes && response_error==0 && !publication_committed;
     assign response_valid=phase==REPLY && reply_kind==CONTROL_REPLY && (!publishes || response_error!=0 || publication_committed);
-    assign packet_valid=phase==OUTPUT_SEND && !reset;
-    assign packet_data=record_data[119:96];
-    assign packet_length=record_data[121:120];
-    assign packet_offset=record_data[31:0];
+    assign packet_valid=(phase==OUTPUT_SEND || (phase==EXPR_WAIT && expression_packet_valid)) && !reset;
+    assign packet_data=expression_active ? expression_packet[23:0] : record_data[119:96];
+    assign packet_length=expression_active ? expression_packet[25:24] : record_data[121:120];
+    assign packet_offset=expression_active ? 0 : record_data[31:0];
+    assign packet_destination=expression_active ? {16'b0,expression_destination} : normal_destination;
     midi_store #(.BLOCK_EVENTS(BLOCK_EVENTS),.BLOCKS(BLOCKS),.MAX_EVENTS(MAX_EVENTS),
         .VIEWS(VIEWS),.RETIREMENTS(RETIREMENTS),.TABLE_ENTRIES(TABLE_ENTRIES)) content (
         .clk(clk),.reset(reset),.arena_base(arena_base),.arena_bytes(),
@@ -152,6 +196,12 @@ module midi_data_jobs #(
         .memory_response_valid(memory_response_valid && store_active),.memory_response_ready(store_memory_response_ready),
         .memory_response_error(memory_response_error),.memory_read_data(memory_read_data)
     );
+    task automatic expression_command(input [3:0] op,input [63:0] x0,input [63:0] x1,input [63:0] x2,input [63:0] x3,input phase_t next);
+        begin
+            if(STATE_SUPPORTED==0) fail(2);
+            else begin expression_op<=op;e0<=x0;e1<=x1;e2<=x2;e3<=x3;after_expression<=next;phase<=EXPR_REQUEST;end
+        end
+    endtask
     task automatic fail(input [3:0] code);
         begin response_error<=code;phase<=REPLY;if(code==7) prepared<=0;end
     endtask
@@ -198,20 +248,20 @@ module midi_data_jobs #(
         if(phase==BUFFER_REQUEST) buffer_q<=buffers[BUFFER_BITS'(buffer_index)];
         if(phase==BUFFER_WRITE) buffers[BUFFER_BITS'(buffer_index)]<=buffer_value;
         if(phase==CURSOR_REQUEST) cursor_q<=cursors[CURSOR_BITS'(cursor_index)];
-        if(phase==READ_PUBLISH) cursors[CURSOR_BITS'(cursor_index)]<=cursor;
+        if(phase==READ_PUBLISH) begin cursors[CURSOR_BITS'(cursor_index)]<=cursor;cursor_sequence[CURSOR_BITS'(cursor_index)]<=id0;end
     end
     always @(posedge clk) begin
         if(reset) begin
             phase<=IDLE;prepared<=0;publishes<=0;publication_committed<=0;reply_kind<=0;
             response_error<=0;response_handle<=0;response_frame<=0;response_count<=0;response_packet<=0;response_length<=0;
-            job<=0;control_op<=0;a0<=0;a1<=0;a2<=0;input_address<=0;input_count<=0;input_index<=0;
+            job<=0;control_op<=0;a0<=0;a1<=0;a2<=0;a3<=0;a4<=0;observed_inputs<=0;expression_op<=0;e0<=0;e1<=0;e2<=0;e3<=0;after_expression<=IDLE;input_address<=0;input_count<=0;input_index<=0;
             previous_offset<=0;run_quantum<=0;used<=0;list_start<=0;destination<=0;scan<=0;
             own_address<=0;own_write_data<=0;word_data<=0;record_data<=0;copy_data<=0;head_a<=0;head_b<=0;
             record_address<=0;record_word<=0;record_last<=0;copy_word<=0;
             sequence_index<=0;buffer_index<=0;sequence_value<=0;buffer_value<=0;handle<=0;span_a<=0;span_b<=0;
             buffers_ready<=0;cursor_valid<=0;cursor<='0;low<=0;high<=0;middle<=0;
             index_a<=0;index_b<=0;remaining_a<=0;remaining_b<=0;valid_a<=0;valid_b<=0;pick_a<=0;
-            new_handle<=0;old_handle<=0;new_frames<=0;new_count<=0;packet_destination<=0;
+            new_handle<=0;old_handle<=0;new_frames<=0;new_count<=0;normal_destination<=0;
             store_op<=0;store_view<=0;store_arg0<=0;store_arg1<=0;store_source<=0;store_count<=0;store_packet<=0;store_length<=0;
             result_handle<=0;result_frame<=0;result_events<=0;result_order<=0;result_status<=0;result_refs<=0;result_packet<=0;
             after_memory<=IDLE;after_store<=IDLE;after_record<=IDLE;after_copy<=IDLE;after_sequence<=IDLE;after_buffer<=IDLE;after_write<=IDLE;
@@ -223,7 +273,7 @@ module midi_data_jobs #(
                     response_error<=0;publishes<=0;publication_committed<=0;
                     if(prepare_valid && prepare_ready) begin
                         reply_kind<=PREPARE_REPLY;run_quantum<=quantum_frames;input_address<=event_address;input_count<=event_count;
-                        input_index<=0;previous_offset<=0;used<=0;buffers_ready<=0;
+                        input_index<=0;previous_offset<=0;used<=0;buffers_ready<=0;observed_inputs<=0;
                         if(!prepared) fail(4);
                         else if(quantum_frames==0 || (quantum_frames & (quantum_frames-1))!=0 || event_address[3:0]!=0 ||
                             (event_count!=0 && (event_address<arena_base+arena_bytes || event_address+{28'b0,event_count,4'b0}<event_address))) fail(1);
@@ -233,7 +283,7 @@ module midi_data_jobs #(
                     end else if(job_valid && job_ready) begin
                         reply_kind<=JOB_REPLY;job<=job_data;list_start<=used;phase<=DISPATCH;
                     end else if(command_valid && command_ready) begin
-                        reply_kind<=CONTROL_REPLY;control_op<=command_op;a0<=command_arg0;a1<=command_arg1;a2<=command_arg2;
+                        reply_kind<=CONTROL_REPLY;control_op<=command_op;a0<=command_arg0;a1<=command_arg1;a2<=command_arg2;a3<=command_arg3;a4<=command_arg4;
                         if(command_op!=0 && !prepared) fail(4);
                         else if((command_op==5 || command_op==6 || command_op==7 || command_op==11) && command_arg0>=64'(LOOPS)) fail(4);
                         else if(command_op==6 && command_arg1>=64'(LOOPS)) fail(4);
@@ -241,15 +291,20 @@ module midi_data_jobs #(
                             0: begin prepared<=0;store_command(0,0,0,0,FORMAT_STORE);end
                             5,7: begin new_handle<=command_op==7 ? 0 : command_arg1;load_sequence(command_arg0[31:0],REPLACE_SEQUENCE);end
                             6: load_sequence(command_arg0[31:0],CONTROL_DUPLICATE);
-                            8: store_command(4,0,0,0,CONTROL_RESULT);
+                            8: store_command(4,0,0,0,CONTROL_CREATED);
                             9: begin store_packet<=command_arg2[23:0];store_length<=command_arg2[25:24];
                                 if(command_arg2[63:26]!=0) fail(1);else store_command(5,command_arg0,command_arg1,0,CONTROL_RESULT);end
                             10: store_command(6,command_arg0,command_arg1,0,CONTROL_RESULT);
                             11: load_sequence(command_arg0[31:0],EXPORT_SEQUENCE);
                             12: store_command(10,command_arg0,command_arg1,0,CONTROL_RESULT);
                             13: store_command(9,command_arg0,0,0,CONTROL_RESULT);
-                            15: store_command(7,command_arg0,command_arg1,command_arg2,CONTROL_RESULT);
+                            15: store_command(7,command_arg0,command_arg1,command_arg2,CONTROL_RANGE_READY);
                             20: store_command(11,0,command_arg0>64 ? 64 : command_arg0,0,CONTROL_RESULT);
+                            21: load_sequence(command_arg0[31:0],EXPR_BIND);
+                            22,24: if(command_arg0==2) store_command(12,command_arg1,0,0,EXPR_SEED_CHECK);
+                                else expression_command(command_op==22 ? 4'd10 : 4'd11,command_arg0,command_arg1,command_arg2,command_arg3,EXPR_RESULT);
+                            23: expression_command(12,command_arg0,command_arg1,command_arg2,0,EXPR_RESULT);
+                            31: if(STATE_SUPPORTED!=0) begin response_count<=32'h45580100;phase<=REPLY;end else fail(2);
                             default: fail(2);
                         endcase
                     end
@@ -280,7 +335,25 @@ module midi_data_jobs #(
                 BUFFER_LATCH: begin buffer_value<=buffer_q;phase<=after_buffer;end
                 BUFFER_WRITE: begin buffers_ready[BUFFER_BITS'(buffer_index)]<=1;phase<=after_write;end
                 FORMAT_STORE: begin scan<=0;buffers_ready<=0;cursor_valid<=0;used<=0;phase<=FORMAT_SEQUENCES;end
-                FORMAT_SEQUENCES: if(scan==32'(LOOPS)-1) begin prepared<=1;phase<=REPLY;end else scan<=scan+1;
+                FORMAT_SEQUENCES: if(scan==32'(LOOPS)-1) begin
+                    if(STATE_SUPPORTED!=0) expression_command(0,0,0,0,0,FORMAT_EXPRESSION);else begin prepared<=1;phase<=REPLY;end
+                end else scan<=scan+1;
+                FORMAT_EXPRESSION: begin prepared<=1;phase<=REPLY;end
+                EXPR_REQUEST: if(expression_ready) phase<=EXPR_WAIT;
+                EXPR_WAIT: if(expression_done) begin if(expression_error!=0) fail(expression_error);else phase<=after_expression;end
+                    else if(expression_event_valid) store_command(10,expression_event_view,{32'b0,expression_event_index},0,EXPR_EVENT_REPLY);
+                EXPR_EVENT_REPLY: phase<=EXPR_WAIT;
+                EXPR_BIND: expression_command(9,a0,handle,a1,a2,EXPR_RESULT);
+                EXPR_SEED_CHECK: if(control_op==22 && (result_status!=1 || result_events!=0)) fail(5);
+                    else expression_command(control_op==22 ? 4'd10 : 4'd11,a0,a1,a2,a3,EXPR_RESULT);
+                EXPR_RESULT: begin response_count<=expression_result;phase<=REPLY;end
+                EXPR_JOB: expression_command(kind==`SHOOP_SP_MIDI_RESTORE ? 4'd5 : 4'd6,{48'b0,id0},handle,p0,p1,REPLY);
+                CONTROL_CREATED: if(STATE_SUPPORTED!=0) expression_command(8,result_handle,0,0,0,CONTROL_RESULT);else phase<=CONTROL_RESULT;
+                CONTROL_RANGE_READY: begin
+                    response_handle<=result_handle;response_frame<=result_frame;response_count<=result_events;
+                    if(STATE_SUPPORTED!=0) expression_command(7,result_handle,a0,a1,0,CONTROL_RANGE_RESULT);else phase<=CONTROL_RANGE_RESULT;
+                end
+                CONTROL_RANGE_RESULT: phase<=REPLY;
                 PREPARE_NEXT: if(input_index==input_count) phase<=REPLY;
                     else load_record(input_address+64'(input_index)*16,2,PREPARE_CHECK);
                 PREPARE_CHECK: begin
@@ -300,6 +373,7 @@ module midi_data_jobs #(
                             destination<={16'b0,id0};
                             if(32'(id0)>=BUFFERS || buffers_ready[BUFFER_BITS'(id0)]) fail(4);else begin buffer_index<={16'b0,id0};buffer_value<={used,32'b0};after_write<=REPLY;phase<=BUFFER_WRITE;end
                         end
+                        `SHOOP_SP_MIDI_RESTORE, `SHOOP_SP_MIDI_CLEANUP: load_sequence({16'b0,id0},EXPR_JOB);
                         `SHOOP_SP_MIDI_BEGIN_CAPTURE: load_sequence({16'b0,id0},BEGIN_CAPTURE);
                         `SHOOP_SP_MIDI_FINISH_CAPTURE: load_sequence({16'b0,id0},FINISH_CAPTURE);
                         `SHOOP_SP_MIDI_APPEND: load_sequence({16'b0,id0},APPEND_SEQUENCE);
@@ -313,15 +387,16 @@ module midi_data_jobs #(
                             if(p0>=64'(BUFFERS) || buffers_ready[BUFFER_BITS'(p0)] || p0=={48'b0,id0} || p0=={48'b0,id1}) fail(4);
                             else load_buffer({16'b0,id0},MERGE_LEFT);
                         end
-                        `SHOOP_SP_MIDI_OUTPUT: begin packet_destination<={16'b0,id1};if(32'(id1)>=DESTINATIONS) fail(4);else load_buffer({16'b0,id0},OUTPUT_BUFFER);end
+                        `SHOOP_SP_MIDI_OUTPUT: begin normal_destination<={16'b0,id1};if(32'(id1)>=DESTINATIONS) fail(4);else load_buffer({16'b0,id0},OUTPUT_BUFFER);end
                         default: fail(2);
                     endcase
                 end
-                INPUT_NEXT: if(input_index==input_count) publish(list_start,used-list_start,REPLY);
+                INPUT_NEXT: if(input_index==input_count) begin observed_inputs[INPUT_BITS'(id0)]<=1;publish(list_start,used-list_start,REPLY);end
                     else load_record(input_address+64'(input_index)*16,2,INPUT_CHECK);
-                INPUT_CHECK: if(record_data[31:0]=={16'b0,id0})
-                    append_scratch({record_data[95:64],input_index,16'h0001,id0,record_data[63:32]},INPUT_ADVANCE);
-                    else phase<=INPUT_ADVANCE;
+                INPUT_CHECK: if(record_data[31:0]=={16'b0,id0}) begin
+                    if(expression_enabled && !observed_inputs[INPUT_BITS'(id0)]) expression_command(1,{48'b0,id0},{32'b0,record_data[95:64]},0,0,INPUT_OBSERVED);else phase<=INPUT_OBSERVED;
+                    end else phase<=INPUT_ADVANCE;
+                INPUT_OBSERVED: append_scratch({record_data[95:64],input_index,16'h0001,id0,record_data[63:32]},INPUT_ADVANCE);
                 INPUT_ADVANCE: begin input_index<=input_index+1;phase<=INPUT_NEXT;end
                 BEGIN_CAPTURE: begin
                     old_handle<=handle;
@@ -330,7 +405,10 @@ module midi_data_jobs #(
                 BEGIN_OLD_DESCRIBED: if(result_refs==1 && free_retirements==0) fail(3);else store_command(4,0,0,0,BEGIN_CREATED);
                 BEGIN_CREATED: begin
                     new_handle<=result_handle;
-                    if(old_handle!=0) store_command(9,old_handle,0,0,BEGIN_RELEASED);else begin sequence_value<=result_handle;after_write<=REPLY;phase<=SEQUENCE_WRITE;end
+                    if(STATE_SUPPORTED!=0) expression_command(3,{48'b0,id0},result_handle,0,0,BEGIN_PUBLISH);else phase<=BEGIN_PUBLISH;
+                end
+                BEGIN_PUBLISH: begin
+                    if(old_handle!=0) store_command(9,old_handle,0,0,BEGIN_RELEASED);else begin sequence_value<=new_handle;after_write<=REPLY;phase<=SEQUENCE_WRITE;end
                 end
                 BEGIN_RELEASED: begin sequence_value<=new_handle;after_write<=REPLY;phase<=SEQUENCE_WRITE;end
                 FINISH_CAPTURE: if(handle==0) fail(4);else store_command(12,handle,0,0,FINISH_DESCRIBED);
@@ -392,8 +470,11 @@ module midi_data_jobs #(
                 OUTPUT_BUFFER: begin index_a<=buffer_value[63:32];remaining_a<=buffer_value[31:0];phase<=OUTPUT_NEXT;end
                 OUTPUT_NEXT: if(remaining_a==0) phase<=REPLY;else load_record(arena_base+CONTENT_BYTES+64'(index_a)*16,3,OUTPUT_SEND);
                 OUTPUT_SEND: if(packet_ready) begin
-                    if(packet_refused) fail(9);else begin remaining_a<=remaining_a-1;index_a<=index_a+1;phase<=OUTPUT_NEXT;end
+                    if(packet_refused) fail(9);else if(expression_enabled) expression_command(2,{32'b0,normal_destination},{32'b0,record_data[127:96]},
+                        record_data[63:32]<32'(CURSORS) && cursor_valid[CURSOR_BITS'(record_data[63:32])] ? {48'b0,cursor_sequence[CURSOR_BITS'(record_data[63:32])]} : 64'hffffffff,0,OUTPUT_ADVANCE);
+                    else phase<=OUTPUT_ADVANCE;
                 end
+                OUTPUT_ADVANCE: begin remaining_a<=remaining_a-1;index_a<=index_a+1;phase<=OUTPUT_NEXT;end
                 CONTROL_DUPLICATE: begin new_handle<=handle;load_sequence(a1[31:0],REPLACE_SEQUENCE);end
                 REPLACE_SEQUENCE: begin
                     old_handle<=handle;
@@ -409,7 +490,8 @@ module midi_data_jobs #(
                 REPLACE_OLD_DESCRIBED: if(result_refs==1 && free_retirements==0) fail(3);else phase<=REPLACE_RETAIN;
                 REPLACE_RETAIN: if(new_handle!=0 && new_handle!=old_handle) store_command(8,new_handle,0,0,REPLACE_RELEASE);else phase<=REPLACE_RELEASE;
                 REPLACE_RELEASE: if(old_handle!=0 && old_handle!=new_handle) store_command(9,old_handle,0,0,REPLACE_WRITE);else phase<=REPLACE_WRITE;
-                REPLACE_WRITE: begin sequence_value<=new_handle;after_write<=REPLACE_PUBLISH;phase<=SEQUENCE_WRITE;end
+                REPLACE_WRITE: begin sequence_value<=new_handle;after_write<=STATE_SUPPORTED!=0 ? EXPR_REPLACE : REPLACE_PUBLISH;phase<=SEQUENCE_WRITE;end
+                EXPR_REPLACE: expression_command(4,{32'b0,sequence_index},new_handle,0,0,REPLACE_PUBLISH);
                 REPLACE_PUBLISH: begin response_handle<=new_handle;response_frame<=new_frames;response_count<=new_count;publishes<=1;phase<=REPLY;end
                 EXPORT_SEQUENCE: if(handle==0) fail(4);else store_command(12,handle,0,0,EXPORT_DESCRIBED);
                 EXPORT_DESCRIBED: begin new_frames<=result_frame;new_count<=result_events;store_command(8,handle,0,0,EXPORT_RETAINED);end

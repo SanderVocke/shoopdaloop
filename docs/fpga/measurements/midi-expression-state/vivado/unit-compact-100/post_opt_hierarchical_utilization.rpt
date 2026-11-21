@@ -1,0 +1,30 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Sat Nov 21 11:10:13 2026
+| Host         : 90f88d88717c running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file post_opt_hierarchical_utilization.rpt
+| Design       : session_context
+| Device       : 7z020clg484-1
+| Design State : Optimized
+----------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------+-----------------------+------------+------------+---------+------+------+--------+--------+------------+
+|       Instance      |         Module        | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++---------------------+-----------------------+------------+------------+---------+------+------+--------+--------+------------+
+| session_context     |                 (top) |       4219 |       3955 |     264 |    0 | 2915 |      3 |      6 |          0 |
+|   expression        |    expression_context |       4219 |       3955 |     264 |    0 | 2915 |      3 |      6 |          0 |
+|     (expression)    |    expression_context |         25 |         25 |       0 |    0 | 1061 |      0 |      0 |          0 |
+|     core_under_test | midi_expression_state |       4194 |       3930 |     264 |    0 | 1854 |      3 |      6 |          0 |
++---------------------+-----------------------+------------+------------+---------+------+------+--------+--------+------------+
+
+

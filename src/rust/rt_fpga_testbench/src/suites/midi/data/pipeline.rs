@@ -27,9 +27,14 @@ pub fn design(q: u64) -> Design {
     d.probes.clear();
     d.includes.push(crate::root().join("fpga/midi/rtl"));
     d.sources.extend(
-        ["midi_audio_pipeline", "midi_data_jobs", "midi_store"]
-            .iter()
-            .map(|n| crate::root().join(format!("fpga/midi/rtl/{n}.sv"))),
+        [
+            "midi_audio_pipeline",
+            "midi_data_jobs",
+            "midi_store",
+            "midi_expression_state",
+        ]
+        .iter()
+        .map(|n| crate::root().join(format!("fpga/midi/rtl/{n}.sv"))),
     );
     for (k, v) in [
         ("MIDI_LOOPS", 2),
@@ -62,6 +67,9 @@ pub struct Driver<'a> {
 }
 impl<'a> Driver<'a> {
     pub fn new(compiled: &'a Compiled, q: u32, mixed: bool) -> Result<Self> {
+        Self::build(compiled, q, mixed, false)
+    }
+    pub fn build(compiled: &'a Compiled, q: u32, mixed: bool, expression: bool) -> Result<Self> {
         let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
         sim.max_ps = 1_000_000_000_000_000;
         let address = (sim.model.get("midi_arena_bytes") as usize + 271) & !15;
@@ -96,8 +104,13 @@ impl<'a> Driver<'a> {
             1431,
             "store_",
         )?;
-        let reference = Oracle::new(q, mixed);
-        let rtl = crate::target::RtlTarget::new(CAP, 16, &[0, 1]).build(&logical(q, mixed))?;
+        let reference = Oracle::build(q, mixed, expression);
+        let logical = if expression {
+            super::logical_expression(q, mixed)
+        } else {
+            logical(q, mixed)
+        };
+        let rtl = crate::target::RtlTarget::new(CAP, 16, &[0, 1]).build(&logical)?;
         audio.load_compiled(&mut sim, &rtl);
         store.load(
             &mut sim,
@@ -115,6 +128,19 @@ impl<'a> Driver<'a> {
             address,
         };
         assert_eq!(d.control(0, [0; 5]), 0);
+        if expression {
+            assert_eq!(d.control(31, [0; 5]), 0);
+            assert_eq!(d.sim.model.get("midi_response_count"), 0x45580100);
+            for n in 0..2u64 {
+                assert_eq!(
+                    d.control(
+                        21,
+                        [n, (1 << 32) | n, n | (1 << 8) | ((1 << n) << 16), 0, 0]
+                    ),
+                    0
+                );
+            }
+        }
         Ok(d)
     }
     pub fn control(&mut self, op: u64, args: [u64; 5]) -> u64 {
@@ -130,7 +156,7 @@ impl<'a> Driver<'a> {
         });
         self.sim.idle(1);
         self.sim.model.set("midi_command_valid", 0);
-        self.sim.until(2_000_000, "MIDI control response", |m| {
+        self.sim.until(10_000_000, "MIDI control response", |m| {
             m.get("midi_response_valid") != 0 || m.get("midi_publication_valid") != 0
         });
         if self.sim.model.get("midi_publication_valid") != 0 {
@@ -276,19 +302,21 @@ impl<'a> Driver<'a> {
         );
         if self.reference.mixed {
             let (_, samples) = self.audio.read_samples(&mut self.sim);
-            let playing = self
-                .reference
-                .pipeline
-                .state()
-                .loop_state(super::id(0))
-                .unwrap()
-                .state
-                .mode
-                == rt_fpga_reference::transitions::Mode::Playing;
-            assert_eq!(
-                samples,
-                vec![vec![if playing { 1 << 22 } else { 0 }; self.reference.q as usize]; 2]
-            );
+            let expected: Vec<_> = (0..2)
+                .map(|channel| {
+                    let playing = self
+                        .reference
+                        .pipeline
+                        .state()
+                        .loop_state(super::id(channel))
+                        .unwrap()
+                        .render
+                        .mode
+                        == rt_fpga_reference::records::Mode::Playing;
+                    vec![if playing { 1 << 22 } else { 0 }; self.reference.q as usize]
+                })
+                .collect();
+            assert_eq!(samples, expected);
         }
         for slot in 0..2 {
             let row = crate::loop_image::read_loop(&mut self.audio.program, &mut self.sim, slot);

@@ -2,7 +2,7 @@
 
 This interface replaces the former phase-based MIDI service. Reload compiled
 programs and format a fresh arena; old control commands and memory images are not
-compatible. There is no instrument-state ABI.
+compatible. Raw event mode has no state arena; the optional expression ABI is described below.
 
 ## Jobs and compiled instructions
 
@@ -171,3 +171,56 @@ is rejected before SP runs and can be retried. Execution/cleanup faults latch in
 the connected pipeline until reset. A memory fault additionally invalidates the
 prepared image; reset and format/reload before resuming. There is no instrument
 state recovery or automatic correction traffic.
+
+## Optional expression-state extension (ABI 0x45580100)
+
+Elaborate `STATE_SUPPORTED=1` (`MIDI_STATE_SUPPORTED` at the connected top) to
+include expression data jobs. The default remains raw events only. Command 31
+returns ABI 0x45580100 in response_count or Unsupported. Reload programs and format
+when selecting this extension. Bulk state is appended after the scratch lists.
+
+SP opcode 0x13 encodes owner slot u16, generation u32, sequence u8, source input
+u8, output mask u8, and channel mask u16 after the opcode. State bindings follow
+all capture instructions. The loader prepares the same bindings with command 21.
+SP flag bit 59 remembers playback activity; restore is queued at start/repeat/seek
+and cleanup when leaving playback. These jobs precede normal event jobs.
+
+| Job | A | B | P0 | P1 | P2 |
+| --- | --- | --- | --- | --- | --- |
+| 0x28 restore | sequence u16 | 0 | position frames | owner slot u32 + generation u32 | 0 |
+| 0x29 cleanup | sequence u16 | 0 | 0 | owner slot u32 + generation u32 | 0 |
+
+| Control | Arguments 0–3 | Result |
+| --- | --- | --- |
+| 21 bind | sequence, owner u64, packed input u8/output mask u8/channel mask u16 | error |
+| 22 seed field | space (0 input/1 output/2 snapshot), input/output ID or view handle, field index, u32 value | error |
+| 23 controller policy | output, low mask u64, high mask u64 | error |
+| 24 read field | space, ID/handle, field | u32 value in response_count |
+| 31 ABI query | none | ABI in response_count |
+
+Seed outputs before binding; changing physical output assumptions after bindings
+returns Busy. Snapshot seeds require an empty writer. New snapshot channels are
+cleared before their first seed. Completed snapshots are immutable. Policy changes
+refresh comparisons outside quantum execution. Source seeds may describe held
+input before recording. Control transfers are serialized with rendering.
+
+The state arena contains input, output, per-view and one seek-scratch state, each
+32 KiB, followed by (sequences × outputs + 1) comparison slots of 2 KiB. A state
+channel occupies 512 u32 words; fields 0–127 are notes, 128–255 CC, 256 pitch and
+257 channel pressure. Note bit layout matches the documented Rust contract.
+Known is bit 31. Unused words are reserved. View validity/channel masks are small
+on-chip metadata tied to the store's validated generations and view lifetimes.
+
+A comparison slot has difference words at bytes 0–1023, eight u32 nonempty-word
+summaries at 1024–1055, and owner activity at 1056–1375. Activity has five u32
+words/channel: 128 note bits and owned sustain/sostenuto flags. Remaining bytes
+are reserved. A zero summary bit makes its difference word invalid/empty, so
+retakes need not clear every bulk difference word. Counts and connection masks
+are on-chip summaries; they do not store instrument state. The extra comparison
+slot is private seek scratch. DDR faults invalidate the engine as before.
+
+Source input jobs observe each input once per quantum, even while stopped.
+Accepted ordinary and corrective outputs update one output model and indexed
+comparisons. Restore emits directly to the destination, preserving pedal/note
+phase order through backpressure. No new processor, instruction interpreter,
+MIDI scheduler, or persistent restoration-message lists are introduced.

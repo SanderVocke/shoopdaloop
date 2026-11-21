@@ -1,5 +1,6 @@
 use crate::{clock::Edges, model::Model, random::Random, sim::Agent};
 pub mod data;
+pub mod expression;
 
 pub struct Memory {
     pins: [&'static str; 9],
@@ -8,6 +9,7 @@ pub struct Memory {
     pending: Option<(u64, u32, bool)>,
     pub fail: Option<usize>,
     pub transfers: u64,
+    fixed_delay: Option<u64>,
 }
 impl Memory {
     pub fn new(words: usize) -> Self {
@@ -28,10 +30,16 @@ impl Memory {
             pending: None,
             fail: None,
             transfers: 0,
+            fixed_delay: None,
         }
     }
 }
 impl Memory {
+    pub fn fixed(words: usize, delay: u64) -> Self {
+        let mut m = Self::new(words);
+        m.fixed_delay = Some(delay);
+        m
+    }
     pub fn mixed(words: usize) -> Self {
         let mut memory = Self::new(words);
         memory.pins = [
@@ -55,7 +63,7 @@ impl Agent for Memory {
         }
         m.set(
             self.pins[0],
-            u64::from(self.pending.is_none() && self.rng.yes(3)),
+            u64::from(self.pending.is_none() && (self.fixed_delay.is_some() || self.rng.yes(3))),
         );
         m.set(
             self.pins[1],
@@ -87,7 +95,11 @@ impl Agent for Memory {
                 self.words[index] = m.get(self.pins[8]) as u32;
             }
             self.transfers += 1;
-            self.pending = Some((self.rng.below(4), self.words[index], error));
+            self.pending = Some((
+                self.fixed_delay.unwrap_or_else(|| self.rng.below(4)),
+                self.words[index],
+                error,
+            ));
         }
     }
 }

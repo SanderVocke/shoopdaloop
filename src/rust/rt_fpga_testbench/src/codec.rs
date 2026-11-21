@@ -60,7 +60,7 @@ pub fn job(bits: &Bits) -> Value {
     let p1 = bits.get(128, 64);
     let p2 = bits.get(192, 64);
     assert_eq!(bits.get(40, 24), 0, "nonzero reserved job bits");
-    if (0x20..=0x27).contains(&kind) {
+    if (0x20..=0x29).contains(&kind) {
         let owner = json!({"slot":p2 as u32,"generation":p2>>32});
         return match kind {
             0x20 => json!({"kind":"midi_input","port":a,"destination":b}),
@@ -74,6 +74,12 @@ pub fn job(bits: &Bits) -> Value {
             }
             0x25 => json!({"kind":"midi_finish_capture","sequence":a}),
             0x26 => json!({"kind":"midi_merge","left":a,"right":b,"destination":p0}),
+            0x28 => {
+                json!({"kind":"midi_restore_state","sequence":a,"position":p0,"owner":{"slot":p1 as u32,"generation":p1>>32}})
+            }
+            0x29 => {
+                json!({"kind":"midi_cleanup_state","sequence":a,"owner":{"slot":p1 as u32,"generation":p1>>32}})
+            }
             0x27 => json!({"kind":"midi_output","source":a,"port":b}),
             _ => unreachable!(),
         };

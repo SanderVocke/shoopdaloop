@@ -28,6 +28,7 @@
 `define SHOOP_SP_L_NEWER 56
 `define SHOOP_SP_L_MIDI_CAPTURE_OPEN 57
 `define SHOOP_SP_L_MIDI_RESTART 58
+`define SHOOP_SP_L_MIDI_PLAYING 59
 // Control word: source generation followed by two five-bit plan flags.
 `define SHOOP_SP_L_PLAN0_FLAGS 32
 `define SHOOP_SP_L_PLAN1_FLAGS 37

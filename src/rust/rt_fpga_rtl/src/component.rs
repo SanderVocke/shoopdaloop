@@ -38,6 +38,13 @@ pub enum ArithmeticMode {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Instruction {
+    MidiState {
+        loop_id: Identity,
+        sequence: u8,
+        input: u8,
+        outputs: u8,
+        channels: u16,
+    },
     MidiInput {
         port: u16,
         destination: u16,
@@ -147,6 +154,28 @@ pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
             destination,
         } => (17, vec![left, right, destination]),
         Instruction::MidiOutput { source, port } => (18, vec![source, port]),
+        Instruction::MidiState {
+            loop_id,
+            sequence,
+            input,
+            outputs,
+            channels,
+        } => {
+            let packed = 19u128
+                | (u128::from(u16::try_from(loop_id.slot)?) << 8)
+                | (u128::from(loop_id.generation) << 24)
+                | (u128::from(sequence) << 56)
+                | (u128::from(input) << 64)
+                | (u128::from(outputs) << 72)
+                | (u128::from(channels) << 80);
+            return Ok([
+                packed as u32,
+                (packed >> 32) as u32,
+                (packed >> 64) as u32,
+                0,
+                0,
+            ]);
+        }
         Instruction::MidiPlayback {
             loop_id,
             sequence,

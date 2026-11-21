@@ -12,13 +12,14 @@ fn main() {
         "midi" => (false, true),
         _ => panic!("--scenario must be mixed, audio or midi"),
     };
-    let value = rt_fpga_testbench::suites::midi::data::benchmark::run(
+    let value = rt_fpga_testbench::suites::midi::data::benchmark::run_config(
         audio,
         midi,
         option("--loops", "64").parse().unwrap(),
         option("--frames", "1440000").parse().unwrap(),
         option("--quanta", "16").parse().unwrap(),
         option("--ddr-delay", "7").parse().unwrap(),
+        option("--state", "off") == "on",
     )
     .unwrap();
     let text = serde_json::to_string_pretty(&value).unwrap() + "\n";
