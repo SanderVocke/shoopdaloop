@@ -1,5 +1,6 @@
 pub mod cpu;
 pub mod fixture;
+pub mod host_timing;
 pub mod reference;
 #[cfg(feature = "rtl")]
 pub mod rtl;

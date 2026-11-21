@@ -206,6 +206,14 @@ class BenchmarkReportTests(unittest.TestCase):
             manifest = json.loads((output / "manifest.json").read_text())
             self.assertTrue(manifest["complete"])
             self.assertEqual(len(manifest["files"]), 6)
+            runtime = json.loads((output / "runtime.json").read_text())
+            self.assertTrue(runtime["complete"])
+            self.assertTrue(runtime["passed"])
+            self.assertEqual(len(runtime["runs"]), 6)
+            self.assertAlmostEqual(sum(runtime["phases_s"].values()), runtime["elapsed_s"])
+            host_end = max(r["finished_s"] for r in runtime["runs"] if r["backend"] != "fpga-rtl")
+            rtl_start = min(r["started_s"] for r in runtime["runs"] if r["backend"] == "fpga-rtl")
+            self.assertLessEqual(host_end, rtl_start)
 
     def test_interrupted_campaign_cannot_pass_with_only_completed_subsets(self):
         with tempfile.TemporaryDirectory() as name:

@@ -12,6 +12,44 @@ use shoop_wasm_test_support::{
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
+#[shoop_test(no_wasm = "host runtime phase accounting")]
+fn host_profiling_preserves_the_fixture_and_accounts_for_each_callback() {
+    let fixture = Fixture::with_media(Preset::Smoke, Pattern::Lifecycle, Media::Midi);
+    let (control, driver) = reference::prepare(Media::Midi).unwrap();
+    let original = runner::run("fpga-reference", fixture.clone(), control, driver);
+    shoop_rt_benchmark::host_timing::enable();
+    let (control, driver) = reference::prepare(Media::Midi).unwrap();
+    let profiled = runner::run("fpga-reference", fixture, control, driver);
+    let timing = serde_json::to_value(shoop_rt_benchmark::host_timing::finish().unwrap()).unwrap();
+    assert_eq!(profiled.status, "completed");
+    assert_eq!(profiled.fixture_sha256, original.fixture_sha256);
+    assert_eq!(profiled.coverage, original.coverage);
+    assert_eq!(timing["phases"]["fixture.callback"]["calls"], 298);
+    assert_eq!(timing["phases"]["fixture.process"]["calls"], 298);
+    for phase in [
+        "fixture.metadata",
+        "fixture.finalization",
+        "fixture.teardown",
+    ] {
+        assert_eq!(timing["phases"][phase]["calls"], 1);
+    }
+    let leaves = [
+        "fixture.command_delivery",
+        "fixture.input_stimulus",
+        "fixture.process",
+        "fixture.endpoint_receive",
+        "fixture.validate_and_record",
+        "fixture.metadata",
+        "fixture.finalization",
+        "fixture.teardown",
+    ];
+    let accounted: u64 = leaves
+        .iter()
+        .map(|name| timing["phases"][name]["elapsed_ns"].as_u64().unwrap())
+        .sum();
+    assert!(accounted <= timing["elapsed_ns"].as_u64().unwrap());
+}
+
 struct Guard<D>(D);
 impl<D: Driver> Driver for Guard<D> {
     fn begin_fixture(&mut self) {

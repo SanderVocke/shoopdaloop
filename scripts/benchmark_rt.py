@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import statistics
 import subprocess
+import shutil
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FPGA_CLOCK_HZ = 150_000_000
@@ -485,7 +487,29 @@ def capture(*args):
         return None
 
 
+def runtime_report(output, runtime):
+    (output / "runtime.json").write_text(json.dumps(runtime, indent=2) + "\n")
+    lines = ["# Benchmark host runtime", "", "Wall-clock seconds; parallel child durations overlap. Rust phase durations are inclusive and nested.", "",
+             "| Suite phase | Seconds |", "| --- | ---: |"]
+    lines += [f"| {name} | {value:.3f} |" for name, value in runtime["phases_s"].items()]
+    lines += [f'| Total elapsed | {runtime["elapsed_s"]:.3f} |', "",
+              "| Backend / media / pattern | Child wall s | Prepare s | Execution loop s | Observation s | Finalize s | Teardown s | Timed fabric s |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    for row in sorted(runtime["runs"], key=lambda r: r["started_s"]):
+        phases = (row.get("host_profile") or {}).get("phases", {})
+        def seconds(name):
+            return f'{phases[name]["elapsed_ns"] / 1e9:.3f}' if name in phases else "—"
+        fabric = "—" if row.get("fabric_s") is None else f'{row["fabric_s"]:.6f}'
+        child = "—" if row.get("child_s") is None else f'{row["child_s"]:.3f}'
+        lines.append(f'| {row["backend"]} / {row["media"]} / {row["pattern"]} | {child} | {seconds("prepare")} | {seconds("rtl.callback.execution")} | {seconds("rtl.callback.observation")} | {seconds("fixture.finalization")} | {seconds("fixture.teardown")} | {fabric} |')
+    lines += ["", "Full phase counters, child start/end offsets, processing timers and sampling-profile paths are retained in runtime.json.",
+              "Execution loop includes the generated RTL, signal access, agents and memory models; sampled CPU stacks distinguish those costs.",
+              "Timed fabric seconds are simulation-world cycles / 150,000,000. They are separate from host execution time.", ""]
+    (output / "runtime.md").write_text("\n".join(lines))
+
+
 def main():
+    campaign_started = time.perf_counter()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backends", default=",".join(BACKENDS))
     parser.add_argument("--media", default=",".join(MEDIA))
@@ -496,6 +520,8 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "work/rt-benchmark")
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--binary", type=Path)
+    parser.add_argument("--host-profile", action="store_true", help="record host preparation, execution, validation and finalization phases")
+    parser.add_argument("--profile-rtl", action="store_true", help="also sample RTL-process CPU stacks with gprofng at 20 ms intervals")
     parser.add_argument("--dram-config", type=Path, default=Path(os.environ.get("SHOOP_DRAMSIM3_CONFIG", ROOT / "fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini")))
     parser.add_argument("--memory-model", choices=("dramsim3", "fixed"), default="dramsim3")
     args = parser.parse_args()
@@ -504,6 +530,9 @@ def main():
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)
     if args.report_only:
         return 0 if report(output) else 1
+    if args.profile_rtl and shutil.which("gprofng") is None:
+        parser.error("--profile-rtl requires gprofng")
+    args.host_profile = args.host_profile or args.profile_rtl
     backends = args.backends.split(","); patterns = args.patterns.split(","); media = args.media.split(",")
     repeats = {b: args.repeats if args.repeats is not None else (1 if args.preset == "smoke" or b == "fpga-rtl" else 3) for b in backends}
     if args.rtl_jobs < 1 or any(n < 1 for n in repeats.values()) or not backends or len(set(backends)) != len(backends) or len(set(patterns)) != len(patterns) or any(b not in BACKENDS for b in backends) or any(p not in PATTERNS for p in patterns) or len(set(media)) != len(media) or any(m not in MEDIA for m in media):
@@ -520,6 +549,11 @@ def main():
         fpga_clock_hz=FPGA_CLOCK_HZ, memory_model=args.memory_model, rtl_jobs=args.rtl_jobs,
         scheduling="serial CPU/reference repeats, then independent RTL simulations",
         dram_config=str(dram_config), dram_config_sha256=hashlib.sha256(dram_config.read_bytes()).hexdigest() if dram_config.is_file() else None, files=[])
+    manifest["runtime_file"] = "runtime.json"
+    manifest["host_profile"] = args.host_profile
+    manifest["rtl_cpu_sampling_ms"] = 20 if args.profile_rtl else None
+    runtime = dict(schema_version=1, complete=False, host_profile=args.host_profile, sampling=args.profile_rtl,
+        phases_s={}, runs=[], elapsed_s=0.)
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     missing_rtl = None
     version = capture(os.environ.get("SHOOP_VERILATOR", "verilator"), "--version") if "fpga-rtl" in backends else None
@@ -530,7 +564,9 @@ def main():
     if "fpga-rtl" in backends and args.memory_model == "dramsim3" and not dram_config.is_file():
         missing_rtl = f"DRAMsim3 configuration not found: {dram_config}"
     binary = args.binary.resolve() if args.binary else ROOT / "target/release" / ("shoop_rt_benchmark.exe" if os.name == "nt" else "shoop_rt_benchmark")
+    runtime["phases_s"]["setup"] = time.perf_counter() - campaign_started
     build_error = None
+    build_started = time.perf_counter()
     if not args.binary:
         command = ["cargo", "build", "--locked", "--release", "-p", "shoop_rt_benchmark"]
         if "fpga-rtl" in backends and not missing_rtl: command += ["--features", "rtl"]
@@ -539,11 +575,15 @@ def main():
                 subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
             except (OSError, subprocess.CalledProcessError) as error:
                 build_error = f"{error}; see build.log"
+    runtime["phases_s"]["build"] = time.perf_counter() - build_started
     manifest["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest() if binary.is_file() else None
     def run_one(task):
+        started = time.perf_counter()
         backend, kind, pattern, repeat = task
         filename = f"{backend}-{kind}-{pattern}-{repeat}.json"; path = output / filename
         print(f"{backend} / {kind} / {pattern} / repeat {repeat}", flush=True)
+        timing = dict(backend=backend, media=kind, pattern=pattern, repeat=repeat,
+            file=filename, started_s=started-campaign_started, child_s=None)
         error = build_error or (missing_rtl if backend == "fpga-rtl" else None)
         if binary.is_file() and hashlib.sha256(binary.read_bytes()).hexdigest() != manifest["binary_sha256"]:
             error = "benchmark binary changed during this campaign; use a fresh output directory"
@@ -552,9 +592,17 @@ def main():
         else:
             command = [str(binary), "--backend", backend, "--preset", args.preset, "--pattern", pattern, "--media", kind, "--output", str(path)]
             if backend == "fpga-rtl": command += ["--memory-model", args.memory_model, "--dram-config", str(dram_config)]
+            if args.host_profile:
+                command += ["--host-profile", str(path.with_suffix(".host.json"))]
+            if args.profile_rtl and backend == "fpga-rtl":
+                experiment = path.with_suffix(".er")
+                command = ["gprofng", "collect", "app", "-p", "20", "-S", "1", "-a", "usedldobjects", "-F", "off", "-o", str(experiment), *command]
+                timing["sampling_experiment"] = experiment.name
             with path.with_suffix(".log").open("w") as log:
                 try:
+                    child_started = time.perf_counter()
                     result = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+                    timing["child_s"] = time.perf_counter() - child_started
                     value = json.loads(path.read_text()) if path.exists() else dict(backend=backend, fixture=dict(pattern=pattern, media=kind), status="processing-failure", error=f"exit {result.returncode}; see {path.with_suffix('.log').name}")
                     if result.returncode and value["status"] in ("completed", "unsupported"):
                         value["status"] = "processing-failure"; value["error"] = f"unexpected exit {result.returncode}; see {path.with_suffix('.log').name}"
@@ -564,6 +612,15 @@ def main():
                 except OSError as exc:
                     value = dict(backend=backend, fixture=dict(pattern=pattern, media=kind), status="missing-prerequisite", error=str(exc))
         value["repeat"] = repeat; path.write_text(json.dumps(value, indent=2) + "\n")
+        timing["status"] = value["status"]
+        timing["callbacks"] = len(value.get("callbacks", []))
+        timing["processing_timer_s"] = sum(r["measurement"]["elapsed_ns"] for r in value.get("callbacks", [])) / 1e9
+        timing["fabric_s"] = sum(r["measurement"].get("fabric_cycles") or 0 for r in value.get("callbacks", [])) / FPGA_CLOCK_HZ if backend == "fpga-rtl" else None
+        if args.host_profile and path.with_suffix(".host.json").is_file():
+            try:
+                timing["host_profile"] = json.loads(path.with_suffix(".host.json").read_text())
+            except (OSError, ValueError) as error:
+                timing["host_profile_error"] = str(error)
         f = value.get("fixture", {})
         if value["status"] in ("completed", "unsupported") and (f.get("version"), f.get("fpga_chunk_frames"), f.get("fpga_block_chunks"), f.get("media"), f.get("preset"), f.get("pattern")) != (4, 32, 32, kind, args.preset, pattern):
             path.rename(path.with_suffix(".incompatible.json"))
@@ -571,27 +628,45 @@ def main():
                 error="new campaigns require fixture revision 4 with the requested media/preset/pattern, 32-frame chunks and 32-chunk blocks; original result retained as .incompatible.json")
             path.write_text(json.dumps(value, indent=2) + "\n")
             f = value["fixture"]
-        return filename, f
+        timing["status"] = value["status"]
+        timing["finished_s"] = time.perf_counter() - campaign_started
+        timing["total_s"] = time.perf_counter() - started
+        return filename, f, timing
 
     tasks = [(backend, kind, pattern, repeat)
         for repeat in range(max(repeats.values()))
         for backend in backends[::1 if repeat % 2 == 0 else -1] if repeat < repeats[backend]
         for kind in media for pattern in patterns]
     def retain(result):
-        filename, f = result
+        filename, f, timing = result
         if "fpga_chunk_frames" in f:
             manifest["fpga_media_geometry"] = dict(chunk_frames=f["fpga_chunk_frames"], block_chunks=f["fpga_block_chunks"])
         manifest["files"].append(filename)
+        runtime["runs"].append(timing)
+        runtime["elapsed_s"] = time.perf_counter() - campaign_started
+        runtime_report(output, runtime)
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    hosts_started = time.perf_counter()
     for task in tasks:
         if task[0] != "fpga-rtl": retain(run_one(task))
+    runtime["phases_s"]["serial_host_cases"] = time.perf_counter() - hosts_started
+    rtl_started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.rtl_jobs) as executor:
         futures = [executor.submit(run_one, task) for task in tasks if task[0] == "fpga-rtl"]
         for future in as_completed(futures):
             retain(future.result())
+    runtime["phases_s"]["parallel_rtl_cases"] = time.perf_counter() - rtl_started
     manifest["complete"] = True
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    return 0 if report(output) else 1
+    report_started = time.perf_counter()
+    passed = report(output)
+    runtime["phases_s"]["report"] = time.perf_counter() - report_started
+    runtime["complete"] = True
+    runtime["passed"] = passed
+    runtime["elapsed_s"] = time.perf_counter() - campaign_started
+    runtime["phases_s"]["orchestration"] = max(0., runtime["elapsed_s"] - sum(runtime["phases_s"].values()))
+    runtime_report(output, runtime)
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

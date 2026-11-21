@@ -1,4 +1,5 @@
 use crate::fixture::{self, Action, Fixture, LOOPS, QUANTUM};
+use crate::host_timing;
 use anyhow::{anyhow, bail, ensure, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -291,6 +292,10 @@ pub fn run<E: Endpoint, D: Driver>(
     mut driver: D,
 ) -> Run {
     driver.begin_fixture();
+    let metadata = {
+        let _metadata = host_timing::span("fixture.metadata");
+        driver.metadata()
+    };
     let mut report = Run {
         schema_version: 1,
         fixture_sha256: Sha256::digest(serde_json::to_vec(&fixture).expect("fixture encoding"))
@@ -299,7 +304,7 @@ pub fn run<E: Endpoint, D: Driver>(
             .collect(),
         backend: backend.into(),
         status: "running".into(),
-        metadata: driver.metadata(),
+        metadata,
         callbacks: Vec::with_capacity(fixture.callbacks),
         events: Vec::with_capacity(fixture.events.len()),
         coverage: serde_json::json!({}),
@@ -309,28 +314,41 @@ pub fn run<E: Endpoint, D: Driver>(
     if matches!(report.fixture.pattern, fixture::Pattern::Grab) && !driver.supports_grab() {
         report.status = "unsupported".into();
         report.error = Some("grab and input history are not supported by this backend".into());
-        return report;
-    }
-    match execute(&mut report, &mut control, &mut driver) {
-        Ok(()) => report.status = "completed".into(),
-        Err(error) => {
-            report.status = if error.downcast_ref::<Unsupported>().is_some() {
-                "unsupported"
-            } else if error.downcast_ref::<ProcessingFailure>().is_some() {
-                "processing-failure"
-            } else {
-                "incorrect-results"
+    } else {
+        let execution = {
+            let _execute = host_timing::span("fixture.execute");
+            execute(&mut report, &mut control, &mut driver)
+        };
+        match execution {
+            Ok(()) => report.status = "completed".into(),
+            Err(error) => {
+                report.status = if error.downcast_ref::<Unsupported>().is_some() {
+                    "unsupported"
+                } else if error.downcast_ref::<ProcessingFailure>().is_some() {
+                    "processing-failure"
+                } else {
+                    "incorrect-results"
+                }
+                .into();
+                report.error = Some(format!("{error:#}"));
             }
-            .into();
-            report.error = Some(format!("{error:#}"));
+        }
+        let finalization = {
+            let _finalization = host_timing::span("fixture.finalization");
+            driver.finish()
+        };
+        match finalization {
+            Ok(value) => report.metadata["finalization"] = value,
+            Err(error) => {
+                report.status = "processing-failure".into();
+                report.error = Some(format!("finalization: {error:#}"));
+            }
         }
     }
-    match driver.finish() {
-        Ok(value) => report.metadata["finalization"] = value,
-        Err(error) => {
-            report.status = "processing-failure".into();
-            report.error = Some(format!("finalization: {error:#}"));
-        }
+    {
+        let _teardown = host_timing::span("fixture.teardown");
+        drop(driver);
+        drop(control);
     }
     report
 }
@@ -367,6 +385,7 @@ fn execute<E: Endpoint, D: Driver>(
         queue
     });
     for callback in 0..report.fixture.callbacks {
+        let _callback = host_timing::span("fixture.callback");
         if callback % 16 == 0 {
             eprintln!(
                 "{} {:?}: callback {callback}/{}",
@@ -385,6 +404,7 @@ fn execute<E: Endpoint, D: Driver>(
             .find(|e| e.callback == callback);
         let commands = event.map(|e| e.commands()).unwrap_or_default();
         control.responses.clear();
+        let delivery = host_timing::span("fixture.command_delivery");
         let start = Instant::now();
         for group in commands.chunks(COMMANDS) {
             let batch =
@@ -393,18 +413,28 @@ fn execute<E: Endpoint, D: Driver>(
         }
         control.pump()?;
         let mut control_ns = start.elapsed().as_nanos() as u64;
-        driver.fill_input();
-        let measurement = driver.process().map_err(ProcessingFailure)?;
+        drop(delivery);
+        {
+            let _stimulus = host_timing::span("fixture.input_stimulus");
+            driver.fill_input();
+        }
+        let measurement = {
+            let _process = host_timing::span("fixture.process");
+            driver.process().map_err(ProcessingFailure)?
+        };
         if report.backend == "fpga-rtl" && report.fixture.media == fixture::Media::Midi {
             ensure!(
                 measurement.reads == 0 && measurement.writes == 0,
                 "MIDI-only callback touched audio media memory"
             );
         }
+        let receive = host_timing::span("fixture.endpoint_receive");
         let start = Instant::now();
         control.pump()?;
         control.snapshot()?;
         control_ns += start.elapsed().as_nanos() as u64;
+        drop(receive);
+        let _validation = host_timing::span("fixture.validate_and_record");
         ensure!(
             control.snapshot_frame == frame,
             "snapshot frame mismatch: {} != {frame}",

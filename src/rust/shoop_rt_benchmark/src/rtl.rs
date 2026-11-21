@@ -1,6 +1,6 @@
 use crate::{
     fixture::*,
-    reference,
+    host_timing, reference,
     runner::{self, Control, Driver, Measurement, Run},
 };
 use anyhow::{anyhow, ensure, Result};
@@ -58,6 +58,8 @@ pub fn run(
     dram_config: Option<&Path>,
     output: &Path,
 ) -> Result<Run> {
+    let prepare = host_timing::span("prepare");
+    let graph = host_timing::span("prepare.graph");
     let media = fixture.media;
     let mode = match memory_model {
         "dramsim3" => Mode::Dramsim3,
@@ -78,6 +80,8 @@ pub fn run(
     let compiled = RtlTarget::new(CAPACITIES, LOOPS, &views)
         .build(&logical)
         .map_err(|e| anyhow!("RTL lowering: {e:?}"))?;
+    drop(graph);
+    let design_build = host_timing::span("prepare.design_build");
     let directory = output.with_extension("rtl");
     external(rt_fpga_rtl::report::configure(&directory, false))?;
     let mut design = rt_fpga_rtl::pipeline::design(
@@ -145,7 +149,13 @@ pub fn run(
             .push(Probe::observe(&format!("core.audio.core.media.{name}")));
     }
     let model = external(design.build(&rt_fpga_rtl::root().join("work/rt-benchmark-model")))?;
-    let mut sim = Sim::new(external(model.benchmark_session())?, &[("clk", 6666, 0)]);
+    drop(design_build);
+    let session = {
+        let _session = host_timing::span("prepare.model_session");
+        external(model.benchmark_session())?
+    };
+    let infrastructure = host_timing::span("prepare.infrastructure");
+    let mut sim = Sim::new(session, &[("clk", 6666, 0)]);
     sim.max_ps = u64::MAX;
     let activity = Rc::new(RefCell::new(Activity::default()));
     sim.agent(activity.clone());
@@ -206,10 +216,14 @@ pub fn run(
         MIDI_OUTPUT_CAPACITY,
     ))));
     sim.agent(emitted.clone());
+    drop(infrastructure);
+    let loading = host_timing::span("prepare.load_audio");
     pipeline.audio.load_compiled(&mut sim, &compiled);
     pipeline.store.load(&mut sim, &serde_json::json!({"chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"chunk_limit":MEMORY_BYTES/(FPGA_CHUNK_FRAMES*4),
         "samples":[],"free_chunks":[],"views":(0..LOOPS*channels).map(|_| serde_json::json!({"chunks":[],"frames":0})).collect::<Vec<_>>()}));
     pipeline.store.memory.borrow_mut().control.stalls = false;
+    drop(loading);
+    let endpoint_setup = host_timing::span("prepare.endpoint");
     let (control, execution) =
         rt::channel(256, 3, snapshot::capacity(1, LOOPS as usize, 1).unwrap())
             .map_err(|e| anyhow!("channel: {e:?}"))?;
@@ -230,6 +244,8 @@ pub fn run(
     .map_err(|e| anyhow!("endpoint: {e:?}"))?;
     let mut control = Control::new(endpoint, Outbox::new(256, 256, 0))?;
     control.configuration = (1, 1);
+    drop(endpoint_setup);
+    let formatting = host_timing::span("prepare.format_midi");
     sim.model.set_all(&[
         ("midi_arena_base", 0),
         ("midi_memory_arena_bytes", (midi_words * 4) as u64),
@@ -254,6 +270,7 @@ pub fn run(
     sim.model.set("midi_response_ready", 1);
     sim.idle(1);
     sim.model.set("midi_response_ready", 0);
+    drop(formatting);
     let driver = Rtl {
         media,
         midi_memory,
@@ -272,6 +289,7 @@ pub fn run(
         mode,
         activity,
     };
+    drop(prepare);
     Ok(runner::run("fpga-rtl", fixture, control, driver))
 }
 
@@ -476,6 +494,7 @@ impl Driver for Rtl<'_> {
         let cycles = self.sim.cycles;
         let reads = self.pipeline.store.memory.borrow().reads();
         let writes = self.pipeline.store.memory.borrow().writes();
+        let commands = host_timing::span("rtl.callback.commands");
         self.execution.commands.begin_callback();
         while let Some(group) = self.execution.commands.pop() {
             let header = group.header;
@@ -504,6 +523,8 @@ impl Driver for Rtl<'_> {
                 },
             );
         }
+        drop(commands);
+        let upload = host_timing::span("rtl.callback.input_upload");
         ensure!(
             self.sim.model.get("sync_frame") == self.frame,
             "RTL frame counter mismatch"
@@ -533,6 +554,8 @@ impl Driver for Rtl<'_> {
             ("job_enable", 1),
             ("drain_ready", 0),
         ]);
+        drop(upload);
+        let admission = host_timing::span("rtl.callback.admission");
         self.pipeline.audio.program.run_inputs(&mut self.sim, &[]);
         let mut admitted = false;
         for _ in 0..100 {
@@ -543,6 +566,8 @@ impl Driver for Rtl<'_> {
         }
         ensure!(admitted, "RTL quantum admission failed");
         self.sim.model.set("run_valid", 0);
+        drop(admission);
+        let execution = host_timing::span("rtl.callback.execution");
         self.sim
             .until(20_000_000, "RTL quantum completion", |m| m.get("done") != 0);
         ensure!(
@@ -563,6 +588,8 @@ impl Driver for Rtl<'_> {
         );
         let fabric_cycles = self.sim.cycles - cycles;
         let elapsed_ns = start.elapsed().as_nanos() as u64;
+        drop(execution);
+        let _observation = host_timing::span("rtl.callback.observation");
         let activity = *self.activity.borrow();
         let stalls = self.stalls();
         self.midi_result.extend_from_slice(&self.emitted.borrow().0);

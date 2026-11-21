@@ -9,6 +9,7 @@ python3 scripts/benchmark_rt.py --output work/rt-benchmark
 python3 scripts/benchmark_rt.py --preset smoke --rtl-jobs 3 --output work/rt-smoke
 python3 scripts/benchmark_rt.py --media audio --backends cpu,fpga-reference --output work/rt-audio
 python3 scripts/benchmark_rt.py --report-only --output work/rt-benchmark
+python3 scripts/benchmark_rt.py --preset smoke --rtl-jobs 3 --profile-rtl --output work/rt-profiled
 ```
 
 `--media audio,midi,audio-midi` is the default matrix. `--patterns
@@ -130,6 +131,21 @@ needs no backend/compiler and still accepts older fixture versions with their
 original media and geometry labels. Revisions 2/3 and the pre-refresh audio report
 are historical configurations; rerun the matrix for an upstream performance
 comparison.
+
+Every new campaign writes `runtime.json` and `runtime.md` with setup/build,
+serial host cases, parallel RTL cases, report generation and individual child
+start/end times. Parallel child durations overlap and must not be added to obtain
+the suite's elapsed time. `--host-profile` adds per-process `.host.json` files
+covering preparation, the callback loop, stimulus, command delivery, validation,
+snapshot observation, memory-statistic finalization, teardown and JSON output.
+These are inclusive host wall-clock counters; nested phases overlap.
+
+On Linux, `--profile-rtl` implies `--host-profile` and additionally uses installed
+GNU gprofng to sample each RTL process's CPU stacks every 20 ms. Experiment data
+is saved in `.er` directories. Sampling adds host overhead; neither timers nor
+sampling advance the model's clock. The timed fixture and FPGA cycle statistics
+are unchanged. Inspect a completed experiment with
+`gprofng display text -limit 40 -functions <case>.er`.
 
 The published [audio/MIDI smoke report and raw bundle](../../../benchmarks/rt-audio-midi-smoke/README.md)
 cover all three media profiles. Capture took about 54 minutes with three RTL
