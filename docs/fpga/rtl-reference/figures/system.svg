@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 495" width="960" height="495" role="img" aria-labelledby="title desc">
+  <title id="title">Mixed core storage and execution boundaries</title>
+  <desc id="desc">The FPGA contains the SP with local memories, the job FIFO, JP and both media services. The audio and MIDI memory ports are the only paths drawn into DDR. A separate dotted signal carries playback hints.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+    <marker id="hint" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#846022"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="493" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="Run control and device I/O">
+  <rect x="24" y="20" width="912" height="59" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="39" y="45" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568"></text>
+  <text x="44" y="47" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" fill="#1b3244">Host, audio bank controller or testbench</text>
+  <text x="44" y="67" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Loads program and state, requests runs, supplies or accepts I/O</text>
+  </g>
+  <g inkscape:label="FPGA execution and on-chip memory">
+  <rect x="24" y="102" width="912" height="315" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="39" y="127" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568"></text>
+  <text x="201" y="127" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">FPGA FABRIC  /  midi_audio_pipeline_axi</text>
+  <g inkscape:label="State processor">
+    <rect x="48" y="153" width="255" height="64" rx="9" fill="#eaf1fb" stroke="#456a9f" stroke-width="2"/>
+  <text x="175.5" y="181.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">State processor</text>
+  <text x="175.5" y="203.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Updates loop timing</text>
+  </g>
+  <rect x="48" y="228" width="80" height="29" rx="5" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="88.0" y="247" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#1b3244">Program</text>
+  <rect x="133" y="228" width="81" height="29" rx="5" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="173.5" y="247" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#1b3244">Node RAM</text>
+  <rect x="219" y="228" width="84" height="29" rx="5" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="261.0" y="247" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#1b3244">Loop RAM</text>
+  <g inkscape:label="Job FIFO">
+    <rect x="366" y="153" width="176" height="64" rx="9" fill="#eaf1fb" stroke="#456a9f" stroke-width="2"/>
+  <text x="454.0" y="181.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Job FIFO</text>
+  <text x="454.0" y="203.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Ordered descriptors</text>
+  </g>
+  <g inkscape:label="Job processor">
+    <rect x="644" y="153" width="260" height="64" rx="9" fill="#eaf1fb" stroke="#456a9f" stroke-width="2"/>
+  <text x="774.0" y="181.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Job processor</text>
+  <text x="774.0" y="203.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Executes the FIFO</text>
+  </g>
+  <rect x="644" y="228" width="121" height="29" rx="5" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="704.5" y="247" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#1b3244">Scratch RAM</text>
+  <rect x="770" y="228" width="134" height="29" rx="5" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="837.0" y="247" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#1b3244">PCM I/O banks</text>
+  <path d="M 173,79 L 173,153" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 303,185 L 366,185" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 542,185 L 644,185" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 831,79 L 831,153" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <g inkscape:label="Audio media service">
+    <rect x="349" y="326" width="248" height="63" rx="9" fill="#e4f3ed" stroke="#30775f" stroke-width="2"/>
+  <text x="473.0" y="353.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Audio media service</text>
+  <text x="473.0" y="375.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Sample and metadata caches</text>
+  </g>
+  <g inkscape:label="MIDI data-job unit">
+    <rect x="657" y="326" width="247" height="63" rx="9" fill="#f0eafd" stroke="#7458a3" stroke-width="2"/>
+  <text x="780.5" y="353.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">MIDI data-job unit</text>
+  <text x="780.5" y="375.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">Handles, lists and cursors</text>
+  </g>
+  <path d="M 644,205 L 619,205 L 619,289 L 548,289 L 548,326" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M 904,205 L 918,205 L 918,345 L 904,345" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M 303,209 L 324,209 L 324,355 L 349,355" fill="none" stroke="#846022" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="7 5" marker-end="url(#hint)"/>
+  <text x="65" y="309" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Early playback hint</text>
+  <line x1="225" y1="304" x2="321" y2="304" stroke="#846022" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="65" y="369" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">SP state stays here on chip.</text>
+  </g>
+  <g inkscape:label="External DDR">
+  <rect x="24" y="434" width="912" height="47" rx="10" fill="#fff2d9" stroke="#bacbd4" stroke-width="1"/>
+  <text x="39" y="459" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">EXTERNAL DDR</text>
+  <path d="M 473,389 L 473,434" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M 781,389 L 781,434" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="473" y="462" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">Audio samples and metadata</text>
+  <text x="781" y="462" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">MIDI events and scratch lists</text>
+  </g>
+</svg>

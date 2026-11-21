@@ -1,0 +1,206 @@
+:root {
+  color: #192e3c;
+  font-family: "DejaVu Sans", sans-serif;
+  font-size: 16px;
+  line-height: 1.62;
+}
+
+body {
+  box-sizing: border-box;
+  max-width: 65rem;
+  margin: 0 auto;
+  padding: 2.5rem clamp(1rem, 5vw, 4.5rem) 4rem;
+}
+
+header {
+  margin-bottom: 2rem;
+  border-top: 7px solid #306887;
+  border-bottom: 1px solid #b2c3cd;
+  padding: 1.15rem 0 .8rem;
+}
+
+header h1 {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 2.8rem;
+  line-height: 1.12;
+}
+
+header .subtitle {
+  margin: .45rem 0 0;
+  color: #435e6e;
+  font-size: 1.26rem;
+}
+
+nav {
+  margin-bottom: 2rem;
+  padding: .55rem 1rem;
+  background: #eef4f7;
+  border-left: 3px solid #306887;
+}
+
+nav ul {
+  margin: .15rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+nav li {
+  padding: .1rem 0;
+}
+
+a {
+  color: #155778;
+  text-underline-offset: .16em;
+}
+
+h1, h2, h3 {
+  color: #18384c;
+  line-height: 1.23;
+}
+
+h1 {
+  margin: 2.2rem 0 .85rem;
+  border-bottom: 1px solid #becdd5;
+  padding-bottom: .35rem;
+  font-size: 2rem;
+}
+
+h2 {
+  margin: 1.45rem 0 .48rem;
+  font-size: 1.29rem;
+}
+
+.header-section-number, .toc-section-number {
+  color: #496879;
+  margin-right: .33em;
+}
+
+p {
+  margin: .56rem 0 .85rem;
+}
+
+code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: .92em;
+  color: #1c4561;
+  overflow-wrap: anywhere;
+}
+
+pre {
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: .8em 1em;
+  background: #eef4f7;
+  border-radius: 4px;
+}
+
+table {
+  width: 100%;
+  margin: 1rem 0 1.2rem;
+  border-collapse: collapse;
+  font-size: .91rem;
+  line-height: 1.45;
+}
+
+th, td {
+  padding: .52em .64em;
+  border-bottom: 1px solid #c7d4dc;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #e9f1f5;
+  color: #173a50;
+}
+
+figure {
+  margin: 1.3rem 0;
+}
+
+figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+figcaption {
+  margin: .32rem 0 0;
+  color: #3c5665;
+  font-size: .9rem;
+}
+
+@page {
+  size: A4;
+  margin: 16mm 18mm 17mm;
+
+  @bottom-left {
+    content: "ShoopDaLoop FPGA  /  RTL technical reference";
+    color: #496879;
+    font: 8pt "DejaVu Sans", sans-serif;
+  }
+
+  @bottom-right {
+    content: counter(page);
+    color: #496879;
+    font: 8pt "DejaVu Sans", sans-serif;
+  }
+}
+
+@media print {
+  :root {
+    font-size: 10pt;
+    line-height: 1.42;
+  }
+
+  body {
+    max-width: none;
+    padding: 0;
+  }
+
+  header {
+    margin-bottom: .9rem;
+  }
+
+  nav {
+    margin-bottom: 1.2rem;
+  }
+
+  h1, h2, h3 {
+    break-after: avoid;
+  }
+
+  main > h1 {
+    margin-top: 1.15rem;
+  }
+
+  main > h1[id^="appendix-"] {
+    break-before: page;
+  }
+
+  main > h1[id^="appendix-"] ~ table th,
+  main > h1[id^="appendix-"] ~ table td {
+    padding: .38em .48em;
+  }
+
+  figure, tr, pre {
+    break-inside: avoid;
+  }
+
+  table, figure {
+    margin-top: .75rem;
+    margin-bottom: .75rem;
+  }
+
+  figure img {
+    max-width: 166mm;
+    margin-inline: auto;
+  }
+
+  p {
+    orphans: 2;
+    widows: 2;
+  }
+}

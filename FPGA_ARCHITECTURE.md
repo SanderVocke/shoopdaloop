@@ -1,26 +1,27 @@
 # FPGA execution components
 
+See the [RTL technical reference](docs/fpga/rtl-reference/README.md) for block
+diagrams, functional chapters, and HTML and PDF build commands.
+
 The active hardware consists of the state processor (SP), job processor (JP),
 media store, metadata/sample caches, prefetch and AXI memory services. SP executes
 explicit programs and emits jobs; JP dispatches audio and MIDI work through
-their storage/state services.
+their storage and data services.
 `media_audio_pipeline` and its AXI wrapper connect these components without a
 transition processor. A Rust functional reference implements the same execution
 model and has an optional, restricted application host profile. Marlin exercises
 the RTL components and live program loader; it has no complete application host.
 
-Explicit MIDI context bindings extend the compiled work pass in both Rust and
-RTL. SP remains the sole owner of loop time/modes, and MIDI operations share the
-ordinary queue and JP with audio. `midi_audio_pipeline_axi` connects that path;
-MIDI content/state live in cache-less DDR with small context/working tables on
-chip. Its MIDI execution unit shares arithmetic and BRAM working storage under a
-read-only control program; the Rust reference remains ordinary bounded software.
-Audio keeps its caches. General application MIDI wiring and the SoC
-embedding remain separate. See [the execution design](docs/fpga/midi-shared-jobs.md),
-[compact MIDI hardware](docs/fpga/midi-compact-execution.md),
-[validation](docs/fpga/midi-shared-jobs-validation.md), and
-[current Vivado measurements](docs/fpga/midi-compact-vivado-7020.md).
-
+SP emits MIDI Input, Read, Capture, Merge and Output work into the ordinary
+JP queue. A capture prepass queues writer transitions before the data jobs.
+`midi_audio_pipeline_axi` connects the shared pipeline to a directly sequenced
+MIDI data-job unit. It holds sequence handles, list descriptors and reader
+cursors on chip. DDR holds recorded events, shared views and scratch lists.
+The current implementation plays event bytes and has no instrument-state
+tracking or restoration. Audio keeps its caches. The application's MIDI host
+wiring and SoC embedding remain separate. See the [MIDI protocol](fpga/midi/PROTOCOL.md),
+[implementation and validation](docs/fpga/midi-data-jobs.md), and
+[64-loop measurements](docs/fpga/midi-data-jobs-benchmarks.md).
 
 The RTL transition processor, full-loop hardware coordinator, old ARM control interfaces,
 application simulator devices and prepared board demos have been retired.
