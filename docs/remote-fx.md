@@ -1,0 +1,48 @@
+# Remote Carla FX
+
+A Native session host can process Carla Rack, Patchbay, and Patchbay 16x on a desktop FX service. The Native host continues to own routing, loop media, and the sample clock. Carla editors and plugin files live on the service machine, which can also run the ShoopDaLoop UI.
+
+Use Carla-enabled Native companions from the same build on the desktop and looper. The looper loads saved projects on the service through the existing Carla state format.
+
+## Choose a service when adding a track
+
+1. On the desktop, open **Host Manager → FX services** and start a service. Enable **LAN access** if the looper runs on another machine. **One process per chain** enables supervised Carla subprocesses.
+2. Open the session on a Carla-enabled Native host using its normal startup settings. In **Add track**, choose **Dry/wet** and a **Remote Carla** processor. Choose a discovered service or enter its IP address and TCP port. Set the disconnect behavior for that track.
+3. Add the track. The Native host opens the chain on the selected service. Each track can use a different service. If local Carla is enabled on the Native host, use the regular **Carla** entries for tracks that process locally.
+
+The desktop picker discovers services on the same machine and IPv4 services on the local network. Use a manual address for a service across a routed network or on an IPv6-only network. The service address must be reachable from the Native host. The default Native pools prepare up to two remote Rack slots and two remote Patchbay slots within the available processor memory. Hosts configured for 16 channels can also prepare one Patchbay 16x slot.
+
+Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
+
+## Start from the command line
+
+On the desktop, bind the FX service to its address on the trusted network.
+
+```sh
+shoop_host --fx-service --lan --listen 192.168.1.50:24510
+```
+
+For sessions and buses that use a host-wide FX service, set a default endpoint on the Native looper.
+
+```sh
+shoop_host --backend native --carla-hosting remote \
+  --carla-fx-address 192.168.1.50:24510 --carla-rack-instances 1
+```
+
+Use `--carla-hosting mixed` to configure custom per-type limits for both local and remote Carla. Supply `--carla-fx-address` if buses need a default service. The address in an individual track takes precedence over the host default. Start the FX service with `--isolated` for one supervised Carla worker process per chain. The default runs Carla in the service process with a dedicated media thread for each chain.
+
+Control uses TCP on the configured port. Each chain uses an OS-assigned UDP port on the desktop and a UDP socket on the looper. Input and output widths are negotiated separately from the track or bus layout. Rack and stereo Patchbay support up to two lanes on each side and Patchbay 16x supports up to sixteen. Use a trusted network that allows both directions. The default service binding is loopback.
+
+The looper groups one driver period of graph quanta per DSP batch and defaults to two additional batches of slack. At 48 kHz with a 128-frame period and a 32-frame graph quantum this schedules wet returns 384 frames after their source, or 8 ms of node buffering. `--carla-fx-slack-quanta` selects extra slack for a new host. Driver buffering is additional. The transport sends two copies per datagram by default.
+
+## Session state and failure
+
+Session files retain Carla chain kinds and their confirmed projects. A remote track also saves its selected service address and disconnect behavior. Earlier sessions that use a host-wide endpoint still use that default. The required plugin resources must be installed wherever the chain runs.
+
+The **On disconnect** setting in Add Track controls recovery. For a host-wide endpoint, pass `--carla-fx-reconnect` with one of these values.
+
+- `recreate` opens a new chain and restores the last confirmed checkpoint. This is the default.
+- `resume` first tries to reattach to the running chain on the service. The service retains a disconnected chain for 30 seconds once its control connection ends, and reattachment gives it a fresh UDP identity. If the chain is gone, the host recreates it from the last confirmed checkpoint.
+- `manual` waits for you to use the affected track or bus's FX control to retry. It tries the retained chain first, then recreates it from the last confirmed checkpoint if needed.
+
+Missing wet audio is silent by default. Enable **Play delayed dry audio when FX is missing** or pass `--carla-fx-dry-on-loss` to hear the matching dry lanes at the same scheduled delay. Both modes recover MIDI notes. An interrupted wet capture keeps the previous take. [Wire protocol](design/remote-fx-wire.md)

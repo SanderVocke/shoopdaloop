@@ -1415,6 +1415,7 @@ pub struct AppWidget {
     add_track_midi: bool,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
+    add_track_fx: crate::remote_fx::Picker,
     add_track_default_playback_mode: DefaultPlaybackMode,
     add_track_output_bus_names: Vec<String>,
     add_track_output_bus_text: String,
@@ -1496,6 +1497,11 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fx_service_discovery(&mut self, discover: fn() -> Vec<std::net::SocketAddr>) {
+        self.add_track_fx.set_discovery(discover);
+    }
+
     pub fn open_host_profiling(&mut self) {
         self.profiling.open = true;
         self.profiling.host = true;
@@ -1510,6 +1516,7 @@ impl AppWidget {
 
     pub fn reset_connection(&mut self) {
         let mut fresh = Self::new(self.settings.registry());
+        fresh.add_track_fx = std::mem::take(&mut self.add_track_fx);
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
         fresh.profiling = core::mem::take(&mut self.profiling);
@@ -1543,6 +1550,7 @@ impl AppWidget {
             add_track_midi: false,
             add_track_dry_midi: false,
             add_track_processor: None,
+            add_track_fx: Default::default(),
             add_track_default_playback_mode: DefaultPlaybackMode::Regular,
             add_track_output_bus_names: vec!["Master".to_owned()],
             add_track_output_bus_text: String::new(),
@@ -2487,6 +2495,7 @@ impl AppWidget {
         self.add_track_processor_adjustment = configuration.processor_adjustment;
         self.add_track_processor_frames = configuration.processor_frames;
         self.add_track_make_default = false;
+        self.add_track_fx.opened();
         self.add_track_open = true;
     }
 
@@ -2892,6 +2901,14 @@ impl AppWidget {
                 self.add_track_recording_frames = configuration.recording_frames;
                 self.add_track_processor_adjustment = configuration.processor_adjustment;
                 self.add_track_processor_frames = configuration.processor_frames;
+                let remote_fx = self.add_track_mode == AddTrackMode::DryWet
+                    && self.add_track_processor.as_ref().is_some_and(TrackProcessorTypeId::is_remote_carla);
+                if remote_fx {
+                    let local_session = self.host_controls.state.as_ref().is_none_or(|host| {
+                        host.location != crate::HostLocation::RemoteSocket
+                    });
+                    self.add_track_fx.show(ui, local_session);
+                }
                 #[cfg(test)]
                 {
                     self.add_track_midi_id = _configuration_ui.midi_id;
@@ -2907,7 +2924,11 @@ impl AppWidget {
                 let spec = self.add_track_spec();
                 let validation = spec
                     .as_ref()
-                    .ok_or(crate::TrackSpecError::ProcessorUnavailable)
+                    .ok_or(if remote_fx {
+                        crate::TrackSpecError::InvalidRemoteFx
+                    } else {
+                        crate::TrackSpecError::ProcessorUnavailable
+                    })
                     .and_then(|spec| spec.validate(processors));
                 if let Err(error) = validation {
                     let message = match error {
@@ -2920,6 +2941,9 @@ impl AppWidget {
                         }
                         crate::TrackSpecError::UnsupportedShape => {
                             "The selected processor does not support this channel/MIDI shape."
+                        }
+                        crate::TrackSpecError::InvalidRemoteFx => {
+                            "Select an FX service or enter its IP address and port."
                         }
                     };
                     ui.colored_label(egui::Color32::LIGHT_RED, message);
@@ -2998,13 +3022,22 @@ impl AppWidget {
                 audio_channels: 0,
                 midi: false,
             },
-            AddTrackMode::DryWet => TrackSpecTopology::DryWet {
-                dry_audio_channels: self.add_track_audio_channels,
-                wet_audio_channels: self.add_track_audio_channels,
-                dry_midi: self.add_track_dry_midi,
-                processor_type: self.add_track_processor.clone()?,
-                default_playback_mode: self.add_track_default_playback_mode,
-            },
+            AddTrackMode::DryWet => {
+                let processor_type = self.add_track_processor.clone()?;
+                let remote_fx = if processor_type.is_remote_carla() {
+                    Some(self.add_track_fx.target()?)
+                } else {
+                    None
+                };
+                TrackSpecTopology::DryWet {
+                    dry_audio_channels: self.add_track_audio_channels,
+                    wet_audio_channels: self.add_track_audio_channels,
+                    dry_midi: self.add_track_dry_midi,
+                    processor_type,
+                    default_playback_mode: self.add_track_default_playback_mode,
+                    remote_fx,
+                }
+            }
         };
         Some(TrackSpec {
             name: self.add_track_name.trim().to_owned(),
@@ -4689,6 +4722,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
                 default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                remote_fx: None,
             },
             latency: TrackLatencySpec {
                 manual_frames: 3,
@@ -5322,6 +5356,7 @@ mod tests {
                     dry_midi: true,
                     processor_type: processor.id,
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: vec!["Master".to_owned()],
@@ -5377,6 +5412,7 @@ mod tests {
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: vec!["Master".to_owned()],

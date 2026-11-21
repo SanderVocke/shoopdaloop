@@ -1,4 +1,6 @@
 mod discovery;
+mod fx_services;
+pub use fx_services::discover_fx_services;
 mod start_host;
 
 use crate::ManagerArgs;
@@ -200,6 +202,7 @@ struct Manager {
     tab: Tab,
     saved_log: bool,
     start_dialog: Option<start_host::Dialog>,
+    fx_services: fx_services::Panel,
 }
 impl Manager {
     fn new(profile: Option<PathBuf>) -> Self {
@@ -240,6 +243,7 @@ impl Manager {
             tab: Tab::Overview,
             saved_log: false,
             start_dialog: None,
+            fx_services: fx_services::Panel::default(),
         }
     }
     fn scan(&mut self) {
@@ -564,6 +568,9 @@ impl Manager {
                             self.new_host();
                         }
                         ui.menu_button("Advanced", |ui| self.advanced_menu(ui));
+                        if ui.button("FX services…").clicked() {
+                            self.fx_services.open = true;
+                        }
                     });
                 });
             });
@@ -643,6 +650,12 @@ impl Manager {
                 self.show_content(ui);
             });
         self.show_address_dialog(ui.ctx());
+        if let Some(address) = self.fx_services.show(ui.ctx()) {
+            self.new_host();
+            if let Some(dialog) = &mut self.start_dialog {
+                dialog.select_fx_service(address);
+            }
+        }
         self.show_start_dialog(ui.ctx());
         self.show_stop_dialog(ui.ctx());
         self.show_force_dialog(ui.ctx());
@@ -1412,6 +1425,9 @@ fn configure_context(context: &egui::Context) {
 }
 
 pub fn run(args: &ManagerArgs) -> Result<()> {
+    if args.probe_fx_service {
+        return fx_services::probe();
+    }
     let mut manager = Manager::new(args.remote_profile.clone());
     if let Some(address) = &args.host_address {
         manager.add_address(address.clone());

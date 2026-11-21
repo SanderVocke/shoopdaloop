@@ -11,7 +11,8 @@ use rt_runtime::{
 };
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
-struct Job {
+pub struct LocalJob {
+    frames: usize,
     tag: BatchTag,
     audio_input: Box<[f32]>,
     audio_output: Box<[f32]>,
@@ -24,18 +25,18 @@ struct Job {
 /// Render end of a prepared in-process worker transport.
 pub struct LocalTransport {
     frames: usize,
-    free: Vec<Job>,
-    jobs: Producer<Job>,
-    results: Consumer<Job>,
-    borrowed: Option<Job>,
+    free: Vec<LocalJob>,
+    jobs: Producer<LocalJob>,
+    results: Consumer<LocalJob>,
+    borrowed: Option<LocalJob>,
 }
 
 /// Worker end of a prepared transport. The host controls its execution and
 /// wakeup policy independently of the render callback.
 pub struct LocalWorker {
     frames: usize,
-    jobs: Consumer<Job>,
-    results: Producer<Job>,
+    jobs: Consumer<LocalJob>,
+    results: Producer<LocalJob>,
     previous: Option<BatchTag>,
 }
 
@@ -85,11 +86,13 @@ impl LocalTransport {
                         .checked_mul(quanta * size_of::<ParameterEvent>())?,
                 )
             })
-            .and_then(|data| data.checked_add(3 * size_of::<Job>()))
+            .and_then(|data| data.checked_add(3 * size_of::<LocalJob>()))
             .and_then(|slot| slot.checked_mul(slots))
             .and_then(|storage| {
                 storage.checked_add(
-                    size_of::<Self>() + size_of::<LocalWorker>() + 2 * size_of::<RingBuffer<Job>>(),
+                    size_of::<Self>()
+                        + size_of::<LocalWorker>()
+                        + 2 * size_of::<RingBuffer<LocalJob>>(),
                 )
             })
             .filter(|bytes| *bytes <= MAX_STORAGE_BYTES)
@@ -124,7 +127,8 @@ impl LocalTransport {
             ];
             core::hint::black_box(&mut parameters);
             parameters.clear();
-            free.push(Job {
+            free.push(LocalJob {
+                frames,
                 tag: BatchTag {
                     generation: 0,
                     sequence: 0,
@@ -164,7 +168,21 @@ impl LocalTransport {
     }
 }
 
-impl Job {
+impl LocalJob {
+    pub fn input(&self) -> AsyncBatch<'_> {
+        AsyncBatch {
+            tag: self.tag,
+            frames: self.frames,
+            audio: &self.audio_input,
+            midi: &self.midi_input,
+            parameters: &self.parameters,
+        }
+    }
+
+    pub fn output_mut(&mut self) -> (&mut [f32], &mut [MidiBuffer]) {
+        (&mut self.audio_output, &mut self.midi_output)
+    }
+
     fn load(&mut self, batch: AsyncBatch<'_>, frames: usize) -> Result<(), Error> {
         if batch.frames != frames
             || batch.audio.len() != self.audio_input.len()
@@ -233,6 +251,16 @@ impl AsyncTransport for LocalTransport {
 }
 
 impl LocalWorker {
+    /// Take a prepared job for off-render work. Return it with `finish` exactly once.
+    pub fn try_start(&mut self) -> Option<LocalJob> {
+        self.jobs.pop().ok()
+    }
+
+    pub fn finish(&mut self, mut job: LocalJob, result: Result<(), Error>) -> Result<(), Error> {
+        job.result = result;
+        self.results.push(job).map_err(|_| Error::Full)
+    }
+
     /// Return jobs already submitted to the old worker with their original tags.
     /// The next batch reprimes the stream even when there were no queued jobs.
     pub fn discard_pending(&mut self) -> Result<(), Error> {

@@ -20,7 +20,7 @@ mod transport;
 
 pub use backend::{Backend, Batch, BatchTag, ParameterEvent, SourceObserver};
 pub use inline::InlineTestProcessor;
-pub use local::{LocalTransport, LocalWorker};
+pub use local::{LocalJob, LocalTransport, LocalWorker};
 pub use midi::{MidiControls, MidiEvents, MidiInput};
 pub use processor::{BufferLimits, BufferedProcessor, Lifecycle, MidiLimits, MAX_STORAGE_BYTES};
 pub use timing::{PreparedTiming, Timing, MAX_BATCH_FRAMES, MAX_LATENCY_FRAMES};

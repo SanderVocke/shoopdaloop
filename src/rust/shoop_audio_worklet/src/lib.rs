@@ -1107,12 +1107,14 @@ fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology
             dry_audio_channels: audio_channels,
             wet_audio_channels: audio_channels,
             dry_midi: true,
+            remote_fx: None,
         },
         WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
             dry_audio_channels: 2,
             wet_audio_channels: 2,
             dry_midi: true,
+            remote_fx: None,
         },
     }
 }
@@ -1522,6 +1524,7 @@ fn to_wire_track_topology(topology: &BackendTrackTopology) -> WireTrackTopology 
             dry_audio_channels,
             wet_audio_channels,
             dry_midi: true,
+            ..
         } if processor_type == TrackProcessorTypeId::BUILTIN_FX
             && dry_audio_channels > &0
             && dry_audio_channels == wet_audio_channels =>
@@ -1535,6 +1538,7 @@ fn to_wire_track_topology(topology: &BackendTrackTopology) -> WireTrackTopology 
             dry_audio_channels: 2,
             wet_audio_channels: 2,
             dry_midi: true,
+            ..
         } if processor_type == TrackProcessorTypeId::OXISYNTH => WireTrackTopology::OxiSynth,
         _ => WireTrackTopology::Direct {
             audio_channels: 0,

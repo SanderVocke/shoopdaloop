@@ -125,6 +125,8 @@ impl Wire for EngineSettings {
                     0 => CarlaHosting::Disabled,
                     1 => CarlaHosting::InProcess,
                     2 => CarlaHosting::Subprocess,
+                    3 => CarlaHosting::Remote,
+                    4 => CarlaHosting::Mixed,
                     _ => return Err(CodecError::Invalid),
                 },
                 rack_instances: r.u16()?,

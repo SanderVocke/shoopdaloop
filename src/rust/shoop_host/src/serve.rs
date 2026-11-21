@@ -40,6 +40,8 @@ pub struct StartOptions {
     pub use_configured_driver: bool,
     #[serde(skip)]
     pub carla_worker: Option<PathBuf>,
+    #[serde(default)]
+    pub remote_carla: Option<RemoteCarla>,
 
     pub name: String,
 }
@@ -57,10 +59,41 @@ impl StartOptions {
             driver_preferences: None,
             use_configured_driver: false,
             carla_worker: None,
+            remote_carla: None,
 
             name: "ShoopDaLoop".into(),
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+pub struct RemoteCarla {
+    pub address: SocketAddr,
+    pub slack_quanta: Option<u16>,
+    pub copies: u8,
+    #[serde(default)]
+    pub reconnect: RemoteReconnect,
+    #[serde(default)]
+    pub dry_on_loss: bool,
+}
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteReconnect {
+    #[default]
+    Recreate,
+    Resume,
+    Manual,
 }
 
 struct Acceptor {
@@ -376,13 +409,51 @@ pub fn run_with_ready(
         "LAN hosts require socket delivery"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
+    let hosting = config.settings.processors.carla.hosting;
+    if hosting.uses_remote() || options.remote_carla.is_some() {
+        ensure!(
+            cfg!(feature = "carla"),
+            "Remote Carla requires a Carla-enabled Native host"
+        );
+        ensure!(
+            config.settings.backend == shoop_app_api::BackendType::Native,
+            "Remote Carla requires the Native backend"
+        );
+    }
+    ensure!(
+        hosting != shoop_app_api::CarlaHosting::Remote || options.remote_carla.is_some(),
+        "Remote-only Carla requires a default FX endpoint"
+    );
+    if let Some(remote) = options.remote_carla {
+        let address = remote.address;
+        ensure!(
+            address.port() != 0 && !address.ip().is_unspecified() && !address.ip().is_multicast(),
+            "Invalid desktop FX service address"
+        );
+        ensure!(
+            (1..=2).contains(&remote.copies),
+            "Remote Carla packet copies must be 1 or 2"
+        );
+    }
     #[cfg(feature = "carla")]
-    let (mut carla_ui, carla_dispatcher) = (config.settings.processors.carla.hosting
-        == shoop_app_api::CarlaHosting::InProcess)
-        .then(shoop_carla::native::CarlaMainThreadUiService::new)
-        .unzip();
+    let (mut carla_ui, carla_dispatcher) = matches!(
+        hosting,
+        shoop_app_api::CarlaHosting::InProcess | shoop_app_api::CarlaHosting::Mixed
+    )
+    .then(shoop_carla::native::CarlaMainThreadUiService::new)
+    .unzip();
     let mut carla = CarlaHostOptions::default();
     carla.worker.clone_from(&options.carla_worker);
+    carla.remote = options
+        .remote_carla
+        .map(|remote| shoop_rt_host_native::RemoteCarla {
+            address: remote.address,
+            slack_quanta: remote.slack_quanta,
+            copies: remote.copies,
+            retain_chain: remote.reconnect != RemoteReconnect::Recreate,
+            auto_reconnect: remote.reconnect != RemoteReconnect::Manual,
+            dry_on_loss: remote.dry_on_loss,
+        });
     #[cfg(feature = "carla")]
     {
         carla.ui = carla_dispatcher;

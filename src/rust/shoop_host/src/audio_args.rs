@@ -48,6 +48,8 @@ pub enum CarlaChoice {
     Disabled,
     InProcess,
     Subprocess,
+    Remote,
+    Mixed,
 }
 impl From<CarlaChoice> for shoop_app_api::CarlaHosting {
     fn from(value: CarlaChoice) -> Self {
@@ -55,6 +57,8 @@ impl From<CarlaChoice> for shoop_app_api::CarlaHosting {
             CarlaChoice::Disabled => Self::Disabled,
             CarlaChoice::InProcess => Self::InProcess,
             CarlaChoice::Subprocess => Self::Subprocess,
+            CarlaChoice::Remote => Self::Remote,
+            CarlaChoice::Mixed => Self::Mixed,
         }
     }
 }
@@ -86,6 +90,22 @@ pub struct AudioArgs {
         help_heading = "Track processors"
     )]
     pub carla_patchbay16x_instances: Option<u16>,
+    /// Desktop FX service TCP address for remote Carla.
+    #[arg(long, help_heading = "Track processors")]
+    pub carla_fx_address: Option<std::net::SocketAddr>,
+    #[arg(long, requires = "carla_fx_address", help_heading = "Track processors")]
+    pub carla_fx_slack_quanta: Option<u16>,
+    #[arg(long, requires = "carla_fx_address", help_heading = "Track processors", value_parser = clap::value_parser!(u8).range(1..=2))]
+    pub carla_fx_copies: Option<u8>,
+    #[arg(
+        long,
+        value_enum,
+        requires = "carla_fx_address",
+        help_heading = "Track processors"
+    )]
+    pub carla_fx_reconnect: Option<crate::serve::RemoteReconnect>,
+    #[arg(long, requires = "carla_fx_address", help_heading = "Track processors")]
+    pub carla_fx_dry_on_loss: bool,
 
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long = "driver", value_enum, help_heading = "Backend")]
@@ -104,6 +124,17 @@ pub struct AudioArgs {
     pub jack_client_name: Option<String>,
 }
 impl AudioArgs {
+    pub fn remote_carla(&self) -> Option<crate::serve::RemoteCarla> {
+        self.carla_fx_address
+            .map(|address| crate::serve::RemoteCarla {
+                address,
+                slack_quanta: self.carla_fx_slack_quanta,
+                copies: self.carla_fx_copies.unwrap_or(2),
+                reconnect: self.carla_fx_reconnect.unwrap_or_default(),
+                dry_on_loss: self.carla_fx_dry_on_loss,
+            })
+    }
+
     pub fn apply_pools(&self, mut pools: NewEnginePools) -> NewEnginePools {
         pools.quantum = self.quantum.unwrap_or(pools.quantum);
         pools
