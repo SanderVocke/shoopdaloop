@@ -6,10 +6,21 @@ use crate::{
 use rt_fpga_reference::midi;
 
 pub fn conformance(width: u64) -> Result<()> {
-    let mut sources: Vec<_> = ["midi_data_jobs_axi", "midi_data_jobs", "midi_store"]
-        .iter()
-        .map(|n| crate::root().join(format!("fpga/midi/rtl/{n}.sv")))
-        .collect();
+    conformance_config(width, false)
+}
+pub fn expression_conformance(width: u64) -> Result<()> {
+    conformance_config(width, true)
+}
+fn conformance_config(width: u64, expression: bool) -> Result<()> {
+    let mut sources: Vec<_> = [
+        "midi_data_jobs_axi",
+        "midi_data_jobs",
+        "midi_store",
+        "midi_expression_state",
+    ]
+    .iter()
+    .map(|n| crate::root().join(format!("fpga/midi/rtl/{n}.sv")))
+    .collect();
     sources.extend(
         ["word_axi", "word_dma", "axi_master"]
             .iter()
@@ -20,6 +31,7 @@ pub fn conformance(width: u64) -> Result<()> {
     let compiled = design
         .parameters(&[
             ("DATA_WIDTH", width),
+            ("STATE_SUPPORTED", u64::from(expression)),
             ("LOOPS", 2),
             ("INPUTS", 2),
             ("DESTINATIONS", 2),
@@ -70,7 +82,49 @@ pub fn conformance(width: u64) -> Result<()> {
     sim.idle(2);
     sim.model.set("reset", 0);
     assert_eq!(issue_control(&mut sim, 0, [0; 5]).0, 0);
-    let mut f = Oracle::new(32, false);
+    let mut f = Oracle::build(32, false, expression);
+    if expression {
+        for n in 0..2u64 {
+            assert_eq!(
+                issue_control(
+                    &mut sim,
+                    21,
+                    [n, (1 << 32) | n, n | (1 << 8) | ((1 << n) << 16), 0, 0]
+                )
+                .0,
+                0
+            );
+            let mut source = midi::performance::State::new();
+            for bytes in [
+                [0xb0 | n as u8, 1, 20],
+                [0x90 | n as u8, 60, 80],
+                [0xb0 | n as u8, 66, 127],
+            ] {
+                source.apply(midi::Message::parse(&bytes).unwrap());
+            }
+            f.midi
+                .expression
+                .as_mut()
+                .unwrap()
+                .seed_input(n as u16, &source)
+                .unwrap();
+            for field in [
+                n as usize * 512 + 60,
+                n as usize * 512 + 129,
+                n as usize * 512 + 194,
+            ] {
+                assert_eq!(
+                    issue_control(
+                        &mut sim,
+                        22,
+                        [0, n, field as u64, u64::from(source.word(field)), 0]
+                    )
+                    .0,
+                    0
+                );
+            }
+        }
+    }
     let events: Vec<_> = (0..300)
         .flat_map(|i| {
             [

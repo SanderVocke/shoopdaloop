@@ -26,7 +26,7 @@ docker run --rm \
         /tools/Xilinx/Vivado/2021.1/bin/vivado -mode batch -source run.tcl > /build/console.log 2>&1
         status=$?
         set -e
-        for artifact in *.rpt *.json *.dcp setup.txt outcome.txt vivado.log vivado.jou; do
+        for artifact in *.rpt *.json *.dcp hs_err_pid*.log setup.txt outcome.txt vivado.log vivado.jou; do
             if test -f "$artifact"; then cp "$artifact" /build/; fi
         done
         exit "$status"

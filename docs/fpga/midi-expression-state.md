@@ -96,3 +96,28 @@ Cleanup owns notes/pedals actually emitted by a loop, including repairs. A match
 starting note that merely continues is not newly claimed. This keeps stopping a
 loop from releasing a player's unchanged live note and removes a full key scan
 from ordinary controller restoration. Shared-channel articulation remains coupled.
+
+## RTL storage and execution
+
+The RTL uses the same state layout and musical rules, with serialized access to
+DDR. Inputs, outputs, view snapshots, the seek target, difference words and owner
+activity words stay in DDR. Small connection tables, counts, view channel masks
+and the two working channel images use synchronous BRAM ports. The current loop's
+connection information stays in registers during its job. Looking up another
+loop's snapshot or ownership uses the same connection-table read port.
+
+Every state or tracker word request uses one shared address path: choose the
+region, slot and byte offset, calculate a bounded arena-relative address, then add
+the 64-bit arena base. This adds two setup cycles per word request and avoids
+building a separate wide address calculation in each operation. Iterator widths
+follow the configured capacities; content and owner generations retain all bits.
+
+Dirty and owner-activity counts also answer the empty/nonempty checks. Separate
+large flag registers are unnecessary. A clean restore or unused-owner cleanup
+reads small on-chip metadata and performs no DDR transfers. Actual state updates
+still visit only the affected field and the relevant output/channel directory.
+
+These are direct data operations under the shared JP. SP still owns loop modes,
+positions and transition decisions. There is no additional instruction stream or
+MIDI scheduler. The Rust reference keeps its normal indexed arrays and CPU-friendly
+control flow; it remains the behavioural oracle for the serialized RTL.

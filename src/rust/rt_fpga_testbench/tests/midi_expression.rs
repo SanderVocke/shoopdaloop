@@ -23,6 +23,7 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
     .unwrap();
     let cases: &[&[&[u8]]] = &[
         &[],
+        &[&[0xb0, 7, 55]],
         &[
             &[0x90, 60, 80],
             &[0xa0, 60, 40],
@@ -150,6 +151,36 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
             .unwrap();
         assert_eq!(command(&mut sim, 5, [0, handle, 0, owner]), 0);
         assert_eq!(packets.borrow().packets, expected);
+        m.expression
+            .as_mut()
+            .unwrap()
+            .accept(0, msg(&[0xb0, 1, 99]), None, &m.store)
+            .unwrap();
+        assert_eq!(
+            command(
+                &mut sim,
+                2,
+                [0, packed(&[0xb0, 1, 99]), u64::from(u32::MAX), 0]
+            ),
+            0
+        );
+        let mut expected = Vec::new();
+        m.expression
+            .as_mut()
+            .unwrap()
+            .restore(0, view, 0, 0, &m.store, &mut |e| {
+                expected.push(e.message.as_bytes().to_vec());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            expected.len(),
+            1,
+            "controller-only repair must keep matching notes playing"
+        );
+        packets.borrow_mut().packets.clear();
+        assert_eq!(command(&mut sim, 5, [0, handle, 0, owner]), 0);
+        assert_eq!(packets.borrow().packets, expected);
         {
             let words = &memory.borrow().words;
             for f in 0..258 {
@@ -221,6 +252,74 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
             assert_eq!(command(&mut sim, 6, [0, handle, 0, owner]), 0);
             assert_eq!(memory.borrow().transfers, before);
         }
+        let policy = DEFAULT_CONTROLLERS | (1 << 7);
+        m.expression
+            .as_mut()
+            .unwrap()
+            .policy(0, policy, &m.store)
+            .unwrap();
+        assert_eq!(
+            command(&mut sim, 12, [0, policy as u64, (policy >> 64) as u64, 0]),
+            0
+        );
+        let mut expected = Vec::new();
+        m.expression
+            .as_mut()
+            .unwrap()
+            .restore(0, view, 0, 0, &m.store, &mut |e| {
+                expected.push(e.message.as_bytes().to_vec());
+                Ok(())
+            })
+            .unwrap();
+        packets.borrow_mut().packets.clear();
+        assert_eq!(command(&mut sim, 5, [0, handle, 0, owner]), 0);
+        assert_eq!(packets.borrow().packets, expected);
+        for bytes in [
+            &[0xb0, 123, 0][..],
+            &[0xb0, 120, 0],
+            &[0xb0, 121, 0],
+            &[0xff],
+        ] {
+            m.expression
+                .as_mut()
+                .unwrap()
+                .accept(0, msg(bytes), None, &m.store)
+                .unwrap();
+            assert_eq!(
+                command(&mut sim, 2, [0, packed(bytes), u64::from(u32::MAX), 0]),
+                0
+            );
+            {
+                let memory = memory.borrow();
+                for ch in 0..16 {
+                    for f in 0..258 {
+                        let field = ch * 512 + f;
+                        assert_eq!(
+                            memory.words[8192 + field],
+                            m.expression
+                                .as_ref()
+                                .unwrap()
+                                .output(0)
+                                .unwrap()
+                                .word(field),
+                            "reset field {field}, message {bytes:?}"
+                        );
+                    }
+                }
+            }
+            let mut expected = Vec::new();
+            m.expression
+                .as_mut()
+                .unwrap()
+                .restore(0, view, 0, 0, &m.store, &mut |e| {
+                    expected.push(e.message.as_bytes().to_vec());
+                    Ok(())
+                })
+                .unwrap();
+            packets.borrow_mut().packets.clear();
+            assert_eq!(command(&mut sim, 5, [0, handle, 0, owner]), 0);
+            assert_eq!(packets.borrow().packets, expected);
+        }
         let before = m.expression.as_ref().unwrap().output(0).unwrap().word(129);
         assert_eq!(
             command(&mut sim, 2, [0, packed(&[0xb0, 1, 99]), u32::MAX as u64, 0]),
@@ -236,6 +335,73 @@ fn ddr_expression_fields_bitmaps_and_pedal_repairs_match_rust() {
         assert_eq!(command(&mut sim, 5, [0, handle, 0, owner + (1 << 32)]), 4);
         memory.borrow_mut().fail = Some(8192 + 129);
         assert_eq!(command(&mut sim, 11, [1, 0, 129, 0]), 7);
+    }
+}
+
+#[shoop_test]
+fn expression_bounded_tables_and_relocated_arena_restore_last_owner() {
+    for (loops, outputs, views) in [(1, 1, 1), (3, 3, 5)] {
+        let compiled = Design::new(
+            "midi_expression_state",
+            vec![rt_fpga_testbench::root().join("fpga/midi/rtl/midi_expression_state.sv")],
+        )
+        .parameters(&[
+            ("LOOPS", loops),
+            ("INPUTS", 1),
+            ("DESTINATIONS", outputs),
+            ("VIEWS", views),
+        ])
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/midi-expression-capacities"))
+        .unwrap();
+        let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        sim.max_ps = 1_000_000_000_000_000;
+        let base = 256;
+        sim.model.set("arena_base", base);
+        let memory = Rc::new(RefCell::new(Memory::new(
+            (base + sim.model.get("arena_bytes")) as usize / 4 + 16,
+        )));
+        let packets = Rc::new(RefCell::new(Packets::default()));
+        sim.agent(memory.clone());
+        sim.agent(packets.clone());
+        sim.model.set("reset", 1);
+        sim.idle(2);
+        sim.model.set("reset", 0);
+        assert_eq!(command(&mut sim, 0, [0; 4]), 0);
+        let sequence = (loops - 1) as u64;
+        let output = (outputs - 1) as u64;
+        let owner = (0x8000_0001u64 << 32) | sequence;
+        let view = (1u64 << 32) | (views - 1) as u64;
+        assert_eq!(command(&mut sim, 1, [0, packed(&[0xb0, 1, 20]), 0, 0]), 0);
+        assert_eq!(
+            command(
+                &mut sim,
+                2,
+                [output, packed(&[0xb0, 1, 99]), u32::MAX as u64, 0]
+            ),
+            0
+        );
+        assert_eq!(
+            command(
+                &mut sim,
+                9,
+                [sequence, 0, owner, 0x10000 | (1 << (8 + output))]
+            ),
+            0
+        );
+        assert_eq!(command(&mut sim, 3, [sequence, view, 0, 0]), 0);
+        assert_eq!(command(&mut sim, 5, [sequence, view, 0, owner]), 0);
+        assert_eq!(packets.borrow().packets, vec![vec![0xb0, 1, 20]]);
+        assert_eq!(sim.model.get("destination"), output);
+        assert_eq!(command(&mut sim, 11, [1, output, 129, 0]), 0);
+        assert_eq!(sim.model.get("result"), u64::from(KNOWN | 20));
+        let transfers = memory.borrow().transfers;
+        assert_eq!(command(&mut sim, 6, [sequence, view, 0, owner]), 0);
+        assert_eq!(memory.borrow().transfers, transfers);
+        assert!(
+            memory.borrow().words[..base as usize / 4]
+                .iter()
+                .all(|v| *v == 0xdeadbeef)
+        );
     }
 }
 
@@ -381,5 +547,12 @@ fn expression_jobs_follow_all_supported_quantum_boundaries() {
         d.quantum(&[]);
         d.command(0, Operation::Stop);
         d.quantum(&[]);
+    }
+}
+
+#[shoop_test]
+fn expression_jobs_keep_state_through_axi32_and_axi64_stalls() {
+    for width in [32, 64] {
+        rt_fpga_testbench::suites::midi::data::axi::expression_conformance(width).unwrap();
     }
 }
