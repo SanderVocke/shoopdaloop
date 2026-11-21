@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 425" width="960" height="425" role="img" aria-labelledby="title desc">
+  <title id="title">Host and Marlin integration paths</title>
+  <desc id="desc">Direct Marlin tests expose the mixed core component ports and two memory agents. A separate audio-only host path uses a mailbox for AXI-Lite control and an AXI master for audio storage.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+    <marker id="hint" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#846022"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="423" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="Testbench column">
+  <rect x="24" y="24" width="442" height="374" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="39" y="49" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">DIRECT MARLIN COMPONENT TEST</text>
+  <rect x="48" y="66" width="395" height="56" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="60" y="89" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Testbench drives the RTL ports</text>
+  <text x="60" y="110" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Program, run, PCM and MIDI staging</text>
+  <rect x="48" y="163" width="395" height="66" rx="7" fill="#f0eafd" stroke="#7458a3" stroke-width="1"/>
+  <text x="60" y="186" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Mixed audio and MIDI core</text>
+  <text x="60" y="207" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Observe jobs, sync events and output packets</text>
+  <path d="M 245,122 L 245,163" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <rect x="48" y="300" width="395" height="60" rx="7" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="60" y="323" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Simulation memory agents</text>
+  <text x="60" y="344" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Audio and MIDI AXI responders</text>
+  <path d="M 245,229 L 245,300" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="267" y="273" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Two AXI paths</text>
+  </g>
+  <g inkscape:label="Host column">
+  <rect x="494" y="24" width="442" height="374" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="509" y="49" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">AUDIO MAILBOX  /  MARLIN OR ZYNQ</text>
+  <rect x="518" y="66" width="395" height="56" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="530" y="89" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Marlin host or Zynq ARM</text>
+  <text x="530" y="110" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Commands, responses and events</text>
+  <rect x="518" y="163" width="395" height="66" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="530" y="186" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Mailbox and dispatcher</text>
+  <text x="530" y="207" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Audio-only core and PCM bank I/O</text>
+  <path d="M 648,122 L 648,163" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="671" y="147" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">AXI-Lite · GP0 on Zynq</text>
+  <rect x="518" y="300" width="395" height="60" rx="7" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="530" y="323" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Audio sample and metadata memory</text>
+  <text x="530" y="344" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Simulated memory or reserved PS DDR</text>
+  <path d="M 648,229 L 648,300" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="671" y="272" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Audio AXI · HP0 on Zynq</text>
+  </g>
+</svg>

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 468" width="960" height="468" role="img" aria-labelledby="title desc">
+  <title id="title">Audio addresses and DDR layout</title>
+  <desc id="desc">The worked example maps an aligned view ordinal through a block table to physical chunk 227 at byte offset 29,056. Samples and metadata occupy separate ranges within one DDR arena.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+    <marker id="hint" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#846022"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="466" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="Worked address">
+  <text x="33" y="42" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Walk one playback address</text>
+  <circle cx="53" cy="95" r="17" fill="#30775f"/>
+  <text x="53" y="101" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#fff">1</text>
+  <rect x="81" y="66" width="438" height="61" rx="7" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="93" y="89" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Find the block</text>
+  <text x="93" y="110" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">View root → radix table → block ID 7</text>
+  <path d="M 53,114 L 53,139" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <circle cx="53" cy="184" r="17" fill="#30775f"/>
+  <text x="53" y="190" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#fff">2</text>
+  <rect x="81" y="155" width="438" height="61" rx="7" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="93" y="178" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Select the chunk</text>
+  <text x="93" y="199" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Block 7, chunk 3 → 7 × 32 + 3 = 227</text>
+  <path d="M 53,203 L 53,228" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <circle cx="53" cy="273" r="17" fill="#30775f"/>
+  <text x="53" y="279" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#fff">3</text>
+  <rect x="81" y="244" width="438" height="61" rx="7" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="93" y="267" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Check the sample cache</text>
+  <text x="93" y="288" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Tag 227 selects a line or requests a fill</text>
+  <path d="M 53,292 L 53,317" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <circle cx="53" cy="362" r="17" fill="#30775f"/>
+  <text x="53" y="368" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#fff">4</text>
+  <rect x="81" y="333" width="438" height="61" rx="7" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="93" y="356" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Calculate the DDR byte offset</text>
+  <text x="93" y="377" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">227 × 128 bytes = 29,056 within the arena</text>
+  <text x="33" y="432" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Example uses a 32-frame chunk and a 32-chunk block.</text>
+  </g>
+  <g inkscape:label="Memory map">
+  <rect x="563" y="22" width="365" height="411" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="578" y="47" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">AUDIO DDR ARENA  /  LOW TO HIGH</text>
+  <rect x="588" y="64" width="314" height="135" rx="5" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="604" y="95" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" fill="#1b3244">Sample payload</text>
+  <text x="604" y="119" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Physical chunks of 32-bit samples</text>
+  <line x1="605" y1="140" x2="883" y2="140" stroke="#85a69a" stroke-width="1.5"/>
+  <text x="604" y="168" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Chunk 227</text>
+  <rect x="588" y="213" width="314" height="35" rx="7" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="600" y="236" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Block reference counts</text>
+  <rect x="588" y="257" width="314" height="35" rx="7" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="600" y="280" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Reusable block ID stack</text>
+  <rect x="588" y="301" width="314" height="35" rx="7" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="600" y="324" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Radix pages and directories</text>
+  <rect x="588" y="345" width="314" height="35" rx="7" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="600" y="368" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Retired-root records</text>
+  <text x="588" y="407" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Diagram is not to scale.</text>
+  <path d="M 519,363 L 548,363 L 548,164 L 588,164" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  </g>
+</svg>

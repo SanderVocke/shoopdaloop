@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 493" width="960" height="493" role="img" aria-labelledby="title desc">
+  <title id="title">State processor internals</title>
+  <desc id="desc">The program RAM drives one execution engine. The engine runs the sync prefix, scans for MIDI writer transitions, then emits audio and MIDI data jobs to the FIFO. A separate hardware output reports sync events.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+    <marker id="hint" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#846022"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="491" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="Program and engine">
+  <rect x="28" y="22" width="904" height="182" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="43" y="47" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">ONE STATE PROCESSOR</text>
+  <text x="50" y="77" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Program RAM</text>
+  <rect x="50" y="88" width="240" height="40" rx="0" fill="#d9ebfa" stroke="#a9beca" stroke-width="1"/>
+  <text x="170.0" y="113.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Sync instructions</text>
+  <rect x="290" y="88" width="300" height="40" rx="0" fill="#e4def8" stroke="#a9beca" stroke-width="1"/>
+  <text x="440.0" y="113.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Audio and MIDI work instructions</text>
+  <rect x="50" y="143" width="540" height="40" rx="6" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="320" y="170" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" fill="#1b3244">Sync → capture prepass → data jobs</text>
+  <path d="M 320,128 L 320,143" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 590,163 L 674,163" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <g inkscape:label="Job FIFO">
+    <rect x="674" y="130" width="228" height="66" rx="9" fill="#eaf1fb" stroke="#456a9f" stroke-width="2"/>
+  <text x="788.0" y="159.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Job FIFO</text>
+  <text x="788.0" y="181.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">To job processor after SP</text>
+  </g>
+  <g inkscape:label="Sync event port">
+    <rect x="674" y="46" width="228" height="65" rx="9" fill="#f2f5f7" stroke="#647b87" stroke-width="2"/>
+  <text x="788.0" y="74.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">Sync event port</text>
+  <text x="788.0" y="96.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#1b3244">To testbench or mailbox</text>
+  </g>
+  <path d="M 590,155 L 624,155 L 624,78 L 674,78" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  </g>
+  <g inkscape:label="On-chip memory cutaway">
+  <rect x="28" y="229" width="904" height="241" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="43" y="254" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568"></text>
+  <text x="902" y="254" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">ON-CHIP DATA MEMORIES</text>
+  <rect x="50" y="273" width="199" height="53" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="62" y="296" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Node-state RAM</text>
+  <text x="62" y="317" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">129-bit entries</text>
+  <path d="M 162,183 L 162,273" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M 433,183 L 433,281" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="314" y="299" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" fill="#1b3244">Loop RAM  /  one 16-word record per loop</text>
+  <rect x="314" y="318" width="78" height="40" rx="0" fill="#eaf1fb" stroke="#a9beca" stroke-width="1"/>
+  <text x="353.0" y="343.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Flags</text>
+  <rect x="392" y="318" width="64" height="40" rx="0" fill="#f2f5f7" stroke="#a9beca" stroke-width="1"/>
+  <text x="424.0" y="343.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Ctrl</text>
+  <rect x="456" y="318" width="133" height="40" rx="0" fill="#d9ebfa" stroke="#a9beca" stroke-width="1"/>
+  <text x="522.5" y="343.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Next position</text>
+  <rect x="589" y="318" width="74" height="40" rx="0" fill="#f2f5f7" stroke="#a9beca" stroke-width="1"/>
+  <text x="626.0" y="343.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Length</text>
+  <rect x="663" y="318" width="82" height="40" rx="0" fill="#d9ebfa" stroke="#a9beca" stroke-width="1"/>
+  <text x="704.0" y="343.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Capture</text>
+  <rect x="745" y="318" width="98" height="40" rx="0" fill="#f2f5f7" stroke="#a9beca" stroke-width="1"/>
+  <text x="794.0" y="343.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Words 5–7</text>
+  <rect x="314" y="359" width="151" height="40" rx="0" fill="#e4f3ed" stroke="#a9beca" stroke-width="1"/>
+  <text x="389.5" y="384.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Render position</text>
+  <rect x="465" y="359" width="127" height="40" rx="0" fill="#e4f3ed" stroke="#a9beca" stroke-width="1"/>
+  <text x="528.5" y="384.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Frame stamp</text>
+  <rect x="592" y="359" width="126" height="40" rx="0" fill="#fff2d9" stroke="#a9beca" stroke-width="1"/>
+  <text x="655.0" y="384.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Plan slot 0</text>
+  <rect x="718" y="359" width="125" height="40" rx="0" fill="#fff2d9" stroke="#a9beca" stroke-width="1"/>
+  <text x="780.5" y="384.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">Plan slot 1</text>
+  <text x="314" y="428" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Word 8 is read for this quantum. Word 2 is kept for the next.</text>
+  <text x="303" y="344" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Words 0–7</text>
+  <text x="303" y="386" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Words 8–15</text>
+  </g>
+</svg>
