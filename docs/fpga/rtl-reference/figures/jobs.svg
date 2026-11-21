@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 425" width="960" height="425" role="img" aria-labelledby="title desc">
+  <title id="title">Job descriptors and scratch RAM addresses</title>
+  <desc id="desc">The FIFO orders Input, Gain and Output. Input writes scratch buffer zero, Gain reads zero and writes one, and Output reads one. For a 16-frame run and stride 32, half of each reserved buffer is unused.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+    <marker id="hint" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#846022"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="423" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="FIFO order">
+  <text x="38" y="40" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1b3244">FIFO order</text>
+  <rect x="40" y="59" width="248" height="60" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="52" y="82" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">1  Input</text>
+  <text x="52" y="103" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">PCM in → scratch 0</text>
+  <rect x="356" y="59" width="248" height="60" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="368" y="82" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">2  Gain</text>
+  <text x="368" y="103" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">scratch 0 → scratch 1</text>
+  <rect x="672" y="59" width="248" height="60" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
+  <text x="684" y="82" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">3  Output</text>
+  <text x="684" y="103" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">scratch 1 → PCM out</text>
+  <path d="M 288,89 L 356,89" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 604,89 L 672,89" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  </g>
+  <g inkscape:label="Physical addresses">
+  <rect x="28" y="144" width="904" height="254" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
+  <text x="43" y="169" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568"></text>
+  <text x="40" y="313" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">SCRATCH RAM  /  STRIDE 32 WORDS  /  EXAMPLE Q = 16</text>
+  <text x="40" y="203" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Buffer 0</text>
+  <text x="464" y="203" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Buffer 1</text>
+  <rect x="40" y="213" width="212" height="44" rx="0" fill="#d8eee5" stroke="#a9beca" stroke-width="1"/>
+  <text x="146.0" y="240.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">0–15</text>
+  <rect x="252" y="213" width="212" height="44" rx="0" fill="#f3f6f8" stroke="#a9beca" stroke-width="1"/>
+  <text x="358.0" y="240.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">16–31</text>
+  <rect x="464" y="213" width="212" height="44" rx="0" fill="#d8eee5" stroke="#a9beca" stroke-width="1"/>
+  <text x="570.0" y="240.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">32–47</text>
+  <rect x="676" y="213" width="212" height="44" rx="0" fill="#f3f6f8" stroke="#a9beca" stroke-width="1"/>
+  <text x="782.0" y="240.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="#1b3244">48–63</text>
+  <text x="146" y="282" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Samples written</text>
+  <text x="358" y="282" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Unused this run</text>
+  <text x="570" y="282" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Samples written</text>
+  <text x="782" y="282" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Unused this run</text>
+  <line x1="464" y1="204" x2="464" y2="265" stroke="#306887" stroke-width="2"/>
+  <path d="M 163,119 L 163,212" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 236,213 L 236,180 L 386,180 L 386,119" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 566,119 L 566,212" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M 630,213 L 630,180 L 796,180 L 796,119" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <rect x="40" y="324" width="856" height="58" rx="7" fill="#e4f3ed" stroke="#30775f" stroke-width="1"/>
+  <text x="52" y="347" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Address = buffer ID × MAX_FRAMES + frame in quantum</text>
+  <text x="52" y="368" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Buffer 1 starts at word 32 even when only 16 samples are processed.</text>
+  </g>
+</svg>

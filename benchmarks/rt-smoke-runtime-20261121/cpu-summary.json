@@ -1,0 +1,340 @@
+{
+  "complete": true,
+  "runs": [
+    {
+      "backend": "fpga-rtl",
+      "media": "audio",
+      "pattern": "mixed",
+      "file": "fpga-rtl-audio-mixed-0.json",
+      "child_s": 181.82758290099991,
+      "cpu_s": 181.2,
+      "categories_s": {
+        "signal_access": 117.12,
+        "generated_rtl": 27.06,
+        "dram_timing": 6.08,
+        "other": 30.939999999999984
+      },
+      "categories_pct": {
+        "signal_access": 64.63576158940398,
+        "generated_rtl": 14.933774834437086,
+        "dram_timing": 3.3554083885209716,
+        "other": 17.07505518763796
+      },
+      "fabric_s": 0.08004181333333334,
+      "phases_s": {
+        "backend": 181.692243836,
+        "fixture.callback": 180.235433404,
+        "fixture.command_delivery": 9.6312e-05,
+        "fixture.endpoint_receive": 0.008328033,
+        "fixture.execute": 180.235540454,
+        "fixture.finalization": 0.06285886,
+        "fixture.input_stimulus": 0.000135616,
+        "fixture.metadata": 0.095967894,
+        "fixture.process": 180.222902101,
+        "fixture.teardown": 0.015978484,
+        "fixture.validate_and_record": 0.003058172,
+        "output_json": 0.001562554,
+        "prepare": 1.280998869,
+        "prepare.design_build": 0.228375521,
+        "prepare.endpoint": 8.2542e-05,
+        "prepare.format_midi": 0.755201469,
+        "prepare.graph": 0.000564683,
+        "prepare.infrastructure": 0.002842242,
+        "prepare.load_audio": 0.115230706,
+        "prepare.model_session": 0.178685583,
+        "rtl.callback.admission": 0.006029127,
+        "rtl.callback.commands": 0.168968942,
+        "rtl.callback.execution": 179.29000299,
+        "rtl.callback.input_upload": 0.588941218,
+        "rtl.callback.observation": 0.167863392
+      },
+      "overlapping_diagnostics_s": {
+        "protocol_monitors": 18.919999999999998,
+        "axi_agents": 94.56
+      },
+      "functions_file": "fpga-rtl-audio-mixed-0.functions.txt"
+    },
+    {
+      "backend": "fpga-rtl",
+      "media": "audio",
+      "pattern": "lifecycle",
+      "file": "fpga-rtl-audio-lifecycle-0.json",
+      "child_s": 233.54399082300006,
+      "cpu_s": 232.84,
+      "categories_s": {
+        "signal_access": 150.82,
+        "generated_rtl": 35.26,
+        "dram_timing": 8.24,
+        "other": 38.52000000000001
+      },
+      "categories_pct": {
+        "signal_access": 64.77409379831643,
+        "generated_rtl": 15.14344614327435,
+        "dram_timing": 3.538910840061845,
+        "other": 16.543549218347366
+      },
+      "fabric_s": 0.10312576666666666,
+      "phases_s": {
+        "backend": 233.439604172,
+        "fixture.callback": 231.992189666,
+        "fixture.command_delivery": 0.000184889,
+        "fixture.endpoint_receive": 0.011627858,
+        "fixture.execute": 231.992279652,
+        "fixture.finalization": 0.053919714,
+        "fixture.input_stimulus": 0.000129456,
+        "fixture.metadata": 0.079119262,
+        "fixture.process": 231.974681305,
+        "fixture.teardown": 0.024260001,
+        "fixture.validate_and_record": 0.004106627,
+        "output_json": 0.00101749,
+        "prepare": 1.289390687,
+        "prepare.design_build": 0.417688068,
+        "prepare.endpoint": 4.806e-05,
+        "prepare.format_midi": 0.749871448,
+        "prepare.graph": 0.000402113,
+        "prepare.infrastructure": 0.001754337,
+        "prepare.load_audio": 0.108210682,
+        "prepare.model_session": 0.011395808,
+        "rtl.callback.admission": 0.008161384,
+        "rtl.callback.commands": 0.248045506,
+        "rtl.callback.execution": 230.739005655,
+        "rtl.callback.input_upload": 0.75806992,
+        "rtl.callback.observation": 0.220339835
+      },
+      "overlapping_diagnostics_s": {
+        "protocol_monitors": 24.060000000000002,
+        "axi_agents": 119.88
+      },
+      "functions_file": "fpga-rtl-audio-lifecycle-0.functions.txt"
+    },
+    {
+      "backend": "fpga-rtl",
+      "media": "midi",
+      "pattern": "mixed",
+      "file": "fpga-rtl-midi-mixed-0.json",
+      "child_s": 1007.703150031,
+      "cpu_s": 1007.06,
+      "categories_s": {
+        "signal_access": 650.88,
+        "generated_rtl": 153.82,
+        "dram_timing": 38.28,
+        "other": 164.07999999999996
+      },
+      "categories_pct": {
+        "signal_access": 64.63170019661192,
+        "generated_rtl": 15.274164399340656,
+        "dram_timing": 3.8011637836871692,
+        "other": 16.29297162036025
+      },
+      "fabric_s": 0.4707034333333333,
+      "phases_s": {
+        "backend": 1007.531723791,
+        "fixture.callback": 1004.934483098,
+        "fixture.command_delivery": 5.0444e-05,
+        "fixture.endpoint_receive": 0.007500062,
+        "fixture.execute": 1004.935022875,
+        "fixture.finalization": 1.004269067,
+        "fixture.input_stimulus": 0.0002329,
+        "fixture.metadata": 0.071696627,
+        "fixture.process": 1004.92331436,
+        "fixture.teardown": 0.55534897,
+        "fixture.validate_and_record": 0.002531435,
+        "output_json": 0.001564644,
+        "prepare": 0.962254608,
+        "prepare.design_build": 0.200187876,
+        "prepare.endpoint": 4.4285e-05,
+        "prepare.format_midi": 0.701040819,
+        "prepare.graph": 0.000438767,
+        "prepare.infrastructure": 0.001277243,
+        "prepare.load_audio": 0.051977715,
+        "prepare.model_session": 0.007270377,
+        "rtl.callback.admission": 0.009208105,
+        "rtl.callback.commands": 0.147847772,
+        "rtl.callback.execution": 1004.562472068,
+        "rtl.callback.input_upload": 0.05400703,
+        "rtl.callback.observation": 0.14905036
+      },
+      "overlapping_diagnostics_s": {
+        "protocol_monitors": 101.5,
+        "axi_agents": 521.5600000000001
+      },
+      "functions_file": "fpga-rtl-midi-mixed-0.functions.txt"
+    },
+    {
+      "backend": "fpga-rtl",
+      "media": "midi",
+      "pattern": "lifecycle",
+      "file": "fpga-rtl-midi-lifecycle-0.json",
+      "child_s": 1536.7463290209994,
+      "cpu_s": 1535.54,
+      "categories_s": {
+        "signal_access": 987.26,
+        "generated_rtl": 231.3,
+        "dram_timing": 59.12,
+        "other": 257.85999999999996
+      },
+      "categories_pct": {
+        "signal_access": 64.29399429516653,
+        "generated_rtl": 15.063104836083724,
+        "dram_timing": 3.8501113614754416,
+        "other": 16.79278950727431
+      },
+      "fabric_s": 0.7104163333333333,
+      "phases_s": {
+        "backend": 1536.385114446,
+        "fixture.callback": 1533.244945829,
+        "fixture.command_delivery": 8.6837e-05,
+        "fixture.endpoint_receive": 0.011147982,
+        "fixture.execute": 1533.245083099,
+        "fixture.finalization": 1.355987859,
+        "fixture.input_stimulus": 0.000228178,
+        "fixture.metadata": 0.067622078,
+        "fixture.process": 1533.227833874,
+        "fixture.teardown": 0.805911645,
+        "fixture.validate_and_record": 0.00414939,
+        "output_json": 0.001976597,
+        "prepare": 0.902922318,
+        "prepare.design_build": 0.187179294,
+        "prepare.endpoint": 4.6188e-05,
+        "prepare.format_midi": 0.658886901,
+        "prepare.graph": 0.000236549,
+        "prepare.infrastructure": 0.001288449,
+        "prepare.load_audio": 0.04884772,
+        "prepare.model_session": 0.006422976,
+        "rtl.callback.admission": 0.008878861,
+        "rtl.callback.commands": 0.244323307,
+        "rtl.callback.execution": 1532.70169824,
+        "rtl.callback.input_upload": 0.0838952,
+        "rtl.callback.observation": 0.187884708
+      },
+      "overlapping_diagnostics_s": {
+        "protocol_monitors": 156.08,
+        "axi_agents": 790.52
+      },
+      "functions_file": "fpga-rtl-midi-lifecycle-0.functions.txt"
+    },
+    {
+      "backend": "fpga-rtl",
+      "media": "audio-midi",
+      "pattern": "lifecycle",
+      "file": "fpga-rtl-audio-midi-lifecycle-0.json",
+      "child_s": 1751.0227878190003,
+      "cpu_s": 1750.14,
+      "categories_s": {
+        "signal_access": 1117.22,
+        "generated_rtl": 263.44,
+        "dram_timing": 66.74,
+        "other": 302.74000000000007
+      },
+      "categories_pct": {
+        "signal_access": 63.83603597426492,
+        "generated_rtl": 15.052510084907492,
+        "dram_timing": 3.813409212977247,
+        "other": 17.298044727850346
+      },
+      "fabric_s": 0.8006701066666667,
+      "phases_s": {
+        "backend": 1750.803447459,
+        "fixture.callback": 1746.83231769,
+        "fixture.command_delivery": 8.5348e-05,
+        "fixture.endpoint_receive": 0.010446526,
+        "fixture.execute": 1746.832442225,
+        "fixture.finalization": 1.836054045,
+        "fixture.input_stimulus": 0.000279547,
+        "fixture.metadata": 0.069795818,
+        "fixture.process": 1746.811974299,
+        "fixture.teardown": 0.931459259,
+        "fixture.validate_and_record": 0.008343872,
+        "output_json": 0.001273359,
+        "prepare": 1.132722171,
+        "prepare.design_build": 0.289625083,
+        "prepare.endpoint": 6.879e-05,
+        "prepare.format_midi": 0.734901836,
+        "prepare.graph": 0.000608005,
+        "prepare.infrastructure": 0.00154431,
+        "prepare.load_audio": 0.098043696,
+        "prepare.model_session": 0.007905847,
+        "rtl.callback.admission": 0.00900548,
+        "rtl.callback.commands": 0.264828595,
+        "rtl.callback.execution": 1745.404290423,
+        "rtl.callback.input_upload": 0.924650383,
+        "rtl.callback.observation": 0.207912896
+      },
+      "overlapping_diagnostics_s": {
+        "protocol_monitors": 176.62,
+        "axi_agents": 905.12
+      },
+      "functions_file": "fpga-rtl-audio-midi-lifecycle-0.functions.txt"
+    },
+    {
+      "backend": "fpga-rtl",
+      "media": "audio-midi",
+      "pattern": "mixed",
+      "file": "fpga-rtl-audio-midi-mixed-0.json",
+      "child_s": 1187.0848977530004,
+      "cpu_s": 1185.96,
+      "categories_s": {
+        "signal_access": 759.1,
+        "generated_rtl": 181.58,
+        "dram_timing": 46.28,
+        "other": 199.0
+      },
+      "categories_pct": {
+        "signal_access": 64.00721778137543,
+        "generated_rtl": 15.310803062497893,
+        "dram_timing": 3.9023238557792843,
+        "other": 16.7796553003474
+      },
+      "fabric_s": 0.5417568666666667,
+      "phases_s": {
+        "backend": 1186.923239672,
+        "fixture.callback": 1184.442854173,
+        "fixture.command_delivery": 9.9244e-05,
+        "fixture.endpoint_receive": 0.007972757,
+        "fixture.execute": 1184.442940358,
+        "fixture.finalization": 0.860889741,
+        "fixture.input_stimulus": 0.00022869,
+        "fixture.metadata": 0.173846213,
+        "fixture.process": 1184.427033131,
+        "fixture.teardown": 0.448793349,
+        "fixture.validate_and_record": 0.006678234,
+        "output_json": 0.000876653,
+        "prepare": 0.995921088,
+        "prepare.design_build": 0.183399478,
+        "prepare.endpoint": 5.5099e-05,
+        "prepare.format_midi": 0.676660121,
+        "prepare.graph": 0.000660523,
+        "prepare.infrastructure": 0.001236215,
+        "prepare.load_audio": 0.127022886,
+        "prepare.model_session": 0.006870923,
+        "rtl.callback.admission": 0.007345825,
+        "rtl.callback.commands": 0.163198197,
+        "rtl.callback.execution": 1183.248496077,
+        "rtl.callback.input_upload": 0.847004291,
+        "rtl.callback.observation": 0.159652981
+      },
+      "overlapping_diagnostics_s": {
+        "protocol_monitors": 122.88,
+        "axi_agents": 614.5999999999999
+      },
+      "functions_file": "fpga-rtl-audio-midi-mixed-0.functions.txt"
+    }
+  ],
+  "cpu_s": 5892.74,
+  "categories_s": {
+    "signal_access": 3782.4,
+    "generated_rtl": 892.46,
+    "dram_timing": 224.74,
+    "other": 993.14
+  },
+  "categories_pct": {
+    "signal_access": 64.18745778703965,
+    "generated_rtl": 15.145076823345338,
+    "dram_timing": 3.8138455115956247,
+    "other": 16.853619878019394
+  },
+  "overlapping_diagnostics_pct": {
+    "protocol_monitors": 10.183038790104435,
+    "axi_agents": 51.69479732688019
+  }
+}

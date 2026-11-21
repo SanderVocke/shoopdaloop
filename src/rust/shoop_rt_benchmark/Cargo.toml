@@ -1,0 +1,32 @@
+[package]
+name = "shoop_rt_benchmark"
+version.workspace = true
+edition = "2021"
+publish = false
+description = "Deterministic endpoint-driven real-time backend benchmarks"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+rtl = ["dep:rt_fpga_testbench", "dep:rt_fpga_rtl"]
+
+[dependencies]
+anyhow = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
+clap = { workspace = true }
+sha2 = { workspace = true }
+arrayvec = { workspace = true }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"] }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+rt_runtime = { path = "../rt_runtime" }
+rt_fpga_compiler = { path = "../rt_fpga_compiler" }
+rt_fpga_reference = { path = "../rt_fpga_reference", features = ["rt-interface"] }
+rt_fpga_testbench = { path = "../rt_fpga_testbench", features = ["sim"], optional = true }
+rt_fpga_rtl = { path = "../rt_fpga_rtl", features = ["rt-interface"], optional = true }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

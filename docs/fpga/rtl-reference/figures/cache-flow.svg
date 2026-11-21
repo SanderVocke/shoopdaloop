@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 415" width="960" height="415" role="img" aria-labelledby="title desc">
+  <title id="title">A stale prefetch and a later demand read</title>
+  <desc id="desc">An early hint for chunk A starts a DDR fill. A full write makes the returned data stale. The new dirty write line provides samples for a subsequent read, and writeback can happen later.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+    <marker id="hint" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#846022"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="413" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="Conceptual sequence">
+  <text x="33" y="43" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" fill="#1b3244">Same physical chunk A</text>
+  <text x="35" y="69" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Order shown left to right. Spacing does not represent clock cycles.</text>
+  <path d="M 231,95 L 911,95" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <line x1="274" y1="133" x2="274" y2="347" stroke="#9aafba" stroke-width="1.1" stroke-dasharray="6 5"/>
+  <text x="274" y="124" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Hint</text>
+  <line x1="464" y1="133" x2="464" y2="347" stroke="#9aafba" stroke-width="1.1" stroke-dasharray="6 5"/>
+  <text x="464" y="124" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Full write</text>
+  <line x1="656" y1="133" x2="656" y2="347" stroke="#9aafba" stroke-width="1.1" stroke-dasharray="6 5"/>
+  <text x="656" y="124" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Old fill returns</text>
+  <line x1="849" y1="133" x2="849" y2="347" stroke="#9aafba" stroke-width="1.1" stroke-dasharray="6 5"/>
+  <text x="849" y="124" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Demand read</text>
+  <text x="34" y="173" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Read-side fill</text>
+  <line x1="201" y1="168" x2="912" y2="168" stroke="#b8c9d2" stroke-width="1"/>
+  <text x="34" y="252" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">Write buffer</text>
+  <line x1="201" y1="247" x2="912" y2="247" stroke="#b8c9d2" stroke-width="1"/>
+  <text x="34" y="329" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">JP demand</text>
+  <line x1="201" y1="324" x2="912" y2="324" stroke="#b8c9d2" stroke-width="1"/>
+  <rect x="274" y="152" width="381" height="33" rx="6" fill="#fff2d9" stroke="#996e24" stroke-width="1"/>
+  <text x="459" y="174" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#1b3244">Outstanding DDR read returns old bytes</text>
+  <line x1="648" y1="160" x2="664" y2="176" stroke="#95572d" stroke-width="3"/>
+  <line x1="664" y1="160" x2="648" y2="176" stroke="#95572d" stroke-width="3"/>
+  <text x="676" y="189" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Discarded</text>
+  <path d="M 464,192 L 464,230" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <rect x="464" y="230" width="385" height="35" rx="6" fill="#d8eee5" stroke="#30775f" stroke-width="1"/>
+  <text x="656" y="253" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#1b3244">New bytes in a dirty write line</text>
+  <path d="M 849,265 L 849,315" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <circle cx="849" cy="324" r="6" fill="#30775f"/>
+  <text x="846" y="351" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Returns new bytes</text>
+  <text x="34" y="381" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="400" fill="#435d6d">Writeback may follow later. A fence waits for its memory response.</text>
+  </g>
+</svg>
