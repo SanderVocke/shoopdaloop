@@ -92,6 +92,21 @@ replay preserved every fabric/traffic/stage measurement, fixture hash, command
 event and coverage result. Observation advances no clocks; the published matrix
 retains its original measured source and binary fingerprint.
 
+**Profiled smoke replay (2026-11-21).** A complete replay at `ce354fb1` took
+39:51 with three RTL workers and warm build/model caches, including 39:37 in
+RTL tasks, 12.45 seconds in CPU/reference cases and 1.34 seconds generating the
+report. All 1,590 RTL callback cycle/traffic/stage records match the preceding
+capture; all 8,863 callbacks and 851,968 MIDI messages passed validation.
+The [runtime breakdown, sampled CPU profiles and five-page PDF](benchmarks/rt-smoke-runtime-20261121/README.md)
+retain individual case timings, preparation/processing/validation phases and
+the overlapping worker timeline. Signal access and its lookup/hash/comparison
+callees account for 64.2% of sampled RTL-process CPU; generated RTL accounts for
+15.1%, DRAM timing 3.8%, and other host work 16.9%. Sampling adds host overhead;
+these host seconds remain separate from FPGA cycles at the assumed 150 MHz.
+No host-speed optimization was applied. Seven scoped benchmark Rust tests and
+12 reporter tests passed for the instrumentation change, along with formatting,
+test-policy checks and a warning-denying release build.
+
 **Original integration gaps (2026-11-17; superseded by the audit above).**
 
 - Both `shoop_rt_engine::ControlEndpoint` and the FPGA reference endpoint implement

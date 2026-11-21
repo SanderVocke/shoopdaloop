@@ -152,6 +152,15 @@ cover all three media profiles. Capture took about 54 minutes with three RTL
 workers and a prebuilt binary/model cache on the recorded host; regenerating its
 five-page report took 2.4 seconds.
 
+The subsequent [profiled smoke replay](../../../benchmarks/rt-smoke-runtime-20261121/README.md)
+took 39:51 with three RTL workers and warm caches: 39:37 in RTL tasks,
+12.45 seconds in CPU/reference cases, and 1.34 seconds generating the report.
+It includes a worker timeline, per-case preparation/processing/validation times
+and exported CPU sampling tables. Signal access and its callees consumed 64.2%
+of sampled RTL-process CPU. All 1,590 RTL callback cycle/traffic/stage records
+match the preceding capture. Host conditions and sampling affect wall time;
+the replay applied no simulator-speed optimization.
+
 Validation:
 
 ```sh

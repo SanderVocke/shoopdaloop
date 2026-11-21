@@ -489,19 +489,20 @@ def capture(*args):
 
 def runtime_report(output, runtime):
     (output / "runtime.json").write_text(json.dumps(runtime, indent=2) + "\n")
-    lines = ["# Benchmark host runtime", "", "Wall-clock seconds; parallel child durations overlap. Rust phase durations are inclusive and nested.", "",
+    state = "Complete" if runtime["complete"] else "In progress; elapsed time is updated when a case finishes"
+    lines = ["# Benchmark host runtime", "", state + ". Wall-clock seconds; parallel child durations overlap. Rust phase durations are inclusive and nested.", "",
              "| Suite phase | Seconds |", "| --- | ---: |"]
     lines += [f"| {name} | {value:.3f} |" for name, value in runtime["phases_s"].items()]
     lines += [f'| Total elapsed | {runtime["elapsed_s"]:.3f} |', "",
-              "| Backend / media / pattern | Child wall s | Prepare s | Execution loop s | Observation s | Finalize s | Teardown s | Timed fabric s |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+              "| Backend / media / pattern | Status | Callbacks | Child wall s | Prepare s | Execution loop s | Observation s | Finalize s | Teardown s | Timed fabric s |",
+              "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for row in sorted(runtime["runs"], key=lambda r: r["started_s"]):
         phases = (row.get("host_profile") or {}).get("phases", {})
         def seconds(name):
             return f'{phases[name]["elapsed_ns"] / 1e9:.3f}' if name in phases else "—"
         fabric = "—" if row.get("fabric_s") is None else f'{row["fabric_s"]:.6f}'
         child = "—" if row.get("child_s") is None else f'{row["child_s"]:.3f}'
-        lines.append(f'| {row["backend"]} / {row["media"]} / {row["pattern"]} | {child} | {seconds("prepare")} | {seconds("rtl.callback.execution")} | {seconds("rtl.callback.observation")} | {seconds("fixture.finalization")} | {seconds("fixture.teardown")} | {fabric} |')
+        lines.append(f'| {row["backend"]} / {row["media"]} / {row["pattern"]} | {row["status"]} | {row["callbacks"]} | {child} | {seconds("prepare")} | {seconds("rtl.callback.execution")} | {seconds("rtl.callback.observation")} | {seconds("fixture.finalization")} | {seconds("fixture.teardown")} | {fabric} |')
     lines += ["", "Full phase counters, child start/end offsets, processing timers and sampling-profile paths are retained in runtime.json.",
               "Execution loop includes the generated RTL, signal access, agents and memory models; sampled CPU stacks distinguish those costs.",
               "Timed fabric seconds are simulation-world cycles / 150,000,000. They are separate from host execution time.", ""]
