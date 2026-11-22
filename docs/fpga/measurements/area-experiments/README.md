@@ -210,4 +210,12 @@ slices, with 3,369 CARRY4s and 1,434 control sets. BRAM and DSP use stay at
 This is 2,929 fewer LUTs and 353 fewer slices than C1, and 73 fewer slices than
 the four-way route. Compare that small slice difference with the complete
 connected latency and boundary costs before selecting or repeating a winner.
-The long connected result is still pending.
+The complete long run passes all 1,041 rows: steady median/max is
+56,066/98,244 clocks, versus C1's 54,146/84,284. The frame-32,768 crossing costs
+97,699 clocks versus 83,711. Connected steady table misses are 1,724 versus
+1,698; traffic differs on five rows as lookup timing changes interleaving.
+Cold start costs 116,057 clocks (+5,701), despite 97 fewer cold audio reads.
+Reject this banked variant for the default: its 73-slice advantage over four-way
+comes with greater ordinary and boundary latency. Retain it as a measured
+full-associativity tradeoff. `s2-banked-extended-100-*` retains physical reports
+and every long-run sample. The full-leaf and current-block alternatives follow.

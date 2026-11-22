@@ -314,19 +314,18 @@
     {
       "label": "s2-banked",
       "stage": 2,
-      "status": "measuring",
+      "status": "completed",
       "control_revision": "6be27ce0",
       "control_summary": "c1-extended-100-summary.json",
       "changed_contract": "No data/ownership/error change intended. Fully associative capacity retained; eight comparisons scan sixteen groups for 128 lines. Hits add group-search clocks; dirty misses fetch victim tags separately.",
-      "pending": [
-        "Finish 1024 steady-quanta connected sample set and archive together with physical reports"
-      ],
+      "pending": [],
       "rtl_source_revision": "6984b063",
       "validation": [
         "All three metadata tests passed, including primary 128-line cache fault/fence/backpressure/reset cases",
         "Independent word-array sequential, strided and dirty conflict traces passed on AXI32 and AXI64; misses exactly equal control (261)",
         "All ownership, deferred and media regressions passed, including DRAMsim3 and legacy scalar mode",
-        "New four-view logical map check passed for both AXI widths: repeated writes, leaf boundaries, trim/regrow, retirement/live-ID reuse and stale-RAM reset"
+        "New four-view logical map check passed for both AXI widths: repeated writes, leaf boundaries, trim/regrow, retirement/live-ID reuse and stale-RAM reset",
+        "All 1041 connected rows pass exact SP/MIDI/audio/state checks and positions/jobs/MIDI packet counts/state work match C1; connected table/AXI traffic differs on five rows despite equal isolated unit misses"
       ],
       "unit_trace": "s2-banked-unit/",
       "unit_cycles": {
@@ -366,8 +365,41 @@
       "routed_timing": {
         "wns_ns": -3.95,
         "whs_ns": 0.041,
-        "timing_met": false
-      }
+        "timing_met": false,
+        "limiting_path": "metadata.used[6] to existing_nodes[29], 17 CARRY4 plus four LUT levels"
+      },
+      "extended_summary": "s2-banked-extended-100-summary.json",
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 56066,
+        "c1_max": 84284,
+        "candidate_max": 98244,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 1724,
+        "cold_cycles": 116057,
+        "cold_delta_vs_c1": 5701,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 98244
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 97699
+        },
+        "cold_audio_reads": {
+          "control": 1248,
+          "candidate": 1151
+        },
+        "traffic_different_rows": 5
+      },
+      "route_checks": {
+        "routing_errors": 0,
+        "drc_errors": 0,
+        "drc_warnings": 18
+      },
+      "outcome": "rejected_for_default",
+      "decision": "Measured full-associativity tradeoff: 73 fewer slices and 186 fewer LUTs than four-way, but steady median 1920 clocks slower than C1 and leaf maximum 13960 clocks slower. Prefer four-way latency over this small area difference, pending per-view candidates. Setup still fails. Retain raw candidate and reports; repeat only if later selected."
     }
   ],
   "provisioning": {
