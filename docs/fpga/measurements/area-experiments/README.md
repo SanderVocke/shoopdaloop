@@ -171,19 +171,19 @@ All siblings compare with C1, the selected serial-count implementation. The
 four-way, banked and full-leaf measurements are complete. The current-block
 alternative and generated-hint policies remain before selection.
 
-| Routed 100 MHz result | C1 | Four-way | Banked | Full leaf |
-| --- | ---: | ---: | ---: | ---: |
-| LUTs | 39,399 | 36,656 | 36,470 | 36,168 |
-| Slices | 12,616 | 12,336 | 12,263 | 12,119 |
-| Registers | 32,987 | 28,737 | 28,801 | 28,975 |
-| CARRY4 | 3,958 | 3,352 | 3,369 | 3,382 |
-| Control sets | 1,494 | 1,406 | 1,434 | 1,444 |
-| BRAM tiles | 77.5 | 77.5 | 77.5 | 83 |
-| Setup slack ns | -4.157 | -4.744 | -3.950 | -3.799 |
-| Hold slack ns | +0.005 | +0.015 | +0.041 | +0.046 |
-| Playback-start mixed/on/delay7 clocks | 110,356 | 110,572 | 116,057 | 110,168 |
-| 1,024-quantum steady median clocks | 54,146 | 54,146 | 56,066 | 52,994 |
-| 1,024-quantum steady maximum clocks | 84,284 | 83,891 | 98,244 | 86,955 |
+| Routed 100 MHz result | C1 | Four-way | Banked | Full leaf | Current block |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| LUTs | 39,399 | 36,656 | 36,470 | 36,168 | 35,152 |
+| Slices | 12,616 | 12,336 | 12,263 | 12,119 | 11,953 |
+| Registers | 32,987 | 28,737 | 28,801 | 28,975 | 28,511 |
+| CARRY4 | 3,958 | 3,352 | 3,369 | 3,382 | 3,341 |
+| Control sets | 1,494 | 1,406 | 1,434 | 1,444 | 1,319 |
+| BRAM tiles | 77.5 | 77.5 | 77.5 | 83 | 77 |
+| Setup slack ns | -4.157 | -4.744 | -3.950 | -3.799 | -3.665 |
+| Hold slack ns | +0.005 | +0.015 | +0.041 | +0.046 | +0.006 |
+| Playback-start mixed/on/delay7 clocks | 110,356 | 110,572 | 116,057 | 110,168 | 97,951 |
+| 1,024-quantum steady median clocks | 54,146 | 54,146 | 56,066 | 52,994 | 52,994 |
+| 1,024-quantum steady maximum clocks | 84,284 | 83,891 | 98,244 | 86,955 | 74,575 |
 
 The four-way cache reduces the main tag lookup from 128 comparisons to four,
 using synchronous tag RAM. Read hits still take six clocks in the standalone
@@ -250,3 +250,26 @@ eight-line directory cache. Other C1 direct owners include MIDI content 628,
 MIDI orchestration 452, media_store 496 and media_metadata 282. These are disjoint
 primitive-owner counts, unlike overlapping hierarchical slice counts. They
 identify targets for the following width and arithmetic-sharing experiments.
+
+
+The current-block cache extends each roots-RAM entry to 192 bits, caching one
+block value and ordinal per view. It keeps the same validity lifetime and an
+eight-line shared directory cache. All metadata, ownership, deferred-cleanup and
+media tests pass, including DRAMsim3 and scalar legacy modes. All 1,041 connected
+rows agree with the original logical oracles. The two leaf crossings cost
+74,575/74,002 clocks, versus C1's 84,284/83,711. BRAM drops by half a tile.
+
+The smaller directory cache increases steady table misses to 5,120 from 1,698;
+traffic differs on 35 rows. Most block-crossing work overlaps JP execution, so
+the observed median improves despite that extra traffic. Standalone strided
+AXI64 reads take 135 clocks versus C1's 30; hot repeated-block reads take six
+versus 15. Playback-start still excludes preparation and begins with five dirty
+writebacks versus C1's 128. Do not treat its measured start reduction as a total
+preparation or boot saving.
+
+Keep current-block on the shortlist pending the directory-path and generated-
+hint siblings. It improves the measured area, BRAM, ordinary and leaf-boundary
+costs relative to C1; setup timing and nominal leaf deadlines still fail.
+The next directory-path trial reuses the existing traversal register bank and
+retains middle-directory pages per view. Deeper parent crossings need directed
+checks: the long connected interval alone establishes no universal bound.

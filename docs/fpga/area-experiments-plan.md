@@ -126,7 +126,8 @@ Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
 Depends on stage 1's recorded decision; all cache alternatives share one control.
 
 Execution status: four-way, banked and full-leaf experiments are complete. The
-current-block and generated-hint policy siblings remain. See the [ledger](measurements/area-experiments/ledger.json) for retained
+directory-path and generated-hint policy siblings remain; the basic current-block
+experiment is complete. See the [ledger](measurements/area-experiments/ledger.json) for retained
 source, unit, connected and physical results.
 
 - [ ] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
@@ -136,8 +137,8 @@ source, unit, connected and physical results.
   Compare a full leaf with a cached current block translation per view: B0's
   mixed steady quantum performs 384 table-cache hits and zero misses while each
   allocation block spans 32 quanta. Test invalidation on table writes and retirement.
-- [ ] Separately trial the current-block cache with a cached level-one directory
-  parent per view. The basic current-block candidate takes 74,575 clocks at its
+- [ ] Separately trial the current-block cache with a cached middle-directory
+  path per view, including its level-one parent. The basic current-block candidate takes 74,575 clocks at its
   first leaf crossing, versus 84,284 for C1 and the nominal 66,666.7-clock budget
   at 100 MHz. Include the extra RAM/register/mux cost and the same invalidation
   lifetime. Verify minimum tree levels and parent-index crossings at ordinals

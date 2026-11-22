@@ -523,7 +523,7 @@
     {
       "label": "s2-block",
       "stage": 2,
-      "status": "measuring",
+      "status": "completed",
       "rtl_source_revision": "60371a1c",
       "control_revision": "6be27ce0",
       "control_summary": "c1-extended-100-summary.json",
@@ -536,10 +536,12 @@
       },
       "validation": [
         "All four metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes",
-        "Full ownership/deferred/media regressions passed, including DRAMsim3 and legacy scalar paths, configuration/reset, fault and retained-root cases"
+        "Full ownership/deferred/media regressions passed, including DRAMsim3 and legacy scalar paths, configuration/reset, fault and retained-root cases",
+        "All 1041 connected rows pass exact SP/MIDI/audio/state oracles; kind/position/jobs/MIDI packet counts/state work match C1"
       ],
       "pending": [
-        "Finish long connected playback and routed packing/timing; archive matched evidence"
+        "Directory-path and generated-hint policy siblings",
+        "Repeat if selected as default"
       ],
       "translation_summary": "s2-block-translation-unit-summary.json",
       "optimized_summary": "s2-block-opt-summary.json",
@@ -575,7 +577,55 @@
           "control": 80,
           "candidate": 3264
         }
-      }
+      },
+      "routed_summary": "s2-block-extended-100-summary.json",
+      "extended_summary": "s2-block-extended-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -4247,
+        "ff": -4476,
+        "slices": -663,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -617,
+        "control_sets": -175,
+        "memory_lut": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.665,
+        "whs_ns": 0.006,
+        "timing_met": false
+      },
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 52994,
+        "c1_max": 84284,
+        "candidate_max": 74575,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 5120,
+        "cold_cycles": 97951,
+        "cold_delta_vs_c1": -12405,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 74575
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 74002
+        },
+        "cold_audio_reads": {
+          "control": 1248,
+          "candidate": 1024
+        },
+        "cold_audio_writes": {
+          "control": 128,
+          "candidate": 5
+        },
+        "traffic_different_rows": 35
+      },
+      "outcome": "shortlisted_pending_siblings",
+      "decision": "Best cache result so far: 4247 fewer LUTs/663 fewer slices than C1, 0.5 fewer BRAM, 1152 fewer median clocks and 9709 fewer maximum steady clocks. More table misses and slower isolated strided reads; most block misses overlap connected work. Physical setup still fails and leaf peak exceeds nominal100MHz budget. Compare directory-path and hint-policy siblings, then repeat selected winner.",
+      "measurement_limits": "Playback-start excludes preparation; smaller directory cache moves dirty evictions earlier (5 start writes vs128 C1). Observed maxima cover1041 rows/two leaf spans, not all higher tree boundaries."
     }
   ],
   "provisioning": {
@@ -635,8 +685,8 @@
     },
     {
       "stage": 2,
-      "change": "Add one separately measured current-block plus cached-directory-parent sibling, from C1, before generated-hint policy trials",
-      "reason": "Measured basic current-block first-leaf cost74575 is better than C184284 but still exceeds nominal66666.7-clock budget. A private parent page can skip upper radix levels at the cost of an extra32 bits/view; verify complete RAM/control cost, invalidation, minimum levels and deeper parent-index boundaries. This is an experiment, not a real-time claim."
+      "change": "Add one separately measured current-block plus cached middle-directory-path sibling, including its level-one parent, from C1 before generated-hint policy trials",
+      "reason": "Measured basic current-block first-leaf cost74575 improves C184284 but exceeds nominal66666.7 clocks. Reuse existing traversal registers and store middle-directory pages per view; the primary288-bit row and parent-only224-bit row both fit four512x72 BRAMs in principle, but inference, FF/mux costs and higher parent boundaries must be measured. No real-time guarantee."
     }
   ],
   "ci": {
