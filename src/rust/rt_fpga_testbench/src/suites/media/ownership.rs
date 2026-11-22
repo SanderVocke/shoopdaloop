@@ -355,7 +355,14 @@ pub fn descriptor_statistics_reset_restore(d: &mut Store, s: &mut Sim<'_>) {
     let n = g.blocks() as u32;
     let last = g.views - 1;
     let mut valid = std::collections::BTreeSet::new();
+    let before_reset = s.cycles;
     d.reset(s);
+    eprintln!(
+        "descriptor reset views={} reuse={} admission_cycles={}",
+        g.views,
+        g.reuse_views,
+        s.cycles - before_reset
+    );
     d.write_config(s, 0, 0, g.views);
     for (view, present) in [
         (last, true),
