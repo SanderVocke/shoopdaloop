@@ -6,6 +6,11 @@ fn translation_boundaries_and_lifetimes_match_an_independent_map() {
         rt_fpga_testbench::suites::metadata::translation_area_workloads(width).unwrap();
     }
 }
+
+#[shoop_test]
+fn directory_paths_cross_all_primary_levels_and_survive_deep_retirement() {
+    rt_fpga_testbench::suites::metadata::directory_area_workloads(64).unwrap();
+}
 #[shoop_test]
 fn indexed_metadata_detached_roots_and_coherent_shared_cache_transport() {
     use rt_fpga_testbench::suites::metadata;
