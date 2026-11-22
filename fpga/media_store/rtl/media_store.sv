@@ -1,6 +1,7 @@
 module media_store #(
     parameter integer REUSE_VIEWS = 0,
     parameter integer VIEWS = 32,
+    parameter integer LOCAL_FRAME_BITS = 64,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer BLOCK_CHUNKS = 32,
@@ -170,26 +171,27 @@ module media_store #(
     reg [SPAN_BITS-1:0] zero_index;
     reg [SPAN_BITS-1:0] span_count, span_index;
     reg [OFFSET_BITS-1:0] sample_offset;
-    reg [63:0] base, start, length, cursor;
+    reg [63:0] base, start, length;
+    reg [LOCAL_FRAME_BITS-1:0] cursor;
     reg [159:0] descriptor;
-    wire [63:0] frames = descriptor[127:64];
+    wire [LOCAL_FRAME_BITS-1:0] frames = descriptor[64+:LOCAL_FRAME_BITS];
     wire [31:0] offset = descriptor[63:32], chunks = descriptor[159:128];
     wire unused_descriptor = &{1'b0, descriptor[31:2], descriptor[0]};
     reg new_valid, new_range;
     reg [31:0] new_offset, new_chunks;
-    reg [63:0] new_frames;
+    reg [LOCAL_FRAME_BITS-1:0] new_frames;
     reg fresh, arena_bound;
     reg [63:0] absolute_start, slice_available, slice_end;
     reg slice_out_of_bounds, slice_length_valid, slice_capacity_valid;
     wire [63:0] slice_chunk_result = (slice_end+BLOCK_FRAMES-1) >> UNIT_SHIFT;
     reg [63:0] append_end, append_chunks, required_chunks, growth, append_extent;
     reg append_capacity_ok;
-    wire [63:0] absolute_sample = {32'b0, offset} + cursor;
+    wire [63:0] absolute_sample = {32'b0, offset} + 64'(cursor);
     reg [31:0] range_offset;
     reg [31:0] range_chunks;
     reg [63:0] retained_end;
     reg [63:0] retained_frames;
-    reg [63:0] length_last, span_until_wrap;
+    reg [LOCAL_FRAME_BITS-1:0] length_last, span_until_wrap;
     reg [31:0] span_contiguous;
     wire cfg_accept = cfg_valid && cfg_ready;
     wire cfg_in_range = (cfg_space == 0) ? cfg_address < 4
@@ -199,7 +201,8 @@ module media_store #(
         : (cfg_space == 6) ? (cfg_address < 15 || cfg_address == 16 || cfg_address == 17) && !cfg_write
         : (cfg_space == 7) ? cfg_address < 32'(RETIRED_TABLES)*16 && !cfg_write
         : ((cfg_space == 3) || (cfg_space == 4)) && (cfg_address < 32'(BLOCKS));
-    wire cfg_request_value_valid = !cfg_request_write || (cfg_request_space == 1)
+    wire cfg_request_frame_valid = (cfg_request_data[127:64] >> LOCAL_FRAME_BITS) == 0;
+    wire cfg_request_value_valid = !cfg_request_write || ((cfg_request_space == 1) && cfg_request_frame_valid)
         || ((cfg_request_upper_nonzero == 0)
             && ((cfg_request_space != 0) || (cfg_request_address == 0 ? cfg_request_view_value_valid : cfg_request_block_value_valid)));
     wire [31:0] control_ordinal = (opcode == SLICE) ? first_chunk + index : index;
@@ -208,7 +211,7 @@ module media_store #(
     wire [31:0] samples_left = count-sample_index;
     wire [31:0] chunk_left = 32'(CHUNK_FRAMES) - (absolute_sample[31:0] & 32'(CHUNK_FRAMES-1));
     wire [31:0] contiguous = samples_left < chunk_left ? samples_left : chunk_left;
-    wire [SPAN_BITS-1:0] next_span = opcode == READ && span_until_wrap < {32'b0,span_contiguous}
+    wire [SPAN_BITS-1:0] next_span = opcode == READ && 64'(span_until_wrap) < {32'b0,span_contiguous}
         ? SPAN_BITS'(span_until_wrap) : SPAN_BITS'(span_contiguous);
     wire cm_cmd_ready, cm_write_ready, cm_read_valid, cm_read_last, cm_response_valid, cm_prefetch_ready;
     wire [31:0] cm_read_data, cm_response_id;
@@ -275,7 +278,7 @@ module media_store #(
     endfunction
 
     initial begin
-        if ((VIEWS < 1) || (VIEWS > 65536) || (SLOTS < 1)
+        if (LOCAL_FRAME_BITS < 1 || LOCAL_FRAME_BITS > 64 || (VIEWS < 1) || (VIEWS > 65536) || (SLOTS < 1)
             || (TABLE_BITS > 32) || (CHUNK_FRAMES < 1) || (CHUNK_FRAMES > 65536)
             || ((CHUNK_FRAMES & (CHUNK_FRAMES-1)) != 0)
             || BLOCK_CHUNKS < 1 || BLOCK_CHUNKS > 65536 || (BLOCK_CHUNKS & (BLOCK_CHUNKS-1)) != 0
@@ -339,10 +342,14 @@ module media_store #(
         else begin descriptor_response <= descriptor_grant; end
     end
 
-    media_ram #(.WIDTH(160), .DEPTH(VIEWS), .ADDR_BITS(VIEW_BITS)) descriptors (
+    wire [95+LOCAL_FRAME_BITS:0] compact_descriptor;
+    assign descriptor_data = {compact_descriptor[64+LOCAL_FRAME_BITS+:32],
+        64'(compact_descriptor[64+:LOCAL_FRAME_BITS]),compact_descriptor[63:0]};
+    media_ram #(.WIDTH(96+LOCAL_FRAME_BITS), .DEPTH(VIEWS), .ADDR_BITS(VIEW_BITS)) descriptors (
         .clk(clk), .read_enable((descriptor_read || descriptor_grant) && !reset),
-        .read_address(descriptor_ram_address), .read_data(descriptor_data),
-        .write_enable(descriptor_write && advance && !reset), .write_address(descriptor_write_address), .write_data(descriptor_write_data)
+        .read_address(descriptor_ram_address), .read_data(compact_descriptor),
+        .write_enable(descriptor_write && advance && !reset), .write_address(descriptor_write_address),
+        .write_data({descriptor_write_data[159:128],descriptor_write_data[64+:LOCAL_FRAME_BITS],descriptor_write_data[63:0]})
     );
     always @(posedge clk) begin
         if (reset) foreground_descriptor <= 0;
@@ -576,7 +583,7 @@ module media_store #(
         ref_read_address = SLOT_BITS'(chunk); ref_write_address = SLOT_BITS'(chunk);
         free_read_address = SLOT_BITS'(free_count-1); free_write_address = SLOT_BITS'(free_count);
         descriptor_write_data = ((opcode == CREATE) || (opcode == SLICE) || new_valid)
-            ? pack_view(new_valid, new_range, new_offset, new_frames, new_chunks) : 160'b0;
+            ? pack_view(new_valid, new_range, new_offset, 64'(new_frames), new_chunks) : 160'b0;
         table_write_data = chunk; ref_write_data = 1; free_write_data = chunk;
         case (phase)
             DESCRIPTOR_READ: descriptor_read = 1;
@@ -807,7 +814,7 @@ module media_store #(
                     else begin allocation_view <= allocation_view+1; enter_phase(FREE_VIEW_READ); end
                 end
                 DESCRIPTOR_READ: begin
-                    length_last <= length-1'b1;
+                    length_last <= LOCAL_FRAME_BITS'(length-1'b1);
                     read_length_nonzero <= length != 0;
                     read_start_high_greater <= start[63:32] > length[63:32];
                     read_start_high_equal <= start[63:32] == length[63:32];
@@ -846,13 +853,13 @@ module media_store #(
                             error_code <= INVALID_VIEW;
                             enter_phase(FINISH);
                         end else begin
-                            cursor <= start;
+                            cursor <= LOCAL_FRAME_BITS'(start);
                             enter_phase(!count_nonzero ? FINISH : SAMPLE_TABLE_READ);
                         end
                         default: begin error_code <= INVALID_SHAPE; enter_phase(FINISH); end
                     endcase
                 end
-                APPEND_END: begin append_end <= frames+{32'b0,count}; enter_phase(APPEND_CHUNKS); end
+                APPEND_END: begin append_end <= 64'(frames)+{32'b0,count}; enter_phase(APPEND_CHUNKS); end
                 APPEND_CHUNKS: begin append_chunks <= (append_end+BLOCK_FRAMES-1) >> UNIT_SHIFT; enter_phase(APPEND_REQUIRED); end
                 APPEND_REQUIRED: begin required_chunks <= append_chunks-{32'b0,chunks}; enter_phase(APPEND_GROWTH); end
                 APPEND_GROWTH: begin
@@ -865,18 +872,18 @@ module media_store #(
                     enter_phase(APPEND_CHECK);
                 end
                 APPEND_CHECK: begin
-                    if (!append_capacity_ok) begin
+                    if (!append_capacity_ok || (append_end >> LOCAL_FRAME_BITS) != 0) begin
                         error_code <= MEMORY_FULL; enter_phase(FINISH);
                     end else if (!count_nonzero) enter_phase(FINISH);
                     else begin
-                        new_frames <= append_end; new_chunks <= append_chunks[31:0];
+                        new_frames <= LOCAL_FRAME_BITS'(append_end); new_chunks <= append_chunks[31:0];
                         append_index <= chunks; remaining <= required_chunks[31:0]; cursor <= frames;
                         enter_phase(ALLOCATE);
                     end
                 end
                 SLICE_START: begin
-                    slice_out_of_bounds <= start > frames;
-                    slice_available <= frames-start;
+                    slice_out_of_bounds <= start > 64'(frames);
+                    slice_available <= 64'(frames)-start;
                     absolute_start <= {32'b0,offset}+start;
                     enter_phase(SLICE_OFFSET);
                 end
@@ -894,7 +901,7 @@ module media_store #(
                     if (slice_out_of_bounds || !slice_length_valid || !slice_capacity_valid) begin
                         error_code <= INVALID_VIEW; enter_phase(FINISH);
                     end else begin
-                        new_range <= 1; new_offset <= range_offset; new_frames <= length;
+                        new_range <= 1; new_offset <= range_offset; new_frames <= LOCAL_FRAME_BITS'(length);
                         new_chunks <= range_chunks[31:0]; first_chunk <= 32'(absolute_start >> UNIT_SHIFT);
                         remaining <= range_chunks[31:0]; allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; enter_phase(FREE_VIEW_READ);
                     end
@@ -911,7 +918,7 @@ module media_store #(
                 RECLAIM_CHECK: begin
                     new_chunks <= chunks == 0 ? 0 : chunks-1;
                     new_offset <= chunks <= 1 ? 0 : offset;
-                    new_frames <= frames < retained_frames ? frames : retained_frames;
+                    new_frames <= 64'(frames) < retained_frames ? frames : LOCAL_FRAME_BITS'(retained_frames);
                     result_empty <= chunks <= 1; index <= chunks == 0 ? 0 : chunks-1;
                     remaining <= chunks == 0 ? 0 : 1;
                     enter_phase(chunks == 0 ? PUBLISH : TABLE_READ);
@@ -986,7 +993,7 @@ module media_store #(
                 end
                 SAMPLE_TABLE_READ: begin
                     sample_offset <= OFFSET_BITS'(absolute_sample & 64'(CHUNK_FRAMES-1));
-                    span_until_wrap <= length-cursor;
+                    span_until_wrap <= LOCAL_FRAME_BITS'(length-64'(cursor));
                     span_contiguous <= contiguous;
                     enter_phase(SAMPLE_TABLE_RESULT);
                 end
@@ -1004,7 +1011,7 @@ module media_store #(
                     sample_index <= sample_index + 1;
                     samples_finished <= sample_index == sample_last;
                     span_index <= span_index+1'b1;
-                    cursor <= opcode == READ && cursor == length_last ? 64'b0 : cursor+1;
+                    cursor <= opcode == READ && cursor == length_last ? LOCAL_FRAME_BITS'(0) : cursor+1'b1;
                     if (span_index+1'b1 == span_count) enter_phase(SAMPLE_WAIT);
                 end
                 SAMPLE_WAIT: if (cm_response_valid) begin

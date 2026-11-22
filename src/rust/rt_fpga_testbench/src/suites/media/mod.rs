@@ -3,6 +3,7 @@ pub mod area;
 mod basic;
 pub mod campaign;
 pub mod deferred;
+pub mod local_frames;
 pub mod ownership;
 use crate::{
     Result,

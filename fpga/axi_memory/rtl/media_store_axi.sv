@@ -4,6 +4,7 @@
 module media_store_axi #(
     parameter integer REUSE_VIEWS = 0,
     parameter integer VIEWS = 32,
+    parameter integer LOCAL_FRAME_BITS = 64,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer BLOCK_CHUNKS = 32,
@@ -138,6 +139,7 @@ module media_store_axi #(
     media_store #(
         .REUSE_VIEWS(REUSE_VIEWS),
         .VIEWS(VIEWS),
+        .LOCAL_FRAME_BITS(LOCAL_FRAME_BITS),
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
         .BLOCK_CHUNKS(BLOCK_CHUNKS),
