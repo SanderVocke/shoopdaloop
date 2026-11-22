@@ -28,7 +28,8 @@
     "Workload-to-test mapping established; focused reference/metadata/ownership controls passed; full regression remains a final-stage gate",
     "Eleven measurement-tool checks pass, including checkpoint/context preservation, modified constraints, and unmanifested HDL detection",
     "Incremental occupancy candidate passes all eight descriptor configurations including reset during diagnostics; six-clock reads preserved; warning-denying targeted build passed",
-    "Compact evidence archive retains all 116 B0 members with matching hashes; reconstructed all four physical stage metrics exactly from the archive"
+    "Compact evidence archive retains all 116 B0 members with matching hashes; reconstructed all four physical stage metrics exactly from the archive",
+    "Ready-wait and immutable-source simulation driver calibrated against B0: all 33 mixed-on-delay7 measurement rows unchanged"
   ],
   "pending": [
     "Compare stage 1 incremental and RAM-backed serial population counts"
@@ -117,7 +118,10 @@
       "validation": [
         "Descriptor statistics including duplicate restores/full pools/reset during scan pass at 1/7/512/513 views with reuse off/on",
         "Verilator --Wall lint passes at 512 views with reuse off/on",
-        "Warning-denying release benchmark build passes"
+        "Warning-denying release benchmark build passes",
+        "Full ownership suite including DRAMsim3 passed",
+        "All 33 mixed-on-delay7 per-quantum rows equal B0, including traffic and cache counters",
+        "New ready-wait/source-root driver independently reproduces every B0 mixed callback row from frozen B0 RTL sources"
       ],
       "diagnostic_cycles": [
         {
@@ -170,13 +174,12 @@
         }
       ],
       "pending": [
-        "Calibrate the ready-wait driver against immutable B0 source",
-        "Complete full ownership suite and connected callback measurement",
         "Collect mapped RAM inference/resources and route if viable",
         "Compare against incremental count; repeat any selected small physical win"
       ],
       "latency_scope": "Driver reset includes one asserted reset clock and readiness wait. Diagnostic timing covers Config::access, including admission and response cleanup.",
-      "source_revision": "50b59fe15aee7982664e92d5fd8e919e6d1b25a7"
+      "source_revision": "50b59fe15aee7982664e92d5fd8e919e6d1b25a7",
+      "callback_evidence": "s1-serial-mixed-on-delay7.json"
     }
   ],
   "provisioning": {
