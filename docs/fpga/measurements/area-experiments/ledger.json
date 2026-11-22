@@ -519,6 +519,29 @@
       "outcome": "shortlisted_pending_siblings",
       "decision": "Best measured area and ordinary-playback tradeoff so far: -3231 LUT/-497 slices vs C1 and -1152 median steady clocks, at +5.5 BRAM and +2671 clocks worst steady boundary. Strided unit reads worsen sharply (247 vs30 clocks AXI64). Timing still fails; compare current-block sibling before selecting and repeating a winner.",
       "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has 5 audio writes versus 128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving."
+    },
+    {
+      "label": "s2-block",
+      "stage": 2,
+      "status": "measuring",
+      "rtl_source_revision": "60371a1c",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No logical data/ownership/error change intended. Private roots RAM grows128 to192 bits, adding last block value and ordinal. Existing leaf_valid lifetime guards cached translation; all original extent/error checks precede opcode0 bypass. Foreground writes update value; trim/detach/reset/global invalidation disable it and GC never populates a live-view translation. Effective directory cache min(TABLE_LINES,8) is8 at the primary top input budget128.",
+      "effective_geometry": {
+        "root_ram_bits_per_view": 192,
+        "cached_blocks_per_view": 1,
+        "primary_directory_lines": 8,
+        "views": 512
+      },
+      "validation": [
+        "All4 metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes"
+      ],
+      "pending": [
+        "Finish full metadata/media/ownership/deferred checks",
+        "Archive unit trace and optimized/connected results; route viable candidate"
+      ],
+      "translation_summary": "s2-block-translation-unit-summary.json"
     }
   ],
   "provisioning": {
