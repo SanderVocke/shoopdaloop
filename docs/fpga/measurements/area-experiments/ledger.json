@@ -1046,10 +1046,10 @@
         "BothAXIwidths:all207deep directoryresponse/cycle/cachecounter rows andsetupclocks exactlymatchC2",
         "All1282publicstorecommand/result/cycle/traffic rows andrecovery exactlymatchC2",
         "Full6metadata tests pass371.95sec, includingbothAXIwidths,deepdirectories,malformedmetadata,translation/fence/fault/reset/cache protocols",
-        "All33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactlymatchsameC2longrunprefix"
+        "All33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactlymatchsameC2longrunprefix",
+        "Allmedia/deferred/ownership tests pass includingDRAMsim3/Legacy; sequentialsuitewalltimes 91.92,321.96,368.09sec (hostload dependent, not RTL cycle metrics)"
       ],
       "pending": [
-        "Media/ownership/deferred tests",
         "Routed slice/timing/DRC decision"
       ],
       "unit_summaries": [
@@ -1075,7 +1075,8 @@
       "optimized_timing": {
         "wns_ns": -5.32,
         "whs_ns": 0.002
-      }
+      },
+      "media_log": "s3-path-context-media-tests.log"
     }
   ],
   "provisioning": {
