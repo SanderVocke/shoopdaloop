@@ -991,7 +991,20 @@
       "JACK": "passed",
       "workspace": "Linux debug, coverage, JACK, Windows debug, native inspection and all other completed jobs pass; Linux/macOS/Windows release and wasmrelease still running",
       "CodeQL": "passed",
-      "Docs": "passed"
+      "Docs": "passed",
+      "firmware_run": 45068655379,
+      "firmware_failed_job": 137350428223,
+      "firmware": "All5other jobs passed; firmware fixture timed out1200sec after recording-pool fill batch768. ExactPCM/MIDI/40MiB/100soak checks passed before timeout; isolated jobretryaccepted. Cause unproven, no host/firmware behavioral patch.",
+      "firmware_artifact": 14773838894,
+      "firmware_local_evidence": "work/area-experiments/setup/c2-firmware-ci-evidence",
+      "firmware_evidence_sha256": {
+        "client.log": "aba456e9f5230218dbb70adb43185b1a8171ba1ec61cf2c74a8e418cb5ba478c",
+        "qemu.log": "cc13ea7a9f1576579c5b6626c5e1270707dd96f5478943058b46370d0e86d79b",
+        "result.json": "32c60e0fb6ec29c8098be5aaff3dff5477684c27ba6a101d38a34108db59bb95",
+        "machine.json": "506ceaa73d0a0651c4e811a1be41adf4c366e34f6a6a71876306856a83934e84",
+        "serial.log": "915d4de9ad741f434f30506ab1ff2410eb9cda5585839a64d51e0d0a9f46e3e6",
+        "command.json": "3aa45fb473e3d897cf47f1897f1a4196485eed8e36e4901d1a99929b5960e242"
+      }
     }
   },
   "selected_control": {
