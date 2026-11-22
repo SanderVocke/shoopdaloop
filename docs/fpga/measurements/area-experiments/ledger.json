@@ -921,7 +921,8 @@
         "Canonical64 all33connected sample/state/cycle/traffic rows exactly match C2",
         "SeparateAXI32/64 rawduration/refusal/fault samples retained forF21 andF64; F5rawAXI64 also retained",
         "Default64 deferred test passed132.21sec; media andownership still running",
-        "Originaldefault64 media suite passes392.92sec; ownership stillrunning"
+        "Originaldefault64 media suite passes392.92sec; ownership stillrunning",
+        "Optional21 all33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactly matchcanonical64 andC2. Cold88446,warmmedian53066,ordinarysteady52994/max53617. No timing/deadline claim."
       ],
       "unit_summaries": [
         "s3-local-frames5-boundaries-summary.json",
@@ -935,7 +936,6 @@
       "pending": [
         "Default64 ownership completion",
         "Canonical64 route and explicitdecision",
-        "Primary21 connectedcallbacks",
         "Primary21 optimized screen androuteifviable"
       ],
       "functional_log": "s3-local-frames-tests.log",
