@@ -107,6 +107,76 @@
         "unconstrained_internal_endpoints": 0
       },
       "decision": "Useful behavior-preserving candidate: callback rows unchanged, 4.86% routed LUT reduction, 1.43% slice reduction, and improved but failing setup timing. Compare RAM-backed serial count before final selection; repeat this small slice win if it is selected."
+    },
+    {
+      "label": "s1-serial",
+      "stage": 1,
+      "status": "in_progress",
+      "control_revision": "3fd4e673",
+      "changed_contract": "Logical values, ownership, and errors preserved. Validity RAM initializes for VIEWS clocks; diagnostic requests scan all VIEWS entries and hold admission until the response. Measured driver reset/read latency increases explicitly.",
+      "validation": [
+        "Descriptor statistics including duplicate restores/full pools/reset during scan pass at 1/7/512/513 views with reuse off/on",
+        "Verilator --Wall lint passes at 512 views with reuse off/on",
+        "Warning-denying release benchmark build passes"
+      ],
+      "diagnostic_cycles": [
+        {
+          "views": 1,
+          "reuse": false,
+          "driver_reset": 2,
+          "driver_diagnostic": 6
+        },
+        {
+          "views": 1,
+          "reuse": true,
+          "driver_reset": 2,
+          "driver_diagnostic": 8
+        },
+        {
+          "views": 7,
+          "reuse": false,
+          "driver_reset": 2,
+          "driver_diagnostic": 6
+        },
+        {
+          "views": 7,
+          "reuse": true,
+          "driver_reset": 8,
+          "driver_diagnostic": 14
+        },
+        {
+          "views": 512,
+          "reuse": false,
+          "driver_reset": 2,
+          "driver_diagnostic": 6
+        },
+        {
+          "views": 512,
+          "reuse": true,
+          "driver_reset": 513,
+          "driver_diagnostic": 519
+        },
+        {
+          "views": 513,
+          "reuse": false,
+          "driver_reset": 2,
+          "driver_diagnostic": 6
+        },
+        {
+          "views": 513,
+          "reuse": true,
+          "driver_reset": 514,
+          "driver_diagnostic": 520
+        }
+      ],
+      "pending": [
+        "Calibrate the ready-wait driver against immutable B0 source",
+        "Complete full ownership suite and connected callback measurement",
+        "Collect mapped RAM inference/resources and route if viable",
+        "Compare against incremental count; repeat any selected small physical win"
+      ],
+      "latency_scope": "Driver reset includes one asserted reset clock and readiness wait. Diagnostic timing covers Config::access, including admission and response cleanup.",
+      "source_revision": "50b59fe15aee7982664e92d5fd8e919e6d1b25a7"
     }
   ],
   "provisioning": {
@@ -142,10 +212,11 @@
   "ci": {
     "draft_pr": 1026,
     "initial_head": "8c02b795",
-    "fpga_run": 45035631920,
-    "standalone_synthesis": "Fails at unchanged B0 media-store check, consistent with the locally reproduced population-count lint warnings; stage 1 resolves them",
+    "fpga_run": 45037959544,
+    "standalone_synthesis": "All four standalone synthesis checks passed",
     "reference_integration": "Passed",
     "dependency_isolation": "Passed",
-    "native_verification": "In progress"
+    "native_verification": "In progress",
+    "head": "2a86f35d"
   }
 }

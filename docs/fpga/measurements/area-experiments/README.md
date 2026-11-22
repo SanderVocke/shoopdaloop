@@ -80,6 +80,14 @@ start, 16 warmup quanta, and steady samples remain separate. `--quanta` extends
 the measured steady interval. Directed ownership and musical-transition tests
 remain separate from this playback fixture.
 
+`SHOOP_FPGA_SOURCE_ROOT=/absolute/snapshot/root` selects an immutable source
+tree for simulation through the same selector used by the RTL library. Include
+the required FPGA test adapters in that tree. Generated simulation files go in
+its `work/` directory, so use a separate simulation snapshot rather than the
+manifested physical-build `source/` directory. The default remains the repository
+tree. This permits a B0 harness control alongside the current candidate without
+changing either run's RTL inputs.
+
 `--parameters FILE.json` supplies explicit benchmark parameters, with string
 values such as `{"TABLE_LINES":"64"}`. Physical geometry changes also require a
 matching driver/reference fixture. Each output records source hashes, model
