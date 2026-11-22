@@ -920,7 +920,8 @@
         "All1282 primary publicstore result/cycle/traffic rows and reset/recovery counts exactly match C2 forbothcanonical64 andoptional21. 128captures/offsetexports/retakes,all384blocksrecovered andallpagesfreed.",
         "Canonical64 all33connected sample/state/cycle/traffic rows exactly match C2",
         "SeparateAXI32/64 rawduration/refusal/fault samples retained forF21 andF64; F5rawAXI64 also retained",
-        "Default64 deferred test passed132.21sec; media andownership still running"
+        "Default64 deferred test passed132.21sec; media andownership still running",
+        "Originaldefault64 media suite passes392.92sec; ownership stillrunning"
       ],
       "unit_summaries": [
         "s3-local-frames5-boundaries-summary.json",
@@ -932,12 +933,26 @@
         "s3-local-frames64-axi32-boundaries-summary.json"
       ],
       "pending": [
-        "64bit default fullmedia/deferred/ownership",
-        "Canonical64 connected/store equivalence and optimized calibration",
-        "Physical21 screen and route if viable",
-        "Primary21 connectedcallbacks aftercanonical64"
+        "Default64 ownership completion",
+        "Canonical64 route and explicitdecision",
+        "Primary21 connectedcallbacks",
+        "Primary21 optimized screen androuteifviable"
       ],
-      "functional_log": "s3-local-frames-tests.log"
+      "functional_log": "s3-local-frames-tests.log",
+      "canonical64_optimized_summary": "s3-local-frames64-control-opt-summary.json",
+      "canonical64_optimized_deltas_vs_c2": {
+        "lut": -127,
+        "logic_lut": -127,
+        "memory_lut": 0,
+        "ff": -19,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -2,
+        "muxf7": -9,
+        "muxf8": -30,
+        "control_sets": -1
+      },
+      "calibration_note": "Canonical64 behavior/cycles/traffic match C2 but mappedcounts differ(-127LUT,-19FF,-2CARRY4,-1controlset). Routingcanonical64 separately; attribute21delta againstsameRTL64control aswellas C2, notallnarrowing."
     }
   ],
   "provisioning": {
