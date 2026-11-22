@@ -19,5 +19,16 @@ The original default-policy test remains. The separate benchmark executable
 `midi_area_experiment` uses the same fixture/CLI; it preserves the frozen original
 benchmark executable. The explicit new parameter allowlist admits only0/1/2.
 
-Status: wrappers compile with warnings denied; policy tests and default
-calibration are running. No area or performance outcome is established yet.
+Status: canonical default2 reproduces all33 C1/B0 connected rows exactly. Its
+physical control is running. Late-only1 passes blocked paths and Legacy protocol
+cases but fails the original first-buffer validity assertion after an injected
+second-view read fault in Instant, Fixed and DRAMsim3 modes: the first cached
+buffer is published before the later fault arrives. The probe waits for the
+actual failing transaction before releasing its paused response; the original
+default test still requires the fault to be in flight at the first scratch write.
+Neither assertion is relaxed. This is a rejection for a behavior-preserving
+default, pending area and normal playback measurements.
+
+The optional `hint_policy_protocol` executable records each case's pass/failure,
+including source hashes, without turning an experimental failure into a passing
+default test. No-hint0 still needs its own probe and measurements.

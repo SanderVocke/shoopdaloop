@@ -7,6 +7,11 @@ fn main() {
     assert!(policy <= 2);
     let output = std::path::Path::new(&args[2]);
     assert!(!output.exists(), "Use a new output path");
+    rt_fpga_testbench::report::configure(
+        &std::path::PathBuf::from(format!("{}.evidence", output.display())),
+        false,
+    )
+    .unwrap();
     let mut rows = Vec::new();
     for mode in [Mode::Instant, Mode::Fixed, Mode::Dramsim3, Mode::Legacy] {
         for blocked in [false, true] {
