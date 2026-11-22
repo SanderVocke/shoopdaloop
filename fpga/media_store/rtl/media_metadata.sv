@@ -96,6 +96,7 @@ module media_metadata #(
     reg [3:0] path_index [0:LEVELS-1];
     wire [LEVEL_BITS-1:0] saved_path_level = phase == CHILD ? level : LEVEL_BITS'(32'(level)+1);
     wire [63:0] saved_page_address = page_address(path_page[saved_path_level]);
+    wire unused_page_alignment = &{1'b0,saved_page_address[5:0]};
     wire [63:0] saved_path_address = {saved_page_address[63:6],path_index[saved_path_level],2'b0};
     reg [31:0] trim_count, trim_start;
     reg [31:0] trim_used_pages, trim_requested_pages;
@@ -168,7 +169,11 @@ module media_metadata #(
     end endgenerate
     task automatic access_cache(input [1:0] which, input [1:0] op, input [63:0] address,
                                  input [31:0] data, input phase_t next);
-        begin bank <= which; cache_opcode <= op; cache_address <= RELATIVE_BITS'(address); cache_data <= data; resume <= next; phase <= CACHE_SEND; end
+        reg unused_address_bits;
+        begin
+            unused_address_bits = &{1'b0,address};
+            bank <= which; cache_opcode <= op; cache_address <= RELATIVE_BITS'(address); cache_data <= data; resume <= next; phase <= CACHE_SEND;
+        end
     endtask
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8 || RETIRED_TABLES < 1) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
