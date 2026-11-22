@@ -786,6 +786,30 @@
       "none_outcome": "rejected",
       "none_rejection": "417 fewer optimized LUTs,416 fewer FF,one fewer BRAM andthree fewer CARRY4; ordinary quantum+6292clocks and first-buffer publication fails three AXI fault cases. Routed slices unavailable because functional qualification failed.",
       "outcome": "Both generated-hint alternatives rejected for default; original early+late policy retained"
+    },
+    {
+      "label": "s3-audio",
+      "stage": 3,
+      "status": "measuring",
+      "rtl_source_revision": "85a79735",
+      "control_revision": "a046e9c5",
+      "control_summary": "s2-path-repeat-100-summary.json",
+      "changed_contract": "None intended; exact29-bit node total,33-bit ceil intermediate,32-bit unallocated pages and33-bit available sum. Public inputs/payloads/addresses/generations stay wide; scheduling unchanged. Proof in stage3-width-contract.md.",
+      "validation": [
+        "Both AXI widths:all187 boundary/response/cycle rows exactly match C2",
+        "All1282 publicstore command/result/cycle/traffic rows exactly match C2",
+        "Expanded six-test metadata suite passes; full media/ownership/deferred suite still in progress"
+      ],
+      "unit_summaries": [
+        "s3-audio-width-boundaries-axi32-summary.json",
+        "s3-audio-width-boundaries-axi64-summary.json",
+        "s3-audio-store-operations-unit-summary.json"
+      ],
+      "pending": [
+        "Fullmedia/ownership regressions(deferred passed182.50sec)",
+        "Shortconnectedcallback andoptimizedarea screen",
+        "Routeifbeneficialandqualified"
+      ]
     }
   ],
   "provisioning": {
