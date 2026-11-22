@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 1,
-  "status": "in_progress",
+  "stage": 2,
+  "status": "stage_1_complete",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -29,10 +29,13 @@
     "Eleven measurement-tool checks pass, including checkpoint/context preservation, modified constraints, and unmanifested HDL detection",
     "Incremental occupancy candidate passes all eight descriptor configurations including reset during diagnostics; six-clock reads preserved; warning-denying targeted build passed",
     "Compact evidence archive retains all 116 B0 members with matching hashes; reconstructed all four physical stage metrics exactly from the archive",
-    "Ready-wait and immutable-source simulation driver calibrated against B0: all 33 mixed-on-delay7 measurement rows unchanged"
+    "Ready-wait and immutable-source simulation driver calibrated against B0: all 33 mixed-on-delay7 measurement rows unchanged",
+    "Serial count physical repeat exactly matches all four stage metrics",
+    "Full metadata control suite passes including new 128-line protocol/fault/backpressure/reset cases on AXI32/64",
+    "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks"
   ],
   "pending": [
-    "Compare stage 1 incremental and RAM-backed serial population counts"
+    "Stage 2: four-way RAM tags, banked associative search, indexed full-leaf/current-block caches from the same C1 control"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -53,7 +56,7 @@
     {
       "label": "s1-incremental",
       "stage": 1,
-      "status": "measured_pending_sibling",
+      "status": "rejected",
       "control_revision": "3fd4e673",
       "source_revision": "b4146e9d",
       "changed_contract": "None; exact descriptor statistics including reuse-disabled issued-view semantics",
@@ -67,10 +70,7 @@
       ],
       "physical_build": "work/area-experiments/s1-incremental-route100",
       "callback_build": "work/area-experiments/s1-incremental-benchmark",
-      "pending": [
-        "Compare sibling RAM-backed serial count against the same baseline RTL control",
-        "Repeat a small physical winner before final selection"
-      ],
+      "pending": [],
       "callback_evidence": "s1-incremental-mixed-on-delay7.json",
       "optimized_summary": "s1-incremental-opt-summary.json",
       "optimized_deltas_vs_b0": {
@@ -107,12 +107,12 @@
         "drc_warnings": 18,
         "unconstrained_internal_endpoints": 0
       },
-      "decision": "Useful behavior-preserving candidate: callback rows unchanged, 4.86% routed LUT reduction, 1.43% slice reduction, and improved but failing setup timing. Compare RAM-backed serial count before final selection; repeat this small slice win if it is selected."
+      "decision": "Correct and useful reduction, but serial RAM count uses 541 fewer routed LUTs, 400 fewer slices, and 469 fewer FFs with identical callback rows. Retain incremental as the alternative when six-clock diagnostic reads and two-clock reset admission matter; its slightly better failing setup slack does not qualify 100 MHz."
     },
     {
       "label": "s1-serial",
       "stage": 1,
-      "status": "measured_repeat_pending",
+      "status": "retained",
       "control_revision": "3fd4e673",
       "changed_contract": "Logical values, ownership, and errors preserved. Validity RAM initializes for VIEWS clocks; diagnostic requests scan all VIEWS entries and hold admission until the response. Measured driver reset/read latency increases explicitly.",
       "validation": [
@@ -122,7 +122,8 @@
         "Full ownership suite including DRAMsim3 passed",
         "All 33 mixed-on-delay7 per-quantum rows equal B0, including traffic and cache counters",
         "New ready-wait/source-root driver independently reproduces every B0 mixed callback row from frozen B0 RTL sources",
-        "Distributed RAM inference confirmed: 32 LUTRAMs in media_store; bitmap register footprint removed"
+        "Distributed RAM inference confirmed: 32 LUTRAMs in media_store; bitmap register footprint removed",
+        "Deferred cleanup/status-read/fault/reset/preemption suite passed in Instant, Fixed, and DRAMsim3 modes"
       ],
       "diagnostic_cycles": [
         {
@@ -174,10 +175,7 @@
           "driver_diagnostic": 520
         }
       ],
-      "pending": [
-        "Complete identical-checkpoint physical repeat before final stage 1 selection",
-        "Complete directed deferred-cleanup regressions for longer diagnostic admission holds"
-      ],
+      "pending": [],
       "latency_scope": "Driver reset includes one asserted reset clock and readiness wait. Diagnostic timing covers Config::access, including admission and response cleanup.",
       "source_revision": "50b59fe15aee7982664e92d5fd8e919e6d1b25a7",
       "callback_evidence": "s1-serial-mixed-on-delay7.json",
@@ -226,7 +224,9 @@
         "drc_warnings": 18,
         "unconstrained_internal_endpoints": 0
       },
-      "decision": "Preferred stage 1 candidate pending repeat: lower routed LUT/FF/slices than the incremental sibling, with unchanged callback measurements. Accept explicitly measured diagnostic/reset latency because scans are outside the normal playback path. Both alternatives still fail 100 MHz setup; serial setup is 0.162 ns worse than incremental."
+      "decision": "Retain as C1: 2581 fewer routed LUTs, 589 fewer slices, 454 fewer FFs; exact callbacks and logical regressions pass. Accept 513-clock reset and 519-clock diagnostic driver latency at 512 views; scans are outside playback. Timing still fails at 100 MHz.",
+      "repeat_summary": "s1-serial-repeat-100-summary.json",
+      "repeat_validation": "All synth/opt/place/route resource/timing/control-set fields identical to the first run"
     }
   ],
   "provisioning": {
@@ -249,7 +249,8 @@
     "mixed_delay7_steady_table_cache_misses_per_quantum": 0,
     "stage_2_followup": "Include a current-block translation per view within the indexed-view cache avenue; it may avoid repeated lookup of the same allocation block between 1024-frame boundaries.",
     "stage_1_opt": "Incremental count removes 2121 LUT and 1526 CARRY4 versus B0; no callback-cycle/traffic change. Routed slices pending.",
-    "stage_1_route": "Incremental counter saves 2040 LUT but only 189 slices; the whole connected result remains packing-limited. Next critical path is metadata node arithmetic."
+    "stage_1_route": "Incremental counter saves 2040 LUT but only 189 slices; the whole connected result remains packing-limited. Next critical path is metadata node arithmetic.",
+    "cache_control_fixture": "New standalone 128-line control: read hits six clocks, cold fills 41 clocks on AXI64 / 49 on AXI32 with the direct-memory model; sequential, strided, five-way-conflict writes/readback independently verified. Only original cache RTL used; candidate cache measurements wait for stage 1."
   },
   "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/1026",
   "plan_adjustments": [
@@ -257,6 +258,11 @@
       "stage": 0,
       "change": "Open the authorized draft PR before implementation to overlap CI with long baseline measurements",
       "reason": "Expose measurement-tool and regression problems while baseline runs; preserve stage 11 completion gates and no autonomous merge"
+    },
+    {
+      "stage": 1,
+      "change": "Clarify that diagnostic values match the logical oracle exactly, while clock latency is measured separately with an explicit driver scope",
+      "reason": "The independent Rust logical model has no RTL clock model; cycle changes are already allowed by the immutable acceptance criteria"
     }
   ],
   "ci": {
@@ -268,5 +274,13 @@
     "dependency_isolation": "Passed",
     "native_verification": "In progress",
     "head": "2a86f35d"
+  },
+  "selected_control": {
+    "label": "C1",
+    "implementation": "s1-serial-100",
+    "rtl_revision": "50b59fe1",
+    "summary": "s1-serial-100-summary.json",
+    "repeat_summary": "s1-serial-repeat-100-summary.json",
+    "timing_met": false
   }
 }

@@ -7,8 +7,8 @@ The immutable implementation control is
 
 Current status: the fresh B0 implementation reproduces the archived 100 MHz
 resources and timing exactly. All twelve callback control cases pass and reproduce all 396 archived
-per-quantum rows exactly. The incremental counter is measured; the serial
-RAM count is next. See `ledger.json` for
+per-quantum rows exactly. Both count alternatives are measured. The serial RAM count is preferred,
+and its physical repeat matches all four stage metrics exactly. See `ledger.json` for
 completed checks, pending measurements, and local artifact locations.
 
 | B0 routed control | Archived | Fresh |
@@ -129,20 +129,26 @@ PYTHONPATH=fpga/synthesis python3 -m unittest fpga/synthesis/test_area_experimen
 
 ## Stage 1 measurements
 
-| Routed 100 MHz result | B0 | Incremental count | Change |
+| Routed 100 MHz result | B0 | Incremental count | Serial RAM count |
 | --- | ---: | ---: | ---: |
-| LUTs | 41,980 | 39,940 | -2,040 |
-| Slices | 13,205 | 13,016 | -189 |
-| Registers | 33,441 | 33,456 | +15 |
-| CARRY4 | 5,491 | 3,965 | -1,526 |
-| Control sets | 2,215 | 1,672 | -543 |
-| Setup slack ns | -5.429 | -3.995 | +1.434 |
-| Hold slack ns | +0.008 | +0.005 | -0.003 |
+| LUTs | 41,980 | 39,940 | 39,399 |
+| Slices | 13,205 | 13,016 | 12,616 |
+| Registers | 33,441 | 33,456 | 32,987 |
+| CARRY4 | 5,491 | 3,965 | 3,958 |
+| Control sets | 2,215 | 1,672 | 1,494 |
+| Setup slack ns | -5.429 | -3.995 | -4.157 |
+| Hold slack ns | +0.008 | +0.005 | +0.005 |
+| Diagnostic read, clocks | 6 | 6 | 519 |
+| Reset admission, clocks | 2 | 2 | 513 |
 
 BRAM remains 77.5 tiles and DSP use remains four. All 33 mixed/on/delay7
 measurement rows, including cycles and traffic, are identical: cold start
-110,356 clocks, steady median/max 54,146/54,753. Diagnostic reads remain six
-clocks. These cycle counts do not qualify 100 MHz operation because setup timing
+110,356 clocks, steady median/max 54,146/54,753. Diagnostic and reset measurements use 512 views with reuse enabled.
+Reset timing includes one asserted reset clock and the readiness wait; diagnostic
+timing covers the driver call including admission and response cleanup. The
+serial count scans all configured entries, including sparse raw restores beyond
+the issued-view high-water mark. Reuse-disabled counts keep their issued-view
+semantics and six-clock reads. These cycle counts do not qualify 100 MHz operation because setup timing
 fails. There are zero routing or DRC errors, 18 DRC warnings, and zero
 unconstrained internal endpoints in the registered OOC context. The warnings
 cover DSP pipelining and the OOC boundary/absent PS7. Board DDR and I/O remain
@@ -150,6 +156,11 @@ outside this context.
 
 The original combinatorial population-count path disappears. Metadata node
 arithmetic is now the worst routed path (18 CARRY4 plus two LUT3 levels).
-The RAM-backed serial sibling and a repeat of any selected small physical win
-remain pending; the incremental candidate is provisional. The optimized and
+The serial count saves 2,581 LUTs, 589 slices, and 454 registers versus B0; it
+uses 400 fewer slices than the incremental candidate. Accept its longer diagnostic
+and initialization latency because callback measurements are unchanged. The
+serial candidate is selected as C1: its repeat reproduces every reported stage
+resource, timing, and control-set metric exactly.
+Deferred cleanup, fault, reset, and preemption regressions pass, including
+DRAMsim3. The optimized and
 routed raw archives preserve separate report stages and source/checkpoint hashes.

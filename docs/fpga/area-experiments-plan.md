@@ -115,8 +115,9 @@ Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
   RAM-backed validity. Measure each separately, including any new bookkeeping.
 - [x] Verify create/slice/clear/remove, repeated descriptor writes, configuration
   restore, full pools, reuse on/off, and reset with stale descriptor RAM. Check
-  diagnostic values and response latency exactly against the logical model.
-- [ ] Run focused ownership/media tests and connected cycle/area measurements.
+  diagnostic values exactly against the logical model and record response/reset
+  latency with its measurement scope. The logical model does not define RTL clocks.
+- [x] Run focused ownership/media tests and connected cycle/area measurements.
   Confirm the former `valid_views` to `cfg_globals_data` critical path disappears,
   identify the next limiting path, and record the selected implementation.
 
