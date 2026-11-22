@@ -97,22 +97,53 @@ module media_store #(
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
     wire [31:0] views_used;
+    wire views_initialized, views_count_ready;
     generate if (REUSE_VIEWS != 0) begin : count_views
         localparam integer BITS = $clog2(VIEWS+1);
-        reg [VIEWS-1:0] valid_views;
+        wire views_count_request = cfg_request_valid && !cfg_request_write
+            && cfg_request_space == 6 && cfg_request_address == 16;
+        (* ram_style = "distributed" *) reg valid_views [0:VIEWS-1];
+        reg initializing, scanning, finished, read_pending, last_issued, read_validity;
+        reg [VIEW_BITS-1:0] initialize_index, scan_index;
         reg [BITS-1:0] used;
+        assign views_initialized = !initializing;
+        assign views_count_ready = !views_count_request || finished;
+        assign views_used = 32'(used);
         always @(posedge clk) begin
-            if (reset) begin valid_views <= 0; used <= 0; end
-            else if (descriptor_write && advance) begin
-                valid_views[descriptor_write_address] <= descriptor_write_data[0];
-                if (valid_views[descriptor_write_address] != descriptor_write_data[0]) begin
-                    if (descriptor_write_data[0]) used <= used + 1'b1;
-                    else used <= used - 1'b1;
+            if (reset) begin
+                initializing <= 1; initialize_index <= 0;
+                scanning <= 0; finished <= 0; used <= 0; scan_index <= 0;
+                read_pending <= 0; last_issued <= 0; read_validity <= 0;
+            end else begin
+                if (initializing) begin
+                    valid_views[initialize_index] <= 0;
+                    if (initialize_index == VIEW_BITS'(VIEWS-1)) initializing <= 0;
+                    else initialize_index <= initialize_index + 1'b1;
+                end else if (descriptor_write && advance)
+                    valid_views[descriptor_write_address] <= descriptor_write_data[0];
+                if (!views_count_request) finished <= 0;
+                if (views_count_request && !scanning && !finished) begin
+                    scanning <= 1; used <= 0; scan_index <= 0;
+                    read_pending <= 0; last_issued <= 0;
+                end else if (scanning) begin
+                    if (!last_issued) begin
+                        read_validity <= valid_views[scan_index];
+                        read_pending <= 1;
+                        if (scan_index == VIEW_BITS'(VIEWS-1)) last_issued <= 1;
+                        else scan_index <= scan_index + 1'b1;
+                    end
+                    if (read_pending) begin
+                        used <= used + BITS'(read_validity);
+                        if (last_issued) begin
+                            scanning <= 0; finished <= 1; read_pending <= 0;
+                        end
+                    end
                 end
             end
         end
-        assign views_used = 32'(used);
     end else begin : count_issued_views
+        assign views_initialized = 1;
+        assign views_count_ready = 1;
         assign views_used = view_count;
     end endgenerate
     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
@@ -253,9 +284,9 @@ module media_store #(
            )
             $fatal(1, "Invalid media store capacities");
     end
-    assign cmd_ready = command_window && !gc_lock_held && !cfg_valid && !faulted && !reset;
+    assign cmd_ready = views_initialized && command_window && !gc_lock_held && !cfg_valid && !faulted && !reset;
     assign hint_ready = resolver_ready && hint_admission;
-    assign cfg_ready = !busy && !gc_lock_held && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !reset && advance;
+    assign cfg_ready = views_initialized && !busy && !gc_lock_held && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !reset && advance;
     assign cfg_response_valid = cfg_result_valid && !reset;
     wire [159:0] cfg_result = (cfg_response_error || cfg_was_write) ? 160'b0
         : (cfg_response_space == 0 || cfg_response_space == 6) ? cfg_globals_data
@@ -669,7 +700,7 @@ module media_store #(
                 if (!arena_bound) base <= arena_base;
             end
             if (resolver_prefetch_valid && cm_prefetch_ready && prefetch_admission) arena_bound <= 1;
-            cfg_request_valid <= cfg_accept;
+            cfg_request_valid <= cfg_accept || (cfg_request_valid && !views_count_ready);
             if (cfg_accept) begin
                 cfg_request_write <= cfg_write; cfg_request_space <= cfg_space;
                 cfg_request_address <= cfg_address; cfg_request_data <= cfg_write_data;
@@ -678,7 +709,7 @@ module media_store #(
                 cfg_request_block_value_valid <= cfg_write_data[31:0] <= 32'(BLOCKS);
                 cfg_request_upper_nonzero <= {|cfg_write_data[159:128], |cfg_write_data[127:96], |cfg_write_data[95:64], |cfg_write_data[63:32]};
             end
-            cfg_pending <= cfg_request_valid;
+            cfg_pending <= cfg_request_valid && views_count_ready;
             cfg_result_valid <= cfg_pending;
             if (cfg_request_valid) begin
                 cfg_globals_data <= 0;
