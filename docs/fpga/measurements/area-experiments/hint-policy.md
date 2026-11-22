@@ -41,3 +41,10 @@ admits only values0/1/2. Failed variants have no routed-slice or long-boundary
 qualification. FIFO capacity tuning is not pursued for a rejected policy.
 All raw failures, samples, HDL, fixture sources and mapped reports are retained
 in the `s2-hints-*` archives and summaries.
+
+At optimization, the hint FIFO hierarchy uses 353 LUTs, 27 FFs and three BRAM36
+in the control, versus 86 LUTs, 22 FFs and two BRAM36 with no generated hints.
+The resolver uses 545 LUTs/473 FFs in the control and late-only, versus
+517/458 with no hints. Disabling its input does not eliminate those complete
+state machines in this flow. These hierarchy counts explain components of the
+connected result; only the connected deltas in the table establish savings.

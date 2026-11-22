@@ -33,7 +33,10 @@
     "Serial count physical repeat exactly matches all four stage metrics",
     "Full metadata control suite passes including new 128-line protocol/fault/backpressure/reset cases on AXI32/64",
     "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks",
-    "All five cache siblings plus C1 pass the identical primary-capacity1282-row public capture/retake/retained-export/retirement fixture; clocks/traffic/raw commands archived"
+    "All five cache siblings plus C1 pass the identical primary-capacity1282-row public capture/retake/retained-export/retirement fixture; clocks/traffic/raw commands archived",
+    "C1 six-test metadata suite passes223.63s after adding parametric view/retirement adapter and wide-input/queue-corruption control",
+    "C1/path boundary fixture187 shape/response rows per AXI width match exactly across minimum/odd/primary count cases",
+    "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks"
   ],
   "pending": [
     "Stage2 exact-source path-cache physical repeat, then selection"

@@ -1,0 +1,15 @@
+{
+  "archive": "c1-midi-store-boundaries-raw.tar.gz",
+  "archive_sha256": "1c8744c85d539f83e894830c39f7e54587589613eb1f2eafc7b984165737b898",
+  "members_sha256": {
+    "fixture/src/rust/rt_fpga_testbench/examples/midi_store_boundaries.rs": "1da7b773fb26a4f5737a8f030651fbecae8e7d54f55890ec0f29f73e57950850",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/midi/store_area.rs": "a90517ad9758fad13aa1a7d75d056a6439368e6bec8a63b670291afae7b5752a",
+    "logs/0-c1-midi-store-boundaries.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "replay/archive-area-unit.py": "45e950cb2d74b8efec0f9deebf97afd0f6018c384db83cfa8a71cbebe2654364",
+    "samples/c1-midi-store-boundaries.json": "3c078ea09fa87894db899c9cf1f3dcef09fecd10ab5c81aab9cb66e6bcbf6215",
+    "source/fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+    "source/fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+    "source/fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+    "source/fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+  }
+}
