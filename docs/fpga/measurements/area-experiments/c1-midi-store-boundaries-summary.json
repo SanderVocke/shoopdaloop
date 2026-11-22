@@ -1,0 +1,422 @@
+{
+  "cases": [
+    {
+      "blocks": 1,
+      "events_per_view": 1,
+      "retirements": 1,
+      "views": 1,
+      "measurement_count": 54,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 119,
+          "median": 123.0,
+          "max": 127,
+          "memory_transactions": 36
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 11,
+          "median": 11,
+          "max": 11,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 4,
+          "min": 120,
+          "median": 122.5,
+          "max": 129,
+          "memory_transactions": 76
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 20,
+          "median": 23,
+          "max": 24,
+          "memory_transactions": 9
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 20,
+          "median": 20,
+          "max": 20,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 3,
+          "min": 142,
+          "median": 144,
+          "max": 145,
+          "memory_transactions": 69
+        },
+        "opcode5/expected_error3": {
+          "count": 1,
+          "min": 102,
+          "median": 102,
+          "max": 102,
+          "memory_transactions": 16
+        },
+        "opcode6/expected_error0": {
+          "count": 2,
+          "min": 137,
+          "median": 140.5,
+          "max": 144,
+          "memory_transactions": 42
+        },
+        "opcode6/expected_error8": {
+          "count": 1,
+          "min": 8,
+          "median": 8,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 2,
+          "min": 105,
+          "median": 108.0,
+          "max": 111,
+          "memory_transactions": 32
+        },
+        "opcode9/expected_error0": {
+          "count": 5,
+          "min": 99,
+          "median": 201,
+          "max": 231,
+          "memory_transactions": 134
+        },
+        "opcode10/expected_error0": {
+          "count": 6,
+          "min": 7,
+          "median": 19.5,
+          "max": 124,
+          "memory_transactions": 29
+        },
+        "opcode11/expected_error0": {
+          "count": 6,
+          "min": 205,
+          "median": 222.5,
+          "max": 232,
+          "memory_transactions": 216
+        },
+        "opcode12/expected_error4": {
+          "count": 15,
+          "min": 6,
+          "median": 6,
+          "max": 114,
+          "memory_transactions": 80
+        }
+      }
+    },
+    {
+      "blocks": 9,
+      "events_per_view": 3,
+      "retirements": 1,
+      "views": 3,
+      "measurement_count": 202,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 405,
+          "median": 413.0,
+          "max": 421,
+          "memory_transactions": 132
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 11,
+          "median": 11,
+          "max": 11,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 10,
+          "min": 112,
+          "median": 134.0,
+          "max": 156,
+          "memory_transactions": 217
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 48,
+          "median": 50,
+          "max": 54,
+          "memory_transactions": 27
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 18,
+          "median": 18,
+          "max": 18,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 27,
+          "min": 137,
+          "median": 168,
+          "max": 190,
+          "memory_transactions": 711
+        },
+        "opcode5/expected_error3": {
+          "count": 3,
+          "min": 99,
+          "median": 101,
+          "max": 106,
+          "memory_transactions": 48
+        },
+        "opcode6/expected_error0": {
+          "count": 6,
+          "min": 123,
+          "median": 130.0,
+          "max": 146,
+          "memory_transactions": 126
+        },
+        "opcode6/expected_error8": {
+          "count": 3,
+          "min": 8,
+          "median": 8,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 6,
+          "min": 99,
+          "median": 103.0,
+          "max": 108,
+          "memory_transactions": 96
+        },
+        "opcode9/expected_error0": {
+          "count": 15,
+          "min": 98,
+          "median": 207,
+          "max": 226,
+          "memory_transactions": 402
+        },
+        "opcode9/expected_error3": {
+          "count": 24,
+          "min": 93,
+          "median": 104.0,
+          "max": 119,
+          "memory_transactions": 384
+        },
+        "opcode10/expected_error0": {
+          "count": 36,
+          "min": 7,
+          "median": 36.0,
+          "max": 145,
+          "memory_transactions": 183
+        },
+        "opcode11/expected_error0": {
+          "count": 36,
+          "min": 204,
+          "median": 232.0,
+          "max": 248,
+          "memory_transactions": 1332
+        },
+        "opcode12/expected_error4": {
+          "count": 27,
+          "min": 6,
+          "median": 97,
+          "max": 126,
+          "memory_transactions": 288
+        }
+      }
+    },
+    {
+      "blocks": 15,
+      "events_per_view": 3,
+      "retirements": 3,
+      "views": 5,
+      "measurement_count": 308,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 648,
+          "median": 672.5,
+          "max": 697,
+          "memory_transactions": 220
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 12,
+          "median": 12,
+          "max": 12,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 16,
+          "min": 108,
+          "median": 154.0,
+          "max": 186,
+          "memory_transactions": 394
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 79,
+          "median": 85,
+          "max": 98,
+          "memory_transactions": 45
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 21,
+          "median": 21,
+          "max": 21,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 45,
+          "min": 131,
+          "median": 168,
+          "max": 194,
+          "memory_transactions": 1185
+        },
+        "opcode5/expected_error3": {
+          "count": 5,
+          "min": 98,
+          "median": 106,
+          "max": 113,
+          "memory_transactions": 80
+        },
+        "opcode6/expected_error0": {
+          "count": 10,
+          "min": 132,
+          "median": 141.0,
+          "max": 147,
+          "memory_transactions": 210
+        },
+        "opcode6/expected_error8": {
+          "count": 5,
+          "min": 8,
+          "median": 8,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 10,
+          "min": 96,
+          "median": 103.0,
+          "max": 119,
+          "memory_transactions": 160
+        },
+        "opcode9/expected_error0": {
+          "count": 25,
+          "min": 99,
+          "median": 201,
+          "max": 226,
+          "memory_transactions": 670
+        },
+        "opcode9/expected_error3": {
+          "count": 24,
+          "min": 91,
+          "median": 105.0,
+          "max": 116,
+          "memory_transactions": 384
+        },
+        "opcode10/expected_error0": {
+          "count": 60,
+          "min": 7,
+          "median": 36.0,
+          "max": 156,
+          "memory_transactions": 305
+        },
+        "opcode11/expected_error0": {
+          "count": 60,
+          "min": 206,
+          "median": 231.5,
+          "max": 248,
+          "memory_transactions": 2220
+        },
+        "opcode12/expected_error4": {
+          "count": 39,
+          "min": 6,
+          "median": 100,
+          "max": 115,
+          "memory_transactions": 480
+        }
+      }
+    }
+  ],
+  "scope": "standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps",
+  "validation": "exact ContentStore record/frame/packet and usage agreement; high-bit invalid handles, max-plus-one refusal, generation overflow, poisoned accepted command inputs, held responses, memory faults and stale-RAM reset",
+  "label": "c1-midi-store-boundaries",
+  "fixture_revision": "86af343f",
+  "models": [
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "1",
+        "BLOCK_EVENTS": "1",
+        "MAX_EVENTS": "1",
+        "RETIREMENTS": "1",
+        "VIEWS": "1"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "9",
+        "BLOCK_EVENTS": "1",
+        "MAX_EVENTS": "3",
+        "RETIREMENTS": "1",
+        "VIEWS": "3"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "15",
+        "BLOCK_EVENTS": "1",
+        "MAX_EVENTS": "3",
+        "RETIREMENTS": "3",
+        "VIEWS": "5"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    }
+  ],
+  "retention": "c1-midi-store-boundaries-retention.json",
+  "per_request_samples": "c1-midi-store-boundaries-raw.tar.gz"
+}

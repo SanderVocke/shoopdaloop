@@ -164,3 +164,192 @@ resource, timing, and control-set metric exactly.
 Deferred cleanup, fault, reset, and preemption regressions pass, including
 DRAMsim3. The optimized and
 routed raw archives preserve separate report stages and source/checkpoint hashes.
+
+## Stage 2 measurements in progress
+
+All siblings compare with C1, the selected serial-count implementation. The
+four-way, banked and full-leaf measurements are complete. The current-block
+alternative and generated-hint policies remain before selection.
+
+| Routed 100 MHz result | C1 | Four-way | Banked | Full leaf | Current block |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| LUTs | 39,399 | 36,656 | 36,470 | 36,168 | 35,152 |
+| Slices | 12,616 | 12,336 | 12,263 | 12,119 | 11,953 |
+| Registers | 32,987 | 28,737 | 28,801 | 28,975 | 28,511 |
+| CARRY4 | 3,958 | 3,352 | 3,369 | 3,382 | 3,341 |
+| Control sets | 1,494 | 1,406 | 1,434 | 1,444 | 1,319 |
+| BRAM tiles | 77.5 | 77.5 | 77.5 | 83 | 77 |
+| Setup slack ns | -4.157 | -4.744 | -3.950 | -3.799 | -3.665 |
+| Hold slack ns | +0.005 | +0.015 | +0.041 | +0.046 | +0.006 |
+| Playback-start mixed/on/delay7 clocks | 110,356 | 110,572 | 116,057 | 110,168 | 97,951 |
+| 1,024-quantum steady median clocks | 54,146 | 54,146 | 56,066 | 52,994 | 52,994 |
+| 1,024-quantum steady maximum clocks | 84,284 | 83,891 | 98,244 | 86,955 | 74,575 |
+
+The four-way cache reduces the main tag lookup from 128 comparisons to four,
+using synchronous tag RAM. Read hits still take six clocks in the standalone
+fixture. Five competing lines in one set now cause evictions, independently
+checked against an array oracle; final fenced memory remains exact. Metadata,
+ownership, deferred cleanup and media regressions pass, including DRAMsim3 and
+legacy scalar memory.
+
+The long connected fixture reaches frames 16,384 and 32,768. Those leaf crossings
+cost 84,284/83,711 clocks with C1 and 83,891/83,257 with four-way tags. Both exceed
+the nominal 66,666.7-clock callback budget at 100 MHz, and both fail physical
+setup timing. The short fixture alone hides these boundary costs. Raw long-run
+samples are retained in `c1-extended-100-raw.tar.gz` and
+`s2-fourway-extended-100-raw.tar.gz`; summaries and retention manifests identify
+their sources and hashes.
+
+The banked alternative retains all 128 fully associative entries while comparing
+eight tags at a time. Independent sequential, strided and dirty-conflict traces
+on AXI32/64 match C1's 261 misses exactly. Read hits range from six to 36 clocks
+(median 20 in this unit workload); cold fills add 30 clocks. All metadata tests
+pass. The routed banked result uses 36,470 LUTs, 28,801 registers and 12,263
+slices, with 3,369 CARRY4s and 1,434 control sets. BRAM and DSP use stay at
+77.5 and four. Setup/hold slack is -3.950/+0.041 ns: timing still fails.
+This is 2,929 fewer LUTs and 353 fewer slices than C1, and 73 fewer slices than
+the four-way route. Compare that small slice difference with the complete
+connected latency and boundary costs before selecting or repeating a winner.
+The complete long run passes all 1,041 rows: steady median/max is
+56,066/98,244 clocks, versus C1's 54,146/84,284. The frame-32,768 crossing costs
+97,699 clocks versus 83,711. Connected steady table misses are 1,724 versus
+1,698; traffic differs on five rows as lookup timing changes interleaving.
+Cold start costs 116,057 clocks (+5,701), despite 97 fewer cold audio reads.
+Reject this banked variant for the default: its 73-slice advantage over four-way
+comes with greater ordinary and boundary latency. Retain it as a measured
+full-associativity tradeoff. `s2-banked-extended-100-*` retains physical reports
+and every long-run sample. The full-leaf and current-block alternatives follow.
+
+
+The full-leaf variant extends each private roots-RAM entry from 128 to 640 bits
+and caches sixteen table words per view. Its effective directory cache is eight
+lines, explicitly capped even with the top-level TABLE_LINES budget of 128.
+Existing leaf-valid lifetimes guard reads; writes update the cache, and
+trim/detach/reset/global invalidation disable it. Hot whole-controller reads take
+six clocks versus 15 with C1. Strided AXI64 unit reads that change leaf take 247
+clocks versus 30 median with C1; the independent map verifies data and lifetime
+semantics across those paths.
+
+Full metadata, ownership, deferred-cleanup and media regressions pass, including
+DRAMsim3 and scalar legacy paths. All 1,041 connected rows pass. Ordinary steady
+cost falls 1,152 clocks, but the two leaf crossings cost 86,955/86,382 versus
+C1's 84,284/83,711. Steady table misses fall from 1,698 to 1,280. Keep this candidate
+on the shortlist pending the current-block sibling. It has the best measured
+area so far, with 5.5 extra BRAM tiles and worse strided/boundary latency. Setup
+still fails; repeat before selecting a small physical winner.
+
+Playback-start metrics exclude preparation. The full-leaf start row has five
+metadata writebacks versus 128 with C1; its smaller directory cache evicts dirty
+lines during preparation. The 188-clock start improvement does not measure
+complete preparation or boot time. `s2-leaf-extended-100-*` retains all physical
+reports and long-run samples; unit archives retain the controller traces.
+
+The read-only checkpoint taxonomy in `carry-taxonomy-c1-leaf-summary.json`
+attributes 640 CARRY4s to C1's main metadata cache and 40 to the full-leaf design's
+eight-line directory cache. Other C1 direct owners include MIDI content 628,
+MIDI orchestration 452, media_store 496 and media_metadata 282. These are disjoint
+primitive-owner counts, unlike overlapping hierarchical slice counts. They
+identify targets for the following width and arithmetic-sharing experiments.
+
+
+The current-block cache extends each roots-RAM entry to 192 bits, caching one
+block value and ordinal per view. It keeps the same validity lifetime and an
+eight-line shared directory cache. All metadata, ownership, deferred-cleanup and
+media tests pass, including DRAMsim3 and scalar legacy modes. All 1,041 connected
+rows agree with the original logical oracles. The two leaf crossings cost
+74,575/74,002 clocks, versus C1's 84,284/83,711. BRAM drops by half a tile.
+
+The smaller directory cache increases steady table misses to 5,120 from 1,698;
+traffic differs on 35 rows. Most block-crossing work overlaps JP execution, so
+the observed median improves despite that extra traffic. Standalone strided
+AXI64 reads take 135 clocks versus C1's 30; hot repeated-block reads take six
+versus 15. Playback-start still excludes preparation and begins with five dirty
+writebacks versus C1's 128. Do not treat its measured start reduction as a total
+preparation or boot saving.
+
+Keep current-block on the shortlist pending the directory-path and generated-
+hint siblings. It improves the measured area, BRAM, ordinary and leaf-boundary
+costs relative to C1; setup timing and nominal leaf deadlines still fail.
+The next directory-path trial reuses the existing traversal register bank and
+retains middle-directory pages per view. Deeper parent crossings need directed
+checks: the long connected interval alone establishes no universal bound.
+
+
+The directory-path sibling retains three middle-page pointers per view in a
+288-bit roots row, reusing traversal state and the original invalidation lifetime.
+All five metadata tests and ownership/deferred/media regressions pass, including
+DRAMsim3. The 1,041 connected rows preserve every logical oracle. Its 35,489 LUTs,
+11,974 slices, 28,681 FFs, 78 BRAMs, four DSPs and 3,343 CARRY4s save 3,910 LUTs
+and 642 slices versus C1. It costs 337 LUTs, 21 slices and one BRAM versus basic
+current-block. Setup slack -3.881 ns remains a failure; hold slack is +0.043 ns.
+
+Ordinary median is 52,994 clocks; the maximum is 59,446, versus 74,575 for basic
+current-block and 84,284 for C1. Nominal 100 MHz arithmetic places these observed
+steady samples within the quantum budget, but neither physical timing nor every
+higher-level boundary is qualified. Playback-start is 88,446 clocks and still
+excludes preparation; cold traffic is 694 reads/eight writes versus C1's
+1,248/128. Preparation and deferred dirty work must not be called a boot saving.
+
+Independent four-view fixtures cross ordinals 255/256, 4095/4096 and 65535/65536,
+trim/regrow deep branches, detach/reuse IDs and reclaim stale trees. Both AXI
+widths agree with the logical map, including opaque high-bit values. These
+fixtures expose costs: AXI64 alternating reads have median179 clocks versus C1's
+46; selected deep reclamation reads take371/449 versus59. They establish behavior
+and controller latency, not full128-channel high-boundary deadline guarantees.
+See `s2-path-extended-100-*`, `s2-path-translation-unit-*` and
+`s2-path-directory-unit-*`; hints and a repeated winning physical run remain.
+
+
+All five cache siblings and C1 now pass the same 1,282-row public storage
+operation fixture at primary capacity. It measures 128 captures, offset exports,
+clear/retake, retained readback, and two bounded reclamation drains.
+[Operation costs](cache-store-operations.md) retain slower results as well as
+improvements, alongside every command, sample result and AXI counter. These
+ideal-memory controller clocks complement connected playback and the delayed/
+DRAMsim3 regressions; they are not full callback or board timing qualifications.
+
+The hint policy's canonical default reproduces all 33 original callback rows
+and passes all eight protocol cases. Every optimized resource count matches C1
+exactly; pre-route setup slack differs by 0.001 ns. Late-only hints preserve
+normal data but fail a first-buffer publication assertion after an injected
+second-view fault in three AXI memory modes. They also add 4,634 clocks to the
+start and 5,170 to the first warm quantum; the remaining short rows are unchanged.
+The original policy stays default, and failed variants remain experiment results.
+See [policy contract and status](hint-policy.md); no-hint and area screens remain.
+
+
+![Cache footprint and observed boundary latency](cache-tradeoffs.png)
+
+[Exportable PDF](cache-tradeoffs.pdf). The plot uses the same 1,024 steady
+quanta for every point; B0 has no matching long run and is excluded. All six
+physical builds fail setup timing. One-block and directory-path remain the
+area/latency alternatives; BRAM and adversarial/maintenance costs remain in the
+tables and raw reports.
+
+
+Before width changes, `24d767e7` adds minimum/odd/primary-count metadata input
+controls. C1 and path return identical results on all 187 requests per AXI
+width, including malformed raw DDR retirement counts. The expanded six-test
+metadata suite passes. `86af343f` adds standalone MIDI full-pool/retirement
+controls at 1/3/5 views and 1/3-event capacities, checking 564 transactions over
+three generation/queue wraps against the independent ContentStore. High frame
+bits, poisoned accepted command inputs, held outputs, refusals, generation
+overflow, faults and reset are included. These are baselines, not area wins.
+
+Compact per-opcode/error statistics are regenerated from the retained raw
+samples by `compact_unit_summaries.py`. Every original request and result stays
+in the verified archives; compacting a summary does not discard raw evidence.
+
+
+Stage 2 is complete. The full-flow path repeat reproduces the original
+checkpoint-resumed run exactly at all four stages: resources, timing and control
+sets. The expanded six-test path metadata suite passes in 217.75 seconds.
+C2 selects this cache and keeps original generated hints. Against B0, the
+combined implementation saves 6,491 LUTs, 1,231 slices, 4,760 FFs and 2,148 CARRY4s;
+it adds half a BRAM tile. Routed setup slack remains -3.881 ns.
+
+The one-block alternative saves another 21 slices, 337 LUTs and one BRAM, but
+its observed maximum is 15,129 clocks higher. C2 favors the primary sequential
+playback workload while retaining all strided, deep retirement and operation
+regressions/costs in the comparison. This selection establishes the control for
+Stage 3; it does not complete the remaining architectural or precision trials.

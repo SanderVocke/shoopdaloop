@@ -1,0 +1,112 @@
+{
+  "scope": "Read-only optimized-checkpoint primitive ownership. Each row owns CARRY4s directly; rows are disjoint, not recursive hierarchy totals. No new implementation or resource change.",
+  "inputs": {
+    "c1": {
+      "checkpoint": "work/area-experiments/s1-serial-opt/post_opt.dcp",
+      "sha256": "76bfa9f0e2038ec4029f5dd123bf70809d8f4d3dff0846acc8dbf44a92466887"
+    },
+    "leaf": {
+      "checkpoint": "work/area-experiments/s2-leaf-opt/post_opt.dcp",
+      "sha256": "117e49da877d0a10f5998b48954133b6059d2f5c1e97f34bd71fb4b921fe04e9"
+    }
+  },
+  "cases": {
+    "c1": {
+      "total": 3958,
+      "by_direct_owner": {
+        "pipeline/core_under_test": 122,
+        "pipeline/core_under_test/core/audio/core/media": 496,
+        "pipeline/core_under_test/core/audio/core/media/metadata": 282,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache": 640,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/data_ram": 2,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache": 3,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache/matched_lines1_inferred__0": 3,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache/matched_lines1_inferred__1": 3,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache/matched_lines1_inferred__2": 3,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[2].cache": 17,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[2].cache/matched_lines1_inferred__0": 3,
+        "pipeline/core_under_test/core/audio/core/media/reclaimer": 114,
+        "pipeline/core_under_test/core/audio/core/media/resolver": 98,
+        "pipeline/core_under_test/core/audio/core/media/sample_memory": 107,
+        "pipeline/core_under_test/core/audio/core/media/sample_memory/read_ram": 4,
+        "pipeline/core_under_test/core/audio/core/pipeline": 20,
+        "pipeline/core_under_test/core/audio/core/pipeline/read_intents": 2,
+        "pipeline/core_under_test/core/audio/core/pipeline/read_intents/storage": 20,
+        "pipeline/core_under_test/core/audio/core/pipeline/sample_engine": 217,
+        "pipeline/core_under_test/core/audio/core/pipeline/sample_engine/divide": 45,
+        "pipeline/core_under_test/core/audio/core/pipeline/sample_engine/smoothing_memory": 12,
+        "pipeline/core_under_test/core/audio/core/pipeline/state_engine": 3,
+        "pipeline/core_under_test/core/audio/core/pipeline/state_engine/engine": 170,
+        "pipeline/core_under_test/core/audio/core/pipeline/state_engine/jobs": 4,
+        "pipeline/core_under_test/core/audio/memory_endpoint/scheduler/endpoint": 4,
+        "pipeline/core_under_test/core/audio/memory_endpoint/stream_0.transfer": 97,
+        "pipeline/core_under_test/core/audio/memory_endpoint/stream_1.transfer": 115,
+        "pipeline/core_under_test/core/midi": 452,
+        "pipeline/core_under_test/core/midi/content": 628,
+        "pipeline/core_under_test/core/midi/state_data.expression": 181,
+        "pipeline/core_under_test/midi_memory/endpoint": 4,
+        "pipeline/core_under_test/midi_memory/transfer": 49,
+        "pipeline/core_under_test/midi_memory/transfer/bad_address5_inferred__1": 7,
+        "pipeline/core_under_test/state_data.expression": 15,
+        "pipeline/core_under_test/state_engine/engine": 16
+      }
+    },
+    "leaf": {
+      "total": 3382,
+      "by_direct_owner": {
+        "pipeline/core_under_test": 138,
+        "pipeline/core_under_test/core": 1,
+        "pipeline/core_under_test/core/audio/core/media": 485,
+        "pipeline/core_under_test/core/audio/core/media/descriptors": 4,
+        "pipeline/core_under_test/core/audio/core/media/metadata": 291,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache": 19,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__0": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__1": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__2": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__3": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__4": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__5": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[0].cache/matched_lines1_inferred__6": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache/matched_lines1_inferred__0": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache/matched_lines1_inferred__1": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[1].cache/matched_lines1_inferred__2": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[2].cache": 5,
+        "pipeline/core_under_test/core/audio/core/media/metadata/banks[2].cache/matched_lines1_inferred__0": 5,
+        "pipeline/core_under_test/core/audio/core/media/reclaimer": 113,
+        "pipeline/core_under_test/core/audio/core/media/resolver": 94,
+        "pipeline/core_under_test/core/audio/core/media/sample_memory": 109,
+        "pipeline/core_under_test/core/audio/core/media/sample_memory/read_ram": 4,
+        "pipeline/core_under_test/core/audio/core/pipeline": 20,
+        "pipeline/core_under_test/core/audio/core/pipeline/read_intents": 2,
+        "pipeline/core_under_test/core/audio/core/pipeline/read_intents/storage": 20,
+        "pipeline/core_under_test/core/audio/core/pipeline/sample_engine": 228,
+        "pipeline/core_under_test/core/audio/core/pipeline/sample_engine/divide": 45,
+        "pipeline/core_under_test/core/audio/core/pipeline/sample_engine/smoothing_memory": 12,
+        "pipeline/core_under_test/core/audio/core/pipeline/state_engine": 3,
+        "pipeline/core_under_test/core/audio/core/pipeline/state_engine/engine": 170,
+        "pipeline/core_under_test/core/audio/core/pipeline/state_engine/jobs": 4,
+        "pipeline/core_under_test/core/audio/memory_endpoint/scheduler/endpoint": 4,
+        "pipeline/core_under_test/core/audio/memory_endpoint/stream_0.transfer": 101,
+        "pipeline/core_under_test/core/audio/memory_endpoint/stream_1.transfer": 115,
+        "pipeline/core_under_test/core/midi": 451,
+        "pipeline/core_under_test/core/midi/content": 612,
+        "pipeline/core_under_test/core/midi/state_data.expression": 196,
+        "pipeline/core_under_test/midi_memory/endpoint": 4,
+        "pipeline/core_under_test/midi_memory/transfer": 49,
+        "pipeline/core_under_test/midi_memory/transfer/bad_address5_inferred__1": 7,
+        "pipeline/core_under_test/state_engine/engine": 16
+      }
+    }
+  },
+  "archive": "carry-taxonomy-c1-leaf-raw.tar.gz",
+  "archive_sha256": "80390c02d5b4ba44a385f0d2dea5bbf9a938bc1ec97952f755423ccfdaa21154",
+  "members_sha256": {
+    "leaf_carry.rpt": "237f505a50d97bbbb5a06b72f58d8bd5a1916f2499bfb259717ab2a5ef2aaeae",
+    "c1_carry.rpt": "c055bd01bd8014645e606c1cb3ccfcd1ff3935d2f4276bc78237ce10b4e2daef",
+    "vivado.log": "f0273015526aecf272fc0671e21cf3f72a29b845786487a91084958c689b8699",
+    "run.tcl": "30e39db1207155a3aac4e1193befd7d9db3fd2f26f0fd2ee107ca0b30242c2b0",
+    "console.log": "bd3cb00f289a7bc8dc659bf188ebb8d8169df307b7875ecc892257ea175c096f",
+    "provenance.json": "47dc92bd6e5369f2e74a5435e11b8ff281c9c1e006fba6ae3ac52982adfede68"
+  }
+}

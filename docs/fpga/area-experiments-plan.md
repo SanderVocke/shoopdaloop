@@ -125,23 +125,41 @@ Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
 
 Depends on stage 1's recorded decision; all cache alternatives share one control.
 
-- [ ] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
+Execution status: complete. Five cache alternatives and both generated-hint
+policies are measured. The directory-path cache is selected as C2 after an
+exact four-stage physical repeat; original early+late hints remain.
+See the [ledger](measurements/area-experiments/ledger.json) for source, unit,
+connected and physical results, including rejected tradeoffs.
+
+- [x] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
   a banked full-associativity search, then a leaf cache indexed by view. For the
   last variant retain a small directory cache and include coherence logic costs.
   Preserve the original as a control; record actual extra hit and miss cycles.
   Compare a full leaf with a cached current block translation per view: B0's
   mixed steady quantum performs 384 table-cache hits and zero misses while each
   allocation block spans 32 quanta. Test invalidation on table writes and retirement.
-- [ ] Verify read/write/zero, dirty eviction, fence/invalidate, held responses,
+- [x] Separately trial the current-block cache with a cached middle-directory
+  path per view, including its level-one parent. The basic current-block candidate takes 74,575 clocks at its
+  first leaf crossing, versus 84,284 for C1 and the nominal 66,666.7-clock budget
+  at 100 MHz. Include the extra RAM/register/mux cost and the same invalidation
+  lifetime. Verify minimum tree levels and parent-index crossings at ordinals
+  255/256; two leaf spans alone do not cover every higher-level boundary.
+- [x] Verify read/write/zero, dirty eviction, fence/invalidate, held responses,
   reset, and fill/writeback errors. Exercise competing views, nested slices,
   append, trim, clear, reclaim, and stale speculative hints through the real store.
-- [ ] Measure sequential, strided, adversarial set conflicts, all 128 audio
+- [x] Measure sequential, strided, adversarial set conflicts, all 128 audio
   channels, and cold/retake traffic. Extend steady runs beyond two 16,384-frame
   leaf spans, or supply equivalent directed boundary fixtures. Compare cache
   capacity and traffic as well as comparator count and synthesized RAM inference.
-- [ ] Route viable alternatives, select by connected area and latency, and record
+- [x] Route viable alternatives, select by connected area and latency, and record
   any capacity/hash tuning as separate runs. Do not treat a fully serial scan's
   reduced logic as a win without accounting for its complete quantum cost.
+- [x] Separately trial late-only generated payload hints, then no generated
+  payload hints, from the same C1 control. The measured control issues 256 payload
+  burst reads for 128 channel chunks and emits both early SP and late JP hints.
+  Preserve the original default policy, all read/media operations, and public
+  hint handling. Measure FIFO/resolver cost, traffic, stalls, transitions,
+  fault/progress behavior, and any FIFO-capacity tuning as separate runs.
 
 ## Stage 3 Narrow internal metadata and address types
 

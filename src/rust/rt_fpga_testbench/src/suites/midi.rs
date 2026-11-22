@@ -1,6 +1,7 @@
 use crate::{clock::Edges, model::Model, random::Random, sim::Agent};
 pub mod data;
 pub mod expression;
+pub mod store_area;
 
 pub struct Memory {
     pins: [&'static str; 9],

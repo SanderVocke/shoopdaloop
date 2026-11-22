@@ -271,6 +271,12 @@ fn warm(d: &mut Pipeline, s: &mut Sim<'_>, case: &Value, writes: &Rc<RefCell<Wri
     writes.borrow_mut().records.clear();
 }
 pub fn playback_stream_protocol(d: &mut Pipeline, s: &mut Sim<'_>) {
+    playback_stream_protocol_policy(d, s, true);
+}
+fn playback_stream_protocol_without_early_hint(d: &mut Pipeline, s: &mut Sim<'_>) {
+    playback_stream_protocol_policy(d, s, false);
+}
+fn playback_stream_protocol_policy(d: &mut Pipeline, s: &mut Sim<'_>, early_hint: bool) {
     let path = core(d, "").trim_end_matches('.').to_owned();
     let writes = Rc::new(RefCell::new(Writes {
         path,
@@ -360,6 +366,11 @@ pub fn playback_stream_protocol(d: &mut Pipeline, s: &mut Sim<'_>) {
         s.until(10_000, "cached playback overlaps failing prefetch", |_| {
             !writes.borrow().records.is_empty()
         });
+        if !early_hint {
+            s.until(10_000, "late or demand read accepts injected fault", |_| {
+                d.store.memory.borrow().active().is_some_and(|a| a.error)
+            });
+        }
         assert!(d.store.memory.borrow().active().is_some_and(|a| a.error));
         d.store.memory.borrow_mut().control.pause_responses = false;
         s.until(10_000, "playback fault completion", |m| m.get("done") != 0);
@@ -632,7 +643,21 @@ pub fn run(
     response_cycles: u64,
     random: u64,
 ) -> Result<()> {
+    run_parameters(name, c, g, width, mode, response_cycles, random, &[])
+}
+
+pub fn run_parameters(
+    name: &str,
+    c: [u64; 7],
+    g: Geometry,
+    width: u64,
+    mode: Mode,
+    response_cycles: u64,
+    random: u64,
+    parameters: &[(&str, u64)],
+) -> Result<()> {
     let compiled = design(c, &g, width, mode, response_cycles)
+        .parameters(parameters)
         .build(&crate::root().join("work/marlin-suite/pipeline"))?;
     if g.block_chunks != 1 {
         let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
@@ -645,7 +670,17 @@ pub fn run(
                 "directed_pipeline",
                 directed_pipeline as fn(&mut Pipeline, &mut Sim<'_>),
             ),
-            ("playback_stream_protocol", playback_stream_protocol),
+            (
+                "playback_stream_protocol",
+                if parameters
+                    .iter()
+                    .any(|&(key, value)| key == "READ_HINT_POLICY" && value != 2)
+                {
+                    playback_stream_protocol_without_early_hint
+                } else {
+                    playback_stream_protocol
+                },
+            ),
             ("pipeline_protocol", pipeline_protocol),
         ] {
             println!("pipeline/{name}/{width}/{mode:?}/{label}");

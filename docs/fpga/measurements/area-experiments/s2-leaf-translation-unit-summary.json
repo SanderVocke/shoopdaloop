@@ -1,0 +1,120 @@
+{
+  "label": "s2-leaf-translation-unit",
+  "fixture_revision": "9aaf6f9e",
+  "cases": {
+    "32": {
+      "scope": "metadata controller plus coherent cache, AXI and direct-memory model; driver request assertion through response acceptance and cleanup; preparation excluded; four views with 272 entries",
+      "validation": "reads, repeated writes, trim/regrow, global invalidation, detached GC with live view reuse, and reset agree with an independent logical map",
+      "parameters": {
+        "DATA_WIDTH": "32",
+        "LARGE": "1",
+        "LINE_WORDS": "16",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "128"
+      },
+      "populations": {
+        "repeated_block": {
+          "count": 128,
+          "min": 6,
+          "median": 6.0,
+          "max": 271,
+          "hits": 64,
+          "misses": 12,
+          "fills": 12,
+          "writebacks": 0
+        },
+        "sequential": {
+          "count": 1088,
+          "min": 6,
+          "median": 6.0,
+          "max": 271,
+          "hits": 1088,
+          "misses": 204,
+          "fills": 204,
+          "writebacks": 0
+        },
+        "strided": {
+          "count": 1088,
+          "min": 271,
+          "median": 271.0,
+          "max": 271,
+          "hits": 17408,
+          "misses": 3264,
+          "fills": 3264,
+          "writebacks": 0
+        },
+        "leaf_boundaries": {
+          "count": 44,
+          "min": 6,
+          "median": 271.0,
+          "max": 271,
+          "hits": 448,
+          "misses": 84,
+          "fills": 84,
+          "writebacks": 0
+        }
+      }
+    },
+    "64": {
+      "scope": "metadata controller plus coherent cache, AXI and direct-memory model; driver request assertion through response acceptance and cleanup; preparation excluded; four views with 272 entries",
+      "validation": "reads, repeated writes, trim/regrow, global invalidation, detached GC with live view reuse, and reset agree with an independent logical map",
+      "parameters": {
+        "DATA_WIDTH": "64",
+        "LARGE": "1",
+        "LINE_WORDS": "16",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "128"
+      },
+      "populations": {
+        "repeated_block": {
+          "count": 128,
+          "min": 6,
+          "median": 6.0,
+          "max": 247,
+          "hits": 64,
+          "misses": 12,
+          "fills": 12,
+          "writebacks": 0
+        },
+        "sequential": {
+          "count": 1088,
+          "min": 6,
+          "median": 6.0,
+          "max": 247,
+          "hits": 1088,
+          "misses": 204,
+          "fills": 204,
+          "writebacks": 0
+        },
+        "strided": {
+          "count": 1088,
+          "min": 247,
+          "median": 247.0,
+          "max": 247,
+          "hits": 17408,
+          "misses": 3264,
+          "fills": 3264,
+          "writebacks": 0
+        },
+        "leaf_boundaries": {
+          "count": 44,
+          "min": 6,
+          "median": 247.0,
+          "max": 247,
+          "hits": 448,
+          "misses": 84,
+          "fills": 84,
+          "writebacks": 0
+        }
+      }
+    }
+  },
+  "retention": "s2-leaf-translation-unit-retention.json",
+  "effective_geometry": {
+    "directory_lines": 8,
+    "root_bits_per_view": 640,
+    "leaf_words_per_view": 16,
+    "top_TABLE_LINES_budget": 128
+  },
+  "control": "c1-translation-unit-summary.json"
+}

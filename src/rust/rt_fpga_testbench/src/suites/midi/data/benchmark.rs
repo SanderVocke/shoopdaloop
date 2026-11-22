@@ -373,8 +373,11 @@ fn run_case(
         design.parameters.insert(name.into(), value.to_string());
     }
     for (name, value) in parameters {
-        if !design.parameters.contains_key(name) {
+        if !design.parameters.contains_key(name) && name != "READ_HINT_POLICY" {
             return Err(format!("Unknown benchmark parameter: {name}").into());
+        }
+        if name == "READ_HINT_POLICY" && !matches!(value.as_str(), "0" | "1" | "2") {
+            return Err("READ_HINT_POLICY must be 0, 1 or 2".into());
         }
         design.parameters.insert(name.clone(), value.clone());
     }

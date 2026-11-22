@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 2,
-  "status": "stage_1_complete",
+  "stage": 3,
+  "status": "Stage2 complete; C2 directory path selected after exact physical repeat. Stage3 width experiments next.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -32,16 +32,26 @@
     "Ready-wait and immutable-source simulation driver calibrated against B0: all 33 mixed-on-delay7 measurement rows unchanged",
     "Serial count physical repeat exactly matches all four stage metrics",
     "Full metadata control suite passes including new 128-line protocol/fault/backpressure/reset cases on AXI32/64",
-    "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks"
+    "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks",
+    "All five cache siblings plus C1 pass the identical primary-capacity1282-row public capture/retake/retained-export/retirement fixture; clocks/traffic/raw commands archived",
+    "C1 six-test metadata suite passes223.63s after adding parametric view/retirement adapter and wide-input/queue-corruption control",
+    "C1/path boundary fixture187 shape/response rows per AXI width match exactly across minimum/odd/primary count cases",
+    "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks",
+    "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls",
+    "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec"
   ],
   "pending": [
-    "Stage 2: four-way RAM tags, banked associative search, indexed full-leaf/current-block caches from the same C1 control"
+    "Stage3 audio bookkeeping and MIDI bounded-type siblings, then local-frame/arena-relative variants"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
     "setup_logs": "work/area-experiments/setup",
     "baseline_checkpoints": "work/area-experiments/b0-100/post_{opt,place,route}.dcp",
-    "baseline_matrix": "b0-matrix/manifest.json"
+    "baseline_matrix": "b0-matrix/manifest.json",
+    "c1_extended_control": "c1-extended-100-summary.json",
+    "translation_control": "c1-translation-unit-summary.json",
+    "carry_taxonomy": "carry-taxonomy-c1-leaf-summary.json",
+    "deep_directory_control": "c1-directory-unit-summary.json"
   },
   "experiments": [
     {
@@ -227,6 +237,555 @@
       "decision": "Retain as C1: 2581 fewer routed LUTs, 589 fewer slices, 454 fewer FFs; exact callbacks and logical regressions pass. Accept 513-clock reset and 519-clock diagnostic driver latency at 512 views; scans are outside playback. Timing still fails at 100 MHz.",
       "repeat_summary": "s1-serial-repeat-100-summary.json",
       "repeat_validation": "All synth/opt/place/route resource/timing/control-set fields identical to the first run"
+    },
+    {
+      "label": "s2-fourway",
+      "stage": 2,
+      "status": "measured_pending_siblings",
+      "control_revision": "6be27ce0",
+      "control_summary": "s1-serial-100-summary.json",
+      "source_revision": "853f3aac",
+      "changed_contract": "None for data/ownership/errors. 128 lines become four ways of 32 sets, with per-set round-robin replacement and invalid-way preference. Minimum/non-power-of-two line counts remain fully associative. Dirty fence lines add a tag-capture cycle.",
+      "validation": [
+        "Three metadata tests pass, including primary 128-line protocol/fault/backpressure/reset on AXI32/64",
+        "Sequential/strided/conflict unit workloads pass on AXI32/64; hits remain six clocks; deliberate conflicts add misses and writebacks",
+        "Lint draft passes 1/2/4/7/8/128 lines in burst and scalar modes",
+        "Full deferred-cleanup and media suites pass, including scalar/legacy memory mode",
+        "All 32 warm/steady mixed rows equal C1; only cold row changes (216 more clocks, two fewer table misses)",
+        "All media/ownership/deferred regression packages pass, including legacy scalar memory and DRAMsim3"
+      ],
+      "physical_build": "work/area-experiments/s2-fourway-route100",
+      "callback_build": "work/area-experiments/s2-fourway-benchmark",
+      "pending": [
+        "Compare banked/full-leaf/current-block and generated-hint policy siblings from C1",
+        "Repeat a selected small physical winner before promotion"
+      ],
+      "optimized_summary": "s2-fourway-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -2801,
+        "ff": -4255,
+        "carry4": -606,
+        "memory_lut": 96,
+        "bram36": 0,
+        "dsp": 0,
+        "control_sets": -126
+      },
+      "optimized_timing": {
+        "wns_ns": -5.507,
+        "whs_ns": 0.002,
+        "limiting_path": "metadata.used_reg[4] to metadata.existing_nodes_reg[29], 17 CARRY4 plus three LUT levels"
+      },
+      "short_callback_summary": {
+        "cold_cycles": 110572,
+        "cold_delta_vs_c1": 216,
+        "all_warm_steady_rows_equal_c1": true,
+        "warm_steady_table_hits_per_quantum": 384,
+        "warm_steady_table_misses_per_quantum": 0
+      },
+      "routed_summary": "s2-fourway-100-summary.json",
+      "extended_summary": "s2-fourway-extended-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -2743,
+        "slices": -280,
+        "ff": -4250,
+        "carry4": -606,
+        "control_sets": -88,
+        "memory_lut": 96,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "routed_timing": {
+        "wns_ns": -4.744,
+        "whs_ns": 0.015,
+        "timing_met": false,
+        "limiting_path": "metadata.new_count_reg[2] to required_nodes_reg[29], 19 CARRY4 plus eight LUT levels"
+      },
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 54146,
+        "c1_max": 84284,
+        "candidate_max": 83891,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 1654,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 83891
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 83257
+        }
+      },
+      "decision": "Shortlist as an area improvement: 2743 fewer LUTs and 280 fewer slices than C1, 4250 fewer FFs, unchanged median callbacks, slightly better long-run boundary maxima. Setup is still failing and worse than C1; compare banked/per-view alternatives before selection. Repeat if this small physical winner is ultimately selected.",
+      "public_store_operation_summary": "s2-fourway-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
+    },
+    {
+      "label": "s2-banked",
+      "stage": 2,
+      "status": "completed",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No data/ownership/error change intended. Fully associative capacity retained; eight comparisons scan sixteen groups for 128 lines. Hits add group-search clocks; dirty misses fetch victim tags separately.",
+      "pending": [],
+      "rtl_source_revision": "6984b063",
+      "validation": [
+        "All three metadata tests passed, including primary 128-line cache fault/fence/backpressure/reset cases",
+        "Independent word-array sequential, strided and dirty conflict traces passed on AXI32 and AXI64; misses exactly equal control (261)",
+        "All ownership, deferred and media regressions passed, including DRAMsim3 and legacy scalar mode",
+        "New four-view logical map check passed for both AXI widths: repeated writes, leaf boundaries, trim/regrow, retirement/live-ID reuse and stale-RAM reset",
+        "All 1041 connected rows pass exact SP/MIDI/audio/state checks and positions/jobs/MIDI packet counts/state work match C1; connected table/AXI traffic differs on five rows despite equal isolated unit misses"
+      ],
+      "unit_trace": "s2-banked-unit/",
+      "unit_cycles": {
+        "control_read_hit": 6,
+        "banked_read_hit_min": 6,
+        "banked_read_hit_median": 20,
+        "banked_read_hit_max": 36,
+        "banked_fill_additional": 30
+      },
+      "optimized_summary": "s2-banked-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -2927,
+        "ff": -4159,
+        "carry4": -589,
+        "memory_lut": 192,
+        "control_sets": -117,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "optimized_timing": {
+        "wns_ns": -5.507,
+        "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "translation_summary": "s2-banked-translation-unit-summary.json",
+      "routed_summary": "s2-banked-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -2929,
+        "ff": -4186,
+        "slices": -353,
+        "carry4": -589,
+        "control_sets": -60,
+        "memory_lut": 192,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.95,
+        "whs_ns": 0.041,
+        "timing_met": false,
+        "limiting_path": "metadata.used[6] to existing_nodes[29], 17 CARRY4 plus four LUT levels"
+      },
+      "extended_summary": "s2-banked-extended-100-summary.json",
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 56066,
+        "c1_max": 84284,
+        "candidate_max": 98244,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 1724,
+        "cold_cycles": 116057,
+        "cold_delta_vs_c1": 5701,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 98244
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 97699
+        },
+        "cold_audio_reads": {
+          "control": 1248,
+          "candidate": 1151
+        },
+        "traffic_different_rows": 5
+      },
+      "route_checks": {
+        "routing_errors": 0,
+        "drc_errors": 0,
+        "drc_warnings": 18
+      },
+      "outcome": "rejected_for_default",
+      "decision": "Measured full-associativity tradeoff: 73 fewer slices and 186 fewer LUTs than four-way, but steady median 1920 clocks slower than C1 and leaf maximum 13960 clocks slower. Prefer four-way latency over this small area difference, pending per-view candidates. Setup still fails. Retain raw candidate and reports; repeat only if later selected.",
+      "public_store_operation_summary": "s2-banked-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
+    },
+    {
+      "label": "s2-leaf",
+      "stage": 2,
+      "status": "completed",
+      "rtl_source_revision": "7672afed",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No logical data/ownership/error change intended. Root RAM grows128 to640 bits per view, caching sixteen 32-bit leaf entries with existing leaf_valid lifetime. The shared table/directory cache uses min(TABLE_LINES,8) lines; primary top input budget remains128 and effective directory lines are8. Read hits bypass table cache after original extent checks. Foreground writes update cached leaf, misses fill sixteen words through coherent cache; GC never populates live-view leaf data.",
+      "effective_geometry": {
+        "root_ram_bits_per_view": 640,
+        "leaf_words_per_view": 16,
+        "primary_directory_lines": 8,
+        "views": 512
+      },
+      "validation": [
+        "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64",
+        "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes",
+        "Full ownership/deferred/media regressions passed including DRAMsim3, scalar legacy, reset/config restoration, deferred faults, stale hints and retirement",
+        "All 1,041 connected rows pass exact SP/MIDI/audio/state checks; kind/position/jobs/MIDI counts/state work match C1"
+      ],
+      "pending": [
+        "Compare current-block and generated-hint policy siblings from C1",
+        "Repeat if this physical candidate is ultimately selected"
+      ],
+      "translation_summary": "s2-leaf-translation-unit-summary.json",
+      "unit_cycles": {
+        "scope": "whole metadata controller driver call, not cache-only scope",
+        "hot_read": {
+          "control": 15,
+          "candidate": 6
+        },
+        "cold_read_max_axi64": {
+          "control": 135,
+          "candidate": 247
+        },
+        "cold_read_max_axi32": {
+          "control": 159,
+          "candidate": 271
+        },
+        "strided_read_median_axi64": {
+          "control": 30,
+          "candidate": 247
+        },
+        "strided_table_misses": {
+          "control": 80,
+          "candidate": 3264
+        }
+      },
+      "optimized_summary": "s2-leaf-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -3256,
+        "ff": -4015,
+        "bram36": 5.5,
+        "dsp": 0,
+        "carry4": -576,
+        "memory_lut": 0,
+        "control_sets": -96
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "routed_summary": "s2-leaf-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -3231,
+        "ff": -4012,
+        "slices": -497,
+        "bram36": 5.5,
+        "dsp": 0,
+        "carry4": -576,
+        "control_sets": -50,
+        "memory_lut": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.799,
+        "whs_ns": 0.046,
+        "timing_met": false,
+        "limiting_path": "metadata.new_count[1] replica to required_nodes[29], 18 CARRY4 plus seven LUT levels"
+      },
+      "extended_summary": "s2-leaf-extended-100-summary.json",
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 52994,
+        "c1_max": 84284,
+        "candidate_max": 86955,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 1280,
+        "cold_cycles": 110168,
+        "cold_delta_vs_c1": -188,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 86955
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 86382
+        },
+        "cold_audio_reads": {
+          "control": 1248,
+          "candidate": 1024
+        },
+        "cold_audio_writes": {
+          "control": 128,
+          "candidate": 5
+        },
+        "traffic_different_rows": 5
+      },
+      "route_checks": {
+        "routing_errors": 0,
+        "drc_errors": 0,
+        "drc_warnings": 18
+      },
+      "outcome": "shortlisted_pending_siblings",
+      "decision": "Best measured area and ordinary-playback tradeoff so far: -3231 LUT/-497 slices vs C1 and -1152 median steady clocks, at +5.5 BRAM and +2671 clocks worst steady boundary. Strided unit reads worsen sharply (247 vs30 clocks AXI64). Timing still fails; compare current-block sibling before selecting and repeating a winner.",
+      "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has 5 audio writes versus 128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving.",
+      "public_store_operation_summary": "s2-leaf-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
+    },
+    {
+      "label": "s2-block",
+      "stage": 2,
+      "status": "completed",
+      "rtl_source_revision": "60371a1c",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No logical data/ownership/error change intended. Private roots RAM grows128 to192 bits, adding last block value and ordinal. Existing leaf_valid lifetime guards cached translation; all original extent/error checks precede opcode0 bypass. Foreground writes update value; trim/detach/reset/global invalidation disable it and GC never populates a live-view translation. Effective directory cache min(TABLE_LINES,8) is8 at the primary top input budget128.",
+      "effective_geometry": {
+        "root_ram_bits_per_view": 192,
+        "cached_blocks_per_view": 1,
+        "primary_directory_lines": 8,
+        "views": 512
+      },
+      "validation": [
+        "All four metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes",
+        "Full ownership/deferred/media regressions passed, including DRAMsim3 and legacy scalar paths, configuration/reset, fault and retained-root cases",
+        "All 1041 connected rows pass exact SP/MIDI/audio/state oracles; kind/position/jobs/MIDI packet counts/state work match C1"
+      ],
+      "pending": [
+        "Directory-path and generated-hint policy siblings",
+        "Repeat if selected as default"
+      ],
+      "translation_summary": "s2-block-translation-unit-summary.json",
+      "optimized_summary": "s2-block-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -4272,
+        "ff": -4488,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -617,
+        "control_sets": -121,
+        "memory_lut": 0
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "unit_cycles": {
+        "hot_repeated_block_read": {
+          "control": 15,
+          "candidate": 6
+        },
+        "sequential_read_median": {
+          "control": 15,
+          "candidate": 15
+        },
+        "strided_read_median_axi64": {
+          "control": 30,
+          "full_leaf": 247,
+          "candidate": 135
+        },
+        "strided_table_misses": {
+          "control": 80,
+          "candidate": 3264
+        }
+      },
+      "routed_summary": "s2-block-extended-100-summary.json",
+      "extended_summary": "s2-block-extended-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -4247,
+        "ff": -4476,
+        "slices": -663,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -617,
+        "control_sets": -175,
+        "memory_lut": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.665,
+        "whs_ns": 0.006,
+        "timing_met": false
+      },
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 52994,
+        "c1_max": 84284,
+        "candidate_max": 74575,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 5120,
+        "cold_cycles": 97951,
+        "cold_delta_vs_c1": -12405,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 74575
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 74002
+        },
+        "cold_audio_reads": {
+          "control": 1248,
+          "candidate": 1024
+        },
+        "cold_audio_writes": {
+          "control": 128,
+          "candidate": 5
+        },
+        "traffic_different_rows": 35
+      },
+      "outcome": "shortlisted_pending_siblings",
+      "decision": "Best cache result so far: 4247 fewer LUTs/663 fewer slices than C1, 0.5 fewer BRAM, 1152 fewer median clocks and 9709 fewer maximum steady clocks. More table misses and slower isolated strided reads; most block misses overlap connected work. Physical setup still fails and leaf peak exceeds nominal100MHz budget. Compare directory-path and hint-policy siblings, then repeat selected winner.",
+      "measurement_limits": "Playback-start excludes preparation; smaller directory cache moves dirty evictions earlier (5 start writes vs128 C1). Observed maxima cover1041 rows/two leaf spans, not all higher tree boundaries.",
+      "public_store_operation_summary": "s2-block-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
+    },
+    {
+      "label": "s2-path",
+      "stage": 2,
+      "status": "completed",
+      "rtl_source_revision": "17f69fd8",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No logical data/ownership/error change intended. Current-block plus middle-directory paths per view, using existing traversal registers and leaf-valid lifetime. Root rows primary288bits, directory8lines. Deepest matching directory prefix bypasses upper radix levels; GC never publishes a live-view cache.",
+      "effective_geometry": {
+        "root_ram_bits_per_view": 288,
+        "cached_middle_pages_per_view": 3,
+        "cached_blocks_per_view": 1,
+        "primary_directory_lines": 8,
+        "views": 512
+      },
+      "validation": [
+        "Original four metadata tests passed170.38sec",
+        "New deep-boundary retirement/live-ID-reuse independent-map check passed AXI32/64 on C1 and candidate",
+        "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults",
+        "Full ownership/deferred/media regressions passed, including legacy scalar and DRAMsim3",
+        "128 primary-capacity captures, retained offset slices, clear/retake/read and reclamation: all1282 rows pass independent sample/unique block recovery checks; ideal AXI/noSPJP scope",
+        "Minimum/odd/primary-count boundary control:187 rows per AXI width exactly match C1 responses, including high input bits, full small pools, highest view, opaque values, malformed retired count and stale-RAM reset",
+        "Expanded six-test path metadata regression passes217.75sec on immutable17f plus parameterized adapter"
+      ],
+      "translation_summary": "s2-path-translation-unit-summary.json",
+      "deep_directory_summary": "s2-path-directory-unit-summary.json",
+      "deep_control": "c1-directory-unit-summary.json",
+      "deep_measurement_limits": "Four-view metadata controller with180096 slots and8192 table pages; directed65536-entry crossings, not a full128-channel higher-boundary deadline qualification. Strided/deep-GC stress is slower with directory8 than C1 cache128.",
+      "optimized_summary": "s2-path-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -3915,
+        "ff": -4279,
+        "bram36": 0.5,
+        "dsp": 0,
+        "carry4": -615,
+        "memory_lut": -24,
+        "control_sets": -116
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "pending": [],
+      "routed_summary": "s2-path-extended-100-summary.json",
+      "extended_summary": "s2-path-extended-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -3910,
+        "logic_lut": -3888,
+        "memory_lut": -22,
+        "ff": -4306,
+        "bram36": 0.5,
+        "dsp": 0,
+        "carry4": -615,
+        "muxf7": -397,
+        "muxf8": -248,
+        "slices": -642,
+        "control_sets": -238
+      },
+      "routed_timing": {
+        "wns_ns": -3.881,
+        "whs_ns": 0.043,
+        "timing_met": false
+      },
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 88446,
+            "median": 88446,
+            "max": 88446
+          },
+          "warmup": {
+            "count": 16,
+            "min": 52974,
+            "median": 53066.0,
+            "max": 53657
+          },
+          "steady": {
+            "count": 1024,
+            "min": 52994,
+            "median": 52994.0,
+            "max": 59446
+          }
+        },
+        "steady_table_misses": 4352,
+        "c1_table_misses": 1698,
+        "boundary_cycles": {
+          "16384": 59446,
+          "32768": 58873
+        },
+        "cold_audio_reads_writes": [
+          694,
+          8
+        ]
+      },
+      "outcome": "selected_as_C2",
+      "decision": "Choose directory path for the primary sequential128-channel workload:642 fewer slices/3910 fewer LUTs than C1, median52994/max59446 vs54146/84284. Compared with basic one-block,21 more slices/337 LUTs/one BRAM buys15129 fewer observed maximum clocks. Retain slower strided/deep-GC/removal tradeoffs. Original hints preserved; physical timing still fails.",
+      "public_store_operation_summary": "s2-path-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json",
+      "width_boundary_summaries": [
+        "s2-path-width-boundaries-axi32-summary.json",
+        "s2-path-width-boundaries-axi64-summary.json"
+      ],
+      "repeat_summary": "s2-path-repeat-100-summary.json",
+      "repeat_validation": "All four-stage mapped/routed resource, timing and control-set rows identical; source manifest and primary context parameters identical. Fresh full-flow repeat reproduces original opt-checkpoint-resumed route."
+    },
+    {
+      "label": "s2-hints",
+      "stage": 2,
+      "status": "completed",
+      "rtl_source_revision": "d09bd1cb",
+      "control_revision": "6be27ce0",
+      "changed_contract": "No change intended in exact samples, command/fault/publication semantics. Original early+late policy2 remains default; opt-in1late-only and0none change generated speculation only. Public store hint port remains.",
+      "canonical_control_summary": "s2-hints-default2-opt-summary.json",
+      "validation": [
+        "Canonical default2 matches all33 C1/B0 connected quantum rows exactly",
+        "Late-only protocol passed five cases; failed first-buffer publication assertion with second-view injected fault in Instant/Fixed/DRAMsim3; original default tests preserved",
+        "All8 canonical default2 protocol cases pass across four memory models"
+      ],
+      "late_protocol_summary": "s2-hints-late-protocol-summary.json",
+      "pending": [],
+      "provisional_decision": "Reject late-only as behavior-preserving default due fault-ordering/publication difference; record area and normal-playback cost separately.",
+      "canonical_default_protocol_summary": "s2-hints-default2-protocol-summary.json",
+      "canonical_optimized_delta_vs_c1": "All mapped resource counts identical; setup slack differs0.001ns at pre-route opt",
+      "late_optimized_summary": "s2-hints-late-opt-summary.json",
+      "none_protocol_summary": "s2-hints-none-protocol-summary.json",
+      "late_outcome": "rejected",
+      "late_rejection": "Only106 fewer optimized LUTs/four fewer FF; first-buffer publication fails three AXI fault cases and cold/firstwarm costs increase. Routed slices unavailable because functional qualification failed.",
+      "none_protocol_outcome": "Same3publication failures; fiveblocked/Legacy cases pass",
+      "none_callback": {
+        "cold_cycles": 121319,
+        "first_warm_cycles": 66308,
+        "ordinary_cycles": 60438,
+        "ordinary_delta_vs_c1": 6292,
+        "normal_data_midi_state": "all33rows pass exact logical oracles",
+        "steady_audio_burst_reads": 128,
+        "c1_steady_audio_burst_reads": 256
+      },
+      "none_optimized_summary": "s2-hints-none-opt-summary.json",
+      "none_outcome": "rejected",
+      "none_rejection": "417 fewer optimized LUTs,416 fewer FF,one fewer BRAM andthree fewer CARRY4; ordinary quantum+6292clocks and first-buffer publication fails three AXI fault cases. Routed slices unavailable because functional qualification failed.",
+      "outcome": "Both generated-hint alternatives rejected for default; original early+late policy retained"
     }
   ],
   "provisioning": {
@@ -234,7 +793,12 @@
     "safe_alternative": "Single OCI download, 6129731028 declared compressed bytes; 6710886400 byte quota and 1610612736 byte free-space floor",
     "approval_review": "Initial unbounded OCI download rejected for storage risk; bounded retry approved",
     "runtime_image": "sha256:02eb283fd099318858019e26344d7d2e1dd761526c2571aa48adecd886d699eb",
-    "runtime_archive_bytes": 1108295680
+    "runtime_archive_bytes": 1108295680,
+    "redundant_oci_cache_cleanup": {
+      "bytes_removed": 6129738291,
+      "preserved": "Verified extracted tools, runtime image/archive, pinned metadata, and all measurement artifacts",
+      "reason": "Compressed download was on tmpfs; freeing it restored simulation memory headroom"
+    }
   },
   "foundation_commit": "213ce2c3",
   "baseline_known_failures": [
@@ -250,7 +814,17 @@
     "stage_2_followup": "Include a current-block translation per view within the indexed-view cache avenue; it may avoid repeated lookup of the same allocation block between 1024-frame boundaries.",
     "stage_1_opt": "Incremental count removes 2121 LUT and 1526 CARRY4 versus B0; no callback-cycle/traffic change. Routed slices pending.",
     "stage_1_route": "Incremental counter saves 2040 LUT but only 189 slices; the whole connected result remains packing-limited. Next critical path is metadata node arithmetic.",
-    "cache_control_fixture": "New standalone 128-line control: read hits six clocks, cold fills 41 clocks on AXI64 / 49 on AXI32 with the direct-memory model; sequential, strided, five-way-conflict writes/readback independently verified. Only original cache RTL used; candidate cache measurements wait for stage 1."
+    "cache_control_fixture": "New standalone 128-line control: read hits six clocks, cold fills 41 clocks on AXI64 / 49 on AXI32 with the direct-memory model; sequential, strided, five-way-conflict writes/readback independently verified. Only original cache RTL used; candidate cache measurements wait for stage 1.",
+    "payload_prefetch": {
+      "steady_axi_payload_reads": 256,
+      "channel_chunks_per_quantum": 128,
+      "steady_native_payload_reads": 2048,
+      "metadata_table_hits": 384,
+      "metadata_fills": 0,
+      "source": "audio_pipeline early read_intent and late JP hint arbitration; hint_count equals quantum"
+    },
+    "leaf_boundary_cost": "C1 and four-way both exceed the nominal 66666.7-clock budget at 100 MHz at leaf boundaries; physical timing also fails. Short 16-quantum fixtures alone do not characterize these spikes.",
+    "carry_ownership": "Optimized C1 main128-line metadata cache owns640 CARRY4, full-leaf8-line directory cache40. Remaining C1 direct-owner counts: MIDI content628, MIDI orchestration452, audio media_store496, media_metadata282, JP217, SPengine170. These exact checkpoint counts guide width/arithmetic trials; carry use is not all address arithmetic."
   },
   "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/1026",
   "plan_adjustments": [
@@ -263,24 +837,70 @@
       "stage": 1,
       "change": "Clarify that diagnostic values match the logical oracle exactly, while clock latency is measured separately with an explicit driver scope",
       "reason": "The independent Rust logical model has no RTL clock model; cycle changes are already allowed by the immutable acceptance criteria"
+    },
+    {
+      "stage": 2,
+      "change": "Add separate late-only and disabled generated-payload-hint trials after metadata lookup alternatives, using the same C1 control and preserving original defaults/public media operations",
+      "reason": "Measured steady control has 256 payload burst reads for 128 channel chunks and zero metadata fills; source inspection confirms independent early SP and late JP hints, suggesting redundant traffic and unnecessary buffering"
+    },
+    {
+      "stage": 2,
+      "change": "Add one separately measured current-block plus cached middle-directory-path sibling, including its level-one parent, from C1 before generated-hint policy trials",
+      "reason": "Measured basic current-block first-leaf cost74575 improves C184284 but exceeds nominal66666.7 clocks. Reuse existing traversal registers and store middle-directory pages per view; the primary288-bit row and parent-only224-bit row both fit four512x72 BRAMs in principle, but inference, FF/mux costs and higher parent boundaries must be measured. No real-time guarantee."
     }
   ],
   "ci": {
     "draft_pr": 1026,
     "initial_head": "8c02b795",
-    "fpga_run": 45037959544,
+    "fpga_run": 45050934028,
     "standalone_synthesis": "All four standalone synthesis checks passed",
     "reference_integration": "Passed",
     "dependency_isolation": "Passed",
-    "native_verification": "In progress",
-    "head": "2a86f35d"
+    "native_verification": "Passed complete native Marlin verification, including component/execution matrices, DRAMsim3, serialized application/bridge, production numeric gates and shared benchmark reporting. Concurrent-start-order assertion fix resolves the final report failure.",
+    "head": "58edd76784049444e098a51d397b2eb3fde059ef",
+    "usb": "Complete Zynq firmware workflow45050934033 passed on selected58edd767, including TinyUSB MIDI integration",
+    "workspace": "Eight jobs passed and six running at last inspection; Native JACK acceptance failed confirming host shutdown after persistence/control probes passed, artifact14766318026 being inspected",
+    "selected_head": "a2b763b5",
+    "workspace_failure_followup": {
+      "previous_head": "58edd767",
+      "fpga": "passed",
+      "firmware": "passed",
+      "workspace_run": 45050934086,
+      "failed_jobs": [
+        137295806063,
+        137295806220
+      ],
+      "script_dependency_fix": "aa56a78f cherry-picked a2b763b5; fresh167-test suite passed",
+      "jack": "Local task-owned dummy startup timed out3 times before original shutdown failure; reproduction stopped, orphan cleaned up. No host behavior fix; new CI pending."
+    },
+    "selected_a2_followup": {
+      "workspace_run": 45063749497,
+      "linux_debug_scripts": "passed",
+      "JACK_acceptance_job": 137335216853,
+      "JACK_acceptance": "passed",
+      "coverage_job": 137335216802,
+      "coverage": "failed companion_negotiates_independent_patchbay_16x_capacity, ReplacementPrepare{id5}:InvalidId atcarla_worker.rs752",
+      "coverage_retry": "GitHub403:containingworkflowstillrunning;retrywhencomplete",
+      "production_host_changes": "none"
+    }
   },
   "selected_control": {
-    "label": "C1",
-    "implementation": "s1-serial-100",
-    "rtl_revision": "50b59fe1",
-    "summary": "s1-serial-100-summary.json",
-    "repeat_summary": "s1-serial-repeat-100-summary.json",
-    "timing_met": false
+    "label": "C2",
+    "implementation": "s2-path-extended-100",
+    "rtl_revision": "17f69fd8",
+    "prepared_source_commit": "560472f1",
+    "summary": "s2-path-extended-100-summary.json",
+    "repeat_summary": "s2-path-repeat-100-summary.json",
+    "timing_met": false,
+    "cumulative_deltas_vs_B0": {
+      "lut": -6491,
+      "slices": -1231,
+      "ff": -4760,
+      "bram36": 0.5,
+      "dsp": 0,
+      "carry4": -2148,
+      "control_sets": -959
+    },
+    "hints": "original early+late"
   }
 }

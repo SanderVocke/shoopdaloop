@@ -4,6 +4,11 @@ use rt_fpga_testbench::suites::midi::data::*;
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn midi_storage_width_boundaries_preserve_full_pools_generations_and_retirement() {
+    rt_fpga_testbench::suites::midi::store_area::boundaries().unwrap();
+}
+
+#[shoop_test]
 fn midi_data_jobs_match_rust_for_dense_recording_merge_repeat_and_stop() {
     let compiled = compile().unwrap();
     let mut d = Driver::new(&compiled, 32).unwrap();
