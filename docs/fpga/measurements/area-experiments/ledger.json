@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 2,
-  "status": "stage_1_complete",
+  "status": "in_progress",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -227,6 +227,52 @@
       "decision": "Retain as C1: 2581 fewer routed LUTs, 589 fewer slices, 454 fewer FFs; exact callbacks and logical regressions pass. Accept 513-clock reset and 519-clock diagnostic driver latency at 512 views; scans are outside playback. Timing still fails at 100 MHz.",
       "repeat_summary": "s1-serial-repeat-100-summary.json",
       "repeat_validation": "All synth/opt/place/route resource/timing/control-set fields identical to the first run"
+    },
+    {
+      "label": "s2-fourway",
+      "stage": 2,
+      "status": "in_progress",
+      "control_revision": "6be27ce0",
+      "control_summary": "s1-serial-100-summary.json",
+      "source_revision": "853f3aac",
+      "changed_contract": "None for data/ownership/errors. 128 lines become four ways of 32 sets, with per-set round-robin replacement and invalid-way preference. Minimum/non-power-of-two line counts remain fully associative. Dirty fence lines add a tag-capture cycle.",
+      "validation": [
+        "Three metadata tests pass, including primary 128-line protocol/fault/backpressure/reset on AXI32/64",
+        "Sequential/strided/conflict unit workloads pass on AXI32/64; hits remain six clocks; deliberate conflicts add misses and writebacks",
+        "Lint draft passes 1/2/4/7/8/128 lines in burst and scalar modes",
+        "Full deferred-cleanup and media suites pass, including scalar/legacy memory mode",
+        "All 32 warm/steady mixed rows equal C1; only cold row changes (216 more clocks, two fewer table misses)"
+      ],
+      "physical_build": "work/area-experiments/s2-fourway-route100",
+      "callback_build": "work/area-experiments/s2-fourway-benchmark",
+      "pending": [
+        "Complete ownership regressions",
+        "Complete two-leaf-span connected measurements against C1",
+        "Collect routed physical resources/timing",
+        "Compare remaining cache siblings before final stage 2 selection"
+      ],
+      "optimized_summary": "s2-fourway-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -2801,
+        "ff": -4255,
+        "carry4": -606,
+        "memory_lut": 96,
+        "bram36": 0,
+        "dsp": 0,
+        "control_sets": -126
+      },
+      "optimized_timing": {
+        "wns_ns": -5.507,
+        "whs_ns": 0.002,
+        "limiting_path": "metadata.used_reg[4] to metadata.existing_nodes_reg[29], 17 CARRY4 plus three LUT levels"
+      },
+      "short_callback_summary": {
+        "cold_cycles": 110572,
+        "cold_delta_vs_c1": 216,
+        "all_warm_steady_rows_equal_c1": true,
+        "warm_steady_table_hits_per_quantum": 384,
+        "warm_steady_table_misses_per_quantum": 0
+      }
     }
   ],
   "provisioning": {
@@ -234,7 +280,12 @@
     "safe_alternative": "Single OCI download, 6129731028 declared compressed bytes; 6710886400 byte quota and 1610612736 byte free-space floor",
     "approval_review": "Initial unbounded OCI download rejected for storage risk; bounded retry approved",
     "runtime_image": "sha256:02eb283fd099318858019e26344d7d2e1dd761526c2571aa48adecd886d699eb",
-    "runtime_archive_bytes": 1108295680
+    "runtime_archive_bytes": 1108295680,
+    "redundant_oci_cache_cleanup": {
+      "bytes_removed": 6129738291,
+      "preserved": "Verified extracted tools, runtime image/archive, pinned metadata, and all measurement artifacts",
+      "reason": "Compressed download was on tmpfs; freeing it restored simulation memory headroom"
+    }
   },
   "foundation_commit": "213ce2c3",
   "baseline_known_failures": [
