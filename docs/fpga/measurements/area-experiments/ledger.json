@@ -38,7 +38,8 @@
     "C1/path boundary fixture187 shape/response rows per AXI width match exactly across minimum/odd/primary count cases",
     "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks",
     "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls",
-    "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec"
+    "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec",
+    "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification."
   ],
   "pending": [
     "Stage3 MIDI bounded types from unchanged C2, then separate local-frame/arena-relative variants"
@@ -51,7 +52,12 @@
     "c1_extended_control": "c1-extended-100-summary.json",
     "translation_control": "c1-translation-unit-summary.json",
     "carry_taxonomy": "carry-taxonomy-c1-leaf-summary.json",
-    "deep_directory_control": "c1-directory-unit-summary.json"
+    "deep_directory_control": "c1-directory-unit-summary.json",
+    "midi_reserved_relocated_controls": [
+      "c2-midi-reserved-control-summary.json",
+      "c2-midi-reserved-zero-replay-summary.json",
+      "c2-midi-relocated-control-summary.json"
+    ]
   },
   "experiments": [
     {
