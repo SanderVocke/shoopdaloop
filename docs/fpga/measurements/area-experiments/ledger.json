@@ -121,7 +121,8 @@
         "Warning-denying release benchmark build passes",
         "Full ownership suite including DRAMsim3 passed",
         "All 33 mixed-on-delay7 per-quantum rows equal B0, including traffic and cache counters",
-        "New ready-wait/source-root driver independently reproduces every B0 mixed callback row from frozen B0 RTL sources"
+        "New ready-wait/source-root driver independently reproduces every B0 mixed callback row from frozen B0 RTL sources",
+        "Distributed RAM inference confirmed: 32 LUTRAMs in media_store; bitmap register footprint removed"
       ],
       "diagnostic_cycles": [
         {
@@ -174,12 +175,28 @@
         }
       ],
       "pending": [
-        "Collect mapped RAM inference/resources and route if viable",
-        "Compare against incremental count; repeat any selected small physical win"
+        "Finish serial route and compare both siblings",
+        "Repeat the selected physical winner before completing stage 1"
       ],
       "latency_scope": "Driver reset includes one asserted reset clock and readiness wait. Diagnostic timing covers Config::access, including admission and response cleanup.",
       "source_revision": "50b59fe15aee7982664e92d5fd8e919e6d1b25a7",
-      "callback_evidence": "s1-serial-mixed-on-delay7.json"
+      "callback_evidence": "s1-serial-mixed-on-delay7.json",
+      "optimized_summary": "s1-serial-opt-summary.json",
+      "optimized_deltas_vs_b0": {
+        "lut": -2618,
+        "ff": -463,
+        "carry4": -1533,
+        "memory_lut": 32,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "optimized_deltas_vs_incremental": {
+        "lut": -497,
+        "ff": -464,
+        "carry4": -7,
+        "memory_lut": 32
+      },
+      "physical_build": "work/area-experiments/s1-serial-route100"
     }
   ],
   "provisioning": {
