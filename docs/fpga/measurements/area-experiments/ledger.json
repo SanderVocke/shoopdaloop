@@ -647,7 +647,8 @@
         "Original four metadata tests passed170.38sec",
         "New deep-boundary retirement/live-ID-reuse independent-map check passed AXI32/64 on C1 and candidate",
         "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults",
-        "Full ownership/deferred/media regressions passed, including legacy scalar and DRAMsim3"
+        "Full ownership/deferred/media regressions passed, including legacy scalar and DRAMsim3",
+        "128 primary-capacity captures, retained offset slices, clear/retake/read and reclamation: all1282 rows pass independent sample/unique block recovery checks; ideal AXI/noSPJP scope"
       ],
       "translation_summary": "s2-path-translation-unit-summary.json",
       "deep_directory_summary": "s2-path-directory-unit-summary.json",
@@ -726,7 +727,29 @@
         ]
       },
       "outcome": "shortlisted_pending_hint_siblings",
-      "decision": "337 more routed LUTs,21 more slices and1 more BRAM than basic current-block, but observed maximum falls74575 to59446 clocks. Compared with C1,3910 fewer LUTs,642 fewer slices and1152 fewer median clocks. All logical oracles pass. Favor this latency/area tradeoff pending hints and physical repeat; setup timing still fails."
+      "decision": "337 more routed LUTs,21 more slices and1 more BRAM than basic current-block, but observed maximum falls74575 to59446 clocks. Compared with C1,3910 fewer LUTs,642 fewer slices and1152 fewer median clocks. All logical oracles pass. Favor this latency/area tradeoff pending hints and physical repeat; setup timing still fails.",
+      "public_store_operation_summary": "s2-path-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
+    },
+    {
+      "label": "s2-hints",
+      "stage": 2,
+      "status": "measuring",
+      "rtl_source_revision": "d09bd1cb",
+      "control_revision": "6be27ce0",
+      "changed_contract": "No change intended in exact samples, command/fault/publication semantics. Original early+late policy2 remains default; opt-in1late-only and0none change generated speculation only. Public store hint port remains.",
+      "canonical_control_summary": "s2-hints-default2-opt-summary.json",
+      "validation": [
+        "Canonical default2 matches all33 C1/B0 connected quantum rows exactly",
+        "Late-only protocol passed five cases; failed first-buffer publication assertion with second-view injected fault in Instant/Fixed/DRAMsim3; original default tests preserved"
+      ],
+      "late_protocol_summary": "s2-hints-late-protocol-summary.json",
+      "pending": [
+        "Canonical default2 protocol regression",
+        "Late-only connected/area result",
+        "No-hint protocol/connected/area result"
+      ],
+      "provisional_decision": "Reject late-only as behavior-preserving default due fault-ordering/publication difference; record area and normal-playback cost separately."
     }
   ],
   "provisioning": {
@@ -800,7 +823,20 @@
     "native_verification": "Passed complete native Marlin verification, including component/execution matrices, DRAMsim3, serialized application/bridge, production numeric gates and shared benchmark reporting. Concurrent-start-order assertion fix resolves the final report failure.",
     "head": "58edd76784049444e098a51d397b2eb3fde059ef",
     "usb": "Complete Zynq firmware workflow45050934033 passed on selected58edd767, including TinyUSB MIDI integration",
-    "workspace": "Eight jobs passed and six running at last inspection; Native JACK acceptance failed confirming host shutdown after persistence/control probes passed, artifact14766318026 being inspected"
+    "workspace": "Eight jobs passed and six running at last inspection; Native JACK acceptance failed confirming host shutdown after persistence/control probes passed, artifact14766318026 being inspected",
+    "selected_head": "a2b763b5",
+    "workspace_failure_followup": {
+      "previous_head": "58edd767",
+      "fpga": "passed",
+      "firmware": "passed",
+      "workspace_run": 45050934086,
+      "failed_jobs": [
+        137295806063,
+        137295806220
+      ],
+      "script_dependency_fix": "aa56a78f cherry-picked a2b763b5; fresh167-test suite passed",
+      "jack": "Local task-owned dummy startup timed out3 times before original shutdown failure; reproduction stopped, orphan cleaned up. No host behavior fix; new CI pending."
+    }
   },
   "selected_control": {
     "label": "C1",
