@@ -706,6 +706,120 @@ pub fn translation_area_workloads(width: u64) -> Result<serde_json::Value> {
     )
 }
 
+pub fn width_boundary_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut results = Vec::new();
+    for (views, slots, pages, retired) in [(1, 1, 4, 1), (3, 17, 8, 3), (4, 180096, 64, 2)] {
+        let words = (3 * slots + (pages * 16 + 96).max(1024)).max(8192);
+        let mut design =
+            design("media_metadata_tb", width, 16, 0).administration_at(words, "dut.ram");
+        for (key, value) in [
+            ("VIEWS", views),
+            ("SLOTS", slots),
+            ("TABLE_PAGES", pages),
+            ("RETIRED_TABLES", retired),
+        ] {
+            design.parameters.insert(key.into(), value.to_string());
+        }
+        let compiled =
+            design.build(&crate::root().join("work/marlin-suite/metadata-width-boundaries"))?;
+        let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+        let memory = Memory::attach(
+            &mut s,
+            Mode::Instant,
+            words,
+            0x01000000,
+            &crate::artifact_directory("metadata-width-boundaries"),
+            20261122,
+        )?;
+        let d = Metadata {
+            port: Request::new(&mut s, ""),
+            memory,
+            slots: slots as u64,
+        };
+        d.memory.borrow_mut().control.stalls = false;
+        d.reset(&mut s);
+        let count = if slots <= 17 { slots } else { 1 };
+        for index in 0..count {
+            d.request(&mut s, 1, 0, index as u64, 0x80000000 + index as u64, 0);
+        }
+        let mut rows = Vec::new();
+        let mut request = |s: &mut Sim<'_>, op, view, index, data, error| {
+            let start = s.cycles;
+            let value = d.request(s, op, view, index, data, error);
+            rows.push(json!({"opcode":op,"view":view,"index":index,"data":data,"error":error,"value":value,"cycles":s.cycles-start}));
+            value
+        };
+        request(&mut s, 1, views as u64 - 1, 0, 0x80000000, 0);
+        assert_eq!(request(&mut s, 0, views as u64 - 1, 0, 0, 0), 0x80000000);
+        for view in [views as u64, 0x80000000, u64::from(u32::MAX)] {
+            for op in [0, 1, 6, 7, 10] {
+                request(&mut s, op, view, 0, 123, 1);
+            }
+        }
+        for index in [slots as u64, 0x80000000, u64::from(u32::MAX)] {
+            for op in [0, 1, 2, 3, 4, 5] {
+                request(&mut s, op, 0, index, 123, 1);
+            }
+        }
+        for index in [0x80000000, u64::from(u32::MAX)] {
+            for op in [6, 7, 13, 14] {
+                request(&mut s, op, 0, index, 0, 1);
+            }
+        }
+        let mut nodes = 0;
+        let mut level_count = slots;
+        loop {
+            level_count = level_count.div_ceil(16);
+            nodes += level_count;
+            if level_count == 1 {
+                break;
+            }
+        }
+        request(
+            &mut s,
+            7,
+            0,
+            slots as u64,
+            0,
+            if nodes > pages { 3 } else { 0 },
+        );
+        request(&mut s, 13, 0, (retired * 16) as u64, 0, 1);
+        request(&mut s, 14, 0, 4, 0, 1);
+        for op in [8, 9] {
+            request(&mut s, op, u64::from(u32::MAX), u64::from(u32::MAX), 0, 0);
+        }
+        request(&mut s, 15, u64::from(u32::MAX), u64::from(u32::MAX), 0, 2);
+        for index in 0..count {
+            assert_eq!(
+                request(&mut s, 0, 0, index as u64, 0, 0),
+                0x80000000 + index as u64
+            );
+        }
+        assert_eq!(request(&mut s, 10, 0, 0, 0, 0), count as u64);
+        request(&mut s, 9, 0, 0, 0, 0);
+        let queue_word = 3 * slots.div_ceil(16) * 16 + pages * 16 + 1;
+        assert_eq!(s.model.get("sim_busy"), 0);
+        s.model.set_all(&[
+            ("sim_host_op", 1),
+            ("sim_host_address", queue_word as u64),
+            ("sim_host_write_data", u64::from(u32::MAX)),
+        ]);
+        s.idle(1);
+        s.model.set("sim_host_op", 0);
+        request(&mut s, 11, u64::from(u32::MAX), 0, 0, 2);
+        request(&mut s, 12, u64::from(u32::MAX), 0, 0, 2);
+        d.reset(&mut s);
+        request(&mut s, 0, 0, 0, 0, 1);
+        request(&mut s, 1, 0, 0, u64::from(u32::MAX), 0);
+        assert_eq!(request(&mut s, 0, 0, 0, 0, 0), u64::from(u32::MAX));
+        results.push(json!({"views":views,"slots":slots,"pages":pages,"retirements":retired,"measurements":rows}));
+    }
+    Ok(
+        json!({"axi_data_width":width,"scope":"minimum, odd and primary-sized metadata counts; wide invalid input/error priority, opaque values, malformed retired DDR count and stale-RAM reset","validation":"all public responses match independent extent/capacity/opaque-value checks; full small pools and highest view IDs retained; malformed raw32 retirement count rejected before traversal","cases":results}),
+    )
+}
+
 pub fn directory_area_workloads(width: u64) -> Result<serde_json::Value> {
     use serde_json::json;
     use std::collections::BTreeMap;

@@ -1,6 +1,12 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use shoop_wasm_test_support::shoop_test;
 #[shoop_test]
+fn metadata_width_boundaries_keep_high_bits_and_malformed_queue_errors() {
+    for width in [32, 64] {
+        rt_fpga_testbench::suites::metadata::width_boundary_workloads(width).unwrap();
+    }
+}
+#[shoop_test]
 fn translation_boundaries_and_lifetimes_match_an_independent_map() {
     for width in [32, 64] {
         rt_fpga_testbench::suites::metadata::translation_area_workloads(width).unwrap();
