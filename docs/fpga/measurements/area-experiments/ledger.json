@@ -857,14 +857,14 @@
       "validation": [
         "All10311 boundary response/cycle/traffic rows exactly match C2, including primary256view/128retirement indices and minimum/odd capacities",
         "All16MIDI tests passed527.04sec, including AXI32/64, dense events, exhaustion, stalehandles, retakes, protocol/memory faults",
-        "All33connected mixed/state-on/delay7 sample/state/cycle/traffic rows exactly match same C2longrun prefix"
+        "All33connected mixed/state-on/delay7 sample/state/cycle/traffic rows exactly match same C2longrun prefix",
+        "All5expression-state tests pass432.77sec, including restoration, transitions, quantum boundaries and AXI32/64 stalls"
       ],
       "unit_summaries": [
         "c2-midi-primary-index-control-summary.json",
         "s3-midi-boundaries-summary.json"
       ],
       "pending": [
-        "Expression-state suite",
         "Routed slice/timing/DRC comparison before selection"
       ],
       "functional_log": "s3-midi-tests.log",
@@ -884,7 +884,8 @@
       "optimized_timing": {
         "wns_ns": -5.321,
         "whs_ns": 0.002
-      }
+      },
+      "expression_log": "s3-midi-expression-tests.log"
     }
   ],
   "provisioning": {
@@ -988,7 +989,7 @@
       "fpga": "passed",
       "workspace_run": 45068655474,
       "JACK": "passed",
-      "workspace": "in progress; coverage still running",
+      "workspace": "Linux debug, coverage, JACK, Windows debug, native inspection and all other completed jobs pass; Linux/macOS/Windows release and wasmrelease still running",
       "CodeQL": "passed",
       "Docs": "passed"
     }
