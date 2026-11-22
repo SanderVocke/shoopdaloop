@@ -5,13 +5,12 @@ The immutable implementation control is
 `f218087511dc28e72a436ec825445f32a722b5e9`; the primary profile is the
 [64-loop compiled profile](../midi-expression-state/compiled-profile.json).
 
-Current status: stages 0–2 are complete. C2 selects the serial RAM occupancy
-count and directory-path cache, saving 6,491 LUTs and 1,231 routed slices against
-B0 with exact retained behavior. Stage 3 is in progress: audio capacity widths
-were rejected for higher slice use; bounded MIDI bookkeeping also passes functional
-and connected comparisons but uses more routed slices. The optional local-frame family is also complete and remains an unselected
-tradeoff. Arena-relative/path-context state follows. Timing still fails at 100 MHz.
-See `ledger.json` for completed checks, pending measurements, and artifact hashes.
+Current status: stages 0–3 are complete. C3 combines serial RAM occupancy,
+directory-path caching, and saved address-context reuse. It saves 6,573 LUTs and
+1,273 routed slices against B0, adding half a BRAM tile. Every physical stage of
+its repeat matches exactly. Earlier bookkeeping and bounded-frame trials remain
+unselected tradeoffs. Stage 4 shares arithmetic next. Timing still fails at
+100 MHz. See `ledger.json` for source, scope, checks and artifact hashes.
 
 | B0 routed control | Archived | Fresh |
 | --- | ---: | ---: |
@@ -410,3 +409,25 @@ FFs remain under the copied root-data name after optimization. Both validity
 vectors retain 512 FFs each. These are mapped facts, not savings estimates; the
 next state-reuse trials must include reconstruction/read-port costs.
 See `c2-register-groups.*` for exact scope and checkpoint/EDIF hashes.
+
+The saved relative-address/path-context candidate (`fe2184ea`) is selected as C3.
+It replaces the mapped dual-read path-address RAM with page/index context and a
+reconstruction datapath. Both AXI widths match all 187 boundary and 207 deep
+rows, including cycles/cache traffic; all 1,282 public storage rows and 33
+connected rows match C2 exactly. Full metadata/media/ownership/deferred tests
+pass, as do all 16 MIDI and two new descriptor/relocation controls.
+
+C3 routes to **35,407 LUTs, 28,714 FFs, 11,932 slices, 78 BRAM tiles, four DSPs,
+3,356 CARRY4s and 1,321 physical control sets**. Against C2 that saves 82 LUTs
+and 42 slices, costing 33 FFs, 13 carries and 65 physical control sets. Setup
+slack is -3.865 ns and hold slack +0.039 ns. The full-flow repeat reproduces
+all four stages exactly. Its ordinary short-run steady median is 52,994 clocks,
+maximum 53,617; cold playback is 88,446. C3's extended connected run is still
+unmeasured; prior long-run results are C2's. These are not board timing claims.
+
+Before subsequent MIDI address/staging trials, new original-RTL controls preserve
+opaque reserved descriptor words through updates, clear them on reuse, and check
+high/wrapping 64-bit arena bases. All 54 zero-base request rows reproduce the
+original memory agent exactly; all 108 relocated rows match their zero-base
+counterparts. This qualifies the standalone word interface, not board mappings.
+See `c2-midi-reserved*` and `c2-midi-relocated*` raw archives.

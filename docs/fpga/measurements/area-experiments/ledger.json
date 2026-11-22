@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 3,
-  "status": "Stage3 bookkeeping/local-frame families completed/unselected; C2-based arena-relative/path-context candidate fe2184ea in functional/physical screen.",
+  "status": "Stages0\u20133 complete; C3 path-context selected after exactfullphysicalrepeat. Stage4 sharedarithmetic experiments next.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1039,7 +1039,7 @@
     {
       "label": "s3-path-context",
       "stage": 3,
-      "status": "in_progress",
+      "status": "completed",
       "rtl_source_revision": "fe2184ea",
       "control_revision": "a046e9c5",
       "control_summary": "s2-path-repeat-100-summary.json",
@@ -1053,11 +1053,10 @@
         "All1282publicstorecommand/result/cycle/traffic rows andrecovery exactlymatchC2",
         "Full6metadata tests pass371.95sec, includingbothAXIwidths,deepdirectories,malformedmetadata,translation/fence/fault/reset/cache protocols",
         "All33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactlymatchsameC2longrunprefix",
-        "Allmedia/deferred/ownership tests pass includingDRAMsim3/Legacy; sequentialsuitewalltimes 91.92,321.96,368.09sec (hostload dependent, not RTL cycle metrics)"
+        "Allmedia/deferred/ownership tests pass includingDRAMsim3/Legacy; sequentialsuitewalltimes 91.92,321.96,368.09sec (hostload dependent, not RTL cycle metrics)",
+        "All16MIDI tests pass491.78sec plus2reserved/relocation tests22.52sec withextendedword-memoryagent; zero-base54rowreplayexact"
       ],
-      "pending": [
-        "Fullphysicalrepeat andselectiondecision"
-      ],
+      "pending": [],
       "unit_summaries": [
         "s3-path-context-width-axi32-summary.json",
         "s3-path-context-width-axi64-summary.json",
@@ -1101,7 +1100,12 @@
         "wns_ns": -3.865,
         "whs_ns": 0.039
       },
-      "provisional_decision": "SmallprimaryLUT/slicewinwithunchangedcycles/BRAM andslightlymoreFF/carry/controlsets; setupessentiallyunchangedandstillfails. Fullfourstagerepeatstartedbeforepromotion."
+      "provisional_decision": "SmallprimaryLUT/slicewinwithunchangedcycles/BRAM andslightlymoreFF/carry/controlsets; setupessentiallyunchangedandstillfails. Fullfourstagerepeatstartedbeforepromotion.",
+      "repeat_summary": "s3-path-context-repeat-100-summary.json",
+      "repeat_result": "Allfourstage resource/timing/controlset rows exactlymatch optimizedcheckpoint-resumed flow; source/context identical",
+      "outcome": "selected_as_C3",
+      "decision": "Stable82LUT/42slice improvementwithunchangedcycles/BRAM/externalcontract. Accept13morecarry/33moreFF/65morephysicalcontrolsets; timingessentiallyunchangedandstillfails. Completefunctional,sourcecontext andphysicalrepeat evidence retained.",
+      "midi_log": "s3-path-context-midi-tests.log"
     }
   ],
   "provisioning": {
@@ -1226,22 +1230,22 @@
     }
   },
   "selected_control": {
-    "label": "C2",
-    "implementation": "s2-path-extended-100",
-    "rtl_revision": "17f69fd8",
-    "prepared_source_commit": "560472f1",
-    "summary": "s2-path-extended-100-summary.json",
-    "repeat_summary": "s2-path-repeat-100-summary.json",
+    "label": "C3",
+    "implementation": "s3-path-context-100",
+    "rtl_revision": "fe2184ea",
+    "summary": "s3-path-context-100-summary.json",
+    "repeat_summary": "s3-path-context-repeat-100-summary.json",
     "timing_met": false,
     "cumulative_deltas_vs_B0": {
-      "lut": -6491,
-      "slices": -1231,
-      "ff": -4760,
+      "lut": -6573,
+      "slices": -1273,
+      "ff": -4727,
       "bram36": 0.5,
       "dsp": 0,
-      "carry4": -2148,
-      "control_sets": -959
+      "carry4": -2135,
+      "control_sets": -894
     },
-    "hints": "original early+late"
+    "hints": "original early+late",
+    "short_connected": "All33rows exactC2; ordinarymedian52994/max53617,cold88446. C3extendedrun notyetmeasured."
   }
 }
