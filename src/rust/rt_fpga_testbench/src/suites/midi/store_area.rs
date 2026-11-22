@@ -291,6 +291,23 @@ pub fn boundaries() -> Result<Value> {
 }
 
 pub fn reserved_words() -> Result<Value> {
+    reserved_at(0)
+}
+
+pub fn relocated_words() -> Result<Value> {
+    let mut result = reserved_at(0x1234_0000_0000)?;
+    let wrapped = reserved_at(u64::MAX - 127)?;
+    result["cases"]
+        .as_array_mut()
+        .unwrap()
+        .extend(wrapped["cases"].as_array().unwrap().iter().cloned());
+    result["scope"] = json!(
+        "standalone 64-bit word interface at high and wrapping arena bases; descriptor, event, reference, free and retirement address regions; does not qualify board DDR mappings"
+    );
+    Ok(result)
+}
+
+fn reserved_at(base: u64) -> Result<Value> {
     let mut cases = Vec::new();
     for views in [1u64, 3] {
         let mut design = Design::new(
@@ -311,6 +328,7 @@ pub fn reserved_words() -> Result<Value> {
         let memory = Rc::new(RefCell::new(Memory::new(
             (s.model.get("arena_bytes") / 4) as usize,
         )));
+        memory.borrow_mut().base = base;
         s.agent(memory.clone());
         s.agent(crate::protocol::ReadyValid::new(
             "memory_valid",
@@ -337,7 +355,7 @@ pub fn reserved_words() -> Result<Value> {
         ));
         s.model.set_all(&[
             ("reset", 1),
-            ("arena_base", 0),
+            ("arena_base", base),
             ("command_valid", 0),
             ("response_ready", 0),
         ]);
@@ -414,7 +432,7 @@ pub fn reserved_words() -> Result<Value> {
                 );
             }
         }
-        cases.push(json!({"views":views,"reserved_fields":[10,11,14],"measurements":rows}));
+        cases.push(json!({"arena_base":base,"views":views,"reserved_fields":[10,11,14],"measurements":rows}));
     }
     Ok(
         json!({"scope":"standalone MIDI store: reserved DDR descriptor words preserve opaque high-bit values through append/finish/retain/release; create/reuse/reset clears stale reserved values",

@@ -10,6 +10,7 @@ pub struct Memory {
     pending: Option<(u64, u32, bool)>,
     pub fail: Option<usize>,
     pub transfers: u64,
+    pub base: u64,
     fixed_delay: Option<u64>,
 }
 impl Memory {
@@ -31,6 +32,7 @@ impl Memory {
             pending: None,
             fail: None,
             transfers: 0,
+            base: 0,
             fixed_delay: None,
         }
     }
@@ -89,7 +91,7 @@ impl Agent for Memory {
         if m.get(self.pins[5]) != 0 && m.get(self.pins[0]) != 0 {
             let address = m.get(self.pins[6]);
             assert_eq!(address % 4, 0);
-            let index = address as usize / 4;
+            let index = address.wrapping_sub(self.base) as usize / 4;
             assert!(index < self.words.len(), "DDR word {index} out of range");
             let error = self.fail == Some(index);
             if m.get(self.pins[7]) != 0 && !error {

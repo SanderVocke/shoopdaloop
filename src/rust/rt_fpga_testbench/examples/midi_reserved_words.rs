@@ -10,7 +10,11 @@ fn main() {
         false,
     )
     .unwrap();
-    let mut result = rt_fpga_testbench::suites::midi::store_area::reserved_words().unwrap();
+    let mut result = if std::env::args().any(|a| a == "--relocated") {
+        rt_fpga_testbench::suites::midi::store_area::relocated_words().unwrap()
+    } else {
+        rt_fpga_testbench::suites::midi::store_area::reserved_words().unwrap()
+    };
     result["provenance"] = rt_fpga_testbench::report::provenance();
     std::fs::write(output, serde_json::to_vec_pretty(&result).unwrap()).unwrap();
 }
