@@ -36,7 +36,8 @@
     "All five cache siblings plus C1 pass the identical primary-capacity1282-row public capture/retake/retained-export/retirement fixture; clocks/traffic/raw commands archived",
     "C1 six-test metadata suite passes223.63s after adding parametric view/retirement adapter and wide-input/queue-corruption control",
     "C1/path boundary fixture187 shape/response rows per AXI width match exactly across minimum/odd/primary count cases",
-    "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks"
+    "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks",
+    "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls"
   ],
   "pending": [
     "Stage2 exact-source path-cache physical repeat, then selection"
@@ -869,6 +870,16 @@
       ],
       "script_dependency_fix": "aa56a78f cherry-picked a2b763b5; fresh167-test suite passed",
       "jack": "Local task-owned dummy startup timed out3 times before original shutdown failure; reproduction stopped, orphan cleaned up. No host behavior fix; new CI pending."
+    },
+    "selected_a2_followup": {
+      "workspace_run": 45063749497,
+      "linux_debug_scripts": "passed",
+      "JACK_acceptance_job": 137335216853,
+      "JACK_acceptance": "passed",
+      "coverage_job": 137335216802,
+      "coverage": "failed companion_negotiates_independent_patchbay_16x_capacity, ReplacementPrepare{id5}:InvalidId atcarla_worker.rs752",
+      "coverage_retry": "GitHub403:containingworkflowstillrunning;retrywhencomplete",
+      "production_host_changes": "none"
     }
   },
   "selected_control": {
