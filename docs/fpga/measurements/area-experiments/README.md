@@ -168,8 +168,8 @@ routed raw archives preserve separate report stages and source/checkpoint hashes
 ## Stage 2 measurements in progress
 
 All siblings compare with C1, the selected serial-count implementation. The
-four-way result is a candidate, pending comparison with the banked and per-view
-alternatives and generated-hint policies.
+four-way, banked and full-leaf measurements are complete. The current-block
+alternative and generated-hint policies remain before selection.
 
 | Routed 100 MHz result | C1 | Four-way | Banked | Full leaf |
 | --- | ---: | ---: | ---: | ---: |
@@ -223,30 +223,30 @@ and every long-run sample. The full-leaf and current-block alternatives follow.
 
 The full-leaf variant extends each private roots-RAM entry from 128 to 640 bits
 and caches sixteen table words per view. Its effective directory cache is eight
-lines, explicitly capped even with the top-level TABLE_LINES budget of128.
+lines, explicitly capped even with the top-level TABLE_LINES budget of 128.
 Existing leaf-valid lifetimes guard reads; writes update the cache, and
 trim/detach/reset/global invalidation disable it. Hot whole-controller reads take
-six clocks versus15 with C1. Strided AXI64 unit reads that change leaf take247
-clocks versus30 median with C1; the independent map verifies data and lifetime
+six clocks versus 15 with C1. Strided AXI64 unit reads that change leaf take 247
+clocks versus 30 median with C1; the independent map verifies data and lifetime
 semantics across those paths.
 
 Full metadata, ownership, deferred-cleanup and media regressions pass, including
-DRAMsim3 and scalar legacy paths. All1,041 connected rows pass. Ordinary steady
-cost falls1,152 clocks, but the two leaf crossings cost86,955/86,382 versus
-C1's84,284/83,711. Steady table misses fall from1,698 to1,280. Keep this candidate
+DRAMsim3 and scalar legacy paths. All 1,041 connected rows pass. Ordinary steady
+cost falls 1,152 clocks, but the two leaf crossings cost 86,955/86,382 versus
+C1's 84,284/83,711. Steady table misses fall from 1,698 to 1,280. Keep this candidate
 on the shortlist pending the current-block sibling. It has the best measured
-area so far, with5.5 extra BRAM tiles and worse strided/boundary latency. Setup
+area so far, with 5.5 extra BRAM tiles and worse strided/boundary latency. Setup
 still fails; repeat before selecting a small physical winner.
 
 Playback-start metrics exclude preparation. The full-leaf start row has five
-metadata writebacks versus128 with C1; its smaller directory cache evicts dirty
-lines during preparation. The188-clock start improvement does not measure
+metadata writebacks versus 128 with C1; its smaller directory cache evicts dirty
+lines during preparation. The 188-clock start improvement does not measure
 complete preparation or boot time. `s2-leaf-extended-100-*` retains all physical
 reports and long-run samples; unit archives retain the controller traces.
 
 The read-only checkpoint taxonomy in `carry-taxonomy-c1-leaf-summary.json`
-attributes640 CARRY4s to C1's main metadata cache and40 to the full-leaf design's
-eight-line directory cache. Other C1 direct owners include MIDI content628,
-MIDI orchestration452, media_store496 and media_metadata282. These are disjoint
+attributes 640 CARRY4s to C1's main metadata cache and 40 to the full-leaf design's
+eight-line directory cache. Other C1 direct owners include MIDI content 628,
+MIDI orchestration 452, media_store 496 and media_metadata 282. These are disjoint
 primitive-owner counts, unlike overlapping hierarchical slice counts. They
 identify targets for the following width and arithmetic-sharing experiments.

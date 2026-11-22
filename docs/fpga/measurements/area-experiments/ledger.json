@@ -420,7 +420,7 @@
         "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64",
         "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes",
         "Full ownership/deferred/media regressions passed including DRAMsim3, scalar legacy, reset/config restoration, deferred faults, stale hints and retirement",
-        "All1041 connected rows pass exact SP/MIDI/audio/state checks; kind/position/jobs/MIDI counts/state work match C1"
+        "All 1,041 connected rows pass exact SP/MIDI/audio/state checks; kind/position/jobs/MIDI counts/state work match C1"
       ],
       "pending": [
         "Compare current-block and generated-hint policy siblings from C1",
@@ -518,7 +518,7 @@
       },
       "outcome": "shortlisted_pending_siblings",
       "decision": "Best measured area and ordinary-playback tradeoff so far: -3231 LUT/-497 slices vs C1 and -1152 median steady clocks, at +5.5 BRAM and +2671 clocks worst steady boundary. Strided unit reads worsen sharply (247 vs30 clocks AXI64). Timing still fails; compare current-block sibling before selecting and repeating a winner.",
-      "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has5 audio writes versus128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving."
+      "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has 5 audio writes versus 128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving."
     }
   ],
   "provisioning": {
