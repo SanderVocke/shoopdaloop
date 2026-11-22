@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 3,
-  "status": "Stage3 audio and MIDI bookkeeping trials completed/rejected; optional packed local audio frames now in functional/default64 calibration. C2 remains selected.",
+  "status": "Stage3 audio/MIDI bookkeeping and optional local-frame families completed/rejected for selected profile; arena-relative/path-context sibling next. C2 remains selected.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -908,7 +908,7 @@
     {
       "label": "s3-local-frames",
       "stage": 3,
-      "status": "in_progress",
+      "status": "completed",
       "rtl_source_revision": "3e47163d",
       "control_revision": "a046e9c5",
       "control_summary": "s2-path-repeat-100-summary.json",
@@ -934,9 +934,7 @@
         "s3-local-frames21-axi32-boundaries-summary.json",
         "s3-local-frames64-axi32-boundaries-summary.json"
       ],
-      "pending": [
-        "Primary21 route andcontract/packing decision"
-      ],
+      "pending": [],
       "functional_log": "s3-local-frames-tests.log",
       "canonical64_optimized_summary": "s3-local-frames64-control-opt-summary.json",
       "canonical64_optimized_deltas_vs_c2": {
@@ -997,7 +995,40 @@
         "whs_ns": 0.027
       },
       "canonical64_outcome": "rejected_for_default",
-      "canonical64_decision": "Exactbehavior/cycles, but71LUTsaving costs254moreslices/+178physicalcontrolsets/+2FF andsetupworsens0.239ns. C2 remains selected; use64same-sourcecontrolonlytoattribute21bitdelta, thenjudge21alsoagainstC2."
+      "canonical64_decision": "Exactbehavior/cycles, but71LUTsaving costs254moreslices/+178physicalcontrolsets/+2FF andsetupworsens0.239ns. C2 remains selected; use64same-sourcecontrolonlytoattribute21bitdelta, thenjudge21alsoagainstC2.",
+      "routed21_summary": "s3-local-frames21-100-summary.json",
+      "routed21_deltas_vs_canonical64": {
+        "lut": -263,
+        "logic_lut": -263,
+        "memory_lut": 0,
+        "ff": -340,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -55,
+        "muxf7": -177,
+        "muxf8": -32,
+        "slices": -184,
+        "control_sets": -80
+      },
+      "routed21_deltas_vs_c2": {
+        "lut": -334,
+        "logic_lut": -334,
+        "memory_lut": 0,
+        "ff": -338,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -57,
+        "muxf7": -186,
+        "muxf8": -62,
+        "slices": 70,
+        "control_sets": 98
+      },
+      "routed21_timing": {
+        "wns_ns": -3.75,
+        "whs_ns": 0.003
+      },
+      "outcome": "rejected_for_selected_profile",
+      "decision": "Optional21 saves184slices vsmodified64control butstilluses70moreslices/+98physicalcontrolsets thanC2. Saves334LUT/338FF/.5BRAM/57carry,setupimproves.131nsbutstillfails. Durationrestrictionto43.69sec notjustifiedforslicepressure. Bothfeatureconfigurations retainedonlyonexperimentalbranch; C2defaultproduction remainsunchanged. No physicalrepeat forunselectedtradeoff."
     }
   ],
   "provisioning": {

@@ -9,7 +9,8 @@ Current status: stages 0–2 are complete. C2 selects the serial RAM occupancy
 count and directory-path cache, saving 6,491 LUTs and 1,231 routed slices against
 B0 with exact retained behavior. Stage 3 is in progress: audio capacity widths
 were rejected for higher slice use; bounded MIDI bookkeeping also passes functional
-and connected comparisons but uses more routed slices. Timing still fails at 100 MHz.
+and connected comparisons but uses more routed slices. The optional local-frame family is also complete and remains an unselected
+tradeoff. Arena-relative/path-context state follows. Timing still fails at 100 MHz.
 See `ledger.json` for completed checks, pending measurements, and artifact hashes.
 
 | B0 routed control | Archived | Fresh |
@@ -380,3 +381,32 @@ and still fails; hold slack remains positive at +0.003 ns. This candidate is
 also rejected for the default. C2 remains selected. The critical path still
 runs through audio metadata node-count arithmetic. See `s3-midi-100-*` for
 physical reports and exact callback/source evidence.
+
+The optional local audio frame family (`3e47163d`) is complete. Its 64-bit default
+preserves all measured behavior, and all original media/ownership/deferred tests
+pass. The 21-bit configuration caps a view at 2,097,151 frames (43.69 seconds),
+preserving the unchanged 30-second profile. All 1,282 operation rows and 33
+connected callback rows match C2 at both widths; explicit duration, overflow,
+poisoned input, invalid configuration, wrapping, retained slices, faults and reset
+pass 21 configuration cases across AXI32/64 and all four memory models.
+
+| Routed configuration | LUTs | FFs | Slices | BRAM | CARRY4 | Control sets | Setup slack ns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Selected C2 | 35,489 | 28,681 | 11,974 | 78 | 3,343 | 1,256 | -3.881 |
+| Frame framework, 64 bits | 35,418 | 28,683 | 12,228 | 78 | 3,341 | 1,434 | -4.120 |
+| Frame framework, 21 bits | 35,155 | 28,343 | 12,044 | 77.5 | 3,286 | 1,354 | -3.750 |
+
+The narrowed configuration saves 184 slices against its same-source 64-bit
+control, but uses 70 more than C2. Both configurations remain unselected; the
+21-bit version is a recorded LUT/register/BRAM tradeoff with a duration limit.
+Do not attribute the framework's mapping changes to frame narrowing. All three
+setup results fail timing. Source, parameters, raw per-request/per-quantum rows
+and reports are retained in `s3-local-frames*` archives and on
+`area/s3-local-frames`; the selected production branch retains C2 RTL.
+
+A read-only C2 checkpoint query also found 37 RAM32X1D primitives for saved path
+addresses and zero FFs for that array. Existing path pages use 160 FFs; only 72
+FFs remain under the copied root-data name after optimization. Both validity
+vectors retain 512 FFs each. These are mapped facts, not savings estimates; the
+next state-reuse trials must include reconstruction/read-port costs.
+See `c2-register-groups.*` for exact scope and checkpoint/EDIF hashes.

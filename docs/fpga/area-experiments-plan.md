@@ -167,8 +167,10 @@ Depends on stage 2's decision. Keep external precision and capacities unchanged.
 
 Execution status: audio capacity bookkeeping and MIDI traversal/queue widths
 are complete. Both preserve tested behavior and cycles but increase routed
-slices, so neither replaces C2. Bounded local frames and saved arena-relative
-addresses follow as separate siblings.
+slices, so neither replaces C2. The optional bounded local-frame family is also
+complete: it preserves common behavior/cycles and saves LUTs/FFs/BRAM, but adds
+70 slices against C2 and a duration restriction. It remains an unselected
+tradeoff. Saved arena-relative/path-context state follows as a separate sibling.
 
 - [ ] Derive ID, count, page, offset, and intermediate widths from capacities;
   replace saved traversal addresses with page/index context where useful. Split
