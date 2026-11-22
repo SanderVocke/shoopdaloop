@@ -2,1711 +2,391 @@
   "axi_data_width": 64,
   "cases": [
     {
-      "measurements": [
-        {
-          "cycles": 17,
-          "data": 2147483648,
-          "error": 0,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 2147483648,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 1
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 1
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 1
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 1
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 1
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 1,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 1,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 1,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 1,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 1,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 1,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 6,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 6,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 0,
-          "index": 1,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 16,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 67,
-          "data": 0,
-          "error": 0,
-          "index": 4294967295,
-          "opcode": 8,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 24,
-          "data": 0,
-          "error": 0,
-          "index": 4294967295,
-          "opcode": 9,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 2,
-          "index": 4294967295,
-          "opcode": 15,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 49,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 2147483648,
-          "view": 0
-        },
-        {
-          "cycles": 53,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 10,
-          "value": 1,
-          "view": 0
-        },
-        {
-          "cycles": 67,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 9,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 53,
-          "data": 0,
-          "error": 2,
-          "index": 0,
-          "opcode": 11,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 2,
-          "index": 0,
-          "opcode": 12,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 40,
-          "data": 4294967295,
-          "error": 0,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 4294967295,
-          "view": 0
-        }
-      ],
       "pages": 4,
       "retirements": 1,
       "slots": 1,
-      "views": 1
+      "views": 1,
+      "measurement_count": 57,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 3,
+          "min": 6,
+          "median": 6,
+          "max": 49
+        },
+        "opcode0/expected_error1": {
+          "count": 7,
+          "min": 6,
+          "median": 6,
+          "max": 6
+        },
+        "opcode1/expected_error0": {
+          "count": 2,
+          "min": 17,
+          "median": 28.5,
+          "max": 40
+        },
+        "opcode1/expected_error1": {
+          "count": 6,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode2/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode3/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode4/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode5/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode6/expected_error1": {
+          "count": 5,
+          "min": 6,
+          "median": 6,
+          "max": 6
+        },
+        "opcode7/expected_error0": {
+          "count": 1,
+          "min": 9,
+          "median": 9,
+          "max": 9
+        },
+        "opcode7/expected_error1": {
+          "count": 5,
+          "min": 9,
+          "median": 9,
+          "max": 9
+        },
+        "opcode8/expected_error0": {
+          "count": 1,
+          "min": 67,
+          "median": 67,
+          "max": 67
+        },
+        "opcode9/expected_error0": {
+          "count": 2,
+          "min": 24,
+          "median": 45.5,
+          "max": 67
+        },
+        "opcode10/expected_error0": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcode10/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode11/expected_error2": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcode12/expected_error2": {
+          "count": 1,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode13/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode14/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode15/expected_error2": {
+          "count": 1,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        }
+      }
     },
     {
-      "measurements": [
-        {
-          "cycles": 163,
-          "data": 2147483648,
-          "error": 0,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 2
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 2147483648,
-          "view": 2
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 3
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 3
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 3
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 3
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 3
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 17,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 17,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 17,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 17,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 17,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 17,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 6,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 6,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 0,
-          "index": 17,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 48,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 110,
-          "data": 0,
-          "error": 0,
-          "index": 4294967295,
-          "opcode": 8,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 24,
-          "data": 0,
-          "error": 0,
-          "index": 4294967295,
-          "opcode": 9,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 2,
-          "index": 4294967295,
-          "opcode": 15,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 92,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 2147483648,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 1,
-          "opcode": 0,
-          "value": 2147483649,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 2,
-          "opcode": 0,
-          "value": 2147483650,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 3,
-          "opcode": 0,
-          "value": 2147483651,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 4,
-          "opcode": 0,
-          "value": 2147483652,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 5,
-          "opcode": 0,
-          "value": 2147483653,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 6,
-          "opcode": 0,
-          "value": 2147483654,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 7,
-          "opcode": 0,
-          "value": 2147483655,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 8,
-          "opcode": 0,
-          "value": 2147483656,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 9,
-          "opcode": 0,
-          "value": 2147483657,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 10,
-          "opcode": 0,
-          "value": 2147483658,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 11,
-          "opcode": 0,
-          "value": 2147483659,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 12,
-          "opcode": 0,
-          "value": 2147483660,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 13,
-          "opcode": 0,
-          "value": 2147483661,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 14,
-          "opcode": 0,
-          "value": 2147483662,
-          "view": 0
-        },
-        {
-          "cycles": 15,
-          "data": 0,
-          "error": 0,
-          "index": 15,
-          "opcode": 0,
-          "value": 2147483663,
-          "view": 0
-        },
-        {
-          "cycles": 57,
-          "data": 0,
-          "error": 0,
-          "index": 16,
-          "opcode": 0,
-          "value": 2147483664,
-          "view": 0
-        },
-        {
-          "cycles": 53,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 10,
-          "value": 17,
-          "view": 0
-        },
-        {
-          "cycles": 67,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 9,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 53,
-          "data": 0,
-          "error": 2,
-          "index": 0,
-          "opcode": 11,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 2,
-          "index": 0,
-          "opcode": 12,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 77,
-          "data": 4294967295,
-          "error": 0,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 4294967295,
-          "view": 0
-        }
-      ],
       "pages": 8,
       "retirements": 3,
       "slots": 17,
-      "views": 3
+      "views": 3,
+      "measurement_count": 73,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 19,
+          "min": 6,
+          "median": 15,
+          "max": 92
+        },
+        "opcode0/expected_error1": {
+          "count": 7,
+          "min": 6,
+          "median": 6,
+          "max": 6
+        },
+        "opcode1/expected_error0": {
+          "count": 2,
+          "min": 77,
+          "median": 120.0,
+          "max": 163
+        },
+        "opcode1/expected_error1": {
+          "count": 6,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode2/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode3/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode4/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode5/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode6/expected_error1": {
+          "count": 5,
+          "min": 6,
+          "median": 6,
+          "max": 6
+        },
+        "opcode7/expected_error0": {
+          "count": 1,
+          "min": 9,
+          "median": 9,
+          "max": 9
+        },
+        "opcode7/expected_error1": {
+          "count": 5,
+          "min": 9,
+          "median": 9,
+          "max": 9
+        },
+        "opcode8/expected_error0": {
+          "count": 1,
+          "min": 110,
+          "median": 110,
+          "max": 110
+        },
+        "opcode9/expected_error0": {
+          "count": 2,
+          "min": 24,
+          "median": 45.5,
+          "max": 67
+        },
+        "opcode10/expected_error0": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcode10/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode11/expected_error2": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcode12/expected_error2": {
+          "count": 1,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode13/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode14/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode15/expected_error2": {
+          "count": 1,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        }
+      }
     },
     {
-      "measurements": [
-        {
-          "cycles": 403,
-          "data": 2147483648,
-          "error": 0,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 3
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 2147483648,
-          "view": 3
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 4
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 4
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 4
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 4
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 4
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 2147483648
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 6,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 7,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 0,
-          "opcode": 10,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 180096,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 180096,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 180096,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 180096,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 180096,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 180096,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 2,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 3,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 4,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 123,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 5,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 6,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 2147483648,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 6,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4294967295,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 9,
-          "data": 0,
-          "error": 3,
-          "index": 180096,
-          "opcode": 7,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 32,
-          "opcode": 13,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 1,
-          "index": 4,
-          "opcode": 14,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 110,
-          "data": 0,
-          "error": 0,
-          "index": 4294967295,
-          "opcode": 8,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 24,
-          "data": 0,
-          "error": 0,
-          "index": 4294967295,
-          "opcode": 9,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 2,
-          "index": 4294967295,
-          "opcode": 15,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 221,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 2147483648,
-          "view": 0
-        },
-        {
-          "cycles": 53,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 10,
-          "value": 1,
-          "view": 0
-        },
-        {
-          "cycles": 67,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 9,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 53,
-          "data": 0,
-          "error": 2,
-          "index": 0,
-          "opcode": 11,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 4,
-          "data": 0,
-          "error": 2,
-          "index": 0,
-          "opcode": 12,
-          "value": 0,
-          "view": 4294967295
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 1,
-          "index": 0,
-          "opcode": 0,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 317,
-          "data": 4294967295,
-          "error": 0,
-          "index": 0,
-          "opcode": 1,
-          "value": 0,
-          "view": 0
-        },
-        {
-          "cycles": 6,
-          "data": 0,
-          "error": 0,
-          "index": 0,
-          "opcode": 0,
-          "value": 4294967295,
-          "view": 0
-        }
-      ],
       "pages": 64,
       "retirements": 2,
       "slots": 180096,
-      "views": 4
+      "views": 4,
+      "measurement_count": 57,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 3,
+          "min": 6,
+          "median": 6,
+          "max": 221
+        },
+        "opcode0/expected_error1": {
+          "count": 7,
+          "min": 6,
+          "median": 6,
+          "max": 6
+        },
+        "opcode1/expected_error0": {
+          "count": 2,
+          "min": 317,
+          "median": 360.0,
+          "max": 403
+        },
+        "opcode1/expected_error1": {
+          "count": 6,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode2/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode3/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode4/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode5/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode6/expected_error1": {
+          "count": 5,
+          "min": 6,
+          "median": 6,
+          "max": 6
+        },
+        "opcode7/expected_error1": {
+          "count": 5,
+          "min": 9,
+          "median": 9,
+          "max": 9
+        },
+        "opcode7/expected_error3": {
+          "count": 1,
+          "min": 9,
+          "median": 9,
+          "max": 9
+        },
+        "opcode8/expected_error0": {
+          "count": 1,
+          "min": 110,
+          "median": 110,
+          "max": 110
+        },
+        "opcode9/expected_error0": {
+          "count": 2,
+          "min": 24,
+          "median": 45.5,
+          "max": 67
+        },
+        "opcode10/expected_error0": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcode10/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode11/expected_error2": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcode12/expected_error2": {
+          "count": 1,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode13/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode14/expected_error1": {
+          "count": 3,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        },
+        "opcode15/expected_error2": {
+          "count": 1,
+          "min": 4,
+          "median": 4,
+          "max": 4
+        }
+      }
     }
   ],
   "scope": "minimum, odd and primary-sized metadata counts; wide invalid input/error priority, opaque values, malformed retired DDR count and stale-RAM reset",
@@ -1814,5 +494,6 @@
       "top": "media_metadata_tb"
     }
   ],
-  "retention": "s2-path-width-boundaries-axi64-retention.json"
+  "retention": "s2-path-width-boundaries-axi64-retention.json",
+  "per_request_samples": "s2-path-width-boundaries-axi64-raw.tar.gz"
 }

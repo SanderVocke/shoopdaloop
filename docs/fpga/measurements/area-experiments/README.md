@@ -325,3 +325,17 @@ quanta for every point; B0 has no matching long run and is excluded. All six
 physical builds fail setup timing. One-block and directory-path remain the
 area/latency alternatives; BRAM and adversarial/maintenance costs remain in the
 tables and raw reports.
+
+
+Before width changes, `24d767e7` adds minimum/odd/primary-count metadata input
+controls. C1 and path return identical results on all 187 requests per AXI
+width, including malformed raw DDR retirement counts. The expanded six-test
+metadata suite passes. `86af343f` adds standalone MIDI full-pool/retirement
+controls at 1/3/5 views and 1/3-event capacities, checking 564 transactions over
+three generation/queue wraps against the independent ContentStore. High frame
+bits, poisoned accepted command inputs, held outputs, refusals, generation
+overflow, faults and reset are included. These are baselines, not area wins.
+
+Compact per-opcode/error statistics are regenerated from the retained raw
+samples by `compact_unit_summaries.py`. Every original request and result stays
+in the verified archives; compacting a summary does not discard raw evidence.
