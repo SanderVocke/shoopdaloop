@@ -30,6 +30,7 @@ pub(crate) struct Pool {
     nodes: usize,
     buses: usize,
     processors: usize,
+    dynamic_processors: usize,
 }
 
 fn node(slot: usize) -> NodeId {
@@ -41,6 +42,15 @@ impl Pool {
         Self::with_processors(segments, buses, 0)
     }
     pub(crate) fn with_processors(segments: &[Segment], buses: usize, processors: usize) -> Self {
+        Self::with_dynamic_processors(segments, buses, processors, 0)
+    }
+    pub(crate) fn with_dynamic_processors(
+        segments: &[Segment],
+        buses: usize,
+        processors: usize,
+        dynamic_processors: usize,
+    ) -> Self {
+        let processors = processors + dynamic_processors;
         let mut layouts = Vec::with_capacity(segments.len());
         let (mut strips, mut loops, mut nodes) = (0, 0, 2);
         for segment in segments {
@@ -62,6 +72,7 @@ impl Pool {
             loops,
             nodes: nodes + 2 * buses - 1 + processors,
             processors,
+            dynamic_processors,
             buses,
         }
     }
@@ -92,6 +103,9 @@ impl Pool {
     }
     pub(crate) fn processors(&self) -> usize {
         self.processors
+    }
+    pub(crate) fn is_dynamic_processor(&self, slot: usize) -> bool {
+        slot >= self.processors - self.dynamic_processors
     }
     pub(crate) fn reader(&self) -> NodeId {
         node(1)

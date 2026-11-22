@@ -1,0 +1,83 @@
+name: Native Remote Carla FX
+
+on:
+  pull_request:
+    branches: [feat/backend-replacement]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/remote_fx.yml'
+      - 'src/rust/rt_buffered/**'
+      - 'src/rust/shoop_remote_fx/**'
+      - 'src/rust/shoop_carla/**'
+      - 'src/rust/shoop_host/**'
+      - 'src/rust/shoop_host_manager/**'
+      - 'src/rust/shoop_rt_host_native/**'
+      - 'scripts/verify_remote_fx.py'
+  workflow_dispatch:
+    inputs:
+      soak_seconds:
+        description: Seconds per clean stereo and wide run
+        type: number
+        default: 1800
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-remote-fx-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-remote-fx:
+    name: Native remote FX (${{ matrix.width }} channels)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [2, 16]
+    env:
+      RUSTFLAGS: -D warnings
+      SOAK_SECONDS: ${{ inputs.soak_seconds || (github.event.pull_request.draft && '0' || '1800') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Native and Carla prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes             build-essential iproute2 libasound2-dev libclang-dev libfluidsynth-dev             libgl1-mesa-dev libgtk-3-dev libgtk2.0-dev libjack-jackd2-dev             liblo-dev libmagic-dev libpulse-dev libsndfile1-dev libudev-dev             libx11-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev             libxcb-randr0-dev libxcb-render0-dev libxcb-render-util0-dev             libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev             libxcursor-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev             libxrandr-dev libwayland-dev patchelf protobuf-compiler python3-venv xvfb
+      - name: Verify transport
+        run: cargo test --locked -p rt_buffered -p shoop_remote_fx
+      - name: Build pinned Carla component and Native package
+        run: |
+          bash scripts/prepare_carla_linux.sh
+          cargo build --locked --release -p shoopdaloop -p shoop_host_manager
+          cargo build --locked --release -p shoop_host --features carla
+          python3 src/rust/shoopdaloop/package_artifacts.py native \
+            --platform linux --arch x86_64 --profile release --binary target/release/shoopdaloop \
+            --carla-runtime .carla-component --output-dir artifacts
+          mkdir installed
+          tar xzf artifacts/*-carla.tar.gz -C installed
+      - name: Build the scripted Native fixtures
+        run: |
+          cargo test --locked --release -p shoop_host --features carla \
+            --test recovery --test jack --no-run --message-format=json > native-fixtures.jsonl
+          for fixture in recovery jack; do
+            jq -r --arg fixture "$fixture" 'select(.reason=="compiler-artifact" and .target.name==$fixture and .executable!=null).executable' native-fixtures.jsonl > "$fixture-path.txt"
+            test "$(wc -l < "$fixture-path.txt")" -eq 1
+          done
+      - name: Verify installed Native remote FX
+        run: |
+          set -o pipefail
+          git rev-parse HEAD | tee remote-fx-results.txt
+          sudo env PATH="$PATH" python3 scripts/verify_remote_fx.py \
+            --host installed/shoopdaloop/shoop_host --manager installed/shoopdaloop/shoop_host_manager \
+            --recovery-test "$(cat recovery-path.txt)" --archive-test "$(cat jack-path.txt)" \
+            --soak-seconds "$SOAK_SECONDS" --slack 14 --width '${{ matrix.width }}' \
+            --restart --impairment one-copy |& tee -a remote-fx-results.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-remote-fx-${{ matrix.width }}ch-${{ github.run_id }}-${{ github.run_attempt }}
+          path: remote-fx-results.txt

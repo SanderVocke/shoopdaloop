@@ -2557,6 +2557,7 @@ impl NativeRuntime {
             dry_audio_channels,
             wet_audio_channels,
             dry_midi,
+            ..
         } = request.topology.clone()
         else {
             return Err(anyhow!("expected processed dry/wet topology"));
@@ -7031,6 +7032,7 @@ mod tests {
                 dry_audio_channels,
                 wet_audio_channels,
                 dry_midi,
+                remote_fx: None,
             },
             initial_loops: 1,
         };
@@ -7354,6 +7356,7 @@ mod tests {
                 dry_audio_channels,
                 wet_audio_channels,
                 dry_midi: true,
+                remote_fx: None,
             },
             initial_loops: 1,
         };
@@ -7987,6 +7990,7 @@ mod tests {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 initial_loops: 1,
             })
@@ -8111,6 +8115,7 @@ mod tests {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 initial_loops: 1,
             })

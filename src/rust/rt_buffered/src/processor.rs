@@ -749,14 +749,25 @@ impl<B: Backend> BufferedProcessor<B> {
                         slot.played_events[port] += 1;
                     }
                 }
-            } else if offset == 0 {
-                if slot.status == BatchStatus::Pending {
-                    self.async_stats.pending -= 1;
-                    slot.status = BatchStatus::Missing;
+            } else {
+                if self.asynchronous && self.backend.dry_on_missing() {
+                    for channel in 0..self.ports.audio_inputs.min(self.ports.audio_outputs) {
+                        let start = channel * b + offset;
+                        audio
+                            .output(channel)
+                            .ok_or(Error::InvalidShape)?
+                            .copy_from_slice(&slot.audio_input[start..start + q]);
+                    }
                 }
-                self.async_stats.missed = self.async_stats.missed.saturating_add(1);
-                for output in outputs.iter_mut() {
-                    output.recover_notes();
+                if offset == 0 {
+                    if slot.status == BatchStatus::Pending {
+                        self.async_stats.pending -= 1;
+                        slot.status = BatchStatus::Missing;
+                    }
+                    self.async_stats.missed = self.async_stats.missed.saturating_add(1);
+                    for output in outputs.iter_mut() {
+                        output.recover_notes();
+                    }
                 }
             }
             if offset + q == b {

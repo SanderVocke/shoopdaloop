@@ -2508,6 +2508,7 @@ mod tests {
                 wet_audio_channels: 1,
                 dry_midi: false,
                 processor_type: crate::TrackProcessorTypeId::new("processor"),
+                remote_fx: None,
             },
             default_playback_mode: DefaultPlaybackMode::Regular,
             ..Default::default()
@@ -2566,6 +2567,7 @@ mod tests {
                 wet_audio_channels: 1,
                 dry_midi: false,
                 processor_type: crate::TrackProcessorTypeId::new("processor"),
+                remote_fx: None,
             },
             ..Default::default()
         };

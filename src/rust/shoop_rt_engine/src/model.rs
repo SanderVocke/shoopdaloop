@@ -199,6 +199,7 @@ impl Banks {
 pub(crate) struct ProcessorOwner {
     pub kind: shoop_rt_protocol::ProcessorKind,
     pub slot: Option<shoop_rt_protocol::ProcessorSlot>,
+    pub remote_fx: Option<shoop_processor_protocol::RemoteFxTarget>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

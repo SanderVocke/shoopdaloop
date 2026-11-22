@@ -221,7 +221,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
+            build-essential iproute2 libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
             libgtk2.0-dev libjack-jackd2-dev jackd2 liblo-dev libmagic-dev libpulse-dev \
             libsndfile1-dev libx11-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
@@ -258,6 +258,17 @@ jobs:
           xvfb-run -a env SHOOP_REQUIRE_CARLA_TESTS=1 SHOOP_REQUIRE_CARLA_UI_TESTS=1 SHOOP_TEST_CARLA_UI=1 \
             cargo nextest run --locked --workspace --features "$features" --profile ci --test-threads 1 \
               -E 'package(shoop_carla) | binary_id(=shoop_rt_host_process::carla_worker) | test(/carla/)'
+          cargo nextest list --locked --workspace --features "$features" --profile ci \
+            --list-type binaries-only --message-format json > target/remote-fx-coverage-fixtures.json
+          cargo build --locked -p shoop_host -p shoop_host_manager --features shoop_host/carla
+          sudo env PATH="$PATH" LLVM_PROFILE_FILE="$LLVM_PROFILE_FILE" \
+            python3 scripts/verify_remote_fx.py \
+              --host "$CARGO_TARGET_DIR/debug/shoop_host" \
+              --manager "$CARGO_TARGET_DIR/debug/shoop_host_manager" \
+              --carla-runtime .carla-component \
+              --recovery-test "$(jq -er '."rust-binaries"["shoop_host::recovery"]."binary-path"' target/remote-fx-coverage-fixtures.json)" \
+              --archive-test "$(jq -er '."rust-binaries"["shoop_host::jack"]."binary-path"' target/remote-fx-coverage-fixtures.json)" \
+              --soak-seconds 0 --slack 14 --restart --impairment one-copy
           unset SHOOP_CARLA_NATIVE_LIBRARY SHOOP_CARLA_RESOURCE_DIR
           python3 scripts/run_native_jack_tests.py --output target/native-jack-coverage
           timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport socket

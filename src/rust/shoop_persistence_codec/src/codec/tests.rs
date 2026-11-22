@@ -83,6 +83,7 @@ fn carla_session_migrates_a_legacy_track_bus_and_recorded_wet_checkpoint() {
         midi: false,
         dry_audio_channels: Some(0),
         wet_audio_channels: Some(16),
+        remote_fx: None,
     };
     track.fx_chain = Some(chain.clone());
     for channel in &mut track.loops[0].channels {
@@ -127,10 +128,65 @@ fn carla_session_migrates_a_legacy_track_bus_and_recorded_wet_checkpoint() {
         );
     }
 
-    let saved = crate::document::to_bundle(&image).unwrap();
+    let mut saved = crate::document::to_bundle(&image).unwrap();
     let current_file = encode_session(&saved, "current-carla").unwrap();
     let reloaded = crate::document::from_bundle(decode_session(&current_file).unwrap()).unwrap();
     assert_eq!(image, reloaded);
+
+    saved.document.buses[0]
+        .fx_chain
+        .as_mut()
+        .unwrap()
+        .chain_type = FxChainTypeDocument::RemoteCarlaPatchbay16x;
+    let mixed = crate::document::from_bundle(saved).unwrap();
+    let saved = crate::document::to_bundle(&mixed).unwrap();
+    assert_eq!(
+        saved.document.buses[0]
+            .fx_chain
+            .as_ref()
+            .unwrap()
+            .chain_type,
+        FxChainTypeDocument::RemoteCarlaPatchbay16x
+    );
+    let TrackTopologyDocument::Carla { chain_type, .. } =
+        saved.document.track_groups[1].tracks[0].topology
+    else {
+        panic!("Carla track topology")
+    };
+    assert_eq!(chain_type, FxChainTypeDocument::CarlaPatchbay16x);
+    let bytes = encode_session(&saved, "mixed-carla").unwrap();
+    let reloaded = crate::document::from_bundle(decode_session(&bytes).unwrap()).unwrap();
+    assert_eq!(mixed, reloaded);
+
+    let mut saved = saved;
+    let track = &mut saved.document.track_groups[1].tracks[0];
+    let remote_type = FxChainTypeDocument::RemoteCarlaPatchbay16x;
+    let target = shoop_app_api::RemoteFxTarget {
+        address: "192.168.0.2:24510".parse().unwrap(),
+        reconnect: shoop_app_api::RemoteFxReconnect::Resume,
+        dry_on_loss: true,
+    };
+    let TrackTopologyDocument::Carla {
+        chain_type,
+        remote_fx,
+        ..
+    } = &mut track.topology
+    else {
+        panic!("Carla track topology");
+    };
+    *chain_type = remote_type;
+    *remote_fx = Some(target);
+    track.fx_chain.as_mut().unwrap().chain_type = remote_type;
+    for state in &mut saved.document.fx_states {
+        state.chain_type = remote_type;
+    }
+    let bytes = encode_session(&saved, "per-track-remote-carla").unwrap();
+    let image = crate::document::from_bundle(decode_session(&bytes).unwrap()).unwrap();
+    let round_trip = crate::document::to_bundle(&image).unwrap();
+    assert_eq!(
+        round_trip.document.track_groups[1].tracks[0].topology,
+        saved.document.track_groups[1].tracks[0].topology
+    );
 }
 pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
     image::Channel {

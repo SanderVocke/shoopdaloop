@@ -1088,6 +1088,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             (Purpose::CreateStrip(id), Some(refusal)) => {
                 if let Some(track) = self.mirror.tracks.get(&id) {
+                    let reason = match (refusal, track.topology.remote_fx()) {
+                        (Refusal::NotConnected, Some(fx)) => format!(
+                            "the session host could not connect to the FX host at {}",
+                            fx.address
+                        ),
+                        _ => refusal_text(refusal).to_owned(),
+                    };
                     self.mirror.strip_slots.release(track.strip.0);
                     let loops = track.loops.clone();
                     for loop_id in loops {
@@ -1101,7 +1108,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         BackendMutationKind::TrackStructure,
                         Some(id.raw()),
                         Some(BackendMutationDetail::TrackCreation),
-                        format!("creating a track was refused: {}", refusal_text(refusal)),
+                        format!("creating a track was refused: {reason}"),
                     );
                 }
             }

@@ -90,6 +90,9 @@ impl TrackProcessorTypeId {
     pub const CARLA_RACK: &'static str = "carla_rack";
     pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
     pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
+    pub const REMOTE_CARLA_RACK: &'static str = "remote_carla_rack";
+    pub const REMOTE_CARLA_PATCHBAY: &'static str = "remote_carla_patchbay";
+    pub const REMOTE_CARLA_PATCHBAY_16X: &'static str = "remote_carla_patchbay_16x";
     pub const OXISYNTH: &'static str = "oxisynth";
     pub const BUILTIN_FX: &'static str = "builtin_fx";
 
@@ -105,6 +108,13 @@ impl TrackProcessorTypeId {
         matches!(
             self.as_str(),
             Self::CARLA_RACK | Self::CARLA_PATCHBAY | Self::CARLA_PATCHBAY_16X
+        ) || self.is_remote_carla()
+    }
+
+    pub fn is_remote_carla(&self) -> bool {
+        matches!(
+            self.as_str(),
+            Self::REMOTE_CARLA_RACK | Self::REMOTE_CARLA_PATCHBAY | Self::REMOTE_CARLA_PATCHBAY_16X
         )
     }
 }
@@ -186,6 +196,7 @@ pub enum TrackProcessorEditorDescriptor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HostedProcessorResources {
+    /// Zero for processors created on demand.
     pub instance_limit: u16,
     pub instances_in_use: u16,
     pub buffering_frames: u32,
@@ -1588,6 +1599,8 @@ pub enum TrackTopology {
         wet_audio_channels: u32,
         dry_midi: bool,
         processor_type: TrackProcessorTypeId,
+        #[cfg_attr(feature = "serde", serde(default))]
+        remote_fx: Option<RemoteFxTarget>,
     },
 }
 impl TrackTopology {
@@ -2404,6 +2417,8 @@ pub enum TrackSpecTopology {
         dry_midi: bool,
         processor_type: TrackProcessorTypeId,
         default_playback_mode: DefaultPlaybackMode,
+        #[cfg_attr(feature = "serde", serde(default))]
+        remote_fx: Option<RemoteFxTarget>,
     },
 }
 
@@ -2472,6 +2487,7 @@ impl TrackSpec {
             dry_midi,
             processor_type,
             default_playback_mode,
+            remote_fx,
         } = &self.topology
         else {
             return Ok(());
@@ -2479,6 +2495,9 @@ impl TrackSpec {
         if *default_playback_mode == DefaultPlaybackMode::DryThroughWet && *wet_audio_channels == 0
         {
             return Err(TrackSpecError::UnsupportedShape);
+        }
+        if remote_fx.is_some_and(|target| !processor_type.is_remote_carla() || !target.valid()) {
+            return Err(TrackSpecError::InvalidRemoteFx);
         }
         let processor = processors
             .iter()
@@ -2503,6 +2522,7 @@ pub enum TrackSpecError {
     InvalidLatency,
     ProcessorUnavailable,
     UnsupportedShape,
+    InvalidRemoteFx,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3396,6 +3416,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
                 default_playback_mode: DefaultPlaybackMode::Regular,
+                remote_fx: None,
             },
             latency: TrackLatencySpec::default(),
             initial_output_bus_names: Vec::new(),
@@ -3425,6 +3446,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
                 default_playback_mode: DefaultPlaybackMode::Regular,
+                remote_fx: None,
             },
             ..spec.clone()
         };
@@ -3440,6 +3462,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: processor.id.clone(),
                 default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                remote_fx: None,
             },
             ..spec
         };
@@ -4335,6 +4358,6 @@ impl HostSettings {
 }
 
 pub use shoop_processor_protocol::{
-    CarlaHosting, Policy as ProcessorPolicy, Settings as ProcessorSettings,
-    MAX_OPAQUE_STATE_ENVELOPE_BYTES,
+    CarlaHosting, Policy as ProcessorPolicy, RemoteFxReconnect, RemoteFxTarget,
+    Settings as ProcessorSettings, MAX_OPAQUE_STATE_ENVELOPE_BYTES,
 };

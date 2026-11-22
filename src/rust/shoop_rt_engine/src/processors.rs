@@ -29,6 +29,7 @@ pub struct PreparedProcessors {
     pub reserved_bytes: u64,
     pub instances: Vec<PreparedProcessor>,
     pub presets: Box<[ProcessorPreset]>,
+    pub dynamic_carla: DynamicCarla,
 }
 impl Default for PreparedProcessors {
     fn default() -> Self {
@@ -40,13 +41,34 @@ impl Default for PreparedProcessors {
                 synth_unavailable: Some(Unavailable::Disabled),
                 memory_bytes: 0,
                 carla: Default::default(),
+                remote_carla: Default::default(),
             },
             reserved_bytes: 0,
             instances: Vec::new(),
             presets: Vec::new().into_boxed_slice(),
+            dynamic_carla: DynamicCarla::default(),
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DynamicCarla {
+    pub local: Option<Timing>,
+    pub remote: Option<Timing>,
+}
+
+impl DynamicCarla {
+    pub(crate) fn timing(self, kind: ProcessorKind) -> Option<Timing> {
+        if kind.is_remote_carla() {
+            self.remote
+        } else if kind.is_carla() {
+            self.local
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ProcessorCatalog {
     pub effective: Effective,
@@ -55,6 +77,20 @@ pub struct ProcessorCatalog {
     pub presets: Box<[ProcessorPreset]>,
     pub(crate) worker_delays: Box<[usize]>,
     pub(crate) carla_delay: u32,
+    pub(crate) remote_carla_delay: u32,
+    pub(crate) dynamic_carla: DynamicCarla,
+}
+
+impl ProcessorCatalog {
+    pub(crate) fn worker_delay(&self, index: usize, kind: ProcessorKind) -> usize {
+        self.worker_delays.get(index).copied().unwrap_or_else(|| {
+            if kind.is_remote_carla() {
+                self.remote_carla_delay as usize
+            } else {
+                self.carla_delay as usize
+            }
+        })
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ProcessorState {
@@ -76,12 +112,45 @@ pub(crate) struct ProcessorCells {
     has_worker: AtomicBool,
     worker_depths: [AtomicU32; 2],
     worker_counts: [AtomicU64; 7],
-    kind: ProcessorKind,
+    kind: AtomicU32,
     revision: AtomicU64,
     frame: AtomicU64,
     generation: AtomicU32,
     phase: AtomicU32,
     values: [AtomicU32; STATE_SCALARS],
+}
+
+pub(crate) fn carla_midi_buffers(
+    limits: BufferLimits,
+    global: rt_runtime::buffer::MidiCapacity,
+) -> rt_runtime::processor::MidiBufferSettings {
+    use rt_runtime::{
+        buffer::MidiCapacity,
+        processor::{MidiBufferSettings, MidiPortCapacity},
+    };
+    let mut settings = MidiBufferSettings::default();
+    settings.ports[0] = Some(MidiPortCapacity {
+        input: true,
+        port: 0,
+        capacity: MidiCapacity {
+            events: limits.midi_input.events_per_quantum,
+            bytes: limits.midi_input.bytes_per_quantum,
+        },
+    });
+    settings.ports[1] = Some(MidiPortCapacity {
+        input: true,
+        port: 2,
+        capacity: global,
+    });
+    settings.ports[2] = Some(MidiPortCapacity {
+        input: false,
+        port: 0,
+        capacity: MidiCapacity {
+            events: limits.midi_output.events_per_quantum,
+            bytes: limits.midi_output.bytes_per_quantum,
+        },
+    });
+    settings
 }
 impl ProcessorCells {
     pub(crate) fn new(kind: ProcessorKind) -> Self {
@@ -92,7 +161,7 @@ impl ProcessorCells {
             has_worker: AtomicBool::new(false),
             worker_depths: core::array::from_fn(|_| AtomicU32::new(0)),
             worker_counts: core::array::from_fn(|_| AtomicU64::new(0)),
-            kind,
+            kind: AtomicU32::new(kind as u32),
             revision: AtomicU64::new(0),
             frame: AtomicU64::new(0),
             generation: AtomicU32::new(0),
@@ -102,6 +171,7 @@ impl ProcessorCells {
     }
     fn publish(
         &self,
+        kind: ProcessorKind,
         backend: &dyn Backend,
         frame: Frame,
         generation: u32,
@@ -110,6 +180,7 @@ impl ProcessorCells {
         worker: Option<AsyncStats>,
     ) {
         self.revision.fetch_add(1, Ordering::SeqCst);
+        self.kind.store(kind as u32, Ordering::SeqCst);
         for (cell, value) in self.global_counts.iter().zip([
             global.rejected,
             global.overwritten,
@@ -142,12 +213,8 @@ impl ProcessorCells {
             self.worker_depths[1].store(worker.peak_pending as u32, Ordering::SeqCst);
             self.has_worker.store(true, Ordering::SeqCst);
         }
-        for index in 0..self.kind.scalar_count() {
-            if let Some(value) = self
-                .kind
-                .scalar_id(index)
-                .and_then(|id| backend.parameter(id))
-            {
+        for index in 0..kind.scalar_count() {
+            if let Some(value) = kind.scalar_id(index).and_then(|id| backend.parameter(id)) {
                 self.values[index].store(value.to_bits(), Ordering::SeqCst);
             }
         }
@@ -195,12 +262,18 @@ impl ProcessorCells {
             3 => ProcessorPhase::Retiring,
             _ => ProcessorPhase::Faulted,
         };
+        let kind = self.kind.load(Ordering::SeqCst);
+        let kind = if kind == 0 {
+            ProcessorKind::External
+        } else {
+            *ProcessorKind::HOSTED.get(kind as usize - 1)?
+        };
         if before != self.revision.load(Ordering::SeqCst) {
             return None;
         }
         Some(ProcessorState {
             global_midi,
-            kind: self.kind,
+            kind,
             frame,
             generation,
             phase,
@@ -218,6 +291,7 @@ pub(crate) enum ProcessorTarget {
 pub struct HostedProcessor {
     buffered: BufferedProcessor<Box<dyn Backend>>,
     cells: Arc<ProcessorCells>,
+    kind: ProcessorKind,
     generation: u32,
     phase: ProcessorPhase,
     cleanup: usize,
@@ -272,18 +346,11 @@ impl HostedProcessor {
         if !buffered.is_worker_backed() && processor.timing != PreparedProcessor::INLINE_TIMING {
             return Err(Error::InvalidConfig);
         }
-        cells.publish(
-            &**buffered.backend(),
-            Frame(0),
-            0,
-            ProcessorPhase::Free,
-            Default::default(),
-            buffered.async_stats(),
-        );
         buffered.abort(Frame(0))?;
         Ok(Self {
             buffered,
             cells,
+            kind: processor.kind,
             generation: 0,
             phase: ProcessorPhase::Free,
             cleanup: 0,
@@ -362,8 +429,9 @@ impl HostedProcessor {
             _ => None,
         }
     }
-    fn publish(&self, frame: Frame) {
+    pub(crate) fn publish(&self, frame: Frame) {
         self.cells.publish(
+            self.kind,
             &**self.buffered.backend(),
             frame,
             self.generation,
@@ -381,13 +449,22 @@ impl HostedProcessor {
         }
         Ok(())
     }
-    pub(crate) fn claim(&mut self, frame: Frame, generation: u32) -> Result<(), Error> {
+    pub(crate) fn claim(
+        &mut self,
+        frame: Frame,
+        generation: u32,
+        inputs: u8,
+        outputs: u8,
+    ) -> Result<(), Error> {
         if self.phase != ProcessorPhase::Free {
             return Err(Error::Busy);
         }
         if self.generation.checked_add(1) != Some(generation) {
             return Err(Error::InvalidId);
         }
+        self.buffered
+            .inactive_backend_mut()?
+            .claim(generation, inputs, outputs);
         self.generation = generation;
         self.phase = ProcessorPhase::Owned;
         self.publish(frame);
@@ -476,7 +553,7 @@ impl HostedProcessor {
             }
             return self.parameter(frame, generation, parameter, value);
         };
-        let kind = self.cells.kind;
+        let kind = self.kind;
         let mut changes = [(frame, 0, 0.); STATE_SCALARS];
         self.buffered.backend().validate_parameter(RESET, 0.)?;
         let mut count = 0;
@@ -727,7 +804,7 @@ impl HostedProcessor {
                 domain: block.domain,
                 cells: self.signal.as_deref(),
                 source: capture_source,
-                kind: self.cells.kind,
+                kind: self.kind,
                 frame: block.frame,
                 done: false,
             };
@@ -859,6 +936,29 @@ impl HostedProcessor {
         }
         Ok(())
     }
+
+    pub(crate) fn set_previous_generation(&mut self, generation: u32) {
+        self.generation = generation;
+    }
+
+    pub(crate) fn finish_dynamic_retirement(&mut self, frame: Frame) {
+        self.phase = ProcessorPhase::Free;
+        self.publish(frame);
+    }
+
+    pub(crate) fn reset_retired(&mut self) -> bool {
+        match self
+            .buffered
+            .inactive_backend_mut()
+            .and_then(|backend| backend.reset_step(self.cleanup))
+        {
+            Ok(false) => {
+                self.cleanup += 1;
+                false
+            }
+            Ok(true) | Err(_) => true,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -987,7 +1087,7 @@ mod tests {
             .owner_generation
             .store(1, Ordering::Relaxed);
         hosted.attach(signal.clone());
-        hosted.claim(Frame(0), 1).unwrap();
+        hosted.claim(Frame(0), 1, 2, 2).unwrap();
         hosted.binding = Some(ProcessorTarget::Track {
             source: 0,
             generation: 1,
@@ -1193,8 +1293,8 @@ mod tests {
             16,
         ));
         assert_no_heap(|| {
-            assert_eq!(node.claim(Frame(0), 0), Err(Error::InvalidId));
-            node.claim(Frame(0), 1).unwrap();
+            assert_eq!(node.claim(Frame(0), 0, 2, 2), Err(Error::InvalidId));
+            node.claim(Frame(0), 1, 2, 2).unwrap();
             node.bind_bus(1, shoop_rt_protocol::BusId::MASTER, rt_runtime::Epoch(1))
                 .unwrap();
             assert_eq!(
@@ -1204,7 +1304,7 @@ mod tests {
             node.binding = node.pending_binding.take().map(|(_, target)| target);
             assert_eq!(node.track_binding(), None);
             assert_eq!(node.routing_state(), 0);
-            assert_eq!(node.claim(Frame(0), 2), Err(Error::Busy));
+            assert_eq!(node.claim(Frame(0), 2, 2, 2), Err(Error::Busy));
             node.parameter(Frame(0), 1, 0, 0.75).unwrap();
             assert_eq!(cells.read().unwrap().values[0], 0.75);
             node.retire(Frame(0), 1).unwrap();
@@ -1214,11 +1314,11 @@ mod tests {
                 node.maintain(Frame(frame)).unwrap();
             }
             assert_eq!(cells.read().unwrap().phase, ProcessorPhase::Retiring);
-            assert_eq!(node.claim(Frame(64), 2), Err(Error::Busy));
+            assert_eq!(node.claim(Frame(64), 2, 2, 2), Err(Error::Busy));
             node.maintain(Frame(80)).unwrap();
             assert_eq!(cells.read().unwrap().phase, ProcessorPhase::Free);
             assert_eq!(cells.read().unwrap().values[0], 0.);
-            node.claim(Frame(80), 2).unwrap();
+            node.claim(Frame(80), 2, 2, 2).unwrap();
             assert_eq!(node.parameter(Frame(80), 1, 0, 0.5), Err(Error::InvalidId));
             node.parameter(Frame(80), 2, 0, 0.25).unwrap();
             node.start(Frame(80), 2).unwrap();

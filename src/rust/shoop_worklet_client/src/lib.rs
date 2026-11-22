@@ -1185,6 +1185,7 @@ impl RemoteWorkletBackend {
                                     dry_audio_channels: audio_channels,
                                     wet_audio_channels: audio_channels,
                                     dry_midi: true,
+                                    remote_fx: None,
                                 }
                             }
                             WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
@@ -1192,6 +1193,7 @@ impl RemoteWorkletBackend {
                                 dry_audio_channels: 2,
                                 wet_audio_channels: 2,
                                 dry_midi: true,
+                                remote_fx: None,
                             },
                         },
                         fx: track.fx.map(|fx| {
@@ -1904,6 +1906,7 @@ impl Backend for RemoteWorkletBackend {
                 dry_audio_channels,
                 wet_audio_channels,
                 dry_midi,
+                ..
             } if processor_type == TrackProcessorTypeId::BUILTIN_FX
                 && *dry_audio_channels > 0
                 && dry_audio_channels == wet_audio_channels
@@ -1946,6 +1949,7 @@ impl Backend for RemoteWorkletBackend {
                 dry_audio_channels: 2,
                 wet_audio_channels: 2,
                 dry_midi: true,
+                ..
             } if processor_type == TrackProcessorTypeId::OXISYNTH => {
                 let track_id = BackendTrackId::from_raw(self.next_track_id);
                 let ports = browser_oxisynth_port_descriptors(
@@ -4117,6 +4121,7 @@ mod tests {
                     dry_audio_channels: 3,
                     wet_audio_channels: 3,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 initial_loops: 1,
             })
@@ -4149,6 +4154,7 @@ mod tests {
                         dry_audio_channels,
                         wet_audio_channels,
                         dry_midi,
+                        remote_fx: None,
                     },
                     initial_loops: 1,
                 })

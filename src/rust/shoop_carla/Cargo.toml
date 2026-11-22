@@ -9,6 +9,7 @@ workspace = true
 [features]
 native = ["dep:getrandom", "dep:libloading", "dep:quick-xml", "dep:rfd", "dep:serde", "dep:shoop_tracing", "dep:tracing"]
 buffered = ["native", "dep:rt_buffered", "dep:rt_runtime"]
+remote = ["buffered", "dep:shoop_remote_fx"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 anyhow = { workspace = true, features = ["std"] }
@@ -22,6 +23,7 @@ rt_buffered = { path = "../rt_buffered", optional = true }
 rt_runtime = { path = "../rt_runtime", optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+shoop_remote_fx = { path = "../shoop_remote_fx", optional = true }
 shoop_tracing = { workspace = true, features = ["perfetto"], optional = true }
 tempfile = { workspace = true }
 tracing = { workspace = true, features = ["std"], optional = true }

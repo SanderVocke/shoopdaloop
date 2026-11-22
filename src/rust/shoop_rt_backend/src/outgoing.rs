@@ -64,6 +64,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let dry = topology.dry_audio_channels();
         let wet = topology.wet_audio_channels();
         let midi = topology.has_midi();
+        let remote_fx = topology.remote_fx();
         let kind = match &topology {
             BackendTrackTopology::Direct { .. } => None,
             BackendTrackTopology::DryWetExternal { .. } => {
@@ -77,6 +78,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .ok_or_else(|| anyhow!("unsupported track processor {processor_type}"))?,
             ),
         };
+        if remote_fx.is_some_and(|target| {
+            !target.valid() || !kind.is_some_and(|kind| kind.is_remote_carla())
+        }) {
+            return Err(anyhow!(
+                "a remote FX target requires a remote Carla processor"
+            ));
+        }
         if kind.is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External) {
             let kind = kind.expect("hosted processor");
             let processors = self
@@ -95,51 +103,53 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             if !valid {
                 return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
             }
-            let available = processors.effective.instances(kind);
-            let used = self
-                .mirror
-                .tracks
-                .values()
-                .filter(|track| match (&track.topology, &topology) {
-                    (
-                        BackendTrackTopology::DryWetProcessor {
-                            processor_type: before,
-                            ..
-                        },
-                        BackendTrackTopology::DryWetProcessor {
-                            processor_type: after,
-                            ..
-                        },
-                    ) => before == after,
-                    _ => false,
-                })
-                .count()
-                + self
+            if !processors.dynamic(kind) {
+                let available = processors.effective.instances(kind);
+                let used = self
                     .mirror
-                    .buses
+                    .tracks
                     .values()
-                    .filter(|bus| {
-                        bus.processor_type.as_deref()
-                            == Some(crate::processor_controls::processor_id(kind))
+                    .filter(|track| match (&track.topology, &topology) {
+                        (
+                            BackendTrackTopology::DryWetProcessor {
+                                processor_type: before,
+                                ..
+                            },
+                            BackendTrackTopology::DryWetProcessor {
+                                processor_type: after,
+                                ..
+                            },
+                        ) => before == after,
+                        _ => false,
                     })
-                    .count();
-            if available == 0 {
-                let reason = if kind.is_carla() {
-                    processors.effective.carla.unavailable
-                } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
-                    processors.effective.fx_unavailable
-                } else {
-                    processors.effective.synth_unavailable
-                };
-                return Err(anyhow!(
-                    "track processor unavailable: {}",
-                    reason.map_or("no prepared instances", |reason| reason.message())
-                ));
-            }
-            if used >= available as usize {
-                return Err(anyhow!(
-                    "the host's prepared processor capacity is exhausted"
-                ));
+                    .count()
+                    + self
+                        .mirror
+                        .buses
+                        .values()
+                        .filter(|bus| {
+                            bus.processor_type.as_deref()
+                                == Some(crate::processor_controls::processor_id(kind))
+                        })
+                        .count();
+                if available == 0 {
+                    let reason = if kind.is_carla() {
+                        processors.effective.carla_limits(kind).unavailable
+                    } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                        processors.effective.fx_unavailable
+                    } else {
+                        processors.effective.synth_unavailable
+                    };
+                    return Err(anyhow!(
+                        "track processor unavailable: {}",
+                        reason.map_or("no prepared instances", |reason| reason.message())
+                    ));
+                }
+                if used >= available as usize {
+                    return Err(anyhow!(
+                        "the host's prepared processor capacity is exhausted"
+                    ));
+                }
             }
         }
         if kind == Some(shoop_rt_protocol::ProcessorKind::External) && dry == 0 && wet == 0 && !midi
@@ -354,7 +364,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             midi_output: kind.is_none() && midi,
         };
         let request = kind.map_or(Request::CreateStrip { strip, shape }, |kind| {
-            Request::CreateProcessedStrip { strip, shape, kind }
+            Request::CreateProcessedStrip {
+                strip,
+                shape,
+                kind,
+                remote_fx,
+            }
         });
         self.requests.push(request, Purpose::CreateStrip(track_id));
         let loops = (0..initial_loops)
@@ -779,6 +794,7 @@ mod track_role_tests {
                         dry_audio_channels: channels,
                         wet_audio_channels: channels,
                         dry_midi: true,
+                        remote_fx: None,
                     },
                     1,
                 )
@@ -809,6 +825,7 @@ mod track_role_tests {
                     dry_audio_channels: 1,
                     wet_audio_channels: 1,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 1,
             )
@@ -850,6 +867,7 @@ mod track_role_tests {
                     dry_audio_channels: 1,
                     wet_audio_channels: 1,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 1,
             )
@@ -1014,6 +1032,7 @@ mod track_role_tests {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 1,
             )
@@ -1230,6 +1249,7 @@ mod track_role_tests {
             dry_audio_channels: channels,
             wet_audio_channels: channels,
             dry_midi: true,
+            remote_fx: None,
         };
         stack.create_track_topology("mono", topology(1), 1).unwrap();
         stack.wait_idle();
@@ -1256,6 +1276,7 @@ mod track_role_tests {
                     dry_audio_channels: 3,
                     wet_audio_channels: 3,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 1,
             )
@@ -1413,6 +1434,7 @@ mod track_role_tests {
                     dry_audio_channels: 3,
                     wet_audio_channels: 3,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 3,
                 3,
@@ -1423,6 +1445,7 @@ mod track_role_tests {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 2,
                 2,

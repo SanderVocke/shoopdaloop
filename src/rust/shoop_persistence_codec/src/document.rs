@@ -592,10 +592,8 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                 let processor_type = if chain.chain_type == FxChainTypeDocument::BuiltInFx {
                     TrackProcessorTypeId::BUILTIN_FX
                 } else {
-                    carla_processor_type(
-                        carla_chain(chain.chain_type)
-                            .ok_or_else(|| anyhow!("unsupported bus processor"))?,
-                    )
+                    carla_processor_type(chain.chain_type)
+                        .ok_or_else(|| anyhow!("unsupported bus processor"))?
                 };
                 let (state, processor_checkpoint) =
                     state_for_image(chain.chain_type, &chain.internal_state, &mut payloads)?;

@@ -52,6 +52,11 @@ impl<'a> Batch<'a, '_> {
 /// not allocate, deallocate, lock, wait, perform I/O or panic during normal use.
 /// Processing fills every audio output and consumes events in source-time order.
 pub trait Backend: Send {
+    /// Notify a prepared backend that a graph owner has claimed its slot.
+    fn claim(&mut self, _generation: u32, _inputs: u8, _outputs: u8) {}
+    fn dry_on_missing(&self) -> bool {
+        false
+    }
     fn ports(&self) -> PortCounts;
     /// Return a transport for worker-backed processing. This choice is fixed for
     /// the lifetime of the buffered node. Worker-backed nodes use the transport
@@ -103,6 +108,12 @@ pub trait Backend: Send {
 }
 
 impl<B: Backend + ?Sized> Backend for Box<B> {
+    fn claim(&mut self, generation: u32, inputs: u8, outputs: u8) {
+        (**self).claim(generation, inputs, outputs);
+    }
+    fn dry_on_missing(&self) -> bool {
+        (**self).dry_on_missing()
+    }
     fn ports(&self) -> PortCounts {
         (**self).ports()
     }

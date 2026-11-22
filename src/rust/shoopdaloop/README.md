@@ -53,8 +53,8 @@ feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
 and preserves dry media. Embedded editors, MIDI Learn, track/bus global control
 MIDI, recorded-state restoration and role-aware files use the production service.
 External supports independent side widths. Built-in bus FX supports the
-negotiated FX width and shares track FX slots. A Carla-enabled independent
-Native host can prepare Rack tracks and stereo Patchbay banks. [Bus FX contract](../../../docs/native_session_recovery/bus-fx.md) · [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
+negotiated FX width and shares track FX slots. Native hosts open local and
+remote Carla chains on demand. [Bus FX contract](../../../docs/native_session_recovery/bus-fx.md) · [Remote Carla setup](../../../docs/remote-fx.md)
 
 The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
 UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The `--probe-bus-fx --engine-transport socket` canary covers bus audio, bypass, Lua, files and reattachment. The native
@@ -62,6 +62,10 @@ archive smoke runs both canaries over socket/shared memory and independent start
 Browser acceptance includes the corresponding AudioWorklet workflow. See the
 [processor contract and evidence](../../../docs/native_session_recovery/track-processors.md)
 for resource, timing and platform limits.
+
+An independent Native host can use a desktop FX service for Carla. Host Manager
+can launch and inspect the service and configure its endpoint for a new host.
+[Remote Carla setup](../../../docs/remote-fx.md)
 
 ## Native roles and delivery
 
@@ -250,12 +254,13 @@ shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` an
 the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
 three executables together when installing. On macOS, keep both app bundles
 together, for example by copying both to Applications.
-The default packages omit Carla. To build a package with Carla,
-build `shoopdaloop` and `shoop_host_manager` together, then build `shoop_host`
-with `--features carla` in a separate Cargo invocation using the same profile.
-Pass the normalized runtime directory as `--carla-runtime` to
-`package_artifacts.py native` and use `--with-carla` when verifying the archive.
-Archives with the component have a `-carla` suffix before the file extension.
+Standard packages can connect to remote FX services. To run an FX service or
+process Carla locally, use a package with the `-carla` suffix or install the
+Carla runtime alongside the standard package. For a source build, build
+`shoopdaloop`, `shoop_host`, and `shoop_host_manager` with their default
+features. To include the runtime in an archive, pass the normalized runtime
+directory as `--carla-runtime` to `package_artifacts.py native` and use
+`--with-carla` when verifying the archive.
 The session host resolves Carla beside the executables on Linux and Windows or
 under `Contents/Frameworks` on macOS. The release build checks the loader from
 an extracted archive with the component present and removed. The Linux release
@@ -283,8 +288,8 @@ Track defaults map matching widths one-to-one and mono to every destination
 channel; absent/incompatible names leave a track unconnected. Explicit bus and
 direct system routes coexist. Lua bus indices follow stable logical order rather
 than mixer drag order, including after save/load. Built-in bus FX uses the
-negotiated FX width and shared track/bus instance budget. An optional Native
-Carla host offers Rack, stereo Patchbay, and Patchbay 16x bus FX with prepared slots. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
+negotiated FX width and shared track/bus instance budget. Native hosts offer
+Rack, stereo Patchbay, and Patchbay 16x bus FX on demand. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla)
 
 ## Browser
 
@@ -386,8 +391,8 @@ native looper UI. The three native entry points are `shoopdaloop` (looper),
 The manager runs in its own process without starting audio
 or taking control of a session. Closing the manager leaves hosts and UIs running.
 
-**New host…** configures and starts a detached companion. Set its name and audio
-settings, then Start host. Expand capacity/session defaults, channels/MIDI,
+**New host…** starts a detached session host or FX host. For a **Session host**,
+set its name and audio settings, then select **Start host**. Expand capacity/session defaults, channels/MIDI,
 connection or optional logging when needed. The form uses OS-assigned local ports;
 no profile, key or configuration path is required. Driver and capacity changes
 require a new host/session.
@@ -401,8 +406,8 @@ processes that cannot answer a compatible greeting are not presented as ready.
 
 **Advanced** contains **Connect to address…**, **Import profile…** and
 **Export profile…**. Manual targets exist only for the current manager session.
-Local and manual connections to the same live instance appear once. Remote hosts
-are added explicitly; LAN-wide discovery is outside scope.
+Connections to the same live instance appear once. Session hosts can be added
+by address or profile. FX hosts can be found on the IPv4 LAN or added by address.
 
 Select a host to inspect effective audio state, DSP load, xruns, startup settings
 and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
@@ -414,6 +419,10 @@ OS-identified local process, requires separate confirmation and terminates witho
 session cleanup. Its PID, creation identity and executable are revalidated before
 termination. Remote descriptor PIDs cannot select a local process to kill. Tray
 integration is not included.
+
+Select an FX host in the same list to inspect its chain status and diagnostics.
+**Start session host…** selects it for a new session. Use the Manager on the FX
+host's machine to open or close chain editors and stop the FX host. [Remote FX setup](../../../docs/remote-fx.md)
 
 Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
 host. This writes a rotating file only at the requested path, including
