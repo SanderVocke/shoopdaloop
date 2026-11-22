@@ -44,7 +44,8 @@
     "baseline_matrix": "b0-matrix/manifest.json",
     "c1_extended_control": "c1-extended-100-summary.json",
     "translation_control": "c1-translation-unit-summary.json",
-    "carry_taxonomy": "carry-taxonomy-c1-leaf-summary.json"
+    "carry_taxonomy": "carry-taxonomy-c1-leaf-summary.json",
+    "deep_directory_control": "c1-directory-unit-summary.json"
   },
   "experiments": [
     {
@@ -626,6 +627,50 @@
       "outcome": "shortlisted_pending_siblings",
       "decision": "Best cache result so far: 4247 fewer LUTs/663 fewer slices than C1, 0.5 fewer BRAM, 1152 fewer median clocks and 9709 fewer maximum steady clocks. More table misses and slower isolated strided reads; most block misses overlap connected work. Physical setup still fails and leaf peak exceeds nominal100MHz budget. Compare directory-path and hint-policy siblings, then repeat selected winner.",
       "measurement_limits": "Playback-start excludes preparation; smaller directory cache moves dirty evictions earlier (5 start writes vs128 C1). Observed maxima cover1041 rows/two leaf spans, not all higher tree boundaries."
+    },
+    {
+      "label": "s2-path",
+      "stage": 2,
+      "status": "measuring",
+      "rtl_source_revision": "17f69fd8",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No logical data/ownership/error change intended. Current-block plus middle-directory paths per view, using existing traversal registers and leaf-valid lifetime. Root rows primary288bits, directory8lines. Deepest matching directory prefix bypasses upper radix levels; GC never publishes a live-view cache.",
+      "effective_geometry": {
+        "root_ram_bits_per_view": 288,
+        "cached_middle_pages_per_view": 3,
+        "cached_blocks_per_view": 1,
+        "primary_directory_lines": 8,
+        "views": 512
+      },
+      "validation": [
+        "Original four metadata tests passed170.38sec",
+        "New deep-boundary retirement/live-ID-reuse independent-map check passed AXI32/64 on C1 and candidate",
+        "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults"
+      ],
+      "translation_summary": "s2-path-translation-unit-summary.json",
+      "deep_directory_summary": "s2-path-directory-unit-summary.json",
+      "deep_control": "c1-directory-unit-summary.json",
+      "deep_measurement_limits": "Four-view metadata controller with180096 slots and8192 table pages; directed65536-entry crossings, not a full128-channel higher-boundary deadline qualification. Strided/deep-GC stress is slower with directory8 than C1 cache128.",
+      "optimized_summary": "s2-path-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -3915,
+        "ff": -4279,
+        "bram36": 0.5,
+        "dsp": 0,
+        "carry4": -615,
+        "memory_lut": -24,
+        "control_sets": -116
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "pending": [
+        "Finish ownership/deferred/media regression, 1024-quanta connected run and routing",
+        "Compare all cache/hint-policy siblings and repeat selected physical winner"
+      ]
     }
   ],
   "provisioning": {

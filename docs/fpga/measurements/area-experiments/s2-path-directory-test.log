@@ -1,0 +1,9 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 45.22s
+     Running tests/metadata.rs (target/debug/build/rt_fpga_testbench/ccfc448954a41d09/out/metadata-ccfc448954a41d09)
+
+running 1 test
+test directory_paths_cross_all_primary_levels_and_survive_deep_retirement ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 56.47s
+
