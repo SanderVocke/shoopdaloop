@@ -917,14 +917,19 @@
         "Initial21configuration cases (F5/21/64, AXI32/64, Instant/Fixed/DRAMsim3/Legacy) pass192.72sec; expandedpoisonedlargecount/fault checks subsequently added and running",
         "Expanded F5 Fixed/AXI64 rawprobe passes max31 recording,+1refusal,wide count/noinput consumption,highbits/atomiccfgrefusal,offset/nested/wrap/retake,cleanup/reset andinjectedmemoryfault",
         "Expanded21configurations (F5/21/64 \u00d7AXI32/64\u00d7Instant/Fixed/DRAMsim3 andLegacy) pass28.10sec, withlargecount poisonedcommand/noinput/unchangedglobals/descriptor checks andfaultlatch/reset",
-        "All1282 primary publicstore result/cycle/traffic rows and reset/recovery counts exactly match C2 forbothcanonical64 andoptional21. 128captures/offsetexports/retakes,all384blocksrecovered andallpagesfreed."
+        "All1282 primary publicstore result/cycle/traffic rows and reset/recovery counts exactly match C2 forbothcanonical64 andoptional21. 128captures/offsetexports/retakes,all384blocksrecovered andallpagesfreed.",
+        "Canonical64 all33connected sample/state/cycle/traffic rows exactly match C2",
+        "SeparateAXI32/64 rawduration/refusal/fault samples retained forF21 andF64; F5rawAXI64 also retained",
+        "Default64 deferred test passed132.21sec; media andownership still running"
       ],
       "unit_summaries": [
         "s3-local-frames5-boundaries-summary.json",
         "s3-local-frames21-boundaries-summary.json",
         "s3-local-frames64-boundaries-summary.json",
         "s3-local-frames64-control-store-operations-summary.json",
-        "s3-local-frames21-store-operations-summary.json"
+        "s3-local-frames21-store-operations-summary.json",
+        "s3-local-frames21-axi32-boundaries-summary.json",
+        "s3-local-frames64-axi32-boundaries-summary.json"
       ],
       "pending": [
         "64bit default fullmedia/deferred/ownership",
@@ -1036,7 +1041,7 @@
       "fpga": "passed",
       "workspace_run": 45068655474,
       "JACK": "passed",
-      "workspace": "Linux debug, coverage, JACK, Windows debug, native inspection and all other completed jobs pass; Linux/macOS/Windows release and wasmrelease still running",
+      "workspace": "Linux debug/release,Windows debug/release,wasm debug/release,coverage,JACK andallcompletedjobs passed;macOSdebug/release running",
       "CodeQL": "passed",
       "Docs": "passed",
       "firmware_run": 45068655379,
@@ -1051,7 +1056,8 @@
         "machine.json": "506ceaa73d0a0651c4e811a1be41adf4c366e34f6a6a71876306856a83934e84",
         "serial.log": "915d4de9ad741f434f30506ab1ff2410eb9cda5585839a64d51e0d0a9f46e3e6",
         "command.json": "3aa45fb473e3d897cf47f1897f1a4196485eed8e36e4901d1a99929b5960e242"
-      }
+      },
+      "firmware_retry_job": 137365898513
     }
   },
   "selected_control": {
