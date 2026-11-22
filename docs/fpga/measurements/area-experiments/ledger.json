@@ -1041,16 +1041,22 @@
       "validation": [
         "WarningfatalVerilatorlintpasses min/odd/primary/INTMAXgeometries",
         "Deep directoryfixture passes first(fullmetadata suitecontinuing); C2checkpointconfirms oldpath_address37RAM32X1D/zeroFF, soFFsaving notassumed",
-        "Onlymedia_metadata.sv differs fromall38C2productionHDLfiles"
+        "Onlymedia_metadata.sv differs fromall38C2productionHDLfiles",
+        "BothAXIwidths:all187boundaryresponse/cycle rows exactlymatchC2",
+        "BothAXIwidths:all207deep directoryresponse/cycle/cachecounter rows andsetupclocks exactlymatchC2",
+        "All1282publicstorecommand/result/cycle/traffic rows andrecovery exactlymatchC2"
       ],
       "pending": [
         "Full6metadata tests",
-        "AXI32/64 width/rawresponse/cycle equivalence",
-        "207rowdeep directory equivalence",
-        "1282rowpublicstore equivalence",
         "33rowconnected equivalence",
         "Media/ownership/deferred tests",
         "Optimizedscreen thenrouteifviable"
+      ],
+      "unit_summaries": [
+        "s3-path-context-width-axi32-summary.json",
+        "s3-path-context-width-axi64-summary.json",
+        "s3-path-context-directory-unit-summary.json",
+        "s3-path-context-store-operations-summary.json"
       ]
     }
   ],
