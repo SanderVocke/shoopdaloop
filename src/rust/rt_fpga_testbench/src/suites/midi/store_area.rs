@@ -67,12 +67,12 @@ fn command(
 
 pub fn boundaries() -> Result<Value> {
     let mut cases = Vec::new();
-    for (views, events, retired) in [(1, 1, 1), (3, 3, 1), (5, 3, 3)] {
+    for (views, events, retired) in [(1, 1, 1), (3, 3, 1), (5, 3, 3), (256, 1, 128)] {
         let limits = StoreLimits {
             views,
             max_events: events,
-            block_events: 1,
-            blocks: views * events,
+            block_events: if views == 256 { 256 } else { 1 },
+            blocks: if views == 256 { 2432 } else { views * events },
             retirements: retired,
         };
         let mut design = Design::new(
@@ -84,7 +84,7 @@ pub fn boundaries() -> Result<Value> {
             .parameters(&[
                 ("VIEWS", u64::from(views)),
                 ("MAX_EVENTS", u64::from(events)),
-                ("BLOCK_EVENTS", 1),
+                ("BLOCK_EVENTS", u64::from(limits.block_events)),
                 ("BLOCKS", u64::from(limits.blocks)),
                 ("RETIREMENTS", u64::from(retired)),
             ])
@@ -282,10 +282,10 @@ pub fn boundaries() -> Result<Value> {
         command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 4);
         command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
         command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0);
-        cases.push(json!({"views":views,"blocks":limits.blocks,"events_per_view":events,"retirements":retired,"measurements":rows}));
+        cases.push(json!({"views":views,"blocks":limits.blocks,"block_events":limits.block_events,"events_per_view":events,"retirements":retired,"measurements":rows}));
     }
     Ok(
-        json!({"scope":"standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps",
+        json!({"scope":"standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps; fourth case has primary256-view/128-retirement/2432-block indices and256-event blocks with an explicit reduced one-event view limit",
         "validation":"exact ContentStore record/frame/packet and usage agreement; high-bit invalid handles, max-plus-one refusal, generation overflow, poisoned accepted command inputs, held responses, memory faults and stale-RAM reset","cases":cases}),
     )
 }
