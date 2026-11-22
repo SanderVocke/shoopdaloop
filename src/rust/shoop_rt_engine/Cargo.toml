@@ -25,6 +25,7 @@ profiling_protocol = { path = "../profiling_protocol" }
 rt_buffered = { path = "../rt_buffered" }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"] }
 rt_runtime = { path = "../rt_runtime" }
+rtrb.workspace = true
 shoop_loops = { path = "../shoop_loops" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_processor_protocol = { path = "../shoop_processor_protocol", features = ["alloc"] }

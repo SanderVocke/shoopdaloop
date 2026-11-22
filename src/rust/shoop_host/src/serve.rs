@@ -409,8 +409,7 @@ pub fn run_with_ready(
         "LAN hosts require socket delivery"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
-    let hosting = config.settings.processors.carla.hosting;
-    if hosting.uses_remote() || options.remote_carla.is_some() {
+    if options.remote_carla.is_some() {
         ensure!(
             cfg!(feature = "carla"),
             "Remote Carla requires a Carla-enabled Native host"
@@ -420,10 +419,6 @@ pub fn run_with_ready(
             "Remote Carla requires the Native backend"
         );
     }
-    ensure!(
-        hosting != shoop_app_api::CarlaHosting::Remote || options.remote_carla.is_some(),
-        "Remote-only Carla requires a default FX endpoint"
-    );
     if let Some(remote) = options.remote_carla {
         let address = remote.address;
         ensure!(
@@ -436,12 +431,11 @@ pub fn run_with_ready(
         );
     }
     #[cfg(feature = "carla")]
-    let (mut carla_ui, carla_dispatcher) = matches!(
-        hosting,
-        shoop_app_api::CarlaHosting::InProcess | shoop_app_api::CarlaHosting::Mixed
-    )
-    .then(shoop_carla::native::CarlaMainThreadUiService::new)
-    .unzip();
+    let (mut carla_ui, carla_dispatcher) = (config.settings.backend
+        == shoop_app_api::BackendType::Native
+        && config.settings.processors.carla.hosting != shoop_app_api::CarlaHosting::Subprocess)
+        .then(shoop_carla::native::CarlaMainThreadUiService::new)
+        .unzip();
     let mut carla = CarlaHostOptions::default();
     carla.worker.clone_from(&options.carla_worker);
     carla.remote = options

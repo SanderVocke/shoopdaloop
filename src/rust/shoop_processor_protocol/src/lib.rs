@@ -349,10 +349,7 @@ impl Settings {
         }
     }
     pub fn validate(self) -> Result<(), Error> {
-        if u32::from(self.fx_instances)
-            + u32::from(self.synth_instances)
-            + self.carla.configured_instances()
-            > u32::from(MAX_INSTANCES)
+        if u32::from(self.fx_instances) + u32::from(self.synth_instances) > u32::from(MAX_INSTANCES)
             || self.memory_mb > 4096
         {
             return Err(Error::Capacity);
@@ -364,8 +361,7 @@ impl Settings {
         }
         if self.memory_mb == 0
             && ((self.builtin_fx != Policy::Off && self.fx_instances > 0)
-                || (self.oxisynth != Policy::Off && self.synth_instances > 0)
-                || self.carla.configured_instances() != 0)
+                || (self.oxisynth != Policy::Off && self.synth_instances > 0))
         {
             return Err(Error::Capacity);
         }

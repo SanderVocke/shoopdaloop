@@ -737,6 +737,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     "Carla checkpoint restoration is unavailable on this host"
                 ));
             }
+            if self.processors.is_some_and(|limits| limits.dynamic(kind)) {
+                continue;
+            }
             let available = self
                 .processors
                 .map_or(0, |limits| limits.effective.instances(kind));

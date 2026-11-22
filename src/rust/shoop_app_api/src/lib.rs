@@ -196,6 +196,7 @@ pub enum TrackProcessorEditorDescriptor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HostedProcessorResources {
+    /// Zero for processors created on demand.
     pub instance_limit: u16,
     pub instances_in_use: u16,
     pub buffering_frames: u32,

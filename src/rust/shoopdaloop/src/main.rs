@@ -3749,7 +3749,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     let transport = args.selected_engine_transport(&settings)?;
     if transport == shoop_egui::EngineTransportKind::InProcess {
         anyhow::ensure!(
-            !matches!(args.audio.carla_hosting, Some(shoop_host::audio_args::CarlaChoice::Remote)),
+            args.audio.remote_carla().is_none(),
             "Remote Carla needs an independent session host. Select socket or shared-memory session delivery."
         );
         return Ok(false);

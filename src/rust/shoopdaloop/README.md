@@ -53,8 +53,8 @@ feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
 and preserves dry media. Embedded editors, MIDI Learn, track/bus global control
 MIDI, recorded-state restoration and role-aware files use the production service.
 External supports independent side widths. Built-in bus FX supports the
-negotiated FX width and shares track FX slots. A Carla-enabled independent
-Native host can prepare Rack tracks and stereo Patchbay banks. [Bus FX contract](../../../docs/native_session_recovery/bus-fx.md) · [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
+negotiated FX width and shares track FX slots. Native hosts open local and
+remote Carla chains on demand. [Bus FX contract](../../../docs/native_session_recovery/bus-fx.md) · [Remote Carla setup](../../../docs/remote-fx.md)
 
 The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
 UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The `--probe-bus-fx --engine-transport socket` canary covers bus audio, bypass, Lua, files and reattachment. The native
@@ -254,12 +254,13 @@ shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` an
 the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
 three executables together when installing. On macOS, keep both app bundles
 together, for example by copying both to Applications.
-The default packages omit Carla. To build a package with Carla,
-build `shoopdaloop` and `shoop_host_manager` together, then build `shoop_host`
-with `--features carla` in a separate Cargo invocation using the same profile.
-Pass the normalized runtime directory as `--carla-runtime` to
-`package_artifacts.py native` and use `--with-carla` when verifying the archive.
-Archives with the component have a `-carla` suffix before the file extension.
+Standard packages can connect to remote FX services. To run an FX service or
+process Carla locally, use a package with the `-carla` suffix or install the
+Carla runtime alongside the standard package. For a source build, build
+`shoopdaloop`, `shoop_host`, and `shoop_host_manager` with their default
+features. To include the runtime in an archive, pass the normalized runtime
+directory as `--carla-runtime` to `package_artifacts.py native` and use
+`--with-carla` when verifying the archive.
 The session host resolves Carla beside the executables on Linux and Windows or
 under `Contents/Frameworks` on macOS. The release build checks the loader from
 an extracted archive with the component present and removed. The Linux release
@@ -287,8 +288,8 @@ Track defaults map matching widths one-to-one and mono to every destination
 channel; absent/incompatible names leave a track unconnected. Explicit bus and
 direct system routes coexist. Lua bus indices follow stable logical order rather
 than mixer drag order, including after save/load. Built-in bus FX uses the
-negotiated FX width and shared track/bus instance budget. An optional Native
-Carla host offers Rack, stereo Patchbay, and Patchbay 16x bus FX with prepared slots. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
+negotiated FX width and shared track/bus instance budget. Native hosts offer
+Rack, stereo Patchbay, and Patchbay 16x bus FX on demand. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla)
 
 ## Browser
 

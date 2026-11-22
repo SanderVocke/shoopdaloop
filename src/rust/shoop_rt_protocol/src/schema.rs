@@ -688,6 +688,18 @@ pub struct ProcessorLimits {
     pub carla_latency_frames: u32,
     pub remote_carla_latency_frames: u32,
     pub remote_carla_has_default: bool,
+    pub dynamic_carla: bool,
+    pub dynamic_remote_carla: bool,
+}
+
+impl ProcessorLimits {
+    pub const fn dynamic(&self, kind: crate::ProcessorKind) -> bool {
+        if kind.is_remote_carla() {
+            self.dynamic_remote_carla
+        } else {
+            kind.is_carla() && self.dynamic_carla
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

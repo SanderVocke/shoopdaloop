@@ -225,6 +225,7 @@ pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
         reserved_bytes,
         instances,
         presets: presets.into_boxed_slice(),
+        dynamic_carla: Default::default(),
     })
 }
 

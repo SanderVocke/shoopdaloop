@@ -37,9 +37,17 @@ impl Picker {
         target.valid().then_some(target)
     }
 
-    pub(crate) fn show(&mut self, ui: &mut egui::Ui, local_session: bool) {
+    pub(crate) fn uses_host_service(&self, has_default: bool) -> bool {
+        has_default && self.address.trim().is_empty()
+    }
+
+    pub(crate) fn clear_choice(&mut self) {
+        self.address.clear();
+    }
+
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui, local_session: bool, has_default: bool) {
         #[cfg(not(target_arch = "wasm32"))]
-        self.poll(ui);
+        self.poll(ui, local_session, has_default);
         let addresses = self
             .addresses
             .iter()
@@ -61,8 +69,19 @@ impl Picker {
         }
         ui.horizontal(|ui| {
             ui.label("FX service address");
-            ui.text_edit_singleline(&mut self.address);
+            let hint = if has_default {
+                "Use the host's FX service"
+            } else {
+                "IP address and port"
+            };
+            ui.add(egui::TextEdit::singleline(&mut self.address).hint_text(hint));
+            if has_default && !self.address.is_empty() && ui.button("Use host service").clicked() {
+                self.address.clear();
+            }
         });
+        if self.uses_host_service(has_default) {
+            return;
+        }
         let policies = [
             (RemoteFxReconnect::Recreate, "Recreate chain"),
             (RemoteFxReconnect::Resume, "Resume live chain"),
@@ -90,10 +109,18 @@ impl Picker {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn poll(&mut self, ui: &mut egui::Ui) {
+    fn poll(&mut self, ui: &mut egui::Ui, local_session: bool, has_default: bool) {
         if let Some(pending) = &self.pending {
             match pending.try_recv() {
                 Ok(addresses) => {
+                    if !has_default && self.address.is_empty() {
+                        let mut reachable = addresses
+                            .iter()
+                            .filter(|address| local_session || !address.ip().is_loopback());
+                        if let (Some(address), None) = (reachable.next(), reachable.next()) {
+                            self.address = address.to_string();
+                        }
+                    }
                     self.addresses = addresses;
                     self.pending = None;
                 }

@@ -150,7 +150,7 @@ impl Panel {
                                     .join(", ")
                             ));
                             ui.horizontal(|ui| {
-                                if ui.button("Use for new host…").clicked() {
+                                if ui.button("Start host with this service…").clicked() {
                                     selected = Some(service.address);
                                 }
                                 if let Some(identity) = &service.identity {
@@ -236,13 +236,20 @@ impl Panel {
     }
 
     fn refresh(&mut self, first: impl FnOnce() -> Result<()> + Send + 'static) {
-        let addresses = self.addresses.clone();
+        let mut addresses = self.addresses.clone();
         let (reply, pending) = mpsc::channel();
         self.pending = Some(pending);
         self.error = None;
         thread::spawn(move || {
             let result = first()
-                .and_then(|()| scan(addresses))
+                .and_then(|()| {
+                    for address in shoop_remote_fx::discover_lan().unwrap_or_default() {
+                        if !addresses.contains(&address) {
+                            addresses.push(address);
+                        }
+                    }
+                    scan(addresses)
+                })
                 .map_err(|error| format!("{error:#}"));
             let _ = reply.send(result);
         });
@@ -327,12 +334,30 @@ fn launch_service(
         command.arg("--isolated");
     }
     launch::independent(&mut command);
-    command.stdout(Stdio::piped());
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command.spawn().context("Start desktop FX service")?;
     let stdout = child
         .stdout
         .take()
         .context("FX service readiness pipe unavailable")?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .context("FX service diagnostic pipe unavailable")?;
+    let (diagnostic, failure) = mpsc::channel();
+    thread::spawn(move || {
+        let mut tail = Vec::new();
+        let mut buffer = [0; 4096];
+        while let Ok(count) = stderr.read(&mut buffer) {
+            if count == 0 {
+                break;
+            }
+            tail.extend_from_slice(&buffer[..count]);
+            let excess = tail.len().saturating_sub(buffer.len());
+            tail.drain(..excess);
+        }
+        let _ = diagnostic.send(tail);
+    });
     let (sender, ready) = mpsc::channel();
     thread::spawn(move || {
         let result = BufReader::new(stdout.take(4096))
@@ -341,13 +366,11 @@ fn launch_service(
             .find_map(|line| line.strip_prefix("FX service listening on ")?.parse().ok());
         let _ = sender.send(result);
     });
-    let result = ready
+    let mut result = ready
         .recv_timeout(Duration::from_secs(5))
         .ok()
         .flatten()
-        .context(
-            "FX service did not start. Use a Carla-enabled companion with its runtime installed.",
-        )
+        .context("FX service did not report readiness")
         .and_then(|address| {
             let address = discovery::local_address(address);
             let description = describe(address).context("Read FX service capabilities")?;
@@ -359,6 +382,12 @@ fn launch_service(
         });
     if result.is_err() {
         let _ = child.kill();
+        if let Ok(stderr) = failure.recv_timeout(Duration::from_millis(250)) {
+            let stderr = String::from_utf8_lossy(&stderr);
+            if !stderr.trim().is_empty() {
+                result = result.context(stderr.trim().to_owned());
+            }
+        }
     }
     launch::reap(child);
     result

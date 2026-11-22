@@ -512,11 +512,12 @@ fn remote_carla_track_selects_a_service_after_a_default_host_starts() {
             ..Default::default()
         }),
         pools: NewEnginePools {
-            tracks: 4,
-            loops: 32,
+            tracks: 8,
+            loops: 64,
             loop_memory_mb: 16,
             ..Default::default()
         },
+        processors: ProcessorSettings::disabled(),
         ..Default::default()
     };
     let mut fixture = Fixture::with_settings(settings, DeliveryMode::Socket);
@@ -532,35 +533,55 @@ fn remote_carla_track_selects_a_service_after_a_default_host_starts() {
         .bus_processors
         .iter()
         .any(|entry| entry.id == processor_type));
-    let topology = TrackSpecTopology::DryWet {
-        dry_audio_channels: 1,
-        wet_audio_channels: 2,
-        dry_midi: false,
-        processor_type,
-        default_playback_mode: Default::default(),
-        remote_fx: Some(target),
+    let add = |fixture: &mut Fixture, index| {
+        let processor_type = TrackProcessorTypeId::new(if index == 5 {
+            TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
+        } else {
+            TrackProcessorTypeId::REMOTE_CARLA_RACK
+        });
+        fixture.command(Command::AddTrack(TrackSpec {
+            name: format!("Per-track service {index}"),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                dry_midi: false,
+                processor_type,
+                default_playback_mode: Default::default(),
+                remote_fx: Some(target),
+            },
+            latency: Default::default(),
+            initial_output_bus_names: Vec::new(),
+            creation_request_id: None,
+        }))
     };
-    fixture.command(Command::AddTrack(TrackSpec {
-        name: "Per-track service".into(),
-        topology,
-        latency: Default::default(),
-        initial_output_bus_names: Vec::new(),
-        creation_request_id: None,
-    }));
-    let has_track = |client: &mut Client| {
-        client.snapshot().unwrap().tracks.iter().any(|track| {
-            track.name == "Per-track service"
-                && matches!(
-                    &track.topology,
-                    shoop_app_api::TrackTopology::DryWet { remote_fx: Some(remote), .. }
-                        if *remote == target
-                )
-        })
+    for i in 0..6 {
+        assert!(matches!(add(&mut fixture, i), Outcome::TrackCreated { .. }));
+    }
+    let all_tracks = |client: &mut Client| {
+        client.snapshot().unwrap().tracks.iter().filter(|track| matches!(
+            track.topology,
+            shoop_app_api::TrackTopology::DryWet { remote_fx: Some(remote), .. } if remote == target
+        )).count() == 6
     };
-    fixture.until(has_track);
+    fixture.until(all_tracks);
     let image = fixture.capture(1);
     fixture.load(image);
-    fixture.until(has_track);
+    fixture.until(all_tracks);
+    let track = fixture
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|track| track.name == "Per-track service 0")
+        .unwrap()
+        .id;
+    fixture.command(Command::Track {
+        track,
+        action: TrackAction::Remove,
+    });
+    assert!(matches!(add(&mut fixture, 6), Outcome::TrackCreated { .. }));
+    fixture.until(all_tracks);
 }
 
 #[cfg(feature = "carla")]

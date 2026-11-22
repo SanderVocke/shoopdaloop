@@ -745,6 +745,8 @@ fn engine_samples() -> Vec<EngineMessage> {
             carla_latency_frames: 0,
             remote_carla_latency_frames: 0,
             remote_carla_has_default: false,
+            dynamic_carla: false,
+            dynamic_remote_carla: false,
         })),
         EngineMessage::State(StateRecord::ProcessorPreset(ProcessorPreset {
             bank: 128,
@@ -1071,6 +1073,8 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
         carla_latency_frames: 0,
         remote_carla_latency_frames: 0,
         remote_carla_has_default: false,
+        dynamic_carla: false,
+        dynamic_remote_carla: false,
     };
     let mut bytes = [0; MAX_RECORD_BYTES];
     for invalid in 0..4 {

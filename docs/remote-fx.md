@@ -2,17 +2,17 @@
 
 A Native session host can process Carla Rack, Patchbay, and Patchbay 16x on a desktop FX service. The Native host continues to own routing, loop media, and the sample clock. Carla editors and plugin files live on the service machine, which can also run the ShoopDaLoop UI.
 
-Use Carla-enabled Native companions from the same build on the desktop and looper. The looper loads saved projects on the service through the existing Carla state format.
+The default Native build includes Carla support. Use companions from the same build on the desktop and looper. Use the `-carla` package on the machine that runs the FX service, or install the Carla runtime alongside its standard package. Install plugins on that machine. [Carla runtime layout](../third_party/carla/README.md)
 
-## Choose a service when adding a track
+## Start from Host Manager
 
 1. On the desktop, open **Host Manager → FX services** and start a service. Enable **LAN access** if the looper runs on another machine. **One process per chain** enables supervised Carla subprocesses.
-2. Open the session on a Carla-enabled Native host using its normal startup settings. In **Add track**, choose **Dry/wet** and a **Remote Carla** processor. Choose a discovered service or enter its IP address and TCP port. Set the disconnect behavior for that track.
-3. Add the track. The Native host opens the chain on the selected service. Each track can use a different service. If local Carla is enabled on the Native host, use the regular **Carla** entries for tracks that process locally.
+2. In Host Manager on the looper machine, choose **Start host with this service…**, then start the Native host. The service is selected for the new session’s tracks and buses.
+3. In Shoop, use **Add track → Dry/wet** and select a **Remote Carla** processor, or select one from a bus’s FX menu. The host opens the chain when you apply the change. Use the regular **Carla** entries for local processing where Carla is installed.
 
-The desktop picker discovers services on the same machine and IPv4 services on the local network. Use a manual address for a service across a routed network or on an IPv6-only network. The service address must be reachable from the Native host. The default Native pools prepare up to two remote Rack slots and two remote Patchbay slots within the available processor memory. Hosts configured for 16 channels can also prepare one Patchbay 16x slot.
+You can also choose a service from **Add track** in an existing session. A track can use the host’s service or choose a different one. Host Manager and the desktop picker discover services on the same machine and on the IPv4 LAN. Enter the IP address and TCP port for a service across a routed network or on an IPv6-only network. The service address must be reachable from the Native host.
 
-The desktop service opens chains as the Native host requests them. The capacity of the service machine determines how many can run. Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
+Carla workers and their buffers are created on demand. Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
 
 ## Start from the command line
 
@@ -32,7 +32,7 @@ The address in an individual track takes precedence over the host default. Start
 
 Control uses TCP on the configured port. Each chain uses an OS-assigned UDP port on the desktop and a UDP socket on the looper. Input and output widths are negotiated separately from the track or bus layout. Rack and stereo Patchbay support up to two lanes on each side and Patchbay 16x supports up to sixteen. Use a trusted network that allows both directions. The default service binding is loopback.
 
-The looper groups one driver period of graph quanta per DSP batch and defaults to two additional batches of slack. At 48 kHz with a 128-frame period and a 32-frame graph quantum this schedules wet returns 384 frames after their source, or 8 ms of node buffering. `--carla-fx-slack-quanta` selects extra slack for a new host. Driver buffering is additional. The transport sends two copies per datagram by default.
+The looper groups graph quanta into DSP batches based on the driver period and schedules two additional batches of slack. At 48 kHz with a 128-frame period and a 32-frame graph quantum this schedules wet returns 384 frames after their source, or 8 ms of node buffering. Driver buffering is additional. The transport sends two copies per datagram by default.
 
 ## Session state and failure
 

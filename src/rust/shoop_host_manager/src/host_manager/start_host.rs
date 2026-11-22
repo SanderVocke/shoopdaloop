@@ -97,7 +97,6 @@ pub(super) struct Dialog {
     pools: NewEnginePools,
     processors: shoop_app_api::ProcessorSettings,
     fx_address: String,
-    fx_slack_quanta: Option<u16>,
     fx_reconnect: shoop_host::serve::RemoteReconnect,
     fx_dry_on_loss: bool,
     master_auto_connect: bool,
@@ -143,7 +142,6 @@ impl Default for Dialog {
             pools: NewEnginePools::default(),
             processors: Default::default(),
             fx_address: String::new(),
-            fx_slack_quanta: None,
             fx_reconnect: Default::default(),
             fx_dry_on_loss: false,
             master_auto_connect: true,
@@ -184,10 +182,6 @@ impl Dialog {
     pub(super) fn select_fx_service(&mut self, address: SocketAddr) {
         self.backend = BackendType::Native;
         self.fx_address = address.to_string();
-        self.processors.carla.hosting = shoop_app_api::CarlaHosting::Remote;
-        if self.processors.carla.configured_instances() == 0 {
-            self.processors.carla.rack_instances = 1;
-        }
     }
     pub fn new() -> Self {
         let mut dialog = Self::default();
@@ -257,17 +251,14 @@ impl Dialog {
         options.management_endpoint = management;
         options.lan = self.lan;
         options.log_file = log_file;
-        if self.processors.carla.hosting == shoop_app_api::CarlaHosting::Remote
-            || (self.processors.carla.hosting == shoop_app_api::CarlaHosting::Mixed
-                && !self.fx_address.trim().is_empty())
-        {
+        if self.backend == BackendType::Native && !self.fx_address.trim().is_empty() {
             let address = self
                 .fx_address
                 .parse()
                 .context("Invalid desktop FX service address")?;
             options.remote_carla = Some(shoop_host::serve::RemoteCarla {
                 address,
-                slack_quanta: self.fx_slack_quanta,
+                slack_quanta: None,
                 copies: shoop_remote_fx::DEFAULT_COPIES,
                 reconnect: self.fx_reconnect,
                 dry_on_loss: self.fx_dry_on_loss,
@@ -617,6 +608,43 @@ impl Dialog {
                     ui.end_row();
                 });
         });
+        if self.backend == BackendType::Native {
+            ui.horizontal(|ui| {
+                ui.label("FX service");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.fx_address)
+                        .hint_text("IP address and port (optional)"),
+                );
+            });
+            if !self.fx_address.trim().is_empty() {
+                use shoop_host::serve::RemoteReconnect;
+                let choices = [
+                    (RemoteReconnect::Recreate, "Restore checkpoint"),
+                    (RemoteReconnect::Resume, "Resume live chain when possible"),
+                    (RemoteReconnect::Manual, "Wait for manual recovery"),
+                ];
+                ui.horizontal(|ui| {
+                    ui.label("On FX service disconnect");
+                    egui::ComboBox::from_id_salt("carla_fx_reconnect")
+                        .selected_text(
+                            choices
+                                .iter()
+                                .find(|(mode, _)| *mode == self.fx_reconnect)
+                                .unwrap()
+                                .1,
+                        )
+                        .show_ui(ui, |ui| {
+                            for (mode, label) in choices {
+                                ui.selectable_value(&mut self.fx_reconnect, mode, label);
+                            }
+                        });
+                });
+                ui.checkbox(
+                    &mut self.fx_dry_on_loss,
+                    "Play delayed dry audio when FX is missing",
+                );
+            }
+        }
         ui.collapsing("Track processors", |ui| {
             ui.label("These settings apply when starting this host.");
             for (label, policy) in [
@@ -636,104 +664,15 @@ impl Dialog {
                     });
             }
             ui.horizontal(|ui| {
-                ui.label("FX instances");
+                ui.label("Built-in FX instances");
                 ui.add(egui::DragValue::new(&mut self.processors.fx_instances).range(0..=64));
             });
             ui.horizontal(|ui| {
-                ui.label("Synth instances");
+                ui.label("Built-in synth instances");
                 ui.add(egui::DragValue::new(&mut self.processors.synth_instances).range(0..=64));
             });
-            if self.backend == BackendType::Native {
-                use shoop_app_api::CarlaHosting;
-                let carla = &mut self.processors.carla;
-                let choices = [
-                    (CarlaHosting::Disabled, "No local Carla"),
-                    (CarlaHosting::InProcess, "In session host"),
-                    (CarlaHosting::Subprocess, "One subprocess per chain"),
-                    (CarlaHosting::Remote, "Remote FX service"),
-                    (CarlaHosting::Mixed, "Local and remote Carla"),
-                ];
-                ui.horizontal(|ui| {
-                    ui.label("Carla hosting");
-                    let label = choices
-                        .iter()
-                        .find(|(mode, _)| *mode == carla.hosting)
-                        .unwrap()
-                        .1;
-                    egui::ComboBox::from_id_salt("new_host_carla")
-                        .selected_text(label)
-                        .show_ui(ui, |ui| {
-                            for (mode, label) in choices {
-                                ui.selectable_value(&mut carla.hosting, mode, label);
-                            }
-                        });
-                });
-                if carla.hosting.uses_remote() {
-                    ui.horizontal(|ui| {
-                        ui.label(if carla.hosting == CarlaHosting::Mixed {
-                            "Default FX service address (optional)"
-                        } else {
-                            "Default FX service address"
-                        });
-                        ui.text_edit_singleline(&mut self.fx_address);
-                    });
-                    let mut custom = self.fx_slack_quanta.is_some();
-                    if ui.checkbox(&mut custom, "Set extra FX buffering").changed() {
-                        self.fx_slack_quanta = custom.then_some(8);
-                    }
-                    if let Some(slack) = &mut self.fx_slack_quanta {
-                        ui.add(egui::DragValue::new(slack).range(0..=255).suffix(" quanta"));
-                    }
-                    use shoop_host::serve::RemoteReconnect;
-                    let choices = [
-                        (RemoteReconnect::Recreate, "Restore checkpoint"),
-                        (RemoteReconnect::Resume, "Resume live chain when possible"),
-                        (RemoteReconnect::Manual, "Wait for manual recovery"),
-                    ];
-                    ui.horizontal(|ui| {
-                        ui.label("On service disconnect");
-                        egui::ComboBox::from_id_salt("carla_fx_reconnect")
-                            .selected_text(
-                                choices
-                                    .iter()
-                                    .find(|(mode, _)| *mode == self.fx_reconnect)
-                                    .unwrap()
-                                    .1,
-                            )
-                            .show_ui(ui, |ui| {
-                                for (mode, label) in choices {
-                                    ui.selectable_value(&mut self.fx_reconnect, mode, label);
-                                }
-                            });
-                    });
-                    if carla.hosting == CarlaHosting::Mixed {
-                        ui.label("Instance limits apply separately to local and remote Carla.");
-                    }
-                }
-                if carla.hosting.uses_remote() {
-                    ui.checkbox(
-                        &mut self.fx_dry_on_loss,
-                        "Play delayed dry audio when FX is missing",
-                    );
-                }
-                if carla.hosting != CarlaHosting::Disabled {
-                    for (label, count) in [
-                        ("Carla Rack instances", &mut carla.rack_instances),
-                        ("Carla Patchbay instances", &mut carla.patchbay_instances),
-                        (
-                            "Carla Patchbay 16x instances",
-                            &mut carla.patchbay16x_instances,
-                        ),
-                    ] {
-                        ui.horizontal(|ui| {
-                            ui.label(label);
-                            ui.add(egui::DragValue::new(count).range(0..=64));
-                        });
-                    }
-                }
-            }
             ui.horizontal(|ui| {
-                ui.label("Processor memory");
+                ui.label("Built-in processor memory");
                 ui.add(
                     egui::DragValue::new(&mut self.processors.memory_mb)
                         .range(0..=4096)
@@ -1206,22 +1145,19 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn carla_mode_and_instance_counts_are_host_startup_settings() {
-        use shoop_app_api::CarlaHosting;
+    fn selecting_an_fx_service_only_sets_the_default_address() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
+        let address = "127.0.0.1:24510".parse().unwrap();
+        dialog.select_fx_service(address);
+        let request = dialog.request().unwrap();
+        assert_eq!(request.options.remote_carla.unwrap().address, address);
+        assert_eq!(request.config.settings.processors.carla, Default::default());
         let mut screen = Screen::new(egui::vec2(800.0, 1100.0));
         screen.frame(vec![], |ui| dialog.fields(ui));
+        assert!(screen.contains("FX service"));
         screen.click("Track processors", |ui| dialog.fields(ui));
-        screen.click("Disabled", |ui| dialog.fields(ui));
-        screen.click("One subprocess per chain", |ui| dialog.fields(ui));
-        assert!(
-            screen.contains("Carla Rack instances") && screen.contains("Carla Patchbay instances")
-        );
-        dialog.processors.carla.rack_instances = 2;
-        dialog.processors.carla.patchbay_instances = 1;
-        let carla = dialog.request().unwrap().config.settings.processors.carla;
-        assert_eq!(carla.hosting, CarlaHosting::Subprocess);
-        assert_eq!((carla.rack_instances, carla.patchbay_instances), (2, 1));
+        assert!(!screen.contains("Carla Rack instances"));
+        assert!(!screen.contains("Carla hosting"));
     }
 }

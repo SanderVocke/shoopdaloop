@@ -2470,7 +2470,9 @@ impl Wire for ProcessorLimits {
         w.u32(self.builtin_latency_frames)?;
         w.u32(self.carla_latency_frames)?;
         w.u32(self.remote_carla_latency_frames)?;
-        w.bool(self.remote_carla_has_default)
+        w.bool(self.remote_carla_has_default)?;
+        w.bool(self.dynamic_carla)?;
+        w.bool(self.dynamic_remote_carla)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let fx_instances = r.u16()?;
@@ -2497,6 +2499,8 @@ impl Wire for ProcessorLimits {
         let carla_latency_frames = r.u32()?;
         let remote_carla_latency_frames = r.u32()?;
         let remote_carla_has_default = r.bool()?;
+        let dynamic_carla = r.bool()?;
+        let dynamic_remote_carla = r.bool()?;
         if u32::from(fx_instances) + u32::from(synth_instances) + carla_instances
             > u32::from(crate::processors::MAX_INSTANCES)
             || reserved_bytes > memory_bytes
@@ -2506,8 +2510,9 @@ impl Wire for ProcessorLimits {
             || (synth_instances > 0 && synth_unavailable.is_some())
             || (carla.instances() == 0) != carla.unavailable.is_some()
             || (remote_carla.instances() == 0) != remote_carla.unavailable.is_some()
-            || (carla.instances() == 0) != (carla_latency_frames == 0)
-            || (remote_carla.instances() == 0) != (remote_carla_latency_frames == 0)
+            || (carla.instances() == 0 && !dynamic_carla) != (carla_latency_frames == 0)
+            || (remote_carla.instances() == 0 && !dynamic_remote_carla)
+                != (remote_carla_latency_frames == 0)
         {
             return Err(CodecError::Invalid);
         }
@@ -2527,6 +2532,8 @@ impl Wire for ProcessorLimits {
             carla_latency_frames,
             remote_carla_latency_frames,
             remote_carla_has_default,
+            dynamic_carla,
+            dynamic_remote_carla,
         })
     }
 }

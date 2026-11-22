@@ -11,8 +11,8 @@
 //! the protocol's [`Endpoint`](shoop_rt_transport::carrier::Endpoint) and runs
 //! wherever the host pumps its carrier; the [`Render`] owner, called once per
 //! audio callback; and the [`HostStatus`] handle for driver status, xruns and
-//! load. Both the endpoint and the render path are bounded and allocation-free
-//! after preparation.
+//! load. The control endpoint prepares workers for new Carla owners. The render
+//! path processes the resulting graph without allocating.
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -48,6 +48,7 @@ mod memory;
 pub use history::HistoryCapacity;
 mod description;
 pub mod dsp;
+mod dynamic_processor;
 mod endpoint;
 pub mod external;
 mod family;
@@ -88,8 +89,8 @@ pub use hosted_checkpoints::HostedCheckpointTicket;
 pub use hosted_logs::{HostedLogTicket, HostedProcessorLog};
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use processors::{
-    HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog, ProcessorPhase,
-    ProcessorPreset, ProcessorState,
+    DynamicCarla, HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog,
+    ProcessorPhase, ProcessorPreset, ProcessorState,
 };
 pub use render::{Phase, Render, Report, Stopped};
 pub use rt_runtime::AudioRenderMode;
@@ -200,6 +201,7 @@ fn runtime_capacities(
     description: &EngineDescription,
     graph_frames: usize,
     processor_slots: usize,
+    dynamic_slots: usize,
 ) -> Config {
     let (strips, loops) = (description.strips(), description.loops());
     let nodes = 1 + 2 * strips + 3 * loops + 2 * description.buses as usize + processor_slots;
@@ -216,11 +218,13 @@ fn runtime_capacities(
     let credits = usize::from(description.reliable_credits);
     let pending = description.pending_transitions;
     let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
+    let processor_ports = (processor_slots - dynamic_slots) * (3 * channels + 4)
+        + dynamic_slots * (3 * dynamic_processor::CHANNELS + 4);
     let ports = strips * (14 * channels + 9)
         + loops * (8 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
-        + processor_slots * (3 * channels + 4)
+        + processor_ports
         + description.buses as usize
             * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let edges = strips
@@ -230,7 +234,7 @@ fn runtime_capacities(
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
-        + processor_slots * (3 * channels + 4)
+        + processor_ports
         + description.buses as usize
             * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let page_bytes = description.page_bytes;
@@ -491,13 +495,22 @@ fn prepare_complete_using<R>(
     {
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
-    let pool = if processors.instances.is_empty() {
+    let dynamic_carla = processors.dynamic_carla;
+    let dynamic_slots = if dynamic_carla.local.is_some() || dynamic_carla.remote.is_some() {
+        // One live and one replacement graph can each own a chain per strip or bus.
+        2 * (description.strips() + description.buses as usize)
+    } else {
+        0
+    };
+    let processor_slots = processors.instances.len() + dynamic_slots;
+    let pool = if processor_slots == 0 {
         Pool::new(&description.segments, description.buses as usize)
     } else {
-        Pool::with_processors(
+        Pool::with_dynamic_processors(
             &description.segments,
             description.buses as usize,
             processors.instances.len(),
+            dynamic_slots,
         )
     };
     let (strips, loops) = (pool.strips(), pool.loops());
@@ -516,13 +529,24 @@ fn prepare_complete_using<R>(
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
     let quantum = rt_runtime::Quantum::new(description.quantum)?;
-    let config = runtime_capacities(description, quantum.frames(), pool.processors()).prepare()?;
+    let config = runtime_capacities(
+        description,
+        quantum.frames(),
+        pool.processors(),
+        dynamic_slots,
+    )
+    .prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
-    let mut worker_delay = 0;
-    let mut carla_delay = 0;
-    let mut remote_carla_delay = 0;
+    let delay = |timing: Option<rt_buffered::Timing>| -> Result<u32, rt_runtime::Error> {
+        timing.map_or(Ok(0), |timing| {
+            Ok(timing.prepare(quantum)?.latency_frames() as u32)
+        })
+    };
+    let mut carla_delay = delay(dynamic_carla.local)?;
+    let mut remote_carla_delay = delay(dynamic_carla.remote)?;
+    let mut worker_delay = carla_delay.max(remote_carla_delay) as usize;
     let mut worker_delays = Vec::with_capacity(processors.instances.len());
     for processor in &mut processors.instances {
         let delay = if processor.backend.async_transport().is_some() {
@@ -542,7 +566,7 @@ fn prepare_complete_using<R>(
     }
     let worker_capture =
         (worker_delay != 0).then(|| description.worker_capture_settings(worker_delay));
-    if let Some(settings) = worker_capture {
+    if let Some(settings) = worker_capture.filter(|_| dynamic_slots == 0) {
         let bytes = settings.storage_bytes::<f32>(quantum)? as u64;
         processors.reserved_bytes = processors
             .reserved_bytes
@@ -700,16 +724,28 @@ fn prepare_complete_using<R>(
         .instances
         .iter()
         .map(|p| alloc::sync::Arc::new(processors::ProcessorCells::new(p.kind)))
+        .chain((0..dynamic_slots).map(|_| alloc::sync::Arc::new(dynamic_processor::empty_cells())))
         .collect();
     let processor_catalog = ProcessorCatalog {
         effective: processors.effective,
         reserved_bytes: processors.reserved_bytes,
         carla_delay,
         remote_carla_delay,
-        kinds: processors.instances.iter().map(|p| p.kind).collect(),
+        kinds: processors
+            .instances
+            .iter()
+            .map(|p| p.kind)
+            .chain(
+                shoop_rt_protocol::ProcessorKind::HOSTED
+                    .into_iter()
+                    .filter(|kind| dynamic_carla.timing(*kind).is_some()),
+            )
+            .collect(),
         presets: processors.presets,
         worker_delays: worker_delays.into_boxed_slice(),
+        dynamic_carla,
     };
+    let first_dynamic = processors.instances.len();
     for (slot, processor) in processors.instances.into_iter().enumerate() {
         let buffer_limits = description.processor_buffer_limits(processor.kind)?;
         let mut node = HostedProcessor::new(
@@ -722,11 +758,35 @@ fn prepare_complete_using<R>(
             pool.processors(),
         )?;
         node.attach(cells.clone());
+        node.publish(rt_runtime::Frame(0));
         nodes.push(PreparedNode::new(
             pool.processor(slot),
             EngineNode::Processor(node),
         ));
     }
+    let dynamic_processors = if dynamic_slots != 0 {
+        let limits =
+            description.processor_buffer_limits(shoop_rt_protocol::ProcessorKind::CarlaRack)?;
+        let global = description.global_midi_input_capacity()?;
+        let slots = (first_dynamic..pool.processors())
+            .map(|slot| {
+                let (control, render) = dynamic_processor::DynamicProcessor::new(limits, global);
+                nodes.push(PreparedNode::new(
+                    pool.processor(slot),
+                    EngineNode::DynamicProcessor(render),
+                ));
+                control
+            })
+            .collect();
+        Some(dynamic_processor::Layout {
+            first: first_dynamic,
+            slots,
+            limits,
+            global,
+        })
+    } else {
+        None
+    };
     let snapshot_bytes = shoop_rt_protocol::snapshot::capacity(strips, loops, buses)
         .ok_or(rt_runtime::Error::Capacity)?;
     let (control_ports, execution_ports) = shoop_rt_transport::rt::channel(
@@ -852,6 +912,7 @@ fn prepare_complete_using<R>(
         hosted_logs: Default::default(),
         hosted_checkpoints: Default::default(),
         processor_cells,
+        dynamic_processors,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),
         profile_names: pool.profiling_names(),

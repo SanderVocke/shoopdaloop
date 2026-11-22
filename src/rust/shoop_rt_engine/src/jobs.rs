@@ -964,12 +964,8 @@ impl ControlEndpoint {
                 let Some(slot) = owner.slot else {
                     continue;
                 };
-                let target = owner.remote_fx;
-                let configured = self.hosted_processors.as_ref().map_or_else(
-                    || target.map_or(Ok(()), |_| Err(Refusal::Unsupported)),
-                    |controls| controls.configure_claim(slot, target),
-                );
-                if let Err(reason) = configured {
+                if let Err(reason) = self.prepare_processor_claim(slot, owner.kind, owner.remote_fx)
+                {
                     job.fail(reason);
                     return true;
                 }
@@ -1032,10 +1028,7 @@ impl ControlEndpoint {
                 let Some(slot) = owner.slot else {
                     continue;
                 };
-                if let Err(reason) = self
-                    .hosted_processors
-                    .as_ref()
-                    .map_or(Ok(()), |controls| controls.configure_claim(slot, None))
+                if let Err(reason) = self.prepare_processor_claim(slot, owner.kind, owner.remote_fx)
                 {
                     job.fail(reason);
                     return true;
@@ -1302,9 +1295,10 @@ impl ControlEndpoint {
                 let worker_source = self.next.loops[slot]
                     .and_then(|entry| self.next.strip(entry.strip?))
                     .and_then(|strip| {
-                        let slot = strip.processor?.slot?;
+                        let owner = strip.processor?;
+                        let slot = owner.slot?;
                         let index = slot.index as usize;
-                        let delay_frames = self.processor_catalog.worker_delays[index];
+                        let delay_frames = self.processor_catalog.worker_delay(index, owner.kind);
                         (delay_frames != 0).then_some(WorkerCaptureSource {
                             strip_generation: strip.id.0.generation,
                             processor: self.pool.processor(index),

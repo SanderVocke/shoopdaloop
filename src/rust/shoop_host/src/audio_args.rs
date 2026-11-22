@@ -43,26 +43,6 @@ impl From<ProcessorChoice> for shoop_app_api::ProcessorPolicy {
     }
 }
 
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
-pub enum CarlaChoice {
-    Disabled,
-    InProcess,
-    Subprocess,
-    Remote,
-    Mixed,
-}
-impl From<CarlaChoice> for shoop_app_api::CarlaHosting {
-    fn from(value: CarlaChoice) -> Self {
-        match value {
-            CarlaChoice::Disabled => Self::Disabled,
-            CarlaChoice::InProcess => Self::InProcess,
-            CarlaChoice::Subprocess => Self::Subprocess,
-            CarlaChoice::Remote => Self::Remote,
-            CarlaChoice::Mixed => Self::Mixed,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, clap::Args)]
 #[group(id = "audio_options", multiple = true)]
 pub struct AudioArgs {
@@ -78,14 +58,12 @@ pub struct AudioArgs {
     pub synth_instances: Option<u16>,
     #[arg(long, help_heading = "Track processors")]
     pub processor_memory_mb: Option<u32>,
-    /// Carla Native hosting mode for this host launch.
-    #[arg(long, value_enum, help_heading = "Track processors")]
-    pub carla_hosting: Option<CarlaChoice>,
+    /// Run local Carla chains in their own processes.
+    #[arg(long, help_heading = "Track processors")]
+    pub carla_local_isolated: bool,
     /// Desktop FX service TCP address for remote Carla.
     #[arg(long, help_heading = "Track processors")]
     pub carla_fx_address: Option<std::net::SocketAddr>,
-    #[arg(long, requires = "carla_fx_address", help_heading = "Track processors")]
-    pub carla_fx_slack_quanta: Option<u16>,
     #[arg(long, requires = "carla_fx_address", help_heading = "Track processors", value_parser = clap::value_parser!(u8).range(1..=2))]
     pub carla_fx_copies: Option<u8>,
     #[arg(
@@ -119,7 +97,7 @@ impl AudioArgs {
         self.carla_fx_address
             .map(|address| crate::serve::RemoteCarla {
                 address,
-                slack_quanta: self.carla_fx_slack_quanta,
+                slack_quanta: None,
                 copies: self.carla_fx_copies.unwrap_or(2),
                 reconnect: self.carla_fx_reconnect.unwrap_or_default(),
                 dry_on_loss: self.carla_fx_dry_on_loss,
@@ -150,14 +128,8 @@ impl AudioArgs {
         if let Some(value) = self.processor_memory_mb {
             base.memory_mb = value;
         }
-        if let Some(value) = self.carla_hosting {
-            base.carla.hosting = value.into();
-            if base.carla.hosting != shoop_app_api::CarlaHosting::Disabled
-                && base.memory_mb != 0
-                && base.carla.configured_instances() == 0
-            {
-                base.carla.rack_instances = 1;
-            }
+        if self.carla_local_isolated {
+            base.carla.hosting = shoop_app_api::CarlaHosting::Subprocess;
         }
         base.validate()?;
         Ok(base)
@@ -435,12 +407,17 @@ mod tests {
             "--carla-rack-instances",
             "--carla-patchbay-instances",
             "--carla-patchbay-16x-instances",
+            "--carla-hosting",
         ] {
             assert!(Cli::try_parse_from(["host", flag, "1"]).is_err());
         }
-        let options = Cli::parse_from(["host", "--carla-hosting", "remote"]).audio;
+        let options = Cli::parse_from(["host", "--carla-local-isolated"]).audio;
         let processors = options.apply_processors(Default::default()).unwrap();
-        assert_eq!(processors.carla.rack_instances, 1);
+        assert_eq!(
+            processors.carla.hosting,
+            shoop_app_api::CarlaHosting::Subprocess
+        );
+        assert_eq!(processors.carla.rack_instances, 0);
         let processors = options
             .apply_processors(shoop_app_api::ProcessorSettings::disabled())
             .unwrap();

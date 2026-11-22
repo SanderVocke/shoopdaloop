@@ -366,6 +366,12 @@ impl ControlEndpoint {
                             builtin_latency_frames: self.limits.quantum,
                             carla_latency_frames: self.processor_catalog.carla_delay,
                             remote_carla_latency_frames: self.processor_catalog.remote_carla_delay,
+                            dynamic_carla: self.processor_catalog.dynamic_carla.local.is_some(),
+                            dynamic_remote_carla: self
+                                .processor_catalog
+                                .dynamic_carla
+                                .remote
+                                .is_some(),
                             remote_carla_has_default: self
                                 .hosted_processors
                                 .as_ref()

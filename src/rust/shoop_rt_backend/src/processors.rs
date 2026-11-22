@@ -91,23 +91,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         let carla = |kind: ProcessorKind, label: &str| {
             let instances = limits.effective.instances(kind);
-            let available = hosted && instances != 0;
-            let channels = kind.prepared_audio_channels(limits.channels.into()) as u32;
-            let reason = if !available
-                && kind == ProcessorKind::CarlaPatchbay16x
-                && u32::from(limits.channels) < channels
-            {
-                Some("Carla Patchbay 16x requires 16 prepared track channels".into())
-            } else {
-                unavailable(
-                    available,
-                    limits
-                        .effective
-                        .carla_limits(kind)
-                        .unavailable
-                        .or(Some(Unavailable::NoCapacity)),
-                )
-            };
+            let available = hosted && (instances != 0 || limits.dynamic(kind));
+            let channels = kind
+                .prepared_audio_channels(limits.channels.into())
+                .min(limits.channels.into()) as u32;
+            let reason = unavailable(
+                available,
+                limits
+                    .effective
+                    .carla_limits(kind)
+                    .unavailable
+                    .map(|reason| match reason {
+                        Unavailable::Disabled | Unavailable::NoCapacity => Unavailable::NotCompiled,
+                        reason => reason,
+                    })
+                    .or(Some(Unavailable::NotCompiled)),
+            );
             TrackProcessorDescriptor {
                 resources: resources(kind, instances),
                 id: TrackProcessorTypeId::new(crate::processor_controls::processor_id(kind)),

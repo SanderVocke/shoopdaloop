@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 pub(crate) const VERSION: u8 = 1;
 pub(crate) const HEADER: usize = 60;
 pub(crate) const DATAGRAM: usize = 1200;
-pub(crate) const MAX_WINDOW: usize = 16;
-const MAX_MEDIA_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -130,10 +128,7 @@ impl Config {
             slack_quanta: self.slack_quanta.into(),
         }
         .prepare(Quantum::new(usize::from(self.quantum))?)?;
-        if timing.batch_frames() > 8192
-            || timing.slots() > MAX_WINDOW
-            || self.media_bytes() > MAX_MEDIA_BYTES
-        {
+        if timing.batch_frames() > 8192 {
             return Err(Error::Capacity);
         }
         self.limits()

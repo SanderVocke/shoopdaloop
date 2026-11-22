@@ -5783,6 +5783,7 @@ dependencies = [
  "rt_buffered",
  "rt_profiling",
  "rt_runtime",
+ "rtrb",
  "shoop_app_api",
  "shoop_app_protocol",
  "shoop_loops",

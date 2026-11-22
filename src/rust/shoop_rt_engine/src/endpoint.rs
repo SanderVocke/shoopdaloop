@@ -171,6 +171,15 @@ pub trait HostedProcessorControls: Send {
     fn has_default_remote_target(&self) -> bool {
         false
     }
+    fn prepare_dynamic_claim(
+        &mut self,
+        _slot: shoop_rt_protocol::ProcessorSlot,
+        _kind: shoop_rt_protocol::ProcessorKind,
+        _target: Option<shoop_processor_protocol::RemoteFxTarget>,
+    ) -> Result<crate::PreparedProcessor, Refusal> {
+        Err(Refusal::Unsupported)
+    }
+    fn release_dynamic_claim(&mut self, _index: u16) {}
     fn configure_claim(
         &self,
         _slot: shoop_rt_protocol::ProcessorSlot,
@@ -257,6 +266,7 @@ pub struct ControlEndpoint {
     pub(crate) hosted_logs: crate::hosted_logs::Store,
     pub(crate) hosted_checkpoints: crate::hosted_checkpoints::Store,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
+    pub(crate) dynamic_processors: Option<crate::dynamic_processor::Layout>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
             BusId,
@@ -438,6 +448,56 @@ fn finite_balance(value: f32) -> bool {
 }
 
 impl ControlEndpoint {
+    pub(crate) fn prepare_processor_claim(
+        &mut self,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        kind: shoop_rt_protocol::ProcessorKind,
+        target: Option<shoop_processor_protocol::RemoteFxTarget>,
+    ) -> Result<(), Refusal> {
+        let index = usize::from(slot.index);
+        let Some(layout) = self
+            .dynamic_processors
+            .as_mut()
+            .filter(|layout| layout.slot(index).is_some())
+        else {
+            return match &self.hosted_processors {
+                Some(controls) => controls.configure_claim(slot, target),
+                None if target.is_some() => Err(Refusal::Unsupported),
+                None => Ok(()),
+            };
+        };
+        let controls = self
+            .hosted_processors
+            .as_mut()
+            .ok_or(Refusal::Unsupported)?;
+        let processor = controls.prepare_dynamic_claim(slot, kind, target)?;
+        let quantum = rt_runtime::Quantum::new(self.limits.quantum as usize)
+            .map_err(|_| Refusal::Internal)?;
+        let result = layout.install(
+            slot,
+            processor,
+            self.processor_cells[index].clone(),
+            self.cells.clone(),
+            quantum,
+        );
+        if result.is_err() {
+            controls.release_dynamic_claim(slot.index);
+        }
+        result
+    }
+
+    fn reap_dynamic_processors(&mut self) {
+        if let (Some(layout), Some(controls)) =
+            (&mut self.dynamic_processors, &mut self.hosted_processors)
+        {
+            for (index, slot) in layout.slots.iter_mut().enumerate() {
+                if slot.reap() {
+                    controls.release_dynamic_claim((layout.first + index) as u16);
+                }
+            }
+        }
+    }
+
     pub fn install_hosted_processor_controls(
         &mut self,
         controls: Box<dyn HostedProcessorControls>,
@@ -2052,6 +2112,7 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.reap_dynamic_processors();
         self.advance_hosted_controls();
         self.advance_hosted_logs();
         self.advance_hosted_checkpoints();

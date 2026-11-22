@@ -105,10 +105,6 @@ pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
     SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
-pub const CARLA_RACK_INSTANCES: SettingKey<u32> = SettingKey::new("carla.rack_instances");
-pub const CARLA_PATCHBAY_INSTANCES: SettingKey<u32> = SettingKey::new("carla.patchbay_instances");
-pub const CARLA_PATCHBAY_16X_INSTANCES: SettingKey<u32> =
-    SettingKey::new("carla.patchbay16x_instances");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
@@ -647,8 +643,8 @@ pub fn register_carla_settings(
             CARLA_HOSTING_MODE,
             shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
             "Carla",
-            "Hosting mode",
-            "Select how a native Socket or Shared Memory session host runs Carla. Restart the host to apply changes.",
+            "Local Carla isolation",
+            "Select how a native Socket or Shared Memory session host runs local chains. Restart the host to apply changes.",
         )
         .category_order(7)
         .setting_order(10)
@@ -660,25 +656,6 @@ pub fn register_carla_settings(
             ],
         }),
     )?;
-    for (key, label, order) in [
-        (CARLA_RACK_INSTANCES, "Rack instances", 11),
-        (CARLA_PATCHBAY_INSTANCES, "Stereo Patchbay instances", 12),
-        (CARLA_PATCHBAY_16X_INSTANCES, "Patchbay 16x instances", 13),
-    ] {
-        builder.register(
-            SettingDefinition::new(
-                key,
-                0,
-                "Carla",
-                label,
-                "Capacity reserved when the host starts. Set all instance counts to zero to disable Carla.",
-            )
-            .category_order(7)
-            .setting_order(order)
-            .effect(SettingEffect::RestartRequired)
-            .editor(SettingEditor::UnsignedInteger { min: 0, max: 64 }),
-        )?;
-    }
     Ok(())
 }
 
@@ -771,27 +748,10 @@ pub fn processor_settings_from_snapshot(
         carla: Default::default(),
     };
     if backend == crate::BackendType::Native {
-        let carla_slots = |key: SettingKey<u32>| match snapshot.get(key) {
-            Ok(count) => u16::try_from(count).map_err(|error| error.to_string()),
-            Err(shoop_settings::SettingsAccessError::UnknownKey(_)) => Ok(0),
-            Err(error) => Err(error.to_string()),
+        settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
+            shoop_settings::CarlaHostingMode::InProcess => shoop_app_api::CarlaHosting::InProcess,
+            shoop_settings::CarlaHostingMode::Subprocess => shoop_app_api::CarlaHosting::Subprocess,
         };
-        settings.carla.rack_instances = carla_slots(CARLA_RACK_INSTANCES)?;
-        settings.carla.patchbay_instances = carla_slots(CARLA_PATCHBAY_INSTANCES)?;
-        settings.carla.patchbay16x_instances = carla_slots(CARLA_PATCHBAY_16X_INSTANCES)?;
-        if settings.carla.rack_instances != 0
-            || settings.carla.patchbay_instances != 0
-            || settings.carla.patchbay16x_instances != 0
-        {
-            settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
-                shoop_settings::CarlaHostingMode::InProcess => {
-                    shoop_app_api::CarlaHosting::InProcess
-                }
-                shoop_settings::CarlaHostingMode::Subprocess => {
-                    shoop_app_api::CarlaHosting::Subprocess
-                }
-            };
-        }
     }
     settings.validate().map_err(|error| error.to_string())?;
     Ok(settings)
@@ -837,11 +797,18 @@ pub fn register_audio_backend_settings(
             .editor(SettingEditor::StringChoice {choices:&[("auto","Auto"),("on","On"),("off","Off")]}))?;
     }
     for (key, label, default, min, max, order) in [
-        (PROCESSOR_FX_INSTANCES, "FX instances", 2, 0, 64, 60),
+        (
+            PROCESSOR_FX_INSTANCES,
+            "Built-in FX instances",
+            2,
+            0,
+            64,
+            60,
+        ),
         (PROCESSOR_SYNTH_INSTANCES, "Synth instances", 2, 0, 64, 61),
         (
             PROCESSOR_MEMORY_MB,
-            "Processor memory (MiB)",
+            "Built-in processor memory (MiB)",
             256,
             0,
             4096,
@@ -1416,6 +1383,7 @@ pub struct AppWidget {
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
     add_track_fx: crate::remote_fx::Picker,
+    add_track_has_default_fx: bool,
     add_track_default_playback_mode: DefaultPlaybackMode,
     add_track_output_bus_names: Vec<String>,
     add_track_output_bus_text: String,
@@ -1517,6 +1485,7 @@ impl AppWidget {
     pub fn reset_connection(&mut self) {
         let mut fresh = Self::new(self.settings.registry());
         fresh.add_track_fx = std::mem::take(&mut self.add_track_fx);
+        fresh.add_track_fx.clear_choice();
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
         fresh.profiling = core::mem::take(&mut self.profiling);
@@ -1551,6 +1520,7 @@ impl AppWidget {
             add_track_dry_midi: false,
             add_track_processor: None,
             add_track_fx: Default::default(),
+            add_track_has_default_fx: false,
             add_track_default_playback_mode: DefaultPlaybackMode::Regular,
             add_track_output_bus_names: vec!["Master".to_owned()],
             add_track_output_bus_text: String::new(),
@@ -2901,13 +2871,15 @@ impl AppWidget {
                 self.add_track_recording_frames = configuration.recording_frames;
                 self.add_track_processor_adjustment = configuration.processor_adjustment;
                 self.add_track_processor_frames = configuration.processor_frames;
+                self.add_track_has_default_fx = state.bus_processors.iter()
+                    .any(|processor| processor.available && processor.id.is_remote_carla());
                 let remote_fx = self.add_track_mode == AddTrackMode::DryWet
                     && self.add_track_processor.as_ref().is_some_and(TrackProcessorTypeId::is_remote_carla);
                 if remote_fx {
                     let local_session = self.host_controls.state.as_ref().is_none_or(|host| {
                         host.location != crate::HostLocation::RemoteSocket
                     });
-                    self.add_track_fx.show(ui, local_session);
+                    self.add_track_fx.show(ui, local_session, self.add_track_has_default_fx);
                 }
                 #[cfg(test)]
                 {
@@ -3024,7 +2996,11 @@ impl AppWidget {
             },
             AddTrackMode::DryWet => {
                 let processor_type = self.add_track_processor.clone()?;
-                let remote_fx = if processor_type.is_remote_carla() {
+                let remote_fx = if processor_type.is_remote_carla()
+                    && !self
+                        .add_track_fx
+                        .uses_host_service(self.add_track_has_default_fx)
+                {
                     Some(self.add_track_fx.target()?)
                 } else {
                     None
@@ -3703,7 +3679,10 @@ pub fn show_new_track_configuration(
                 ui.end_row();
             });
         if configuration.mode == AddTrackMode::DryWet {
-            if let Some(resources) = selected_processor.and_then(|processor| processor.resources) {
+            if let Some(resources) = selected_processor
+                .and_then(|processor| processor.resources)
+                .filter(|resources| resources.instance_limit != 0)
+            {
                 ui.small(format!(
                     "{} of {} host instances in use",
                     resources.instances_in_use, resources.instance_limit

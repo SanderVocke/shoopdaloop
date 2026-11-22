@@ -250,6 +250,7 @@ pub struct BusMixer {
 
 pub enum EngineNode {
     Processor(crate::HostedProcessor),
+    DynamicProcessor(crate::dynamic_processor::DynamicProcessor),
     Loop(LoopNode),
     StripInput(StripInput),
     StripOutput(StripOutput),
@@ -605,6 +606,54 @@ impl EngineNode {
     }
 }
 
+pub(crate) fn processor_operation(
+    node: &mut crate::HostedProcessor,
+    operation: EngineOp,
+    context: OperationContext<'_>,
+) -> Result<(), Error> {
+    match operation {
+        EngineOp::ProcessorClaim {
+            generation,
+            inputs,
+            outputs,
+        } => node.claim(context.frame, generation, inputs, outputs),
+        EngineOp::ProcessorBindBus {
+            generation,
+            bus,
+            epoch,
+        } => {
+            if context.graph_epoch.checked_next()? != epoch {
+                return Err(Error::StaleEpoch);
+            }
+            node.bind_bus(generation, bus, epoch)
+        }
+        EngineOp::ProcessorBind {
+            generation,
+            strip_generation,
+            source,
+            epoch,
+        } => {
+            if context.graph_epoch.checked_next()? != epoch {
+                return Err(Error::StaleEpoch);
+            }
+            node.bind(generation, source, strip_generation, epoch)
+        }
+        EngineOp::ProcessorStart { generation } => node.start(context.frame, generation),
+        EngineOp::ProcessorSuspend { generation } => node.suspend(context.frame, generation),
+        EngineOp::ProcessorRetire { generation } => node.retire(context.frame, generation),
+        EngineOp::ProcessorParameter {
+            generation,
+            parameter,
+            value,
+        } => node.parameter(context.frame, generation, parameter, value),
+        EngineOp::ProcessorControl {
+            generation,
+            control,
+        } => node.control(context.frame, generation, control),
+        _ => Err(Error::InvalidEvent),
+    }
+}
+
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
     fn process_references(
         &mut self,
@@ -664,6 +713,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripInput(node) => node.midi_buffer_settings(),
             Self::StripOutput(node) => node.midi_buffer_settings(),
             Self::Processor(node) => node.midi_buffer_settings(),
+            Self::DynamicProcessor(node) => Ok(node.midi_buffer_settings()),
             _ => Ok(Default::default()),
         }
     }
@@ -688,6 +738,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             },
             Self::Reader(node) => node.ports(),
             Self::Processor(node) => node.ports(),
+            Self::DynamicProcessor(node) => node.ports(),
         }
     }
     fn operation(
@@ -695,52 +746,11 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         operation: EngineOp,
         context: OperationContext<'_>,
     ) -> Result<(), Error> {
-        if let Self::Processor(node) = self {
-            return match operation {
-                EngineOp::ProcessorClaim {
-                    generation,
-                    inputs,
-                    outputs,
-                } => node.claim(context.frame, generation, inputs, outputs),
-                EngineOp::ProcessorBindBus {
-                    generation,
-                    bus,
-                    epoch,
-                } => {
-                    if context.graph_epoch.checked_next()? != epoch {
-                        return Err(Error::StaleEpoch);
-                    }
-                    node.bind_bus(generation, bus, epoch)
-                }
-                EngineOp::ProcessorBind {
-                    generation,
-                    strip_generation,
-                    source,
-                    epoch,
-                } => {
-                    if context.graph_epoch.checked_next()? != epoch {
-                        return Err(Error::StaleEpoch);
-                    }
-                    node.bind(generation, source, strip_generation, epoch)
-                }
-                EngineOp::ProcessorStart { generation } => node.start(context.frame, generation),
-                EngineOp::ProcessorSuspend { generation } => {
-                    node.suspend(context.frame, generation)
-                }
-                EngineOp::ProcessorRetire { generation } => node.retire(context.frame, generation),
-                EngineOp::ProcessorParameter {
-                    generation,
-                    parameter,
-                    value,
-                } => node.parameter(context.frame, generation, parameter, value),
-                EngineOp::ProcessorControl {
-                    generation,
-                    control,
-                } => node.control(context.frame, generation, control),
-                _ => Err(Error::InvalidEvent),
-            };
+        match self {
+            Self::Processor(node) => processor_operation(node, operation, context),
+            Self::DynamicProcessor(node) => node.operation(operation, context),
+            _ => self.apply_signal(operation, context.graph_epoch),
         }
-        self.apply_signal(operation, context.graph_epoch)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         self.apply_configuration(block.graph_epoch);
@@ -1597,7 +1607,9 @@ impl EngineNode {
             return Ok(());
         }
         match self {
-            Self::Loop(_) | Self::Processor(_) => Err(Error::InvalidEvent),
+            Self::Loop(_) | Self::Processor(_) | Self::DynamicProcessor(_) => {
+                Err(Error::InvalidEvent)
+            }
             Self::StripInput(node) => node.apply(operation),
             Self::StripOutput(node) => node.apply(operation),
             Self::Fader(node) => node.apply(operation),
@@ -1634,6 +1646,7 @@ impl EngineNode {
             Self::BusInput(node) => node.render_input(block),
             Self::Reader(node) => node.render(block),
             Self::Processor(node) => node.process(block),
+            Self::DynamicProcessor(node) => node.process(block),
         }
     }
 }
@@ -1954,7 +1967,7 @@ impl EngineNode {
                 ramp: node.ramp,
             },
             Self::Reader(_) => SignalKind::Reader,
-            Self::Processor(_) => return Err(Error::InvalidParameter),
+            Self::Processor(_) | Self::DynamicProcessor(_) => return Err(Error::InvalidParameter),
         })
     }
 }

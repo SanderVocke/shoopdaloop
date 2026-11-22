@@ -103,51 +103,53 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             if !valid {
                 return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
             }
-            let available = processors.effective.instances(kind);
-            let used = self
-                .mirror
-                .tracks
-                .values()
-                .filter(|track| match (&track.topology, &topology) {
-                    (
-                        BackendTrackTopology::DryWetProcessor {
-                            processor_type: before,
-                            ..
-                        },
-                        BackendTrackTopology::DryWetProcessor {
-                            processor_type: after,
-                            ..
-                        },
-                    ) => before == after,
-                    _ => false,
-                })
-                .count()
-                + self
+            if !processors.dynamic(kind) {
+                let available = processors.effective.instances(kind);
+                let used = self
                     .mirror
-                    .buses
+                    .tracks
                     .values()
-                    .filter(|bus| {
-                        bus.processor_type.as_deref()
-                            == Some(crate::processor_controls::processor_id(kind))
+                    .filter(|track| match (&track.topology, &topology) {
+                        (
+                            BackendTrackTopology::DryWetProcessor {
+                                processor_type: before,
+                                ..
+                            },
+                            BackendTrackTopology::DryWetProcessor {
+                                processor_type: after,
+                                ..
+                            },
+                        ) => before == after,
+                        _ => false,
                     })
-                    .count();
-            if available == 0 {
-                let reason = if kind.is_carla() {
-                    processors.effective.carla_limits(kind).unavailable
-                } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
-                    processors.effective.fx_unavailable
-                } else {
-                    processors.effective.synth_unavailable
-                };
-                return Err(anyhow!(
-                    "track processor unavailable: {}",
-                    reason.map_or("no prepared instances", |reason| reason.message())
-                ));
-            }
-            if used >= available as usize {
-                return Err(anyhow!(
-                    "the host's prepared processor capacity is exhausted"
-                ));
+                    .count()
+                    + self
+                        .mirror
+                        .buses
+                        .values()
+                        .filter(|bus| {
+                            bus.processor_type.as_deref()
+                                == Some(crate::processor_controls::processor_id(kind))
+                        })
+                        .count();
+                if available == 0 {
+                    let reason = if kind.is_carla() {
+                        processors.effective.carla_limits(kind).unavailable
+                    } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                        processors.effective.fx_unavailable
+                    } else {
+                        processors.effective.synth_unavailable
+                    };
+                    return Err(anyhow!(
+                        "track processor unavailable: {}",
+                        reason.map_or("no prepared instances", |reason| reason.message())
+                    ));
+                }
+                if used >= available as usize {
+                    return Err(anyhow!(
+                        "the host's prepared processor capacity is exhausted"
+                    ));
+                }
             }
         }
         if kind == Some(shoop_rt_protocol::ProcessorKind::External) && dry == 0 && wet == 0 && !midi
