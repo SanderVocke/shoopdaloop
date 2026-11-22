@@ -916,18 +916,21 @@
       "validation": [
         "Initial21configuration cases (F5/21/64, AXI32/64, Instant/Fixed/DRAMsim3/Legacy) pass192.72sec; expandedpoisonedlargecount/fault checks subsequently added and running",
         "Expanded F5 Fixed/AXI64 rawprobe passes max31 recording,+1refusal,wide count/noinput consumption,highbits/atomiccfgrefusal,offset/nested/wrap/retake,cleanup/reset andinjectedmemoryfault",
-        "Expanded21configurations (F5/21/64 \u00d7AXI32/64\u00d7Instant/Fixed/DRAMsim3 andLegacy) pass28.10sec, withlargecount poisonedcommand/noinput/unchangedglobals/descriptor checks andfaultlatch/reset"
+        "Expanded21configurations (F5/21/64 \u00d7AXI32/64\u00d7Instant/Fixed/DRAMsim3 andLegacy) pass28.10sec, withlargecount poisonedcommand/noinput/unchangedglobals/descriptor checks andfaultlatch/reset",
+        "All1282 primary publicstore result/cycle/traffic rows and reset/recovery counts exactly match C2 forbothcanonical64 andoptional21. 128captures/offsetexports/retakes,all384blocksrecovered andallpagesfreed."
       ],
       "unit_summaries": [
         "s3-local-frames5-boundaries-summary.json",
         "s3-local-frames21-boundaries-summary.json",
-        "s3-local-frames64-boundaries-summary.json"
+        "s3-local-frames64-boundaries-summary.json",
+        "s3-local-frames64-control-store-operations-summary.json",
+        "s3-local-frames21-store-operations-summary.json"
       ],
       "pending": [
         "64bit default fullmedia/deferred/ownership",
         "Canonical64 connected/store equivalence and optimized calibration",
-        "Primary21 connected/store and bothwidths raw probes",
-        "Physical21 screen and route if viable"
+        "Physical21 screen and route if viable",
+        "Primary21 connectedcallbacks aftercanonical64"
       ],
       "functional_log": "s3-local-frames-tests.log"
     }
