@@ -29,9 +29,9 @@ Reproduced failures and focused corrections on `area/base-integration`:
 
 Focused native engine capability and settings tests pass with `-D warnings`.
 Formatting and the test-attribute guard pass. The locked ARM check passes.
-WebAssembly compilation and the complete standalone media pipeline check were
-still running when this note was written; consult the integration commit's final
-validation record and subsequent CI before treating those gates as passed.
+WebAssembly compilation passes with warning denial (4m07s). Both media_store
+and media_audio_pipeline pass the unchanged strict lint and generic/ECP5
+synthesis gates. These focused passes do not replace the remaining full CI gate.
 
 The same merged coverage run passes its first 3,551 tests, then fails three
 hosted-Carla checks: two expect preallocated instance counts while the new base
