@@ -121,16 +121,26 @@ module midi_store #(
     reg [23:0] packet;
     reg [1:0] length;
     reg [31:0] desc [0:15];
-    reg [31:0] view_slot, source_slot, candidate, generation, refs;
-    reg [31:0] cursor, scan, data_word, block_id, free_count, queue_head, queue_tail, queue_count;
+    localparam integer VIEW_COUNT_BITS = $clog2(64'(VIEWS)+1);
+    localparam integer QUEUE_COUNT_BITS = $clog2(64'(RETIREMENTS)+1);
+    localparam integer QUEUE_INDEX_BITS = RETIREMENTS > 1 ? $clog2(RETIREMENTS) : 1;
+    localparam integer FORMAT_BITS = $clog2(64'(VIEWS)*16+64'(BLOCKS)*2+1);
+    reg [VIEW_COUNT_BITS-1:0] candidate;
+    reg [3:0] cursor;
+    reg [FORMAT_BITS-1:0] scan;
+    reg [QUEUE_COUNT_BITS-1:0] queue_count;
+    reg [QUEUE_INDEX_BITS-1:0] queue_head, queue_tail;
+    reg [31:0] view_slot, source_slot, generation, refs;
+    reg [31:0] data_word, block_id, free_count;
     reg [31:0] used_views;
     assign response_blocks=desc[3];
     assign response_owner=desc[15];
     assign response_references=desc[1];
     assign free_block_slots=free_count;
     assign free_view_slots=32'(VIEWS)-used_views;
-    assign free_retirement_slots=32'(RETIREMENTS)-queue_count;
-    reg [31:0] record_index, record_word, payload [0:3];
+    assign free_retirement_slots=32'(RETIREMENTS)-32'(queue_count);
+    reg [31:0] record_index, payload [0:3];
+    reg [1:0] record_word;
     reg [63:0] record_address, record_frame;
     reg [31:0] low, high, middle, range_first, range_count, first_table, table_count, table_cursor;
     reg [31:0] removed_blocks, discard_count, released_refs;
@@ -215,21 +225,21 @@ module midi_store #(
                 else begin view_slot<=view_handle[31:0];if(descriptor_valid && descriptor_handle==view_handle) phase<=CHECK_VIEW;else load_view(CHECK_VIEW);end
             end
             FORMAT: begin
-                if(scan<32'(VIEWS)*16) write_word(arena_base+64'(scan)*4,0,FORMAT_NEXT);
-                else if(scan<32'(VIEWS)*16+32'(BLOCKS)*2) begin
-                    position=scan-32'(VIEWS)*16;
+                if(32'(scan)<32'(VIEWS)*16) write_word(arena_base+64'(scan)*4,0,FORMAT_NEXT);
+                else if(32'(scan)<32'(VIEWS)*16+32'(BLOCKS)*2) begin
+                    position=32'(scan)-32'(VIEWS)*16;
                     write_word(arena_base+REF_BASE+64'(position)*4,
                         position<32'(BLOCKS) ? 0 : 32'(BLOCKS)*2-position-1,FORMAT_NEXT);
                 end else begin
                     formatted<=1;used_views<=0;free_count<=32'(BLOCKS);queue_head<=0;queue_tail<=0;queue_count<=0;phase<=RESPONSE;
                 end
             end
-            FORMAT_NEXT: begin scan<=scan+1;phase<=FORMAT;end
+            FORMAT_NEXT: begin scan<=scan+1'b1;phase<=FORMAT;end
             LOAD_VIEW: read_word(view_address(view_slot,integer'(cursor)),LOADED_VIEW);
             LOADED_VIEW: begin
                 desc[cursor[3:0]]<=data_word;
                 if(cursor==15) begin phase<=after_load;descriptor_valid<=1;descriptor_handle<=view_handle;end
-                else begin cursor<=cursor+1;phase<=LOAD_VIEW;end
+                else begin cursor<=cursor+1'b1;phase<=LOAD_VIEW;end
             end
             CHECK_VIEW: begin
                 if(desc[0]!=view_handle[63:32] || desc[1]==0 || desc[2]==4) fail(4);
@@ -247,15 +257,15 @@ module midi_store #(
                 endcase
             end
             SAVE_VIEW: write_word(view_address(view_slot,integer'(cursor)),desc[cursor[3:0]],SAVED_VIEW);
-            SAVED_VIEW: if(cursor==15) phase<=after_save;else begin cursor<=cursor+1;phase<=SAVE_VIEW;end
-            VIEW_ALLOC: if(candidate>=VIEWS) fail(3);else read_word(view_address(candidate,0),VIEW_ALLOC_GEN);
-            VIEW_ALLOC_GEN: begin generation<=data_word;read_word(view_address(candidate,1),VIEW_ALLOC_REFS);end
-            VIEW_ALLOC_REFS: begin refs<=data_word;read_word(view_address(candidate,2),VIEW_ALLOC_STATUS);end
-            VIEW_ALLOC_STATUS: if(refs!=0 || data_word==4) begin candidate<=candidate+1;phase<=VIEW_ALLOC;end
+            SAVED_VIEW: if(cursor==15) phase<=after_save;else begin cursor<=cursor+1'b1;phase<=SAVE_VIEW;end
+            VIEW_ALLOC: if(32'(candidate)>=32'(VIEWS)) fail(3);else read_word(view_address(32'(candidate),0),VIEW_ALLOC_GEN);
+            VIEW_ALLOC_GEN: begin generation<=data_word;read_word(view_address(32'(candidate),1),VIEW_ALLOC_REFS);end
+            VIEW_ALLOC_REFS: begin refs<=data_word;read_word(view_address(32'(candidate),2),VIEW_ALLOC_STATUS);end
+            VIEW_ALLOC_STATUS: if(refs!=0 || data_word==4) begin candidate<=candidate+1'b1;phase<=VIEW_ALLOC;end
                 else if(generation==32'hffffffff) fail(6);
                 else begin
-                    generation<=generation+1;view_slot<=candidate;
-                    response_handle<={generation+1,candidate};phase<=VIEW_ALLOC_CHECK;
+                    generation<=generation+1;view_slot<=32'(candidate);
+                    response_handle<={generation+1,32'(candidate)};phase<=VIEW_ALLOC_CHECK;
                 end
             VIEW_ALLOC_CHECK: phase<=VIEW_CREATED;
             VIEW_CREATED: begin
@@ -309,7 +319,7 @@ module midi_store #(
                     desc[5]<=desc[5]+1;desc[12]<=desc[12]+1;
                     if(op==15) begin batch_has_last<=1;batch_last_frame<=arg0;phase<=BATCH_NEXT;end
                     else save_view(RESPONSE);
-                end else begin record_word<=record_word+1;phase<=APPEND_PAYLOAD;end
+                end else begin record_word<=record_word+1'b1;phase<=APPEND_PAYLOAD;end
             RECORD: begin
                 position=desc[4]+record_index;
                 if(record_block_valid && record_block_ordinal==position/32'(BLOCK_EVENTS)) begin data_word<=record_block_id;phase<=RECORD_BLOCK;end
@@ -328,7 +338,7 @@ module midi_store #(
                     record_frame<={payload[1],payload[0]};response_frame<={payload[1],payload[0]}-{desc[7],desc[6]};
                     response_order<=payload[2];response_packet<=data_word[23:0];response_length<=data_word[25:24];
                     phase<=after_record;
-                end else begin record_word<=record_word+1;phase<=RECORD_PAYLOAD;end
+                end else begin record_word<=record_word+1'b1;phase<=RECORD_PAYLOAD;end
             end
             FINISH: if(desc[2]==3) fail(8);else if(desc[2]!=1 || arg0<{desc[9],desc[8]}) fail(4);
                 else if(desc[5]!=0) read_record(desc[5]-1,FINISH_LAST);else phase<=FINISH_LAST;
@@ -336,12 +346,12 @@ module midi_store #(
                 else begin desc[8]<=arg0[31:0];desc[9]<=arg0[63:32];if(op==6) desc[2]<=2;save_view(RESPONSE);end
             RETAIN: if(desc[2]!=2) fail(8);else if(desc[1]==32'hffffffff) fail(6);
                 else begin desc[1]<=desc[1]+1;response_handle<=view_handle;save_view(RESPONSE);end
-            RELEASE: if(desc[1]==1 && queue_count>=32'(RETIREMENTS)) fail(3);
+            RELEASE: if(desc[1]==1 && 32'(queue_count)>=32'(RETIREMENTS)) fail(3);
                 else begin desc[1]<=desc[1]-1;if(desc[1]==1) desc[2]<=4;save_view(RELEASE_REF);end
             RELEASE_REF: if(desc[1]!=0) phase<=RESPONSE;
                 else write_word(arena_base+RETIRE_BASE+64'(queue_tail)*8,view_slot,RELEASE_QUEUE);
             RELEASE_QUEUE: write_word(arena_base+RETIRE_BASE+64'(queue_tail)*8+4,desc[0],RELEASE_QUEUE_GEN);
-            RELEASE_QUEUE_GEN: begin queue_tail<=(queue_tail+1)%32'(RETIREMENTS);queue_count<=queue_count+1;phase<=RESPONSE;end
+            RELEASE_QUEUE_GEN: begin queue_tail<=QUEUE_INDEX_BITS'((32'(queue_tail)+1)%32'(RETIREMENTS));queue_count<=queue_count+1'b1;phase<=RESPONSE;end
             RANGE: if(desc[2]==3 || arg0>arg1 || arg1>{desc[9],desc[8]} || arg0+{desc[7],desc[6]}<arg0) fail(1);
                 else begin source_slot<=view_slot;low<=0;high<=desc[5];search_frame<=arg0;searching_end<=0;phase<=SEARCH;end
             SEARCH: if(low==high) begin
@@ -379,7 +389,7 @@ module midi_store #(
             BLOCK_FREE: begin free_count<=free_count+1;phase<=after_block;end
             MAINTAIN_UPDATE: begin desc[3]<=desc[3]-1;save_view(MAINTAIN_NEXT);end
             MAINTAIN_FINAL: begin used_views<=used_views-1;desc[2]<=0;save_view(MAINTAIN_RETIRED);end
-            MAINTAIN_RETIRED: begin queue_head<=(queue_head+1)%32'(RETIREMENTS);queue_count<=queue_count-1;phase<=MAINTAIN_NEXT;end
+            MAINTAIN_RETIRED: begin queue_head<=QUEUE_INDEX_BITS'((32'(queue_head)+1)%32'(RETIREMENTS));queue_count<=queue_count-1'b1;phase<=MAINTAIN_NEXT;end
             MAINTAIN_NEXT: begin response_work<=response_work+1;phase<=MAINTAIN;end
             DISCARD: if(desc[2]!=1 || desc[1]!=1 || arg0>{32'b0,desc[5]}) fail(4);
                 else begin record_block_valid<=0;discard_count<=arg0[31:0];removed_blocks<=(desc[4]+arg0[31:0])/32'(BLOCK_EVENTS);table_cursor<=0;phase<=DISCARD_BLOCK;end

@@ -23,7 +23,11 @@ handles/generations and global 64-bit timestamps remain wide.
 
 C1 and C2 boundary controls precede the RTL changes: metadata has 187 matched
 requests per AXI width across minimum, odd and primary-sized counts. MIDI has
-564 independent ContentStore requests over full pools and retirement wraps.
+564 independent ContentStore requests over minimum and odd pools, plus
+9,747 requests at the primary 256-view/128-retirement indices. The latter
+uses primary block geometry and a deliberately one-event view limit; it does not
+claim full primary event-capacity coverage. The original 564 response/cycle rows
+are unchanged. All four cases exercise full view pools and retirement wraps.
 Both include high-bit invalid inputs, overflow/fault/reset and held responses;
 connected callbacks, media ownership, both AXI widths and DRAMsim3 are separate
 checks. Compare each mapped/physical result and actual cycles with C2; raw
