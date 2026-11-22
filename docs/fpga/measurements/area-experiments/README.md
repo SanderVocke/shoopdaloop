@@ -298,3 +298,21 @@ fixtures expose costs: AXI64 alternating reads have median179 clocks versus C1's
 and controller latency, not full128-channel high-boundary deadline guarantees.
 See `s2-path-extended-100-*`, `s2-path-translation-unit-*` and
 `s2-path-directory-unit-*`; hints and a repeated winning physical run remain.
+
+
+All five cache siblings and C1 now pass the same 1,282-row public storage
+operation fixture at primary capacity. It measures 128 captures, offset exports,
+clear/retake, retained readback, and two bounded reclamation drains.
+[Operation costs](cache-store-operations.md) retain slower results as well as
+improvements, alongside every command, sample result and AXI counter. These
+ideal-memory controller clocks complement connected playback and the delayed/
+DRAMsim3 regressions; they are not full callback or board timing qualifications.
+
+The hint policy's canonical default reproduces all 33 original callback rows
+and passes all eight protocol cases. Every optimized resource count matches C1
+exactly; pre-route setup slack differs by 0.001 ns. Late-only hints preserve
+normal data but fail a first-buffer publication assertion after an injected
+second-view fault in three AXI memory modes. They also add 4,634 clocks to the
+start and 5,170 to the first warm quantum; the remaining short rows are unchanged.
+The original policy stays default, and failed variants remain experiment results.
+See [policy contract and status](hint-policy.md); no-hint and area screens remain.

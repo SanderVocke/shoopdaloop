@@ -130,23 +130,23 @@ experiments are complete. Generated-hint policy siblings, selection and repeat
 remain. See the [ledger](measurements/area-experiments/ledger.json) for retained
 source, unit, connected and physical results.
 
-- [ ] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
+- [x] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
   a banked full-associativity search, then a leaf cache indexed by view. For the
   last variant retain a small directory cache and include coherence logic costs.
   Preserve the original as a control; record actual extra hit and miss cycles.
   Compare a full leaf with a cached current block translation per view: B0's
   mixed steady quantum performs 384 table-cache hits and zero misses while each
   allocation block spans 32 quanta. Test invalidation on table writes and retirement.
-- [ ] Separately trial the current-block cache with a cached middle-directory
+- [x] Separately trial the current-block cache with a cached middle-directory
   path per view, including its level-one parent. The basic current-block candidate takes 74,575 clocks at its
   first leaf crossing, versus 84,284 for C1 and the nominal 66,666.7-clock budget
   at 100 MHz. Include the extra RAM/register/mux cost and the same invalidation
   lifetime. Verify minimum tree levels and parent-index crossings at ordinals
   255/256; two leaf spans alone do not cover every higher-level boundary.
-- [ ] Verify read/write/zero, dirty eviction, fence/invalidate, held responses,
+- [x] Verify read/write/zero, dirty eviction, fence/invalidate, held responses,
   reset, and fill/writeback errors. Exercise competing views, nested slices,
   append, trim, clear, reclaim, and stale speculative hints through the real store.
-- [ ] Measure sequential, strided, adversarial set conflicts, all 128 audio
+- [x] Measure sequential, strided, adversarial set conflicts, all 128 audio
   channels, and cold/retake traffic. Extend steady runs beyond two 16,384-frame
   leaf spans, or supply equivalent directed boundary fixtures. Compare cache
   capacity and traffic as well as comparator count and synthesized RAM inference.

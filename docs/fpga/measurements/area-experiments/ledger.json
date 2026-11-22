@@ -32,7 +32,8 @@
     "Ready-wait and immutable-source simulation driver calibrated against B0: all 33 mixed-on-delay7 measurement rows unchanged",
     "Serial count physical repeat exactly matches all four stage metrics",
     "Full metadata control suite passes including new 128-line protocol/fault/backpressure/reset cases on AXI32/64",
-    "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks"
+    "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks",
+    "All five cache siblings plus C1 pass the identical primary-capacity1282-row public capture/retake/retained-export/retirement fixture; clocks/traffic/raw commands archived"
   ],
   "pending": [
     "Stage2 generated payload hint siblings, cache selection and physical repeat"
@@ -311,7 +312,9 @@
           "candidate": 83257
         }
       },
-      "decision": "Shortlist as an area improvement: 2743 fewer LUTs and 280 fewer slices than C1, 4250 fewer FFs, unchanged median callbacks, slightly better long-run boundary maxima. Setup is still failing and worse than C1; compare banked/per-view alternatives before selection. Repeat if this small physical winner is ultimately selected."
+      "decision": "Shortlist as an area improvement: 2743 fewer LUTs and 280 fewer slices than C1, 4250 fewer FFs, unchanged median callbacks, slightly better long-run boundary maxima. Setup is still failing and worse than C1; compare banked/per-view alternatives before selection. Repeat if this small physical winner is ultimately selected.",
+      "public_store_operation_summary": "s2-fourway-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
     },
     {
       "label": "s2-banked",
@@ -401,7 +404,9 @@
         "drc_warnings": 18
       },
       "outcome": "rejected_for_default",
-      "decision": "Measured full-associativity tradeoff: 73 fewer slices and 186 fewer LUTs than four-way, but steady median 1920 clocks slower than C1 and leaf maximum 13960 clocks slower. Prefer four-way latency over this small area difference, pending per-view candidates. Setup still fails. Retain raw candidate and reports; repeat only if later selected."
+      "decision": "Measured full-associativity tradeoff: 73 fewer slices and 186 fewer LUTs than four-way, but steady median 1920 clocks slower than C1 and leaf maximum 13960 clocks slower. Prefer four-way latency over this small area difference, pending per-view candidates. Setup still fails. Retain raw candidate and reports; repeat only if later selected.",
+      "public_store_operation_summary": "s2-banked-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
     },
     {
       "label": "s2-leaf",
@@ -519,7 +524,9 @@
       },
       "outcome": "shortlisted_pending_siblings",
       "decision": "Best measured area and ordinary-playback tradeoff so far: -3231 LUT/-497 slices vs C1 and -1152 median steady clocks, at +5.5 BRAM and +2671 clocks worst steady boundary. Strided unit reads worsen sharply (247 vs30 clocks AXI64). Timing still fails; compare current-block sibling before selecting and repeating a winner.",
-      "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has 5 audio writes versus 128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving."
+      "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has 5 audio writes versus 128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving.",
+      "public_store_operation_summary": "s2-leaf-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
     },
     {
       "label": "s2-block",
@@ -626,7 +633,9 @@
       },
       "outcome": "shortlisted_pending_siblings",
       "decision": "Best cache result so far: 4247 fewer LUTs/663 fewer slices than C1, 0.5 fewer BRAM, 1152 fewer median clocks and 9709 fewer maximum steady clocks. More table misses and slower isolated strided reads; most block misses overlap connected work. Physical setup still fails and leaf peak exceeds nominal100MHz budget. Compare directory-path and hint-policy siblings, then repeat selected winner.",
-      "measurement_limits": "Playback-start excludes preparation; smaller directory cache moves dirty evictions earlier (5 start writes vs128 C1). Observed maxima cover1041 rows/two leaf spans, not all higher tree boundaries."
+      "measurement_limits": "Playback-start excludes preparation; smaller directory cache moves dirty evictions earlier (5 start writes vs128 C1). Observed maxima cover1041 rows/two leaf spans, not all higher tree boundaries.",
+      "public_store_operation_summary": "s2-block-store-operations-unit-summary.json",
+      "public_store_operation_control": "c1-store-operations-unit-summary.json"
     },
     {
       "label": "s2-path",
@@ -741,15 +750,17 @@
       "canonical_control_summary": "s2-hints-default2-opt-summary.json",
       "validation": [
         "Canonical default2 matches all33 C1/B0 connected quantum rows exactly",
-        "Late-only protocol passed five cases; failed first-buffer publication assertion with second-view injected fault in Instant/Fixed/DRAMsim3; original default tests preserved"
+        "Late-only protocol passed five cases; failed first-buffer publication assertion with second-view injected fault in Instant/Fixed/DRAMsim3; original default tests preserved",
+        "All8 canonical default2 protocol cases pass across four memory models"
       ],
       "late_protocol_summary": "s2-hints-late-protocol-summary.json",
       "pending": [
-        "Canonical default2 protocol regression",
         "Late-only connected/area result",
         "No-hint protocol/connected/area result"
       ],
-      "provisional_decision": "Reject late-only as behavior-preserving default due fault-ordering/publication difference; record area and normal-playback cost separately."
+      "provisional_decision": "Reject late-only as behavior-preserving default due fault-ordering/publication difference; record area and normal-playback cost separately.",
+      "canonical_default_protocol_summary": "s2-hints-default2-protocol-summary.json",
+      "canonical_optimized_delta_vs_c1": "All mapped resource counts identical; setup slack differs0.001ns at pre-route opt"
     }
   ],
   "provisioning": {
