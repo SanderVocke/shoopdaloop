@@ -1,0 +1,56 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.54s
+     Running tests/metadata.rs (target/debug/build/rt_fpga_testbench/ccfc448954a41d09/out/metadata-ccfc448954a41d09)
+
+running 6 tests
+test directory_paths_cross_all_primary_levels_and_survive_deep_retirement ... [32m[1m   Compiling[0m[39m bench_top#1565423863848267007 (/workspace/shoopdaloop/work/marlin-suite/directory-area/media_metadata_tb-5a6a5a2bd7dc26d3/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 7.55s
+ok
+test indexed_metadata_detached_roots_and_coherent_shared_cache_transport ... [32m[1m   Compiling[0m[39m bench_top#13293113281568194954 (/workspace/shoopdaloop/work/marlin-suite/metadata/media_metadata_tb-eb999c254490cc3a/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 9.80s
+[32m[1m   Compiling[0m[39m bench_top#266814605284188511 (/workspace/shoopdaloop/work/marlin-suite/metadata/media_metadata_tb-e1d0e89690791aca/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 9.60s
+[32m[1m   Compiling[0m[39m bench_top#5473472906802927974 (/workspace/shoopdaloop/work/marlin-suite/metadata/media_metadata_tb-c831cc2ffff3e574/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 9.73s
+[32m[1m   Compiling[0m[39m bench_top#7626730931086811994 (/workspace/shoopdaloop/work/marlin-suite/metadata/metadata_cache_tb-2859501029630dba/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 9.36s
+[32m[1m   Compiling[0m[39m bench_top#12487777260485374811 (/workspace/shoopdaloop/work/marlin-suite/metadata/metadata_cache_tb-1c09485718257188/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 15.77s
+[32m[1m   Compiling[0m[39m bench_top#4376113243026155904 (/workspace/shoopdaloop/work/marlin-suite/metadata/media_metadata_tb-e5916b36c9c700bd/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 25.06s
+[32m[1m   Compiling[0m[39m bench_top#16836192677272504628 (/workspace/shoopdaloop/work/marlin-suite/metadata/media_metadata_tb-b4042c7e98fabdf4/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 23.05s
+[32m[1m   Compiling[0m[39m bench_top#15276488444338382031 (/workspace/shoopdaloop/work/marlin-suite/metadata/media_metadata_tb-5f59debf8fac0ba5/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 21.62s
+[32m[1m   Compiling[0m[39m bench_top#9528870155074773441 (/workspace/shoopdaloop/work/marlin-suite/metadata/metadata_cache_tb-1cb9e258a8d30dfd/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 15.52s
+[32m[1m   Compiling[0m[39m bench_top#16637705335542141770 (/workspace/shoopdaloop/work/marlin-suite/metadata/metadata_cache_tb-b7efa0238a48baa0/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 20.14s
+ok
+test metadata_width_boundaries_keep_high_bits_and_malformed_queue_errors ... [32m[1m   Compiling[0m[39m bench_top#8180794379302217421 (/workspace/shoopdaloop/work/marlin-suite/metadata-width-boundaries/media_metadata_tb-41571d979b9dfa06/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 5.88s
+[32m[1m   Compiling[0m[39m bench_top#12061221113760528958 (/workspace/shoopdaloop/work/marlin-suite/metadata-width-boundaries/media_metadata_tb-bc9d9032d0990157/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 4.79s
+[32m[1m   Compiling[0m[39m bench_top#87441434353369265 (/workspace/shoopdaloop/work/marlin-suite/metadata-width-boundaries/media_metadata_tb-18b5479e6c0c8d4c/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 5.06s
+[32m[1m   Compiling[0m[39m bench_top#16014487920350762290 (/workspace/shoopdaloop/work/marlin-suite/metadata-width-boundaries/media_metadata_tb-0c1b1d5d05f5471b/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 5.42s
+[32m[1m   Compiling[0m[39m bench_top#4318610795532150150 (/workspace/shoopdaloop/work/marlin-suite/metadata-width-boundaries/media_metadata_tb-b8c728961348d044/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 6.08s
+[32m[1m   Compiling[0m[39m bench_top#13273548655279699873 (/workspace/shoopdaloop/work/marlin-suite/metadata-width-boundaries/media_metadata_tb-5fe41577ad879c82/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 6.07s
+ok
+test prefetch_resolver_wrap_missing_metadata_and_independent_backpressure ... ok
+test primary_cache_capacity_preserves_fences_backpressure_faults_and_reset ... [32m[1m   Compiling[0m[39m bench_top#9030211173400864437 (/workspace/shoopdaloop/work/marlin-suite/metadata/metadata_cache_tb-b78d2552e9bc4792/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 11.10s
+[32m[1m   Compiling[0m[39m bench_top#5678064459286283820 (/workspace/shoopdaloop/work/marlin-suite/metadata/metadata_cache_tb-65210018c14b9c07/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 9.96s
+ok
+test translation_boundaries_and_lifetimes_match_an_independent_map ... [32m[1m   Compiling[0m[39m bench_top#7714601786292895723 (/workspace/shoopdaloop/work/marlin-suite/translation-area/media_metadata_tb-1e607d78490d1400/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 8.12s
+[32m[1m   Compiling[0m[39m bench_top#13642142084952381209 (/workspace/shoopdaloop/work/marlin-suite/translation-area/media_metadata_tb-e366ab2173010f82/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O3` profile [optimized] target in 20.24s
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 371.95s
+

@@ -1044,10 +1044,10 @@
         "Onlymedia_metadata.sv differs fromall38C2productionHDLfiles",
         "BothAXIwidths:all187boundaryresponse/cycle rows exactlymatchC2",
         "BothAXIwidths:all207deep directoryresponse/cycle/cachecounter rows andsetupclocks exactlymatchC2",
-        "All1282publicstorecommand/result/cycle/traffic rows andrecovery exactlymatchC2"
+        "All1282publicstorecommand/result/cycle/traffic rows andrecovery exactlymatchC2",
+        "Full6metadata tests pass371.95sec, includingbothAXIwidths,deepdirectories,malformedmetadata,translation/fence/fault/reset/cache protocols"
       ],
       "pending": [
-        "Full6metadata tests",
         "33rowconnected equivalence",
         "Media/ownership/deferred tests",
         "Optimizedscreen thenrouteifviable"
@@ -1057,7 +1057,8 @@
         "s3-path-context-width-axi64-summary.json",
         "s3-path-context-directory-unit-summary.json",
         "s3-path-context-store-operations-summary.json"
-      ]
+      ],
+      "metadata_log": "s3-path-context-metadata-tests.log"
     }
   ],
   "provisioning": {
@@ -1161,7 +1162,7 @@
       "fpga": "passed",
       "workspace_run": 45068655474,
       "JACK": "passed",
-      "workspace": "Linux debug/release,Windows debug/release,wasm debug/release,coverage,JACK andallcompletedjobs passed;macOSdebug/release running",
+      "workspace": "Allapplicablejobs passed,includingbothmacOSjobs;nightlywithoutCPALbranchskippedasconfigured.",
       "CodeQL": "passed",
       "Docs": "passed",
       "firmware_run": 45068655379,
@@ -1177,7 +1178,8 @@
         "serial.log": "915d4de9ad741f434f30506ab1ff2410eb9cda5585839a64d51e0d0a9f46e3e6",
         "command.json": "3aa45fb473e3d897cf47f1897f1a4196485eed8e36e4901d1a99929b5960e242"
       },
-      "firmware_retry_job": 137365898513
+      "firmware_retry_job": 137365898513,
+      "all_applicable_workflows": "passed after unchanged-codefirmware retry; originaltimeout evidence retained"
     }
   },
   "selected_control": {
