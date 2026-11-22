@@ -15,7 +15,12 @@
     "Yosys 0.52 available; SP default/small/minimum lint, generic, ECP5 gates passed",
     "Warning-denying full workspace build passed after repairing host library symlinks",
     "Instrumented benchmark release executable built successfully",
-    "Instrumented mixed-on-delay7 reproduces all 33 archived per-quantum rows exactly, including cold and steady timing/traffic/work"
+    "Instrumented mixed-on-delay7 reproduces all 33 archived per-quantum rows exactly, including cold and steady timing/traffic/work",
+    "Metadata regressions passed (2 tests)",
+    "Ownership regressions passed after building pinned DRAMsim3 (1 test)",
+    "SP and JP/audio standalone baseline checks passed",
+    "Optimized simulator reproduces all mixed-on-delay7 measurements and cache counters; wall time 440.97 to 361.20 seconds",
+    "Vivado 2021.1 SW build 3247384 verified in Ubuntu 20.04 runtime; vendor tools mounted read-only"
   ],
   "pending": [
     "Finish pinned Vivado OCI extraction and verify version",
@@ -30,6 +35,16 @@
   "provisioning": {
     "docker_attempt": "Cancelled because the vfs storage driver duplicates the tool layer; task caches released",
     "safe_alternative": "Single OCI download, 6129731028 declared compressed bytes; 6710886400 byte quota and 1610612736 byte free-space floor",
-    "approval_review": "Initial unbounded OCI download rejected for storage risk; bounded retry approved"
-  }
+    "approval_review": "Initial unbounded OCI download rejected for storage risk; bounded retry approved",
+    "runtime_image": "sha256:02eb283fd099318858019e26344d7d2e1dd761526c2571aa48adecd886d699eb",
+    "runtime_archive_bytes": 1108295680
+  },
+  "foundation_commit": "213ce2c3",
+  "baseline_known_failures": [
+    {
+      "check": "fpga/media_store/check.sh",
+      "cause": "Pre-existing GENUNNAMED warnings in population-count generate tree and unused valid_views when REUSE_VIEWS=0",
+      "next": "Record unchanged B0; resolve with the stage 1 population-count implementation, retaining final lint gates"
+    }
+  ]
 }

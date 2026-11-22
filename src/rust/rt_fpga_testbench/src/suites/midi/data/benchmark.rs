@@ -380,7 +380,7 @@ fn run_case(
     }
     let model_parameters = design.parameters.clone();
     let compiled = design.build(&crate::root().join("work/marlin-suite/midi-data-benchmark"))?;
-    let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    let mut sim = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
     sim.max_ps = 10_000_000_000_000_000;
     let size = sim.model.get("midi_arena_bytes") as usize + 32768;
     let midi_memory = Rc::new(RefCell::new(Memory {
@@ -578,6 +578,7 @@ fn run_case(
         "sequence_frames":frames, "midi_events_per_loop":if midi {records(0,frames).len()} else {0},
         "ddr_added_delay_clocks":delay,
         "rtl_parameters":model_parameters,
+        "simulation_optimization":3, "waveform_instrumentation":false,
         "memory":format!("two independent 64-bit AXI ports, fixed {delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects"),
         "scope":"same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
         "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
