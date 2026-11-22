@@ -6,8 +6,8 @@ The immutable implementation control is
 [64-loop compiled profile](../midi-expression-state/compiled-profile.json).
 
 Current status: the fresh B0 implementation reproduces the archived 100 MHz
-resources and timing exactly. The sequential callback control matrix is in
-progress; experimental RTL changes have not started. See `ledger.json` for
+resources and timing exactly. All twelve callback control cases pass and reproduce all 396 archived
+per-quantum rows exactly; stage 1 is ready to begin. See `ledger.json` for
 completed checks, pending measurements, and local artifact locations.
 
 | B0 routed control | Archived | Fresh |
@@ -29,6 +29,8 @@ cache counter, reducing measured wall time from 440.97 to 361.20 seconds.
 The SP and JP/audio standalone checks pass. Unchanged B0 media lint reports
 unnamed population-count generate blocks and an unused validity bitmap when
 view reuse is disabled; stage 1 will resolve these with the replacement count.
+The [workload matrix](workload-matrix.md) maps directed regression and boundary
+coverage to experiment families. Raw callback controls are in `b0-matrix/`.
 Descriptor-statistics controls cover repeated writes, sparse restore, reset with
 stale RAM, and full occupancy at 1/7/512/513 views. B0 diagnostic reads take six
 clocks. Metadata and ownership tests pass, including DRAMsim3.

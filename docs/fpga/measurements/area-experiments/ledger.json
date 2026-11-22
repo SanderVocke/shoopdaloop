@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 0,
-  "status": "in_progress",
+  "stage": 1,
+  "status": "stage_0_complete",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -22,17 +22,19 @@
     "Optimized simulator reproduces all mixed-on-delay7 measurements and cache counters; wall time 440.97 to 361.20 seconds",
     "Vivado 2021.1 SW build 3247384 verified in Ubuntu 20.04 runtime; vendor tools mounted read-only",
     "New descriptor count contract passes duplicate writes, sparse high-ID restore, and stale-RAM reset at 1/7/513 views; B0 diagnostic read latency is 6 clocks",
-    "Fresh B0 100 MHz route matches archived post-opt and routed resources exactly, including 13205 slices and setup/hold slack -5.429/+0.008 ns; no routing errors"
+    "Fresh B0 100 MHz route matches archived post-opt and routed resources exactly, including 13205 slices and setup/hold slack -5.429/+0.008 ns; no routing errors",
+    "All twelve B0 callback cases passed; all 396 archived per-quantum measurement rows match exactly",
+    "Frozen executable SHA-256 and optimized-model source provenance retained with all raw callback JSON and logs",
+    "Workload-to-test mapping established; focused reference/metadata/ownership controls passed; full regression remains a final-stage gate"
   ],
   "pending": [
-    "Finish pinned Vivado OCI extraction and verify version",
-    "Reproduce B0 connected 100 MHz implementation and functional cycle matrix",
-    "Validate metadata/cache counters and commit the measurement foundation before stage 1"
+    "Compare stage 1 incremental and RAM-backed serial population counts"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
     "setup_logs": "work/area-experiments/setup",
-    "baseline_checkpoints": "work/area-experiments/b0-100/post_{opt,place,route}.dcp"
+    "baseline_checkpoints": "work/area-experiments/b0-100/post_{opt,place,route}.dcp",
+    "baseline_matrix": "b0-matrix/manifest.json"
   },
   "experiments": [
     {
@@ -42,7 +44,7 @@
       "summary": "b0-100-summary.json",
       "raw_reports": "b0-100",
       "timing_met": false,
-      "decision": "Use as immutable physical control; finish collecting the sequential workload matrix before stage 1"
+      "decision": "Immutable B0 control reproduced exactly for physical resources, timing, and the complete short callback matrix"
     }
   ],
   "provisioning": {
@@ -64,5 +66,13 @@
     "mixed_delay7_steady_table_cache_hits_per_quantum": 384,
     "mixed_delay7_steady_table_cache_misses_per_quantum": 0,
     "stage_2_followup": "Include a current-block translation per view within the indexed-view cache avenue; it may avoid repeated lookup of the same allocation block between 1024-frame boundaries."
-  }
+  },
+  "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/1026",
+  "plan_adjustments": [
+    {
+      "stage": 0,
+      "change": "Open the authorized draft PR before implementation to overlap CI with long baseline measurements",
+      "reason": "Expose measurement-tool and regression problems while baseline runs; preserve stage 11 completion gates and no autonomous merge"
+    }
+  ]
 }

@@ -84,7 +84,7 @@ Depends on the starting revision; finish before changing implementation RTL.
 - [x] Create `feat/backend-replacement-area-experiments` from the verified base,
   preserving this plan and existing edits. Keep disposable candidate branches or
   worktrees for alternatives and a separate branch for the selected combination.
-- [ ] Reuse or provision the documented pinned Vivado toolchain and Verilator
+- [x] Reuse or provision the documented pinned Vivado toolchain and Verilator
   5.032 environment using [build guidance](../../.agents/info/build.md). Reproduce
   B0 at 100 MHz and its functional/cycle controls; investigate differences from
   archived results before comparing optimizations.
@@ -93,7 +93,7 @@ Depends on the starting revision; finish before changing implementation RTL.
   seeds, and common JSON/CSV results. Add synthesis/optimization stop controls for
   screening and verify harness-only changes preserve B0.
   Add small fixture-based checks for report parsing and configuration propagation.
-- [ ] Establish the workload matrix: audio/midi/mixed, state on/off, fixed DDR
+- [x] Establish the workload matrix: audio/midi/mixed, state on/off, fixed DDR
   added delays 0/7, cold/warm caches, capture/playback/retake, seek/wrap/stop,
   musical restoration, allocator pressure, and maintenance. Add directed cache,
   block, and tree-boundary positions; retain original short fixtures for comparison.
@@ -292,7 +292,9 @@ Depends on recorded outcomes for stages 0 through 10.
   to establish a usable comparison. Qualify execution time only at clocks with
   passing physical timing; preserve failure reports if closure remains unresolved.
 - [ ] Push the experiment and selected implementation branches; create a PR into
-  `feat/backend-replacement` with evidence and the final tradeoffs. Monitor the
+  `feat/backend-replacement` with evidence and the final tradeoffs. A draft PR
+  may be opened during stage 0 to overlap measurement-tool CI with the baseline
+  matrix; it stays draft until completion gates pass. Monitor the
   applicable FPGA and workspace CI until green. Check incoming automated review,
   repeatedly address actionable feedback, rerun affected checks, and continue
   until approval when a reviewer is active. Do not merge autonomously.
