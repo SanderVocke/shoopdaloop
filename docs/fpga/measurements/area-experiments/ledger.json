@@ -35,7 +35,7 @@
     "Original cache sequential/strided/five-line-conflict control metrics retained with independent word-array checks"
   ],
   "pending": [
-    "Stage 2: four-way RAM tags, banked associative search, indexed full-leaf/current-block caches from the same C1 control"
+    "Stage2 generated payload hint siblings, cache selection and physical repeat"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -631,7 +631,7 @@
     {
       "label": "s2-path",
       "stage": 2,
-      "status": "measuring",
+      "status": "completed",
       "rtl_source_revision": "17f69fd8",
       "control_revision": "6be27ce0",
       "control_summary": "c1-extended-100-summary.json",
@@ -669,9 +669,64 @@
         "timing_met": false
       },
       "pending": [
-        "Finish routed physical result and 1024-quanta connected run",
-        "Compare hint-policy siblings and repeat chosen cache winner"
-      ]
+        "Compare generated-hint policy siblings",
+        "Repeat selected cache winner"
+      ],
+      "routed_summary": "s2-path-extended-100-summary.json",
+      "extended_summary": "s2-path-extended-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -3910,
+        "logic_lut": -3888,
+        "memory_lut": -22,
+        "ff": -4306,
+        "bram36": 0.5,
+        "dsp": 0,
+        "carry4": -615,
+        "muxf7": -397,
+        "muxf8": -248,
+        "slices": -642,
+        "control_sets": -238
+      },
+      "routed_timing": {
+        "wns_ns": -3.881,
+        "whs_ns": 0.043,
+        "timing_met": false
+      },
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 88446,
+            "median": 88446,
+            "max": 88446
+          },
+          "warmup": {
+            "count": 16,
+            "min": 52974,
+            "median": 53066.0,
+            "max": 53657
+          },
+          "steady": {
+            "count": 1024,
+            "min": 52994,
+            "median": 52994.0,
+            "max": 59446
+          }
+        },
+        "steady_table_misses": 4352,
+        "c1_table_misses": 1698,
+        "boundary_cycles": {
+          "16384": 59446,
+          "32768": 58873
+        },
+        "cold_audio_reads_writes": [
+          694,
+          8
+        ]
+      },
+      "outcome": "shortlisted_pending_hint_siblings",
+      "decision": "337 more routed LUTs,21 more slices and1 more BRAM than basic current-block, but observed maximum falls74575 to59446 clocks. Compared with C1,3910 fewer LUTs,642 fewer slices and1152 fewer median clocks. All logical oracles pass. Favor this latency/area tradeoff pending hints and physical repeat; setup timing still fails."
     }
   ],
   "provisioning": {

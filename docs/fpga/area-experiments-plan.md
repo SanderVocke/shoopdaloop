@@ -125,9 +125,9 @@ Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
 
 Depends on stage 1's recorded decision; all cache alternatives share one control.
 
-Execution status: four-way, banked and full-leaf experiments are complete. The
-directory-path and generated-hint policy siblings remain; the basic current-block
-experiment is complete. See the [ledger](measurements/area-experiments/ledger.json) for retained
+Execution status: four-way, banked, full-leaf, current-block and directory-path
+experiments are complete. Generated-hint policy siblings, selection and repeat
+remain. See the [ledger](measurements/area-experiments/ledger.json) for retained
 source, unit, connected and physical results.
 
 - [ ] Implement and measure a 128-line, four-way cache with RAM-backed tags, then

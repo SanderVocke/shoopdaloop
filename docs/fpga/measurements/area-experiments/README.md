@@ -273,3 +273,28 @@ costs relative to C1; setup timing and nominal leaf deadlines still fail.
 The next directory-path trial reuses the existing traversal register bank and
 retains middle-directory pages per view. Deeper parent crossings need directed
 checks: the long connected interval alone establishes no universal bound.
+
+
+The directory-path sibling retains three middle-page pointers per view in a
+288-bit roots row, reusing traversal state and the original invalidation lifetime.
+All five metadata tests and ownership/deferred/media regressions pass, including
+DRAMsim3. The 1,041 connected rows preserve every logical oracle. Its 35,489 LUTs,
+11,974 slices, 28,681 FFs, 78 BRAMs, four DSPs and 3,343 CARRY4s save 3,910 LUTs
+and 642 slices versus C1. It costs 337 LUTs, 21 slices and one BRAM versus basic
+current-block. Setup slack -3.881 ns remains a failure; hold slack is +0.043 ns.
+
+Ordinary median is 52,994 clocks; the maximum is 59,446, versus 74,575 for basic
+current-block and 84,284 for C1. Nominal 100 MHz arithmetic places these observed
+steady samples within the quantum budget, but neither physical timing nor every
+higher-level boundary is qualified. Playback-start is 88,446 clocks and still
+excludes preparation; cold traffic is 694 reads/eight writes versus C1's
+1,248/128. Preparation and deferred dirty work must not be called a boot saving.
+
+Independent four-view fixtures cross ordinals 255/256, 4095/4096 and 65535/65536,
+trim/regrow deep branches, detach/reuse IDs and reclaim stale trees. Both AXI
+widths agree with the logical map, including opaque high-bit values. These
+fixtures expose costs: AXI64 alternating reads have median179 clocks versus C1's
+46; selected deep reclamation reads take371/449 versus59. They establish behavior
+and controller latency, not full128-channel high-boundary deadline guarantees.
+See `s2-path-extended-100-*`, `s2-path-translation-unit-*` and
+`s2-path-directory-unit-*`; hints and a repeated winning physical run remain.
