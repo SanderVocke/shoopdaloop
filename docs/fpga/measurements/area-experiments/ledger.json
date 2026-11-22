@@ -1050,7 +1050,7 @@
       ],
       "pending": [
         "Media/ownership/deferred tests",
-        "Optimizedscreen thenrouteifviable"
+        "Routed slice/timing/DRC decision"
       ],
       "unit_summaries": [
         "s3-path-context-width-axi32-summary.json",
@@ -1058,7 +1058,24 @@
         "s3-path-context-directory-unit-summary.json",
         "s3-path-context-store-operations-summary.json"
       ],
-      "metadata_log": "s3-path-context-metadata-tests.log"
+      "metadata_log": "s3-path-context-metadata-tests.log",
+      "optimized_summary": "s3-path-context-opt-summary.json",
+      "optimized_deltas_vs_c2": {
+        "lut": -128,
+        "logic_lut": -58,
+        "memory_lut": -70,
+        "ff": -1,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 13,
+        "muxf7": -125,
+        "muxf8": -1,
+        "control_sets": -2
+      },
+      "optimized_timing": {
+        "wns_ns": -5.32,
+        "whs_ns": 0.002
+      }
     }
   ],
   "provisioning": {
