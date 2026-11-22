@@ -136,6 +136,12 @@ source, unit, connected and physical results.
   Compare a full leaf with a cached current block translation per view: B0's
   mixed steady quantum performs 384 table-cache hits and zero misses while each
   allocation block spans 32 quanta. Test invalidation on table writes and retirement.
+- [ ] Separately trial the current-block cache with a cached level-one directory
+  parent per view. The basic current-block candidate takes 74,575 clocks at its
+  first leaf crossing, versus 84,284 for C1 and the nominal 66,666.7-clock budget
+  at 100 MHz. Include the extra RAM/register/mux cost and the same invalidation
+  lifetime. Verify minimum tree levels and parent-index crossings at ordinals
+  255/256; two leaf spans alone do not cover every higher-level boundary.
 - [ ] Verify read/write/zero, dirty eviction, fence/invalidate, held responses,
   reset, and fill/writeback errors. Exercise competing views, nested slices,
   append, trim, clear, reclaim, and stale speculative hints through the real store.

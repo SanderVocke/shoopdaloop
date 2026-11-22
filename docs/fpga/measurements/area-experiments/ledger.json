@@ -632,6 +632,11 @@
       "stage": 2,
       "change": "Add separate late-only and disabled generated-payload-hint trials after metadata lookup alternatives, using the same C1 control and preserving original defaults/public media operations",
       "reason": "Measured steady control has 256 payload burst reads for 128 channel chunks and zero metadata fills; source inspection confirms independent early SP and late JP hints, suggesting redundant traffic and unnecessary buffering"
+    },
+    {
+      "stage": 2,
+      "change": "Add one separately measured current-block plus cached-directory-parent sibling, from C1, before generated-hint policy trials",
+      "reason": "Measured basic current-block first-leaf cost74575 is better than C184284 but still exceeds nominal66666.7-clock budget. A private parent page can skip upper radix levels at the cost of an extra32 bits/view; verify complete RAM/control cost, invalidation, minimum levels and deeper parent-index boundaries. This is an experiment, not a real-time claim."
     }
   ],
   "ci": {
