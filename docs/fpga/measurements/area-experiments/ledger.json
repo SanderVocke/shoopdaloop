@@ -417,10 +417,11 @@
       },
       "validation": [
         "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64",
-        "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes"
+        "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes",
+        "Full ownership/deferred/media regressions passed including DRAMsim3, scalar legacy, reset/config restoration, deferred faults, stale hints and retirement"
       ],
       "pending": [
-        "Full ownership regressions, long connected playback, route and final comparison"
+        "Finish long connected playback and route, archive matched evidence and compare siblings"
       ],
       "translation_summary": "s2-leaf-translation-unit-summary.json",
       "unit_cycles": {
