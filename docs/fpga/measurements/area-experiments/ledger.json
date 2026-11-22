@@ -420,7 +420,7 @@
         "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes"
       ],
       "pending": [
-        "Full ownership/deferred/media regressions, optimized physical screen, 1024 steady-quanta connected run and viable routing"
+        "Full ownership regressions, long connected playback, route and final comparison"
       ],
       "translation_summary": "s2-leaf-translation-unit-summary.json",
       "unit_cycles": {
@@ -445,6 +445,21 @@
           "control": 80,
           "candidate": 3264
         }
+      },
+      "optimized_summary": "s2-leaf-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -3256,
+        "ff": -4015,
+        "bram36": 5.5,
+        "dsp": 0,
+        "carry4": -576,
+        "memory_lut": 0,
+        "control_sets": -96
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002,
+        "timing_met": false
       }
     }
   ],
@@ -512,7 +527,8 @@
     "dependency_isolation": "Passed",
     "native_verification": "Passed complete native Marlin verification, including component/execution matrices, DRAMsim3, serialized application/bridge, production numeric gates and shared benchmark reporting. Concurrent-start-order assertion fix resolves the final report failure.",
     "head": "58edd76784049444e098a51d397b2eb3fde059ef",
-    "usb": "TinyUSB integration timed out draining USB OUT queues; isolated job rerun requested. Other firmware jobs passed."
+    "usb": "Complete Zynq firmware workflow45050934033 passed on selected58edd767, including TinyUSB MIDI integration",
+    "workspace": "Eight jobs passed and six running at last inspection; Native JACK acceptance failed confirming host shutdown after persistence/control probes passed, artifact14766318026 being inspected"
   },
   "selected_control": {
     "label": "C1",
