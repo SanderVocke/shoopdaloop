@@ -142,6 +142,12 @@ Depends on stage 1's recorded decision; all cache alternatives share one control
 - [ ] Route viable alternatives, select by connected area and latency, and record
   any capacity/hash tuning as separate runs. Do not treat a fully serial scan's
   reduced logic as a win without accounting for its complete quantum cost.
+- [ ] Separately trial late-only generated payload hints, then no generated
+  payload hints, from the same C1 control. The measured control issues 256 payload
+  burst reads for 128 channel chunks and emits both early SP and late JP hints.
+  Preserve the original default policy, all read/media operations, and public
+  hint handling. Measure FIFO/resolver cost, traffic, stalls, transitions,
+  fault/progress behavior, and any FIFO-capacity tuning as separate runs.
 
 ## Stage 3 Narrow internal metadata and address types
 

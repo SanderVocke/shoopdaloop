@@ -41,7 +41,8 @@
     "prepared_baseline": "work/area-experiments/b0-100",
     "setup_logs": "work/area-experiments/setup",
     "baseline_checkpoints": "work/area-experiments/b0-100/post_{opt,place,route}.dcp",
-    "baseline_matrix": "b0-matrix/manifest.json"
+    "baseline_matrix": "b0-matrix/manifest.json",
+    "c1_extended_control": "c1-extended-100-summary.json"
   },
   "experiments": [
     {
@@ -231,7 +232,7 @@
     {
       "label": "s2-fourway",
       "stage": 2,
-      "status": "in_progress",
+      "status": "measured_pending_siblings",
       "control_revision": "6be27ce0",
       "control_summary": "s1-serial-100-summary.json",
       "source_revision": "853f3aac",
@@ -241,15 +242,14 @@
         "Sequential/strided/conflict unit workloads pass on AXI32/64; hits remain six clocks; deliberate conflicts add misses and writebacks",
         "Lint draft passes 1/2/4/7/8/128 lines in burst and scalar modes",
         "Full deferred-cleanup and media suites pass, including scalar/legacy memory mode",
-        "All 32 warm/steady mixed rows equal C1; only cold row changes (216 more clocks, two fewer table misses)"
+        "All 32 warm/steady mixed rows equal C1; only cold row changes (216 more clocks, two fewer table misses)",
+        "All media/ownership/deferred regression packages pass, including legacy scalar memory and DRAMsim3"
       ],
       "physical_build": "work/area-experiments/s2-fourway-route100",
       "callback_build": "work/area-experiments/s2-fourway-benchmark",
       "pending": [
-        "Complete ownership regressions",
-        "Complete two-leaf-span connected measurements against C1",
-        "Collect routed physical resources/timing",
-        "Compare remaining cache siblings before final stage 2 selection"
+        "Compare banked/full-leaf/current-block and generated-hint policy siblings from C1",
+        "Repeat a selected small physical winner before promotion"
       ],
       "optimized_summary": "s2-fourway-opt-summary.json",
       "optimized_deltas_vs_c1": {
@@ -272,7 +272,55 @@
         "all_warm_steady_rows_equal_c1": true,
         "warm_steady_table_hits_per_quantum": 384,
         "warm_steady_table_misses_per_quantum": 0
-      }
+      },
+      "routed_summary": "s2-fourway-100-summary.json",
+      "extended_summary": "s2-fourway-extended-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -2743,
+        "slices": -280,
+        "ff": -4250,
+        "carry4": -606,
+        "control_sets": -88,
+        "memory_lut": 96,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "routed_timing": {
+        "wns_ns": -4.744,
+        "whs_ns": 0.015,
+        "timing_met": false,
+        "limiting_path": "metadata.new_count_reg[2] to required_nodes_reg[29], 19 CARRY4 plus eight LUT levels"
+      },
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 54146,
+        "c1_max": 84284,
+        "candidate_max": 83891,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 1654,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 83891
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 83257
+        }
+      },
+      "decision": "Shortlist as an area improvement: 2743 fewer LUTs and 280 fewer slices than C1, 4250 fewer FFs, unchanged median callbacks, slightly better long-run boundary maxima. Setup is still failing and worse than C1; compare banked/per-view alternatives before selection. Repeat if this small physical winner is ultimately selected."
+    },
+    {
+      "label": "s2-banked",
+      "stage": 2,
+      "status": "preparing",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No data/ownership/error change intended. Fully associative capacity retained; eight comparisons scan sixteen groups for 128 lines. Hits add group-search clocks; dirty misses fetch victim tags separately.",
+      "pending": [
+        "Apply the lint-clean isolated draft and validate unit/metadata/media behavior",
+        "Measure short and extended callbacks and mapped/physical resources against C1"
+      ]
     }
   ],
   "provisioning": {
@@ -301,7 +349,16 @@
     "stage_2_followup": "Include a current-block translation per view within the indexed-view cache avenue; it may avoid repeated lookup of the same allocation block between 1024-frame boundaries.",
     "stage_1_opt": "Incremental count removes 2121 LUT and 1526 CARRY4 versus B0; no callback-cycle/traffic change. Routed slices pending.",
     "stage_1_route": "Incremental counter saves 2040 LUT but only 189 slices; the whole connected result remains packing-limited. Next critical path is metadata node arithmetic.",
-    "cache_control_fixture": "New standalone 128-line control: read hits six clocks, cold fills 41 clocks on AXI64 / 49 on AXI32 with the direct-memory model; sequential, strided, five-way-conflict writes/readback independently verified. Only original cache RTL used; candidate cache measurements wait for stage 1."
+    "cache_control_fixture": "New standalone 128-line control: read hits six clocks, cold fills 41 clocks on AXI64 / 49 on AXI32 with the direct-memory model; sequential, strided, five-way-conflict writes/readback independently verified. Only original cache RTL used; candidate cache measurements wait for stage 1.",
+    "payload_prefetch": {
+      "steady_axi_payload_reads": 256,
+      "channel_chunks_per_quantum": 128,
+      "steady_native_payload_reads": 2048,
+      "metadata_table_hits": 384,
+      "metadata_fills": 0,
+      "source": "audio_pipeline early read_intent and late JP hint arbitration; hint_count equals quantum"
+    },
+    "leaf_boundary_cost": "C1 and four-way both exceed the nominal 66666.7-clock budget at 100 MHz at leaf boundaries; physical timing also fails. Short 16-quantum fixtures alone do not characterize these spikes."
   },
   "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/1026",
   "plan_adjustments": [
@@ -314,6 +371,11 @@
       "stage": 1,
       "change": "Clarify that diagnostic values match the logical oracle exactly, while clock latency is measured separately with an explicit driver scope",
       "reason": "The independent Rust logical model has no RTL clock model; cycle changes are already allowed by the immutable acceptance criteria"
+    },
+    {
+      "stage": 2,
+      "change": "Add separate late-only and disabled generated-payload-hint trials after metadata lookup alternatives, using the same C1 control and preserving original defaults/public media operations",
+      "reason": "Measured steady control has 256 payload burst reads for 128 channel chunks and zero metadata fills; source inspection confirms independent early SP and late JP hints, suggesting redundant traffic and unnecessary buffering"
     }
   ],
   "ci": {
