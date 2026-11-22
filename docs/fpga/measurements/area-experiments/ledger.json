@@ -865,9 +865,26 @@
       ],
       "pending": [
         "Expression-state suite",
-        "Optimized implementation, then route if viable"
+        "Routed slice/timing/DRC comparison before selection"
       ],
-      "functional_log": "s3-midi-tests.log"
+      "functional_log": "s3-midi-tests.log",
+      "optimized_summary": "s3-midi-opt-summary.json",
+      "optimized_deltas_vs_c2": {
+        "lut": -363,
+        "logic_lut": -363,
+        "memory_lut": 0,
+        "ff": -146,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -59,
+        "muxf7": -152,
+        "muxf8": -16,
+        "control_sets": 0
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002
+      }
     }
   ],
   "provisioning": {
