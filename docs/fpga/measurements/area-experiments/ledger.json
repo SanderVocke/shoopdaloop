@@ -313,14 +313,27 @@
     {
       "label": "s2-banked",
       "stage": 2,
-      "status": "preparing",
+      "status": "measuring",
       "control_revision": "6be27ce0",
       "control_summary": "c1-extended-100-summary.json",
       "changed_contract": "No data/ownership/error change intended. Fully associative capacity retained; eight comparisons scan sixteen groups for 128 lines. Hits add group-search clocks; dirty misses fetch victim tags separately.",
       "pending": [
-        "Apply the lint-clean isolated draft and validate unit/metadata/media behavior",
-        "Measure short and extended callbacks and mapped/physical resources against C1"
-      ]
+        "Full ownership/deferred/media regressions and long connected workload underway",
+        "Optimized physical build underway; route if viable and compare C1"
+      ],
+      "rtl_source_revision": "6984b063",
+      "validation": [
+        "All three metadata tests passed, including primary 128-line cache fault/fence/backpressure/reset cases",
+        "Independent word-array sequential, strided and dirty conflict traces passed on AXI32 and AXI64; misses exactly equal control (261)"
+      ],
+      "unit_trace": "s2-banked-unit/",
+      "unit_cycles": {
+        "control_read_hit": 6,
+        "banked_read_hit_min": 6,
+        "banked_read_hit_median": 20,
+        "banked_read_hit_max": 36,
+        "banked_fill_additional": 30
+      }
     }
   ],
   "provisioning": {
@@ -381,12 +394,13 @@
   "ci": {
     "draft_pr": 1026,
     "initial_head": "8c02b795",
-    "fpga_run": 45037959544,
+    "fpga_run": 45044752861,
     "standalone_synthesis": "All four standalone synthesis checks passed",
     "reference_integration": "Passed",
     "dependency_isolation": "Passed",
-    "native_verification": "In progress",
-    "head": "2a86f35d"
+    "native_verification": "Component/execution, DRAMsim3, serialized application, numeric gates passed. Final Python reporting check failed on concurrent start-order assertion; fixed by f77ba06b / selected 58edd767; 18 tests pass locally.",
+    "head": "6be27ce0",
+    "usb": "TinyUSB integration timed out draining USB OUT queues; isolated job rerun requested. Other firmware jobs passed."
   },
   "selected_control": {
     "label": "C1",
