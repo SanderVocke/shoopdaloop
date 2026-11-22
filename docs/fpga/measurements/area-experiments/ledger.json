@@ -1050,7 +1050,7 @@
         "Allmedia/deferred/ownership tests pass includingDRAMsim3/Legacy; sequentialsuitewalltimes 91.92,321.96,368.09sec (hostload dependent, not RTL cycle metrics)"
       ],
       "pending": [
-        "Routed slice/timing/DRC decision"
+        "Fullphysicalrepeat andselectiondecision"
       ],
       "unit_summaries": [
         "s3-path-context-width-axi32-summary.json",
@@ -1076,7 +1076,26 @@
         "wns_ns": -5.32,
         "whs_ns": 0.002
       },
-      "media_log": "s3-path-context-media-tests.log"
+      "media_log": "s3-path-context-media-tests.log",
+      "routed_summary": "s3-path-context-100-summary.json",
+      "routed_deltas_vs_c2": {
+        "lut": -82,
+        "logic_lut": -48,
+        "memory_lut": -34,
+        "ff": 33,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 13,
+        "muxf7": -125,
+        "muxf8": -1,
+        "slices": -42,
+        "control_sets": 65
+      },
+      "routed_timing": {
+        "wns_ns": -3.865,
+        "whs_ns": 0.039
+      },
+      "provisional_decision": "SmallprimaryLUT/slicewinwithunchangedcycles/BRAM andslightlymoreFF/carry/controlsets; setupessentiallyunchangedandstillfails. Fullfourstagerepeatstartedbeforepromotion."
     }
   ],
   "provisioning": {
