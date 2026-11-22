@@ -1470,6 +1470,14 @@ impl AppWidget {
         self.add_track_fx.set_discovery(discover);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fx_service_launcher(
+        &mut self,
+        prepare: fn(&str) -> Result<std::net::SocketAddr, String>,
+    ) {
+        self.add_track_fx.set_launcher(prepare);
+    }
+
     pub fn open_host_profiling(&mut self) {
         self.profiling.open = true;
         self.profiling.host = true;
@@ -2876,11 +2884,9 @@ impl AppWidget {
                 let remote_fx = self.add_track_mode == AddTrackMode::DryWet
                     && self.add_track_processor.as_ref().is_some_and(TrackProcessorTypeId::is_remote_carla);
                 if remote_fx {
-                    let local_session = self.host_controls.state.as_ref().is_none_or(|host| {
-                        host.location != crate::HostLocation::RemoteSocket
-                    });
-                    self.add_track_fx.show(ui, local_session, self.add_track_has_default_fx);
+                    self.add_track_fx.show(ui, self.host_controls.state.as_ref(), self.add_track_has_default_fx);
                 }
+                let preparing_fx = remote_fx && self.add_track_fx.is_preparing();
                 #[cfg(test)]
                 {
                     self.add_track_midi_id = _configuration_ui.midi_id;
@@ -2902,7 +2908,9 @@ impl AppWidget {
                         crate::TrackSpecError::ProcessorUnavailable
                     })
                     .and_then(|spec| spec.validate(processors));
-                if let Err(error) = validation {
+                if let Some(error) = validation.err().filter(|error| {
+                    !preparing_fx || *error != crate::TrackSpecError::InvalidRemoteFx
+                }) {
                     let message = match error {
                         crate::TrackSpecError::EmptyName => "A track name is required.",
                         crate::TrackSpecError::InvalidLatency => {
@@ -2929,7 +2937,7 @@ impl AppWidget {
                 ui.separator();
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(
-                        validation.is_ok() && missing_capability.is_none(),
+                        validation.is_ok() && missing_capability.is_none() && !preparing_fx,
                         egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
                     );
                     #[cfg(test)]
@@ -2961,6 +2969,9 @@ impl AppWidget {
         if cancelled {
             self.cancel_add_track();
             open = false;
+        }
+        if !open {
+            self.add_track_fx.closed();
         }
         self.add_track_open = open;
     }
@@ -5912,6 +5923,75 @@ mod tests {
             configuration.output_bus_names,
             vec!["Cue".to_owned(), "Master".to_owned()]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "desktop FX host launcher")]
+    fn desktop_fx_host_is_started_on_request_and_used_for_track_creation() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::{Duration, Instant};
+
+        static REQUESTS: AtomicUsize = AtomicUsize::new(0);
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        widget.set_host_state(crate::HostUiState {
+            name: "Stage host".into(),
+            endpoint: Some("192.0.2.1:15400".into()),
+            location: crate::HostLocation::RemoteSocket,
+            connection: crate::HostConnectionState::Ready,
+            error: None,
+            shutdown_pending: false,
+            import_enabled: true,
+        });
+        widget.set_fx_service_launcher(|endpoint| {
+            assert_eq!(endpoint, "192.0.2.1:15400");
+            REQUESTS.fetch_add(1, Ordering::Relaxed);
+            Ok("192.0.2.2:24510".parse().unwrap())
+        });
+        let processor = TrackProcessorTypeId::new(TrackProcessorTypeId::REMOTE_CARLA_RACK);
+        let state = AppState {
+            capabilities: crate::BackendCapabilities::FULL,
+            track_processors: Arc::from([TrackProcessorDescriptor {
+                id: processor.clone(),
+                label: "Remote Carla Rack".into(),
+                available: true,
+                unavailable_reason: None,
+                resources: None,
+                constraints: Default::default(),
+                features: Default::default(),
+                editor: None,
+            }]),
+            ..Default::default()
+        };
+        widget.add_track_open = true;
+        widget.add_track_name = "Desktop FX".into();
+        widget.add_track_mode = AddTrackMode::DryWet;
+        widget.add_track_processor = Some(processor);
+        widget.add_track_audio_channels = 2;
+        frame(&context, &mut widget, &state, vec![]);
+        frame(&context, &mut widget, &state, vec![]);
+        assert_eq!(REQUESTS.load(Ordering::Relaxed), 0);
+        let button = widget.add_track_fx.launch_button_rect().unwrap().center();
+        assert!(click(&context, &mut widget, &state, button).is_empty());
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while widget.add_track_fx.target().is_none() {
+            assert!(
+                Instant::now() < deadline,
+                "Desktop FX host startup did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+            frame(&context, &mut widget, &state, vec![]);
+        }
+        let add = widget.add_track_accept_rect.unwrap().center();
+        let actions = click(&context, &mut widget, &state, add);
+        let [AppAction::AddTrackWithTopology(spec)] = actions.as_slice() else {
+            panic!("expected track creation, got {actions:?}");
+        };
+        assert!(matches!(
+            spec.topology, TrackSpecTopology::DryWet { remote_fx: Some(target), .. }
+                if target.address == "192.0.2.2:24510".parse().unwrap()
+        ));
+        assert_eq!(REQUESTS.load(Ordering::Relaxed), 1);
     }
 
     #[shoop_wasm_test_support::shoop_test]

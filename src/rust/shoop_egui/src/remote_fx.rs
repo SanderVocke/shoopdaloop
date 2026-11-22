@@ -1,6 +1,80 @@
 use shoop_app_api::{RemoteFxReconnect, RemoteFxTarget};
 use std::net::SocketAddr;
 
+use crate::{HostLocation, HostUiState};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::{sync::mpsc, time::Duration};
+
+#[cfg(not(target_arch = "wasm32"))]
+struct DesktopLauncher {
+    prepare: fn(&str) -> Result<SocketAddr, String>,
+    pending: Option<mpsc::Receiver<Result<SocketAddr, String>>>,
+    error: Option<String>,
+    #[cfg(test)]
+    button_rect: Option<egui::Rect>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DesktopLauncher {
+    fn show(&mut self, ui: &mut egui::Ui, host: &HostUiState, address: &mut String) {
+        if let Some(pending) = &self.pending {
+            match pending.try_recv() {
+                Ok(result) => {
+                    self.pending = None;
+                    match result {
+                        Ok(endpoint) => *address = endpoint.to_string(),
+                        Err(error) => self.error = Some(error),
+                    }
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.pending = None;
+                    self.error = Some("FX host startup was interrupted. Try again.".into());
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        let endpoint = host
+            .endpoint
+            .as_ref()
+            .filter(|_| host.session_controls_enabled());
+        if self.pending.is_some() {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Preparing FX host…");
+            });
+            ui.ctx().request_repaint_after(Duration::from_millis(100));
+        } else {
+            let start = ui
+                .add_enabled(endpoint.is_some(), egui::Button::new("Run FX on this computer"))
+                .on_hover_text("Start or reuse an FX host on the desktop's network interface for this session.");
+            #[cfg(test)]
+            {
+                self.button_rect = Some(start.rect);
+            }
+            if let Some(endpoint) = endpoint.filter(|_| start.clicked()).cloned() {
+                let (reply, pending) = mpsc::channel();
+                let prepare = self.prepare;
+                let context = ui.ctx().clone();
+                self.pending = Some(pending);
+                self.error = None;
+                std::thread::spawn(move || {
+                    let _ = reply.send(prepare(&endpoint));
+                    context.request_repaint();
+                });
+            }
+        }
+        if let Some(error) = &self.error {
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
+    }
+
+    fn reset(&mut self) {
+        self.pending = None;
+        self.error = None;
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Picker {
     address: String,
@@ -12,6 +86,8 @@ pub(crate) struct Picker {
     pending: Option<std::sync::mpsc::Receiver<Vec<SocketAddr>>>,
     #[cfg(not(target_arch = "wasm32"))]
     started: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    local: Option<DesktopLauncher>,
     addresses: Vec<SocketAddr>,
 }
 
@@ -21,10 +97,47 @@ impl Picker {
         self.discover = Some(discover);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn set_launcher(&mut self, prepare: fn(&str) -> Result<SocketAddr, String>) {
+        self.local = Some(DesktopLauncher {
+            prepare,
+            pending: None,
+            error: None,
+            #[cfg(test)]
+            button_rect: None,
+        });
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn launch_button_rect(&self) -> Option<egui::Rect> {
+        self.local.as_ref()?.button_rect
+    }
+
+    pub(crate) fn is_preparing(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.local
+                .as_ref()
+                .is_some_and(|local| local.pending.is_some())
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            false
+        }
+    }
+
     pub(crate) fn opened(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.started = false;
+        }
+        self.closed();
+    }
+
+    pub(crate) fn closed(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(local) = &mut self.local {
+            local.reset();
         }
     }
 
@@ -43,11 +156,55 @@ impl Picker {
 
     pub(crate) fn clear_choice(&mut self) {
         self.address.clear();
+        self.closed();
     }
 
-    pub(crate) fn show(&mut self, ui: &mut egui::Ui, local_session: bool, has_default: bool) {
+    pub(crate) fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        host: Option<&HostUiState>,
+        has_default: bool,
+    ) {
+        let local_session = host.is_none_or(|host| host.location != HostLocation::RemoteSocket);
         #[cfg(not(target_arch = "wasm32"))]
         self.poll(ui, local_session, has_default);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let (Some(local), Some(host)) = (&mut self.local, host.filter(|_| !local_session)) {
+            local.show(ui, host, &mut self.address);
+        }
+        ui.add_enabled_ui(!self.is_preparing(), |ui| {
+            self.show_address(ui, local_session, has_default)
+        });
+        if self.uses_host_service(has_default) {
+            return;
+        }
+        let policies = [
+            (RemoteFxReconnect::Recreate, "Recreate chain"),
+            (RemoteFxReconnect::Resume, "Resume live chain"),
+            (RemoteFxReconnect::Manual, "Retry manually"),
+        ];
+        ui.horizontal(|ui| {
+            ui.label("On disconnect");
+            let selected = policies
+                .iter()
+                .find(|(policy, _)| *policy == self.reconnect)
+                .map(|(_, label)| *label)
+                .unwrap_or_default();
+            egui::ComboBox::from_id_salt("remote_fx_reconnect")
+                .selected_text(selected)
+                .show_ui(ui, |ui| {
+                    for (value, label) in policies {
+                        ui.selectable_value(&mut self.reconnect, value, label);
+                    }
+                });
+        });
+        ui.checkbox(
+            &mut self.dry_on_loss,
+            "Play delayed dry audio when FX is missing",
+        );
+    }
+
+    fn show_address(&mut self, ui: &mut egui::Ui, local_session: bool, has_default: bool) {
         let addresses = self
             .addresses
             .iter()
@@ -79,33 +236,6 @@ impl Picker {
                 self.address.clear();
             }
         });
-        if self.uses_host_service(has_default) {
-            return;
-        }
-        let policies = [
-            (RemoteFxReconnect::Recreate, "Recreate chain"),
-            (RemoteFxReconnect::Resume, "Resume live chain"),
-            (RemoteFxReconnect::Manual, "Retry manually"),
-        ];
-        ui.horizontal(|ui| {
-            ui.label("On disconnect");
-            let selected = policies
-                .iter()
-                .find(|(policy, _)| *policy == self.reconnect)
-                .map(|(_, label)| *label)
-                .unwrap_or_default();
-            egui::ComboBox::from_id_salt("remote_fx_reconnect")
-                .selected_text(selected)
-                .show_ui(ui, |ui| {
-                    for (value, label) in policies {
-                        ui.selectable_value(&mut self.reconnect, value, label);
-                    }
-                });
-        });
-        ui.checkbox(
-            &mut self.dry_on_loss,
-            "Play delayed dry audio when FX is missing",
-        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]

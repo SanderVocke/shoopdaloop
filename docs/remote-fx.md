@@ -4,6 +4,12 @@ A Native session host can process Carla Rack, Patchbay, and Patchbay 16x on a de
 
 The default Native build includes Carla support. Use companions from the same build on the desktop and looper. Use the `-carla` package on the machine that runs the FX service, or install the Carla runtime alongside its standard package. Install plugins on that machine. [Carla runtime layout](../third_party/carla/README.md)
 
+## Start from Add Track
+
+When connected to a remote Native session in the desktop UI, choose **Add track → Dry/wet → Remote Carla** and click **Run FX on this computer**. Shoop finds the desktop interface that routes to the session host, reuses an FX host listening there or starts one, and fills in its address. Click **Add** to open the chain from the session host. The FX host remains available in Host Manager after you close Shoop.
+
+The session host must be able to reach that desktop interface over TCP and UDP. This works on a trusted LAN or VPN with connectivity in both directions. You can also select a discovered FX host or enter an address the session host can reach.
+
 ## Start from Host Manager
 
 1. On the desktop, open **Host Manager → New host… → FX host** and select **Start host**. Enable **LAN access** if the looper runs on another machine. **One process per chain** enables supervised Carla subprocesses.

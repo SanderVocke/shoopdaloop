@@ -7,7 +7,7 @@ use shoop_remote_fx::{describe, ChainDescription, Description, Lifecycle};
 use std::{
     collections::HashSet,
     io::{BufRead, BufReader, Read},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket},
     process::{Command, Stdio},
     sync::mpsc,
     thread,
@@ -197,6 +197,59 @@ pub fn discover_fx_services() -> Vec<SocketAddr> {
         .collect()
 }
 
+fn route_to_session(endpoint: &str) -> Result<SocketAddr> {
+    for peer in endpoint
+        .to_socket_addrs()
+        .with_context(|| format!("Resolve session host address {endpoint}"))?
+    {
+        let bind = if peer.is_ipv4() {
+            "0.0.0.0:0"
+        } else {
+            "[::]:0"
+        };
+        let Ok(socket) = UdpSocket::bind(bind) else {
+            continue;
+        };
+        if socket.connect(peer).is_err() {
+            continue;
+        }
+        if let Ok(mut local) = socket.local_addr() {
+            let ip = local.ip();
+            if ip.is_unspecified()
+                || ip.is_loopback()
+                || matches!(ip, IpAddr::V6(ip) if ip.is_unicast_link_local())
+            {
+                continue;
+            }
+            local.set_port(0);
+            return Ok(local);
+        }
+    }
+    anyhow::bail!("Could not choose a desktop network address for {endpoint}. Select an FX host or enter its address.")
+}
+
+/// Finds a desktop FX host on the route to the session or starts one on that interface.
+pub fn prepare_desktop_fx_host(session_endpoint: &str) -> Result<SocketAddr> {
+    let interface = route_to_session(session_endpoint)?;
+    if let Ok(snapshot) = shoop_host_processes::snapshot() {
+        for process in snapshot.processes {
+            for listener in process.addresses {
+                let mut address = interface;
+                address.set_port(listener.port());
+                if (listener == address
+                    || (listener.is_ipv4() == address.is_ipv4() && listener.ip().is_unspecified()))
+                    && describe(address).is_ok_and(|fx| fx.pid == process.identity.pid)
+                {
+                    return Ok(address);
+                }
+            }
+        }
+    }
+    let (address, _) = launch_service(interface, true, false)
+        .with_context(|| format!("Start FX host on {}", interface.ip()))?;
+    Ok(address)
+}
+
 fn launch_service(
     address: SocketAddr,
     lan: bool,
@@ -327,6 +380,10 @@ pub(super) fn probe() -> Result<()> {
     }
     const LAUNCH_ONLY: &str = "SHOOP_FX_PROBE_LAUNCH_ONLY";
     if std::env::var_os(LAUNCH_ONLY).is_some() {
+        if let Ok(endpoint) = std::env::var("SHOOP_FX_PROBE_SESSION_ENDPOINT") {
+            println!("{}", prepare_desktop_fx_host(&endpoint)?);
+            return Ok(());
+        }
         let host = Settings::default().request()?.start()?;
         println!("{}", host.endpoint);
         return Ok(());

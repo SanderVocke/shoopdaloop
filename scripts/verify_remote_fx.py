@@ -306,6 +306,12 @@ def run_fixture(args, root):
             run([args.manager, "--probe-fx-service"], env={
                 **env, "SHOOP_FX_PROBE_DISCOVER_ADDRESS": env["SHOOP_REMOTE_FX_TEST_ADDRESS"],
             }, timeout=20)
+            reused = run(enter + [str(args.manager), "--probe-fx-service"], env={
+                **env, "SHOOP_FX_PROBE_LAUNCH_ONLY": "1",
+                "SHOOP_FX_PROBE_SESSION_ENDPOINT": f"{LOOPER}:{SERVICE_PORT}",
+            }, timeout=20, capture_output=True, text=True).stdout.strip()
+            if reused != env["SHOOP_REMOTE_FX_TEST_ADDRESS"]:
+                raise RuntimeError(f"Desktop launch selected {reused} instead of the existing FX host")
         print(
             f"Remote Carla on {platform.platform()}, {len(os.sched_getaffinity(0))} CPUs, "
             f"{args.host}, virtual Ethernet, 48 kHz, 128-frame period, 32-frame quantum. "
