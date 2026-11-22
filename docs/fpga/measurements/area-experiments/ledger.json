@@ -535,10 +535,11 @@
         "views": 512
       },
       "validation": [
-        "All four metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes"
+        "All four metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes",
+        "Full ownership/deferred/media regressions passed, including DRAMsim3 and legacy scalar paths, configuration/reset, fault and retained-root cases"
       ],
       "pending": [
-        "Finish ownership regressions, long connected playback and routed packing/timing; archive matched evidence"
+        "Finish long connected playback and routed packing/timing; archive matched evidence"
       ],
       "translation_summary": "s2-block-translation-unit-summary.json",
       "optimized_summary": "s2-block-opt-summary.json",
