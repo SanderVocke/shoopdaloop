@@ -99,6 +99,19 @@ Missing routed slices remain null. Setup/hold success is separate from complete
 DRC, constraint coverage, and board qualification. Original per-quantum samples
 and raw reports remain the source of truth for the compact summary.
 
+Retain a completed build as a compact source/report archive and summary:
+
+```sh
+python3 fpga/synthesis/area_archive.py --build BUILD_DIRECTORY --label LABEL \
+  --benchmark CALLBACK_JSON --control CONTROL_SUMMARY_JSON \
+  --output-directory docs/fpga/measurements/area-experiments
+```
+
+Each archive has a member-by-member SHA-256 manifest. Checkpoints stay in the
+local build directory with their sizes and hashes recorded separately; they are
+not uploaded with the source/report archive. The archive round-trip was checked
+against all four B0 implementation stages.
+
 Runner checks:
 
 ```sh

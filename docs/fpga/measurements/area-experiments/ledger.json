@@ -27,7 +27,8 @@
     "Frozen executable SHA-256 and optimized-model source provenance retained with all raw callback JSON and logs",
     "Workload-to-test mapping established; focused reference/metadata/ownership controls passed; full regression remains a final-stage gate",
     "Eleven measurement-tool checks pass, including checkpoint/context preservation, modified constraints, and unmanifested HDL detection",
-    "Incremental occupancy candidate passes all eight descriptor configurations including reset during diagnostics; six-clock reads preserved; warning-denying targeted build passed"
+    "Incremental occupancy candidate passes all eight descriptor configurations including reset during diagnostics; six-clock reads preserved; warning-denying targeted build passed",
+    "Compact evidence archive retains all 116 B0 members with matching hashes; reconstructed all four physical stage metrics exactly from the archive"
   ],
   "pending": [
     "Compare stage 1 incremental and RAM-backed serial population counts"
@@ -56,17 +57,19 @@
       "source_revision": "b4146e9d",
       "changed_contract": "None; exact descriptor statistics including reuse-disabled issued-view semantics",
       "validation": [
-        "Descriptor count/reset/full-pool test passed for 1/7/512/513 views, reuse off/on",
-        "Rust formatting, test attribute policy, and warning-denying targeted build passed",
-        "Standalone media_store lint and generic/ECP5 synthesis passed; connected media_audio_pipeline standalone check still running"
+        "Full ownership suite passed (two tests including all eight descriptor geometries and DRAMsim3)",
+        "Extended reset-during-diagnostic tests passed; six-clock reads preserved",
+        "All 33 mixed-on-delay7 per-quantum rows equal B0, including cache counters and AXI traffic",
+        "Both standalone media-store tops pass lint and generic/ECP5 synthesis",
+        "Formatting, test attribute policy, and warning-denying targeted build passed"
       ],
       "physical_build": "work/area-experiments/s1-incremental-opt",
       "callback_build": "work/area-experiments/s1-incremental-benchmark",
       "pending": [
-        "Complete full ownership suite and connected callback comparison",
         "Collect optimized resources and route viable candidate",
         "Compare sibling RAM-backed serial count before final stage 1 selection"
-      ]
+      ],
+      "callback_evidence": "s1-incremental-mixed-on-delay7.json"
     }
   ],
   "provisioning": {
