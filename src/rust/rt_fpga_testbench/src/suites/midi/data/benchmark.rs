@@ -51,7 +51,7 @@ fn control(sim: &mut Sim<'_>, op: u64, args: [u64; 5]) -> [u64; 4] {
     });
     sim.idle(1);
     sim.model.set("midi_command_valid", 0);
-    sim.until(2_000_000, "benchmark control response", |m| {
+    sim.until(10_000_000, "benchmark control response", |m| {
         m.get("midi_response_valid") != 0
     });
     assert_eq!(sim.model.get("midi_response_error"), 0, "command {op}");
@@ -141,16 +141,44 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Shared, reference: &Reference) {
         & !15;
     assert_eq!(
         sim.model.get("midi_arena_bytes") as usize,
-        bytes + 131072 * 16
+        bytes + 131072 * 16 + (1 + 8 + 256 + 1) * 32768 + (64 * 8 + 1) * 2048
     );
     control(sim, 0, [0; 5]);
     if !reference.has_midi {
         return;
     }
+    if let Some(state) = &reference.midi.expression {
+        for output in 0..8 {
+            for field in 0..8192 {
+                let value = state.output(output).unwrap().word(field);
+                if value != 0 {
+                    control(
+                        sim,
+                        22,
+                        [1, u64::from(output), field as u64, u64::from(value), 0],
+                    );
+                }
+            }
+        }
+    }
     let helper = control(sim, 8, [0; 5])[0];
     for slot in 0..reference.loops {
         let view = control(sim, 8, [0; 5])[0];
         let view_slot = view as u32 as usize;
+        if reference.state_enabled {
+            let source = reference
+                .midi
+                .view(rt_fpga_reference::midi::SequenceId(slot as u16))
+                .unwrap()
+                .unwrap();
+            let snapshot = reference.midi.store.snapshot(source).unwrap();
+            for field in 0..8192 {
+                let value = snapshot.word(field);
+                if value != 0 {
+                    control(sim, 22, [2, view, field as u64, u64::from(value), 0]);
+                }
+            }
+        }
         let records = records(slot, reference.frames);
         for (ordinal, chunk) in records.chunks(limits.block_events as usize).enumerate() {
             let first = chunk[0];
@@ -195,6 +223,19 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Shared, reference: &Reference) {
         }
         control(sim, 5, [slot as u64, view, 0, 0, 0]);
         control(sim, 13, [view, 0, 0, 0, 0]);
+        if reference.state_enabled {
+            control(
+                sim,
+                21,
+                [
+                    slot as u64,
+                    (1 << 32) | slot as u64,
+                    ((1u64 << (slot / 8)) << 8) | ((1u64 << (slot % 8)) << 16),
+                    0,
+                    0,
+                ],
+            );
+        }
         eprintln!("Prepared RTL MIDI loop {}/{}", slot + 1, reference.loops);
     }
     control(sim, 13, [helper, 0, 0, 0, 0]);
@@ -216,6 +257,32 @@ pub fn run(
     quanta: usize,
     delay: u64,
 ) -> Result<Value> {
+    run_config(audio, midi, loops, frames, quanta, delay, false)
+}
+pub fn run_config(
+    audio: bool,
+    midi: bool,
+    loops: usize,
+    frames: usize,
+    quanta: usize,
+    delay: u64,
+    state: bool,
+) -> Result<Value> {
+    run_case(audio, midi, loops, frames, quanta, delay, state, false)
+}
+pub fn musical(delay: u64) -> Result<Value> {
+    run_case(false, true, 64, 1_440_000, 16, delay, true, true)
+}
+fn run_case(
+    audio: bool,
+    midi: bool,
+    loops: usize,
+    frames: usize,
+    quanta: usize,
+    delay: u64,
+    state: bool,
+    musical: bool,
+) -> Result<Value> {
     assert!(quanta > 0 && (quanta + 17) * QUANTUM <= frames);
     let cap = [2048, 256, 2048, QUANTUM as u64, 512, 2, 2];
     let mut geometry = Geometry::new([512, 5_763_072, QUANTUM as u64], 32);
@@ -229,6 +296,7 @@ pub fn run(
         "midi_audio_pipeline_axi",
         "midi_audio_pipeline",
         "midi_data_jobs",
+        "midi_expression_state",
         "midi_store",
     ] {
         design
@@ -236,6 +304,7 @@ pub fn run(
             .push(crate::root().join(format!("fpga/midi/rtl/{name}.sv")));
     }
     for (name, value) in [
+        ("MIDI_STATE_SUPPORTED", 1),
         ("MIDI_LOOPS", 64),
         ("MIDI_INPUTS", 1),
         ("MIDI_DESTINATIONS", 8),
@@ -276,7 +345,10 @@ pub fn run(
     if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
         memory.timing = Box::new(Fixed::new(delay));
     }
-    let mut reference = Reference::new(audio, midi, loops, frames);
+    let mut reference = Reference::prepare(audio, midi, loops, frames, state);
+    if musical {
+        reference.musical_fixture();
+    }
     let views: Vec<_> = (0..if audio { loops * 2 } else { 0 })
         .map(|i| i as u64)
         .collect();
@@ -309,9 +381,56 @@ pub fn run(
     reference.play();
     rows(&mut driver, &mut sim, &reference, false);
     let mut measurements = Vec::new();
-    for tick in 0..quanta + 17 {
+    for tick in 0..quanta + 17 + if musical { 7 } else { 0 } {
+        use rt_fpga_reference::transitions::Operation;
+        let label = if musical && tick >= quanta + 17 {
+            match tick - (quanta + 17) {
+                0 => {
+                    reference.command(Operation::Play {
+                        position: 0,
+                        retrigger: true,
+                    });
+                    "retrigger"
+                }
+                1 => {
+                    reference.command(Operation::Stop);
+                    "stop_cleanup"
+                }
+                2 => {
+                    reference.command(Operation::Play {
+                        position: 0,
+                        retrigger: true,
+                    });
+                    "warm_play"
+                }
+                3 => {
+                    reference.command(Operation::Seek {
+                        position: (frames - QUANTUM) as u64,
+                        retrigger: false,
+                    });
+                    "seek_prefix"
+                }
+                4 => "wrap_after_seek",
+                5 => {
+                    reference.command(Operation::Stop);
+                    "stop_after_wrap"
+                }
+                _ => "quiet_after_stop",
+            }
+        } else if tick == 0 {
+            "playback_start"
+        } else if tick < 17 {
+            "warmup"
+        } else {
+            "steady"
+        };
+        if musical && tick >= quanta + 17 {
+            rows(&mut driver, &mut sim, &reference, false);
+        }
         reference.callback();
-        reference.validate();
+        if !musical {
+            reference.validate();
+        }
         driver.audio.clear_jobs();
         let audio_before = traffic(&driver.store.memory);
         let midi_before = traffic(&midi_memory);
@@ -367,7 +486,7 @@ pub fn run(
             let actual =
                 crate::loop_image::read_loop(&mut driver.audio.program, &mut sim, slot as u32);
             let expected = reference.pipeline.state().loop_state(id(slot)).unwrap();
-            assert_eq!(actual.get(33, 2), 1);
+            assert_eq!(actual.get(33, 2), expected.state.mode as u64);
             assert_eq!(actual.get(128, 64), expected.state.position);
             assert_eq!(actual.get(192, 64), expected.state.content_length);
             assert_eq!(actual.get(512, 64), expected.render.position);
@@ -379,9 +498,10 @@ pub fn run(
             assert!(reference.emitted.is_empty());
         }
         measurements.push(json!({
-            "kind":if tick==0 {"playback_start"} else if tick<17 {"warmup"} else {"steady"},
+            "kind":label,
             "position":reference.position(), "cycles":cycles, "us_at_100mhz":cycles as f64/100.0,
             "midi_packets":reference.emitted.len(), "jobs":driver.audio.consumed().len(),
+            "state_work":reference.midi.expression.as_ref().map(|s|json!({"tracker_visits":s.work.tracker_visits,"compared_fields":s.work.compared_fields,"restored_messages":s.work.restored_messages,"prefix_events":s.work.prefix_events})),
             "audio_axi_reads_writes_native_reads_writes":audio_traffic,
             "midi_axi_reads_writes_native_reads_writes":midi_traffic,
         }));
@@ -396,7 +516,37 @@ pub fn run(
         "scope":"same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
         "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
         "compiled_instructions":image.instructions.len(), "maximum_jobs":image.jobs_per_quantum,
-        "validation":"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
-        "midi_state_tracking":false, "measurements":measurements,
+        "validation":if musical {"every SP job, MIDI message, sync frame and loop position/length matches Rust; note/pedal meaning checked by independent receiver fixtures"} else {"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked"},
+        "musical_fixture":musical,"midi_state_hardware":true, "midi_state_tracking":state&&midi, "measurements":measurements,
     }))
+}
+
+pub fn cpu(audio: bool, midi: bool, state: bool, samples: usize) -> Value {
+    let mut r = Reference::prepare(audio, midi, 64, 1_440_000, state);
+    r.pipeline.trace_jobs(false);
+    r.play();
+    let t = std::time::Instant::now();
+    r.callback();
+    let startup = t.elapsed().as_nanos() as u64;
+    r.validate();
+    for _ in 0..16 {
+        r.callback();
+        r.validate();
+    }
+    let mut timings = Vec::with_capacity(samples);
+    let mut messages = 0;
+    for _ in 0..samples {
+        let t = std::time::Instant::now();
+        r.callback();
+        timings.push(t.elapsed().as_nanos() as u64);
+        r.validate();
+        messages += r.emitted.len();
+    }
+    let mut sorted = timings.clone();
+    sorted.sort_unstable();
+    json!({"audio":audio,"midi":midi,"state":state&&midi,"loops":64,"frames":1440000,"quantum":32,"sample_rate":48000,
+        "samples_ns":timings,"startup_ns":startup,"median_ns":sorted[samples/2],"p99_ns":sorted[(samples-1)*99/100],"max_ns":sorted[samples-1],
+        "messages":messages,"validation":"each completed callback independently checks MIDI, audio, loop position; checks outside timer; prepared engine, tracing disabled",
+        "cpu":std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default().lines().find(|line|line.starts_with("model name")).unwrap_or("unknown"),
+        "os":std::env::consts::OS,"architecture":std::env::consts::ARCH})
 }

@@ -96,7 +96,7 @@ module sp_engine #(
     reg [15:0] operand_address;
     reg midi_prepass, midi_restart;
     phase_t emit_return;
-    wire midi_loop_instruction = opcode==`SHOOP_SP_MIDI_PLAYBACK_INSTRUCTION || opcode==`SHOOP_SP_MIDI_CAPTURE_INSTRUCTION;
+    wire midi_loop_instruction = opcode==`SHOOP_SP_MIDI_PLAYBACK_INSTRUCTION || opcode==`SHOOP_SP_MIDI_CAPTURE_INSTRUCTION || opcode==`SHOOP_SP_MIDI_STATE_INSTRUCTION;
     reg [63:0] position;
     reg [63:0] length;
     reg writeback;
@@ -343,7 +343,7 @@ module sp_engine #(
                 end
                 DISPATCH: begin
                     writeback <= 0; emit_return<=NEXT;
-                    if (midi_prepass && !instruction_is_sync && opcode!=`SHOOP_SP_MIDI_CAPTURE_INSTRUCTION) phase<=NEXT;
+                    if (midi_prepass && !instruction_is_sync && opcode!=`SHOOP_SP_MIDI_CAPTURE_INSTRUCTION && opcode!=`SHOOP_SP_MIDI_STATE_INSTRUCTION) phase<=NEXT;
                     else if (instruction_is_sync!=(instruction[7:0]==`SHOOP_SP_PROCESS_LOOP)) begin
                         finish_error(`SHOOP_SP_INVALID_PROGRAM);
                     end else case (instruction[7:0])
@@ -360,7 +360,7 @@ module sp_engine #(
                         `SHOOP_SP_MIDI_OUTPUT_INSTRUCTION: begin
                             job_data<=pack_job(`SHOOP_SP_MIDI_OUTPUT,arg0,arg1,0,0,0); phase<=EMIT;
                         end
-                        `SHOOP_SP_MIDI_PLAYBACK_INSTRUCTION, `SHOOP_SP_MIDI_CAPTURE_INSTRUCTION: begin
+                        `SHOOP_SP_MIDI_PLAYBACK_INSTRUCTION, `SHOOP_SP_MIDI_CAPTURE_INSTRUCTION, `SHOOP_SP_MIDI_STATE_INSTRUCTION: begin
                             if (!run_has_sync) finish_error(`SHOOP_SP_INVALID_PROGRAM);
                             else phase<=SYNC_BEGIN;
                         end
@@ -796,6 +796,17 @@ module sp_engine #(
                                 {arg2,arg1,16'b0,arg0});
                         else job_data<=pack_job(`SHOOP_SP_MIDI_EMPTY,{8'b0,instruction_reserved},0,0,0,0);
                         phase<=EMIT;
+                    end else if(opcode==`SHOOP_SP_MIDI_STATE_INSTRUCTION) begin
+                        if(!midi_prepass) phase<=NEXT;
+                        else if(loop_mode==1 && position<length) begin
+                            if(!flags[`SHOOP_SP_L_MIDI_PLAYING] || midi_restart || position==0) begin
+                                job_data<=pack_job(`SHOOP_SP_MIDI_RESTORE,{8'b0,arg3[7:0]},0,position,{arg2,arg1,16'b0,arg0},0);
+                                loop_write(FLAGS,flags|(64'b1<<`SHOOP_SP_L_MIDI_PLAYING),EMIT);
+                            end else phase<=NEXT;
+                        end else if(flags[`SHOOP_SP_L_MIDI_PLAYING]) begin
+                            job_data<=pack_job(`SHOOP_SP_MIDI_CLEANUP,{8'b0,arg3[7:0]},0,0,{arg2,arg1,16'b0,arg0},0);
+                            loop_write(FLAGS,flags & ~(64'b1<<`SHOOP_SP_L_MIDI_PLAYING),EMIT);
+                        end else phase<=NEXT;
                     end else if (midi_prepass) begin
                         if (flags[`SHOOP_SP_L_MIDI_CAPTURE_OPEN] && (loop_mode!=2 || begin_capture)) begin
                             flags[`SHOOP_SP_L_MIDI_CAPTURE_OPEN]<=0;

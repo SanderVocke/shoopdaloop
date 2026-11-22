@@ -94,7 +94,21 @@ impl Pipeline {
         {
             return Err(PipelineError::State(Error::InvalidState));
         }
+        if image.compiled.program.instructions.iter().any(|i| {
+            matches!(i, crate::state::Instruction::ProcessMidiState { .. })
+                && !self.program.instructions.contains(i)
+        }) {
+            return Err(PipelineError::State(Error::InvalidState));
+        }
         for instruction in &self.program.instructions {
+            if let crate::state::Instruction::ProcessMidiState { loop_id, .. } = instruction {
+                if !image.compiled.program.instructions.contains(instruction) {
+                    return Err(PipelineError::State(Error::InvalidState));
+                }
+                self.state
+                    .loop_state(*loop_id)
+                    .map_err(|_| PipelineError::State(Error::InvalidState))?;
+            }
             if let crate::state::Instruction::ProcessMidiCapture {
                 loop_id, sequence, ..
             } = instruction
@@ -334,6 +348,51 @@ impl Pipeline {
             .expect("validated content publication");
         Ok(())
     }
+    /// Prepare compiled state bindings outside callback processing.
+    pub fn prepare_midi_state(
+        &self,
+        memory: &mut crate::midi::MidiMemory,
+    ) -> Result<(), crate::midi::Error> {
+        let limits = memory
+            .expression
+            .as_ref()
+            .ok_or(crate::midi::Error::Unsupported)?
+            .limits;
+        for instruction in &self.program.instructions {
+            match instruction {
+                crate::state::Instruction::ProcessMidiInput { port, .. }
+                    if *port >= limits.inputs =>
+                {
+                    return Err(crate::midi::Error::InvalidState)
+                }
+                crate::state::Instruction::ProcessMidiOutput { port, .. }
+                    if *port >= limits.outputs =>
+                {
+                    return Err(crate::midi::Error::InvalidState)
+                }
+                _ => {}
+            }
+            if let crate::state::Instruction::ProcessMidiState {
+                loop_id,
+                sequence,
+                input,
+                outputs,
+                channels,
+            } = *instruction
+            {
+                memory.bind_state(
+                    sequence,
+                    crate::midi::StateBinding {
+                        owner: loop_id,
+                        input,
+                        outputs,
+                        channels,
+                    },
+                )?;
+            }
+        }
+        Ok(())
+    }
     pub fn process_with_midi(
         &mut self,
         jobs: &mut JobProcessor,
@@ -356,6 +415,9 @@ impl Pipeline {
                 output.fill(Fixed::ZERO);
             }
             return Err(PipelineError::Jobs(Error::Midi(error)));
+        }
+        if let Some(state) = &mut midi.expression {
+            state.work = crate::midi::StateWork::default();
         }
         let mut io = crate::midi::Io {
             memory: midi,

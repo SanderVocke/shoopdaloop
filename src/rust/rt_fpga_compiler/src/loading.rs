@@ -186,7 +186,8 @@ impl Layout {
         for op in &mut bound.work_pass {
             match op {
                 Operation::MidiData(
-                    crate::MidiOperation::Capture { loop_id, .. }
+                    crate::MidiOperation::State { loop_id, .. }
+                    | crate::MidiOperation::Capture { loop_id, .. }
                     | crate::MidiOperation::Playback { loop_id, .. },
                 ) => *loop_id = id(*loop_id)?,
                 Operation::Midi {

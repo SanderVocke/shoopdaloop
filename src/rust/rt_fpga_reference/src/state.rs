@@ -46,6 +46,7 @@ impl Program {
                     | Instruction::ProcessMidiCapture { .. }
                     | Instruction::ProcessMidiMerge { .. }
                     | Instruction::ProcessMidiOutput { .. }
+                    | Instruction::ProcessMidiState { .. }
             )
         });
         if has_midi {
@@ -54,7 +55,8 @@ impl Program {
                 .iter()
                 .try_fold(0usize, |n, op| {
                     n.checked_add(match op {
-                        Instruction::ProcessMidiCapture { .. } => 3,
+                        Instruction::ProcessMidiCapture { .. }
+                        | Instruction::ProcessMidiState { .. } => 3,
                         Instruction::ProcessLogicalCapture { .. }
                         | Instruction::ProcessLoopCapture { .. } => 2,
                         _ => 1,
@@ -119,6 +121,13 @@ impl Value {
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Instruction {
+    ProcessMidiState {
+        loop_id: Identity,
+        sequence: crate::midi::SequenceId,
+        input: u16,
+        outputs: u8,
+        channels: u16,
+    },
     ProcessMidiInput {
         port: u16,
         destination: crate::midi::BufferId,
@@ -570,7 +579,45 @@ impl StateProcessor {
             }
         }
         for &instruction in &program.instructions {
+            if let Instruction::ProcessMidiState {
+                loop_id, sequence, ..
+            } = instruction
+            {
+                if loops.is_some() {
+                    return Err(Error::InvalidState);
+                }
+                let memory = self.loops.as_mut().ok_or(Error::InvalidState)?;
+                let seek = memory.events.iter().any(|e| {
+                    e.target == loop_id
+                        && matches!(e.kind, EventKind::Transition(Operation::Seek { .. }))
+                });
+                let slot = memory.slot_mut(loop_id).map_err(Error::Transition)?;
+                let playing = slot.render.mode == Mode::Playing
+                    && slot.render.position < slot.render.content_length;
+                if slot.midi_playing && !playing {
+                    emit(Job::MidiCleanupState {
+                        owner: loop_id,
+                        sequence,
+                    })?;
+                }
+                if playing
+                    && (!slot.midi_playing
+                        || slot.render.position == 0
+                        || seek
+                        || slot.pulse_this_quantum)
+                {
+                    emit(Job::MidiRestoreState {
+                        owner: loop_id,
+                        sequence,
+                        position: slot.render.position,
+                    })?;
+                }
+                slot.midi_playing = playing;
+            }
+        }
+        for &instruction in &program.instructions {
             match instruction {
+                Instruction::ProcessMidiState { .. } => {}
                 Instruction::ProcessMidiInput { port, destination } => {
                     emit(Job::MidiInput { port, destination })?
                 }

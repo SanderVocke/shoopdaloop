@@ -1,9 +1,13 @@
 # MIDI event looping through SP and JP
 
-The RTL implements the event-only Rust FPGA reference: record MIDI messages,
+The RTL implements the Rust FPGA reference: record MIDI messages,
 play and repeat them, seek, route ports, merge streams, and share stored content.
-It does not track or restore instrument state. Notes, pedals, and controller
-messages are replayed as bytes; stopping sends no automatic correction packets.
+Raw event mode replays messages unchanged. Optional expression support
+(`MIDI_STATE_SUPPORTED=1`) adds view snapshots, output state, difference maps,
+and ordered restoration through explicit shared-JP data jobs. See the
+[state contract](../../docs/fpga/midi-expression-state.md).
+The [expression hardware report](../../docs/fpga/midi-expression-hardware.md)
+describes the serialized DDR path, BRAM metadata and measured resource tradeoffs.
 
 ```mermaid
 flowchart LR
@@ -100,7 +104,7 @@ stable across compatible switches. Live reference and RTL state are independent;
 the Rust implementation is the behavioral oracle, not part of RTL execution.
 
 The application's host endpoint is not wired for this MIDI interface yet. History
-grab, overdub editing, instrument-state tracking/restoration, SysEx, and byte-stream
+grab, overdub editing, full instrument configuration, SysEx, and byte-stream
 running-status decoding are outside this implementation, just as in the current
 Rust reference. Ports accept complete one-to-three-byte messages, including all
 channel controllers and supported short system messages.

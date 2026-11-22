@@ -102,12 +102,24 @@ fn main() {
         source: merged,
         port: 0,
     });
+    let state = std::env::args().any(|a| a == "--state");
+    if state {
+        for slot in 0..64 {
+            operations.push(M::State {
+                loop_id: id(slot),
+                sequence: slot as u16,
+                input: 0,
+                outputs: 1,
+                channels: 1 << (slot % 16),
+            });
+        }
+    }
     let logical = logical.with_midi_data(&operations).unwrap();
     let views = (0..128).collect::<Vec<_>>();
     let cap = [2048, 256, 2048, 32, 512, 2, 2];
     let image = RtlTarget::new(cap, 256, &views).build(&logical).unwrap();
     println!("{}",serde_json::to_string_pretty(&serde_json::json!({
-        "loops":64,"audio_channels_per_loop":2,"midi_channels_per_loop":1,
+        "midi_state_hardware":state,"midi_state_tracking":state,"loops":64,"audio_channels_per_loop":2,"midi_channels_per_loop":1,
         "sample_rate":48000,"seconds":30,"chunk_frames":32,"quantum_frames":32,
         "compiled_instructions":image.instructions.len(),"compiled_sync_instructions":image.sync_count,
         "state_values":image.state.len(),"jobs_per_quantum":image.jobs_per_quantum,

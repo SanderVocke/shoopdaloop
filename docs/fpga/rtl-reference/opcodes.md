@@ -1,6 +1,7 @@
 # Appendix A. State processor instructions {.unnumbered}
 
-This appendix describes the encodings at RTL revision `cc410f27`. Bit ranges
+The base encodings are from RTL revision `cc410f27`, with the optional MIDI
+expression extension from `462ce74e` (Appendix E). Bit ranges
 are inclusive and numbered from the least-significant bit. Fields named
 `u16`, `u32` or `u64` are unsigned at that width. Signed audio samples and
 gain values use two's-complement Q8.24. In the tables, “—” means the encoder
@@ -21,7 +22,7 @@ instructions. The work pass uses the other opcodes.
 | 55:40 | A2 | 16 |
 | 71:56 | A3 | 16 |
 | 87:72 | A4 | 16 |
-| 95:88 | Zero except for MIDI Playback destination | 8 |
+| 95:88 | Reserved except for MIDI Playback / State | 8 |
 
 A RAM address in the next table is an entry index in the 129-bit node-state
 RAM. Source and destination are JP scratch-buffer IDs unless the table says
@@ -49,6 +50,7 @@ generation.
 | `0x10` | MIDI Capture | Loop slot | Gen lo | Gen hi | Sequence | Source list |
 | `0x11` | MIDI Merge | Left list | Right list | Destination list | — | — |
 | `0x12` | MIDI Output | Source list | Output port | — | — | — |
+| `0x13` | MIDI State | Owner slot | Gen lo | Gen hi | Sequence/input | Output mask/channel bits |
 
 Other opcode values cause `INVALID_PROGRAM` (`0x03`). Additional operand
 interpretation follows.
@@ -86,7 +88,9 @@ MIDI list IDs are separate from JP audio scratch-buffer IDs.
 MIDI Playback uses the entire 96-bit word. A3 packs an 8-bit sequence
 ID at 63:56 and an 8-bit cursor ID at 71:64. A4 is the 16-bit channel
 mask at 87:72. Bits 95:88 carry the 8-bit destination list ID. Use zero
-in bits 95:88 for the other opcodes. In particular, capture has a u16
+in bits 95:88 for the other opcodes except State. State has its own complete
+96-bit layout in Appendix E, with channel-mask bits extending through 95:88.
+In particular, capture has a u16
 sequence ID and a u16 source list ID. The playback sequence, cursor and
 destination encodings limit each ID to 0–255. Instance capacities can
 be smaller.
@@ -98,11 +102,13 @@ be smaller.
 | MIDI Capture | FinishCapture for an open writer leaving recording mode or being replaced by a new take. BeginCapture for recording without an open writer. Append while recording, with start equal to captured frames minus Q. |
 | MIDI Merge | Merge the two source lists into the destination |
 | MIDI Output | Output the supplied source list on the selected port |
+| MIDI State | In the prepass, Restore when active playback starts/restarts/seeks, or Cleanup when previously active playback ends. Skip in the regular data pass. Requires matching prepared bindings and state-capable JP data jobs. |
 
-Playback and Capture require the managed sync prefix. SP emits
+Playback, Capture and State require the managed sync prefix. SP emits
 FinishCapture and BeginCapture in the capture prepass so that every
 Read sees the correct completed view. Append is emitted in the
-ordinary data pass.
+ordinary data pass. State instructions follow all Capture instructions, so
+writer transitions precede state jobs and both precede ordinary events.
 
 ## Node-state operands {.unnumbered}
 
@@ -124,7 +130,7 @@ this RAM with `cfg_loop=1` and uses the low 64 bits of the data bus.
 
 | Word | Layout |
 | --------------- | ------------------------------------------------------------------------------------- |
-| 0 | Valid [0], generation [32:1], mode [34:33], repeat [35], source valid [36], source slot [52:37], pulse [53], first capture [54], processed stamp valid [55], newer plan index [56], MIDI writer-open [57], MIDI seek/reposition [58]. |
+| 0 | Valid [0], generation [32:1], mode [34:33], repeat [35], source valid [36], source slot [52:37], pulse [53], first capture [54], processed stamp valid [55], newer plan index [56], MIDI writer-open [57], MIDI seek/reposition [58], prior MIDI playback activity [59] for state restore/cleanup. |
 | 1 | Source generation [31:0], plan 0 flags [36:32], plan 1 flags [41:37]. |
 | 2, 3, 4 | Next position, content length, captured frames, respectively. |
 | 5, 6, 7 | Cycle count, content revision, revision watermark, respectively. |
@@ -132,14 +138,14 @@ this RAM with `cfg_loop=1` and uses the low 64 bits of the data bus.
 | 10–12 | Plan 0 effective frame, remaining pulse skips and requested position. |
 | 13–15 | Plan 1 effective frame, remaining pulse skips and requested position. |
 
-Preserve writer-open and reposition when editing plans. SP maintains
+Preserve writer-open, reposition and prior MIDI playback activity when editing plans. SP maintains
 writer-open across quanta and clears the reposition flag at the start
 of the next loop visit. Clear reserved bits. When a logical instruction uses the standalone
 explicit-record port, the 164-bit response packs valid [0], generation
 [32:1], mode [34:33], length [98:35], position [162:99] and first capture
 [163]. The response position and length are measured in frames.
 
-Sources. [Opcode constants](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/state_processor_defs.svh) · [SP decoder and operand packing](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/sp_engine.sv) · [Compiler lowering](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/src/rust/rt_fpga_rtl/src/target.rs) · [Loop RAM word and flag definitions](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/sp_loop_defs.svh)
+Sources. [Opcode constants](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/state_processor_defs.svh) · [SP decoder and operand packing](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/sp_engine.sv) · [Compiler lowering](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/src/rust/rt_fpga_rtl/src/target.rs) · [Loop RAM word and flag definitions](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/sp_loop_defs.svh)
 
 # Appendix B. Job processor descriptors {.unnumbered}
 
@@ -207,6 +213,8 @@ buffer IDs must be valid and ready in every mode.
 | `0x25` | FinishCapture | Sequence | — | — | — | — |
 | `0x26` | Merge | Left list | Right list | Destination list | — | — |
 | `0x27` | Output | Source list | Output port | — | — | — |
+| `0x28` | Restore state | Sequence | — | Target loop position | Owner | — |
+| `0x29` | Cleanup state | Sequence | — | — | Owner | — |
 
 All MIDI timing operands are in frames. Read and Append carry Q as
 a 32-bit frame count. The upper half of Append P1 is zero. Merge's
@@ -227,15 +235,21 @@ unit compares it with the saved owner alongside the view handle. Input
 produces a list for the selected port. Read applies the mask to channel
 messages and passes supported system messages. Append transfers all
 messages in the supplied source list. Output sends that list in its
-stored order.
+stored order. For state-enabled output, playback source IDs identify the
+cursor's sequence for cleanup ownership; live-input source IDs do not acquire
+loop ownership. Both ordinary and corrective accepted packets update current
+state and relevant comparisons. Restore and Cleanup use matching prepared
+bindings; owner P1 packs slot [31:0] and generation [63:32]. Their generated packets
+use offset zero in the RTL. Appendix E defines the state control and memory ABI.
 
-Sources. [SP descriptor packing](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/state_processor/rtl/sp_engine.sv) · [JP dispatch](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/job_processor/rtl/job_processor.sv) · [MIDI data-job dispatch](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_data_jobs.sv)
+Sources. [SP descriptor packing](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/sp_engine.sv) · [JP dispatch](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/job_processor/rtl/job_processor.sv) · [MIDI data-job dispatch](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_data_jobs.sv)
 
 # Appendix C. MIDI control commands and packet formats {.unnumbered}
 
 The mixed MIDI wrapper exposes a six-bit `midi_command_op` and
-separate 64-bit arguments. The data-job unit uses A0–A2. Encode
-A3 and A4 as zero. The caller submits control between quanta and holds
+separate 64-bit arguments. Base event commands use A0–A2, with A3/A4
+encoded as zero. The optional state commands in Appendix E also use A3
+for field seeds; A4 remains zero. The caller submits control between quanta and holds
 the opcode and arguments until ready. Successful Replace, Duplicate and
 Clear hold the reply behind the publication handshake described in the
 MIDI chapter.
@@ -259,7 +273,8 @@ Opcode numbers are decimal.
 | 15 | Create range | Source view handle | Start frame | End frame | Owned range handle. Bounds use source-relative frames, start inclusive and end exclusive. |
 | 20 | Maintenance | Maximum steps | — | — | Performs the requested work, capped at 64 steps. |
 
-All other control opcodes return Unsupported on a prepared image.
+Prepared state-capable images additionally accept controls 21–24 and 31
+(Appendix E). Other control opcodes return Unsupported on a prepared image.
 Except for Format, these controls require a prepared image. The
 caller supplies a completed, quantum-aligned view when publishing
 replacement content. Export and Create range confer independent
@@ -325,7 +340,9 @@ specifies the zero-based channel. MIDI data bytes are seven bits.
 
 Other status bytes, SysEx, and byte-stream running status are outside
 the packet interface. System messages are event data. For example, the
-MIDI Stop byte `0xfc` is distinct from an SP Stop plan.
+MIDI Stop byte `0xfc` is distinct from an SP Stop plan. With expression state
+enabled, observed System Reset `0xff` also updates the musical-state model
+as specified in the state chapter.
 
 ## Event record layouts {.unnumbered}
 
@@ -344,7 +361,7 @@ Scratch source ID equals the cursor index for playback or
 view's time origin. The store subtracts that origin on reads, so a range
 can share the original records while returning rebased time.
 
-Sources. [Current protocol](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/PROTOCOL.md) · [Command and record dispatch](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_data_jobs.sv) · [Packet validator](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_functions.svh)
+Sources. [Current protocol](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/PROTOCOL.md) · [Command and record dispatch](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_data_jobs.sv) · [Packet validator](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_functions.svh)
 
 # Appendix D. Internal MIDI content-store commands {.unnumbered}
 
@@ -399,6 +416,7 @@ separately after the arena and must fit the enabled memory window.
 | Retirement entries | R × 8 |
 | Scratch alignment padding | 0–15 |
 | Shared scratch records | C × 16 |
+| Optional expression state | Appendix E size; absent from raw-only builds |
 
 Each view descriptor is 16 u32 words. The per-view block table supplies
 the physical block IDs in view order. Append and read locate a record
@@ -419,4 +437,124 @@ and 4 retired. Releasing the final view reference queues deferred
 retirement. Ranges hold references to shared blocks until their own
 retirement.
 
-Sources. [Content controller and its ports](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_store.sv) · [Data-job caller](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_data_jobs.sv) · [DDR layout and view protocol](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/PROTOCOL.md)
+Sources. [Content controller and its ports](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/midi/rtl/midi_store.sv) · [Data-job caller](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_data_jobs.sv) · [DDR layout and view protocol](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/PROTOCOL.md)
+
+<a id="midi-expression-state-abi"></a>
+
+# Appendix E. MIDI expression-state ABI {.unnumbered}
+
+This extension is described at RTL revision `462ce74e`. It requires
+`MIDI_STATE_SUPPORTED=1` on the mixed top, or `STATE_SUPPORTED=1` on
+`midi_data_jobs`. It adds state data after the scratch arena; the event-record
+formats in Appendix C do not change. After formatting the selected image,
+command 31 reports ABI `0x45580100` in `response_count`. On a prepared raw-only
+image the state controls/jobs return Unsupported. Before preparation, non-Format
+controls return Invalid lifecycle as usual.
+
+## MIDI State instruction, opcode `0x13` {.unnumbered}
+
+This instruction uses all 96 bits; it is not the ordinary five-u16 encoding.
+
+| Bits | Field |
+| --- | --- |
+| 7:0 | Opcode `0x13` |
+| 23:8 | Owner loop slot, u16 |
+| 55:24 | Owner loop generation, u32 |
+| 63:56 | MIDI sequence, u8 |
+| 71:64 | Direct source input, u8 |
+| 79:72 | Output-port mask, u8; bit 0 selects output 0 |
+| 95:80 | MIDI-channel mask, u16; bit 0 selects MIDI channel 1 |
+
+Place all Capture instructions before all State instructions. The loader
+installs the same binding through command 21. SP validates the owner against
+loop RAM and uses the sequence and loop's render state for job emission; it does
+not install the input/output/channel binding from this instruction each run.
+A State instruction can emit at most one Restore or Cleanup job in its prepass
+visit. The regular data pass skips it. Include this possible job in the compiled
+FIFO budget. Loop word 0 bit 59 remembers prior MIDI playback activity; preserve
+it alongside bits 57 and 58 when updating loop plans.
+
+## State control commands {.unnumbered}
+
+Opcode numbers are decimal. Arguments are separate u64 values. Set unused
+arguments, including A4, to zero. An owner packs slot in 31:0 and generation in
+63:32. Sequence and port IDs remain separate namespaces. Prepared output masks
+must be nonzero and fit the configured outputs; channel masks must be nonzero.
+The state implementation supports up to 128 sequences and eight outputs.
+
+| Op | Command | A0 | A1 | A2 | A3 | Result |
+| ---: | --- | --- | --- | --- | --- | --- |
+| 21 | Bind state | Sequence | Owner | Packed source/scope | — | Error |
+| 22 | Seed state field | Space | Port ID or view handle | Field index | u32 field word | Error |
+| 23 | Set controller policy | Output port | CC mask 63:0 | CC mask 127:64 | — | Error |
+| 24 | Read state field | Space | Port ID or view handle | Field index | — | Field word in `response_count` |
+| 31 | Query ABI | — | — | — | — | `0x45580100` in `response_count` |
+
+For Bind A2, bits 7:0 select the input, 15:8 are the output-port mask, and
+31:16 are the channel mask; upper bits are zero. Space 0 means input, 1 output,
+and 2 view snapshot. Snapshot access uses the full validated view handle. Seeding
+writes the model; it does not transmit MIDI packets to establish physical
+instrument state. The caller must make those assumptions truthful.
+
+Seed an output before installing bindings; output seeds return Busy once any
+binding is installed. Input seeds can establish held-source state before
+recording. Snapshot seeds require an empty recording writer whose snapshot has
+not been sealed by capture. The first seed in a new channel clears that
+channel's other fields to unknown. Completed snapshots cannot be edited.
+Controller policy rejects bits outside the ordinary CC ranges in the musical
+behaviour chapter and always includes CC64/66. Changing it refreshes comparisons
+between quanta. These controls are serialized with quantum execution.
+
+## State DDR layout {.unnumbered}
+
+Let I = configured inputs, O = outputs, V = views and S = sequences. Starting
+immediately after the shared scratch records, allocate these state regions in
+order. Offsets here are relative to that state-region base, not the start of the
+whole MIDI arena.
+
+| Region | Slots | Bytes per slot |
+| --- | ---: | ---: |
+| Observed inputs | I | 32,768 |
+| Current outputs | O | 32,768 |
+| View starting snapshots | V | 32,768 |
+| Private seek target | 1 | 32,768 |
+| Sequence/output comparisons plus private seek comparison | S × O + 1 | 2,048 |
+
+The extension's size is `32768 × (I + O + V + 1) + 2048 × (S × O + 1)`
+bytes. Comparison slot `sequence × O + output` holds that pair's bitmap and
+cleanup activity; the final slot is private seek workspace. On-chip metadata
+protects view channels/lifetimes, bindings, directories and counts. It is not
+part of these DDR records. Reformatting invalidates the existing contents.
+
+Each state has 16 channels with 512 u32 words per channel. Its field index is
+`channel × 512 + local_field`. The byte address within a state is `field × 4`.
+Channels are zero-based in this calculation.
+
+| Local field | Meaning | Value bits, apart from known bit 31 |
+| ---: | --- | --- |
+| 0–127 | Key's logical note state | Velocity [6:0], key down [7], sostenuto capture [8], sustain hold [9], per-note pressure [22:16], pressure known [23] |
+| 128–255 | CC0–127 | 7-bit controller value [6:0]; only ordinary CCs have modeled state |
+| 256 | Pitch bend | 14-bit value [13:0] |
+| 257 | Channel pressure | 7-bit value [6:0] |
+| 258–511 | Padding | Reserved |
+
+Bit 31 means the field is known. A known note with velocity zero represents
+silence; an unknown word is not a known zero. Per-note pressure is meaningful
+for an active voice with bit 23 set. Use zero for unused/reserved bits. Model
+accesses treat fields on a channel without valid snapshot context as unknown.
+
+| Offset within 2 KiB comparison slot | Meaning |
+| --- | --- |
+| 0–1023 | 256 u32 difference words. Field f is bit `f mod 32` in word `f / 32`. |
+| 1024–1055 | Eight u32 summaries. Summary bit w says difference word w is nonempty. A clear bit makes that word logically empty regardless of stale DDR payload. |
+| 1056–1375 | Sixteen channel ownership records, five u32 words each: four note bitmaps, then pedal flags (bit 0 sustain, bit 1 sostenuto). |
+| 1376–2047 | Reserved |
+
+A difference describes a target field that is known and disagrees with the
+modeled current output. Note comparisons include key/hold relationships and
+known active-voice pressure. Difference counts and owner-activity counts/channel
+hints live on chip. They allow clean restore and empty-owner cleanup to avoid
+DDR traversal. The Rust reference uses equivalent logical maps with u64 words;
+its in-memory packing is not this RTL u32 DDR ABI.
+
+Sources. [SP packer](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/src/rust/rt_fpga_rtl/src/component.rs) · [SP state-job emission](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/state_processor/rtl/sp_engine.sv) · [Control and output dispatch](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_data_jobs.sv) · [State word accesses](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/rtl/midi_expression_state.sv) · [State protocol](https://github.com/SanderVocke/shoopdaloop/blob/462ce74e/fpga/midi/PROTOCOL.md)
