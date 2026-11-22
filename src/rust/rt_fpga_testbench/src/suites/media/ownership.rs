@@ -350,6 +350,76 @@ pub fn storage_statistics(d: &mut Store, s: &mut Sim<'_>) {
     d.write_config(s, 1, 3, 0);
     assert_eq!(stats(d, s), [0, n, 0, 2, if g.reuse_views { 0 } else { 4 }]);
 }
+pub fn descriptor_statistics_reset_restore(d: &mut Store, s: &mut Sim<'_>) {
+    let g = d.geometry.clone();
+    let n = g.blocks() as u32;
+    let last = g.views - 1;
+    let mut valid = std::collections::BTreeSet::new();
+    d.reset(s);
+    d.write_config(s, 0, 0, g.views);
+    for (view, present) in [
+        (last, true),
+        (0, true),
+        (last, true),
+        (last, false),
+        (0, false),
+    ] {
+        d.write_config(s, 1, view, u64::from(present));
+        if present {
+            valid.insert(view);
+        } else {
+            valid.remove(&view);
+        }
+        assert_eq!(
+            stats(d, s),
+            [
+                0,
+                n,
+                0,
+                2,
+                if g.reuse_views {
+                    valid.len() as u32
+                } else {
+                    g.views as u32
+                }
+            ]
+        );
+    }
+    d.write_config(s, 1, last, 1);
+    let before = s.cycles;
+    assert_eq!(
+        stats(d, s)[4],
+        if g.reuse_views { 1 } else { g.views as u32 }
+    );
+    eprintln!(
+        "descriptor statistics views={} reuse={} read_cycles={}",
+        g.views,
+        g.reuse_views,
+        s.cycles - before
+    );
+    d.configure(s, 1, g.views, Some(&Bits::from_u64(1)), true);
+    d.reset(s);
+    assert_eq!(stats(d, s), [0, n, 0, 2, 0]);
+    d.write_config(s, 1, last, 0);
+    assert_eq!(stats(d, s), [0, n, 0, 2, 0]);
+    for _ in 0..2 {
+        d.write_config(s, 1, last, 1);
+        assert_eq!(stats(d, s)[4], u32::from(g.reuse_views));
+    }
+    d.reset(s);
+    assert_eq!(stats(d, s), [0, n, 0, 2, 0]);
+    for view in 0..g.views {
+        d.write_config(s, 1, view, 1);
+    }
+    assert_eq!(
+        stats(d, s)[4],
+        if g.reuse_views { g.views as u32 } else { 0 }
+    );
+    for view in (0..g.views).rev() {
+        d.write_config(s, 1, view, 0);
+    }
+    assert_eq!(stats(d, s), [0, n, 0, 2, 0]);
+}
 pub fn statistics_count_retired_storage_without_draining(d: &mut Store, s: &mut Sim<'_>) {
     d.reset(s);
     let n = d.geometry.blocks() as u32;

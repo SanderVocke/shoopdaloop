@@ -5,10 +5,33 @@ The immutable implementation control is
 `f218087511dc28e72a436ec825445f32a722b5e9`; the primary profile is the
 [64-loop compiled profile](../midi-expression-state/compiled-profile.json).
 
-Current status: stage 0 tool provisioning and baseline reproduction are in
-progress. No experimental RTL changes have been made. Archived measurements are
-reference evidence, not a new baseline run. See `ledger.json` for completed
-checks, pending measurements, and exact local artifact locations.
+Current status: the fresh B0 implementation reproduces the archived 100 MHz
+resources and timing exactly. The sequential callback control matrix is in
+progress; experimental RTL changes have not started. See `ledger.json` for
+completed checks, pending measurements, and local artifact locations.
+
+| B0 routed control | Archived | Fresh |
+| --- | ---: | ---: |
+| LUTs | 41,980 | 41,980 |
+| Slices | 13,205 | 13,205 |
+| Registers | 33,441 | 33,441 |
+| BRAM tiles | 77.5 | 77.5 |
+| DSPs | 4 | 4 |
+| CARRY4 | 5,491 | 5,491 |
+| Setup slack ns | -5.429 | -5.429 |
+| Hold slack ns | +0.008 | +0.008 |
+
+The negative setup slack remains a timing failure. Raw reports are in `b0-100/`;
+`b0-100-summary.json` also verifies the mixed workload's RTL source hashes.
+The optimized simulator reproduces every original mixed per-quantum result and
+cache counter, reducing measured wall time from 440.97 to 361.20 seconds.
+
+The SP and JP/audio standalone checks pass. Unchanged B0 media lint reports
+unnamed population-count generate blocks and an unused validity bitmap when
+view reuse is disabled; stage 1 will resolve these with the replacement count.
+Descriptor-statistics controls cover repeated writes, sparse restore, reset with
+stale RAM, and full occupancy at 1/7/512/513 views. B0 diagnostic reads take six
+clocks. Metadata and ownership tests pass, including DRAMsim3.
 
 Prepare a committed or explicitly hashed working-tree candidate:
 

@@ -20,3 +20,25 @@ fn full_pools_transactional_view_reuse_block_sharing_and_allocator_statistics() 
         }
     }
 }
+
+#[shoop_test]
+fn descriptor_statistics_count_distinct_views_and_discard_stale_ram_after_reset() {
+    use rt_fpga_testbench::{drivers::store::Geometry, memory::Mode, suites::media};
+    for views in [1, 7, 512, 513] {
+        for reuse in [false, true] {
+            let mut geometry = Geometry::new([views, 8, 4], 1);
+            geometry.table_pages = 2;
+            geometry.reuse_views = reuse;
+            media::run_cases(
+                geometry,
+                64,
+                Mode::Fixed,
+                &[(
+                    "descriptor_statistics_reset_restore",
+                    media::ownership::descriptor_statistics_reset_restore,
+                )],
+            )
+            .unwrap();
+        }
+    }
+}

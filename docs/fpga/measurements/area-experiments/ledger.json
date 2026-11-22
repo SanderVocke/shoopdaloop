@@ -20,7 +20,9 @@
     "Ownership regressions passed after building pinned DRAMsim3 (1 test)",
     "SP and JP/audio standalone baseline checks passed",
     "Optimized simulator reproduces all mixed-on-delay7 measurements and cache counters; wall time 440.97 to 361.20 seconds",
-    "Vivado 2021.1 SW build 3247384 verified in Ubuntu 20.04 runtime; vendor tools mounted read-only"
+    "Vivado 2021.1 SW build 3247384 verified in Ubuntu 20.04 runtime; vendor tools mounted read-only",
+    "New descriptor count contract passes duplicate writes, sparse high-ID restore, and stale-RAM reset at 1/7/513 views; B0 diagnostic read latency is 6 clocks",
+    "Fresh B0 100 MHz route matches archived post-opt and routed resources exactly, including 13205 slices and setup/hold slack -5.429/+0.008 ns; no routing errors"
   ],
   "pending": [
     "Finish pinned Vivado OCI extraction and verify version",
@@ -29,9 +31,20 @@
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
-    "setup_logs": "work/area-experiments/setup"
+    "setup_logs": "work/area-experiments/setup",
+    "baseline_checkpoints": "work/area-experiments/b0-100/post_{opt,place,route}.dcp"
   },
-  "experiments": [],
+  "experiments": [
+    {
+      "label": "b0-100",
+      "status": "validated_control",
+      "source_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
+      "summary": "b0-100-summary.json",
+      "raw_reports": "b0-100",
+      "timing_met": false,
+      "decision": "Use as immutable physical control; finish collecting the sequential workload matrix before stage 1"
+    }
+  ],
   "provisioning": {
     "docker_attempt": "Cancelled because the vfs storage driver duplicates the tool layer; task caches released",
     "safe_alternative": "Single OCI download, 6129731028 declared compressed bytes; 6710886400 byte quota and 1610612736 byte free-space floor",
@@ -46,5 +59,10 @@
       "cause": "Pre-existing GENUNNAMED warnings in population-count generate tree and unused valid_views when REUSE_VIEWS=0",
       "next": "Record unchanged B0; resolve with the stage 1 population-count implementation, retaining final lint gates"
     }
-  ]
+  ],
+  "observations": {
+    "mixed_delay7_steady_table_cache_hits_per_quantum": 384,
+    "mixed_delay7_steady_table_cache_misses_per_quantum": 0,
+    "stage_2_followup": "Include a current-block translation per view within the indexed-view cache avenue; it may avoid repeated lookup of the same allocation block between 1024-frame boundaries."
+  }
 }

@@ -88,7 +88,7 @@ Depends on the starting revision; finish before changing implementation RTL.
   5.032 environment using [build guidance](../../.agents/info/build.md). Reproduce
   B0 at 100 MHz and its functional/cycle controls; investigate differences from
   archived results before comparing optimizations.
-- [ ] Extend existing preparation/benchmark scripts only as needed to select
+- [x] Extend existing preparation/benchmark scripts only as needed to select
   candidates and record exact parameters, source/context hashes, tool versions,
   seeds, and common JSON/CSV results. Add synthesis/optimization stop controls for
   screening and verify harness-only changes preserve B0.
@@ -97,7 +97,7 @@ Depends on the starting revision; finish before changing implementation RTL.
   added delays 0/7, cold/warm caches, capture/playback/retake, seek/wrap/stop,
   musical restoration, allocator pressure, and maintenance. Add directed cache,
   block, and tree-boundary positions; retain original short fixtures for comparison.
-- [ ] Create `docs/fpga/measurements/area-experiments/` for manifests, a result
+- [x] Create `docs/fpga/measurements/area-experiments/` for manifests, a result
   ledger, summaries, and selected raw reports. Keep bulky build artifacts in
   separate empty build directories with durable artifact references and hashes.
   Retain optimized/routed checkpoints for B0 and selected candidates for auditing.
@@ -128,6 +128,9 @@ Depends on stage 1's recorded decision; all cache alternatives share one control
   a banked full-associativity search, then a leaf cache indexed by view. For the
   last variant retain a small directory cache and include coherence logic costs.
   Preserve the original as a control; record actual extra hit and miss cycles.
+  Compare a full leaf with a cached current block translation per view: B0's
+  mixed steady quantum performs 384 table-cache hits and zero misses while each
+  allocation block spans 32 quanta. Test invalidation on table writes and retirement.
 - [ ] Verify read/write/zero, dirty eviction, fence/invalidate, held responses,
   reset, and fill/writeback errors. Exercise competing views, nested slices,
   append, trim, clear, reclaim, and stale speculative hints through the real store.

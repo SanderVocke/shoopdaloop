@@ -1,0 +1,1976 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Sun Nov 22 14:27:45 2026
+| Host         : a1e3ca8d2212 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -delay_type max -max_paths 20 -path_type full_clock_expanded -file post_opt_critical_paths.rpt
+| Design       : session_context
+| Device       : 7z020-clg484
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -5.320ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[29]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        15.019ns  (logic 8.771ns (58.399%)  route 6.248ns (41.601%))
+  Logic Levels:           19  (CARRY4=17 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    15.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.655    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    15.992 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]_i_1/O[1]
+                         net (fo=1, unplaced)         0.000    15.992    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[29]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[29]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[29]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[29]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.992    
+  -------------------------------------------------------------------
+                         slack                                 -5.320    
+
+Slack (VIOLATED) :        -5.282ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[29]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.981ns  (logic 8.771ns (58.547%)  route 6.210ns (41.453%))
+  Logic Levels:           19  (CARRY4=17 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    15.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.617    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    15.954 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]_i_1/O[1]
+                         net (fo=1, unplaced)         0.000    15.954    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[29]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[29]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[29]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[29]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.954    
+  -------------------------------------------------------------------
+                         slack                                 -5.282    
+
+Slack (VIOLATED) :        -5.250ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.934ns  (logic 8.686ns (58.163%)  route 6.248ns (41.837%))
+  Logic Levels:           19  (CARRY4=17 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    15.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.655    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.252    15.907 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]_i_1/CO[2]
+                         net (fo=1, unplaced)         0.000    15.907    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[30]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.032    10.657    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]
+  -------------------------------------------------------------------
+                         required time                         10.657    
+                         arrival time                         -15.907    
+  -------------------------------------------------------------------
+                         slack                                 -5.250    
+
+Slack (VIOLATED) :        -5.215ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[28]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.914ns  (logic 8.666ns (58.106%)  route 6.248ns (41.894%))
+  Logic Levels:           19  (CARRY4=17 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    15.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.655    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    15.887 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[30]_i_1/O[0]
+                         net (fo=1, unplaced)         0.000    15.887    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[28]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[28]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[28]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[28]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.887    
+  -------------------------------------------------------------------
+                         slack                                 -5.215    
+
+Slack (VIOLATED) :        -5.212ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.896ns  (logic 8.686ns (58.311%)  route 6.210ns (41.689%))
+  Logic Levels:           19  (CARRY4=17 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    15.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.617    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.252    15.869 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]_i_1/CO[2]
+                         net (fo=1, unplaced)         0.000    15.869    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[30]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.032    10.657    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]
+  -------------------------------------------------------------------
+                         required time                         10.657    
+                         arrival time                         -15.869    
+  -------------------------------------------------------------------
+                         slack                                 -5.212    
+
+Slack (VIOLATED) :        -5.203ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[25]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.902ns  (logic 8.654ns (58.073%)  route 6.248ns (41.927%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    15.875 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/O[1]
+                         net (fo=1, unplaced)         0.000    15.875    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[25]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[25]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[25]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[25]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.875    
+  -------------------------------------------------------------------
+                         slack                                 -5.203    
+
+Slack (VIOLATED) :        -5.197ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.896ns  (logic 8.648ns (58.056%)  route 6.248ns (41.944%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    15.869 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/O[3]
+                         net (fo=1, unplaced)         0.000    15.869    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[27]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.869    
+  -------------------------------------------------------------------
+                         slack                                 -5.197    
+
+Slack (VIOLATED) :        -5.177ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[28]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.876ns  (logic 8.666ns (58.255%)  route 6.210ns (41.745%))
+  Logic Levels:           19  (CARRY4=17 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117    15.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.617    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    15.849 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[30]_i_1/O[0]
+                         net (fo=1, unplaced)         0.000    15.849    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[28]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[28]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[28]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[28]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.849    
+  -------------------------------------------------------------------
+                         slack                                 -5.177    
+
+Slack (VIOLATED) :        -5.165ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[25]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.864ns  (logic 8.654ns (58.221%)  route 6.210ns (41.779%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    15.837 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/O[1]
+                         net (fo=1, unplaced)         0.000    15.837    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[25]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[25]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[25]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[25]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.837    
+  -------------------------------------------------------------------
+                         slack                                 -5.165    
+
+Slack (VIOLATED) :        -5.159ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.858ns  (logic 8.648ns (58.204%)  route 6.210ns (41.796%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    15.831 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/O[3]
+                         net (fo=1, unplaced)         0.000    15.831    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[27]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.831    
+  -------------------------------------------------------------------
+                         slack                                 -5.159    
+
+Slack (VIOLATED) :        -5.122ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[26]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.821ns  (logic 8.573ns (57.844%)  route 6.248ns (42.156%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    15.794 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/O[2]
+                         net (fo=1, unplaced)         0.000    15.794    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[26]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[26]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[26]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[26]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.794    
+  -------------------------------------------------------------------
+                         slack                                 -5.122    
+
+Slack (VIOLATED) :        -5.098ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[24]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.797ns  (logic 8.549ns (57.775%)  route 6.248ns (42.225%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.288 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.288    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.625 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.364    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.203 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.203    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.540 r  pipeline/core_under_test/existing_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.279    pipeline/core_under_test/existing_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.118 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.118    pipeline/core_under_test/existing_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.455 r  pipeline/core_under_test/existing_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.194    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     9.033 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     9.033    pipeline/core_under_test/existing_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.370 r  pipeline/core_under_test/existing_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.109    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[14]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.948 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.948    pipeline/core_under_test/existing_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.279 r  pipeline/core_under_test/existing_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.915    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[16]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.222 r  pipeline/core_under_test/existing_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.861    pipeline/core_under_test/existing_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.381 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.381    pipeline/core_under_test/existing_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.712 r  pipeline/core_under_test/existing_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.348    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.655 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.988    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.538    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    15.770 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[27]_i_1/O[0]
+                         net (fo=1, unplaced)         0.000    15.770    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[24]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[24]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[24]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[24]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.770    
+  -------------------------------------------------------------------
+                         slack                                 -5.098    
+
+Slack (VIOLATED) :        -5.086ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[21]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.785ns  (logic 8.537ns (57.741%)  route 6.248ns (42.259%))
+  Logic Levels:           17  (CARRY4=15 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.508 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.247    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[6]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.086 r  pipeline/core_under_test/existing_nodes_reg[7]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.086    pipeline/core_under_test/existing_nodes_reg[7]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.423 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.162    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.001 r  pipeline/core_under_test/existing_nodes_reg[7]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.001    pipeline/core_under_test/existing_nodes_reg[7]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.338 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.077    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.916 r  pipeline/core_under_test/existing_nodes_reg[11]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.916    pipeline/core_under_test/existing_nodes_reg[11]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.253 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/O[1]
+                         net (fo=4, unplaced)         0.739     9.992    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.831 r  pipeline/core_under_test/existing_nodes_reg[11]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.831    pipeline/core_under_test/existing_nodes_reg[11]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.162 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/O[3]
+                         net (fo=3, unplaced)         0.636    11.798    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[12]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.105 r  pipeline/core_under_test/existing_nodes[15]_i_16/O
+                         net (fo=1, unplaced)         0.639    12.744    pipeline/core_under_test/existing_nodes[15]_i_16_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.264 r  pipeline/core_under_test/existing_nodes_reg[15]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.264    pipeline/core_under_test/existing_nodes_reg[15]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.595 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/O[3]
+                         net (fo=3, unplaced)         0.636    14.231    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[15]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.871    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.421 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.421    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    15.758 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/O[1]
+                         net (fo=1, unplaced)         0.000    15.758    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[21]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[21]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[21]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[21]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.758    
+  -------------------------------------------------------------------
+                         slack                                 -5.086    
+
+Slack (VIOLATED) :        -5.084ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[26]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.783ns  (logic 8.573ns (57.992%)  route 6.210ns (42.008%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    15.756 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/O[2]
+                         net (fo=1, unplaced)         0.000    15.756    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[26]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[26]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[26]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[26]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.756    
+  -------------------------------------------------------------------
+                         slack                                 -5.084    
+
+Slack (VIOLATED) :        -5.080ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.779ns  (logic 8.531ns (57.724%)  route 6.248ns (42.276%))
+  Logic Levels:           17  (CARRY4=15 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.508 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.247    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[6]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.086 r  pipeline/core_under_test/existing_nodes_reg[7]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.086    pipeline/core_under_test/existing_nodes_reg[7]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.423 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.162    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.001 r  pipeline/core_under_test/existing_nodes_reg[7]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.001    pipeline/core_under_test/existing_nodes_reg[7]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.338 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.077    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.916 r  pipeline/core_under_test/existing_nodes_reg[11]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.916    pipeline/core_under_test/existing_nodes_reg[11]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.253 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/O[1]
+                         net (fo=4, unplaced)         0.739     9.992    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.831 r  pipeline/core_under_test/existing_nodes_reg[11]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.831    pipeline/core_under_test/existing_nodes_reg[11]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.162 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/O[3]
+                         net (fo=3, unplaced)         0.636    11.798    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[12]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.105 r  pipeline/core_under_test/existing_nodes[15]_i_16/O
+                         net (fo=1, unplaced)         0.639    12.744    pipeline/core_under_test/existing_nodes[15]_i_16_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.264 r  pipeline/core_under_test/existing_nodes_reg[15]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.264    pipeline/core_under_test/existing_nodes_reg[15]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.595 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/O[3]
+                         net (fo=3, unplaced)         0.636    14.231    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[15]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.871    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.421 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.421    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    15.752 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/O[3]
+                         net (fo=1, unplaced)         0.000    15.752    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[23]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.752    
+  -------------------------------------------------------------------
+                         slack                                 -5.080    
+
+Slack (VIOLATED) :        -5.060ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[24]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.759ns  (logic 8.549ns (57.924%)  route 6.210ns (42.076%))
+  Logic Levels:           18  (CARRY4=16 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.250 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/CO[3]
+                         net (fo=1, unplaced)         0.000     3.250    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.587 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[11]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.326    pipeline/core_under_test/core_n_274
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.165 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.165    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.502 r  pipeline/core_under_test/required_nodes_reg[15]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.241    pipeline/core_under_test/required_nodes_reg[15]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.080 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.080    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.417 r  pipeline/core_under_test/required_nodes_reg[15]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.156    pipeline/core_under_test/required_nodes_reg[15]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.995 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.995    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.332 r  pipeline/core_under_test/required_nodes_reg[19]_i_22/O[1]
+                         net (fo=4, unplaced)         0.739    10.071    pipeline/core_under_test/required_nodes_reg[19]_i_22_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.910 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.910    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.241 r  pipeline/core_under_test/required_nodes_reg[19]_i_21/O[3]
+                         net (fo=3, unplaced)         0.636    11.877    pipeline/core_under_test/required_nodes_reg[19]_i_21_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.184 r  pipeline/core_under_test/required_nodes[19]_i_15/O
+                         net (fo=1, unplaced)         0.639    12.823    pipeline/core_under_test/required_nodes[19]_i_15_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.343 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.343    pipeline/core_under_test/required_nodes_reg[19]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.674 r  pipeline/core_under_test/required_nodes_reg[23]_i_13/O[3]
+                         net (fo=3, unplaced)         0.636    14.310    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.617 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.950    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[23]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.500    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    15.732 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[27]_i_1/O[0]
+                         net (fo=1, unplaced)         0.000    15.732    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[24]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[24]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[24]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[24]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.732    
+  -------------------------------------------------------------------
+                         slack                                 -5.060    
+
+Slack (VIOLATED) :        -5.048ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[21]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.747ns  (logic 8.537ns (57.890%)  route 6.210ns (42.110%))
+  Logic Levels:           17  (CARRY4=15 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.470 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.209    pipeline/core_under_test/core_n_270
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.048 r  pipeline/core_under_test/required_nodes_reg[7]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.048    pipeline/core_under_test/required_nodes_reg[7]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.385 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.124    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     6.963 r  pipeline/core_under_test/required_nodes_reg[7]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     6.963    pipeline/core_under_test/required_nodes_reg[7]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.300 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.039    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.878 r  pipeline/core_under_test/required_nodes_reg[11]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.878    pipeline/core_under_test/required_nodes_reg[11]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.215 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/O[1]
+                         net (fo=4, unplaced)         0.739     9.954    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.793 r  pipeline/core_under_test/required_nodes_reg[11]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.793    pipeline/core_under_test/required_nodes_reg[11]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.124 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/O[3]
+                         net (fo=3, unplaced)         0.636    11.760    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.067 r  pipeline/core_under_test/required_nodes[15]_i_16/O
+                         net (fo=1, unplaced)         0.639    12.706    pipeline/core_under_test/required_nodes[15]_i_16_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.226 r  pipeline/core_under_test/required_nodes_reg[15]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.226    pipeline/core_under_test/required_nodes_reg[15]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.557 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/O[3]
+                         net (fo=3, unplaced)         0.636    14.193    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[15]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[19]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.833    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[19]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.383 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.383    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337    15.720 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/O[1]
+                         net (fo=1, unplaced)         0.000    15.720    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[21]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[21]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[21]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[21]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.720    
+  -------------------------------------------------------------------
+                         slack                                 -5.048    
+
+Slack (VIOLATED) :        -5.042ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.741ns  (logic 8.531ns (57.873%)  route 6.210ns (42.127%))
+  Logic Levels:           17  (CARRY4=15 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/new_count_reg[4]/Q
+                         net (fo=3, unplaced)         1.001     2.336    pipeline/core_under_test/core/audio/core/media/metadata/count[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.007 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.016    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.133 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.133    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.470 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[7]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.209    pipeline/core_under_test/core_n_270
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.048 r  pipeline/core_under_test/required_nodes_reg[7]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.048    pipeline/core_under_test/required_nodes_reg[7]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.385 r  pipeline/core_under_test/required_nodes_reg[11]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.124    pipeline/core_under_test/required_nodes_reg[11]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     6.963 r  pipeline/core_under_test/required_nodes_reg[7]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     6.963    pipeline/core_under_test/required_nodes_reg[7]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.300 r  pipeline/core_under_test/required_nodes_reg[11]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.039    pipeline/core_under_test/required_nodes_reg[11]_i_11_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.878 r  pipeline/core_under_test/required_nodes_reg[11]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.878    pipeline/core_under_test/required_nodes_reg[11]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.215 r  pipeline/core_under_test/required_nodes_reg[15]_i_23/O[1]
+                         net (fo=4, unplaced)         0.739     9.954    pipeline/core_under_test/required_nodes_reg[15]_i_23_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.793 r  pipeline/core_under_test/required_nodes_reg[11]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.793    pipeline/core_under_test/required_nodes_reg[11]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.124 r  pipeline/core_under_test/required_nodes_reg[15]_i_22/O[3]
+                         net (fo=3, unplaced)         0.636    11.760    pipeline/core_under_test/required_nodes_reg[15]_i_22_n_4
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.067 r  pipeline/core_under_test/required_nodes[15]_i_16/O
+                         net (fo=1, unplaced)         0.639    12.706    pipeline/core_under_test/required_nodes[15]_i_16_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.226 r  pipeline/core_under_test/required_nodes_reg[15]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.226    pipeline/core_under_test/required_nodes_reg[15]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.557 r  pipeline/core_under_test/required_nodes_reg[19]_i_12/O[3]
+                         net (fo=3, unplaced)         0.636    14.193    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[15]_2[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.500 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[19]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.833    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes[19]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.383 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.383    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[19]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    15.714 r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]_i_1/O[3]
+                         net (fo=1, unplaced)         0.000    15.714    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes0[23]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/required_nodes_reg[23]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.714    
+  -------------------------------------------------------------------
+                         slack                                 -5.042    
+
+Slack (VIOLATED) :        -5.005ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[22]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.704ns  (logic 8.456ns (57.508%)  route 6.248ns (42.492%))
+  Logic Levels:           17  (CARRY4=15 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.508 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.247    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[6]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.086 r  pipeline/core_under_test/existing_nodes_reg[7]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.086    pipeline/core_under_test/existing_nodes_reg[7]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.423 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.162    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.001 r  pipeline/core_under_test/existing_nodes_reg[7]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.001    pipeline/core_under_test/existing_nodes_reg[7]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.338 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.077    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.916 r  pipeline/core_under_test/existing_nodes_reg[11]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.916    pipeline/core_under_test/existing_nodes_reg[11]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.253 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/O[1]
+                         net (fo=4, unplaced)         0.739     9.992    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.831 r  pipeline/core_under_test/existing_nodes_reg[11]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.831    pipeline/core_under_test/existing_nodes_reg[11]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.162 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/O[3]
+                         net (fo=3, unplaced)         0.636    11.798    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[12]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.105 r  pipeline/core_under_test/existing_nodes[15]_i_16/O
+                         net (fo=1, unplaced)         0.639    12.744    pipeline/core_under_test/existing_nodes[15]_i_16_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.264 r  pipeline/core_under_test/existing_nodes_reg[15]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.264    pipeline/core_under_test/existing_nodes_reg[15]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.595 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/O[3]
+                         net (fo=3, unplaced)         0.636    14.231    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[15]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.871    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.421 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.421    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256    15.677 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/O[2]
+                         net (fo=1, unplaced)         0.000    15.677    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[22]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[22]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[22]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[22]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.677    
+  -------------------------------------------------------------------
+                         slack                                 -5.005    
+
+Slack (VIOLATED) :        -4.981ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[20]/D
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        14.680ns  (logic 8.432ns (57.439%)  route 6.248ns (42.561%))
+  Logic Levels:           17  (CARRY4=15 LUT3=2)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 10.924 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=34169, unset)        0.973     0.973    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.362     1.335 r  pipeline/core_under_test/core/audio/core/media/metadata/used_reg[4]/Q
+                         net (fo=17, unplaced)        1.039     2.374    pipeline/core_under_test/core/audio/core/media/metadata/used_reg_n_0_[4]
+                         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.671     3.045 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14/CO[3]
+                         net (fo=1, unplaced)         0.009     3.054    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_14_n_0
+                         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.171 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15/CO[3]
+                         net (fo=1, unplaced)         0.000     3.171    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[3]_i_15_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     3.508 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[7]_i_13/O[1]
+                         net (fo=4, unplaced)         0.739     4.247    pipeline/core_under_test/audio/core/media/metadata/nodes_return40[6]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     5.086 r  pipeline/core_under_test/existing_nodes_reg[7]_i_10/CO[3]
+                         net (fo=1, unplaced)         0.000     5.086    pipeline/core_under_test/existing_nodes_reg[7]_i_10_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     5.423 r  pipeline/core_under_test/existing_nodes_reg[11]_i_10/O[1]
+                         net (fo=4, unplaced)         0.739     6.162    pipeline/core_under_test/existing_nodes_reg[11]_i_10_n_6
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     7.001 r  pipeline/core_under_test/existing_nodes_reg[7]_i_11/CO[3]
+                         net (fo=1, unplaced)         0.000     7.001    pipeline/core_under_test/existing_nodes_reg[7]_i_11_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     7.338 r  pipeline/core_under_test/existing_nodes_reg[11]_i_11/O[1]
+                         net (fo=4, unplaced)         0.739     8.077    pipeline/core_under_test/audio/core/media/metadata/nodes_return30_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839     8.916 r  pipeline/core_under_test/existing_nodes_reg[11]_i_23/CO[3]
+                         net (fo=1, unplaced)         0.000     8.916    pipeline/core_under_test/existing_nodes_reg[11]_i_23_n_0
+                         CARRY4 (Prop_carry4_CI_O[1])
+                                                      0.337     9.253 r  pipeline/core_under_test/existing_nodes_reg[15]_i_23/O[1]
+                         net (fo=4, unplaced)         0.739     9.992    pipeline/core_under_test/audio/core/media/metadata/nodes_return20_out[10]
+                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.839    10.831 r  pipeline/core_under_test/existing_nodes_reg[11]_i_22/CO[3]
+                         net (fo=1, unplaced)         0.000    10.831    pipeline/core_under_test/existing_nodes_reg[11]_i_22_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    11.162 r  pipeline/core_under_test/existing_nodes_reg[15]_i_22/O[3]
+                         net (fo=3, unplaced)         0.636    11.798    pipeline/core_under_test/audio/core/media/metadata/nodes_return10_out[12]
+                         LUT3 (Prop_lut3_I0_O)        0.307    12.105 r  pipeline/core_under_test/existing_nodes[15]_i_16/O
+                         net (fo=1, unplaced)         0.639    12.744    pipeline/core_under_test/existing_nodes[15]_i_16_n_0
+                         CARRY4 (Prop_carry4_DI[1]_CO[3])
+                                                      0.520    13.264 r  pipeline/core_under_test/existing_nodes_reg[15]_i_12/CO[3]
+                         net (fo=1, unplaced)         0.000    13.264    pipeline/core_under_test/existing_nodes_reg[15]_i_12_n_0
+                         CARRY4 (Prop_carry4_CI_O[3])
+                                                      0.331    13.595 r  pipeline/core_under_test/existing_nodes_reg[19]_i_12/O[3]
+                         net (fo=3, unplaced)         0.636    14.231    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[15]_1[3]
+                         LUT3 (Prop_lut3_I1_O)        0.307    14.538 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5/O
+                         net (fo=1, unplaced)         0.333    14.871    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes[19]_i_5_n_0
+                         CARRY4 (Prop_carry4_DI[0]_CO[3])
+                                                      0.550    15.421 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1/CO[3]
+                         net (fo=1, unplaced)         0.000    15.421    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[19]_i_1_n_0
+                         CARRY4 (Prop_carry4_CI_O[0])
+                                                      0.232    15.653 r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[23]_i_1/O[0]
+                         net (fo=1, unplaced)         0.000    15.653    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes0[20]
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[20]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=34169, unset)        0.924    10.924    pipeline/core_under_test/core/audio/core/media/metadata/clk
+                         FDRE                                         r  pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[20]/C
+                         clock pessimism              0.000    10.924    
+                         clock uncertainty           -0.235    10.689    
+                         FDRE (Setup_fdre_C_D)       -0.017    10.672    pipeline/core_under_test/core/audio/core/media/metadata/existing_nodes_reg[20]
+  -------------------------------------------------------------------
+                         required time                         10.672    
+                         arrival time                         -15.653    
+  -------------------------------------------------------------------
+                         slack                                 -4.981    
+
+
+
+
