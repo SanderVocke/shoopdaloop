@@ -935,7 +935,6 @@
         "s3-local-frames64-axi32-boundaries-summary.json"
       ],
       "pending": [
-        "Canonical64 route and explicitdecision",
         "Primary21 route andcontract/packing decision"
       ],
       "functional_log": "s3-local-frames-tests.log",
@@ -978,7 +977,27 @@
         "muxf7": -186,
         "muxf8": -62,
         "control_sets": -2
-      }
+      },
+      "canonical64_routed_summary": "s3-local-frames64-control-100-summary.json",
+      "canonical64_routed_deltas_vs_c2": {
+        "lut": -71,
+        "logic_lut": -71,
+        "memory_lut": 0,
+        "ff": 2,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -2,
+        "muxf7": -9,
+        "muxf8": -30,
+        "slices": 254,
+        "control_sets": 178
+      },
+      "canonical64_routed_timing": {
+        "wns_ns": -4.12,
+        "whs_ns": 0.027
+      },
+      "canonical64_outcome": "rejected_for_default",
+      "canonical64_decision": "Exactbehavior/cycles, but71LUTsaving costs254moreslices/+178physicalcontrolsets/+2FF andsetupworsens0.239ns. C2 remains selected; use64same-sourcecontrolonlytoattribute21bitdelta, thenjudge21alsoagainstC2."
     }
   ],
   "provisioning": {
