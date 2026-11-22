@@ -192,8 +192,6 @@ fn run_fx_service() -> anyhow::Result<()> {
         listen: std::net::SocketAddr,
         #[arg(long)]
         lan: bool,
-        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u16).range(1..=32))]
-        slots: u16,
         #[arg(long)]
         isolated: bool,
     }
@@ -203,7 +201,7 @@ fn run_fx_service() -> anyhow::Result<()> {
         "FX service requires --lan to bind a non-loopback address"
     );
     let worker = args.isolated.then(std::env::current_exe).transpose()?;
-    shoop_carla::remote::serve(args.listen, usize::from(args.slots), worker)
+    shoop_carla::remote::serve(args.listen, worker)
 }
 #[cfg(target_arch = "wasm32")]
 fn main() {}

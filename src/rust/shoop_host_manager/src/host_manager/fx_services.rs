@@ -131,9 +131,14 @@ impl Panel {
                     ui.strong(service.address.to_string());
                     match &service.description {
                         Ok(description) => {
+                            let active = description
+                                .chains
+                                .iter()
+                                .filter(|chain| chain.attached && chain.status.active)
+                                .count();
                             ui.label(format!(
-                                "{} active · {} of {} slots reserved",
-                                description.active, description.reserved, description.slots,
+                                "{active} active · {} chains",
+                                description.chains.len()
                             ));
                             ui.label(format!(
                                 "Supported chains: {}",
@@ -419,7 +424,7 @@ pub(super) fn probe() -> Result<()> {
             .map_err(anyhow::Error::from)
             .and_then(|status| {
                 ensure!(
-                    status.reserved == 0,
+                    status.chains.is_empty(),
                     "Native host opened a remote Carla chain before assignment"
                 );
                 Ok(())

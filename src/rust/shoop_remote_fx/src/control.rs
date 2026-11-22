@@ -7,9 +7,8 @@ use std::{
 };
 
 pub const DEFAULT_COPIES: u8 = 2;
-pub const CONTROL_VERSION: u8 = 2;
+pub const CONTROL_VERSION: u8 = 3;
 pub const INITIAL_LIMIT: usize = 4096;
-pub(crate) const DESCRIPTION_LIMIT: usize = 64 * 1024;
 pub const STATE_LIMIT: usize = 23 * 1024 * 1024;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 pub(crate) const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -61,16 +60,11 @@ pub struct Status {
     pub counters: Counters,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Description {
     pub instance: String,
     pub pid: u32,
-    pub slots: usize,
-    pub reserved: usize,
-    pub active: usize,
     pub kinds: Vec<Kind>,
-    pub streams: Vec<Counters>,
     pub chains: Vec<ChainDescription>,
 }
 
@@ -137,7 +131,10 @@ pub(crate) enum Intent {
 pub(crate) enum Welcome {
     Description {
         version: u8,
-        description: Description,
+        instance: String,
+        pid: u32,
+        kinds: Vec<Kind>,
+        chain_count: usize,
     },
     Shutdown,
     Confirmed {},
@@ -184,7 +181,14 @@ pub(crate) fn read_frame<T: DeserializeOwned>(
     maximum: usize,
     timeout: Duration,
 ) -> io::Result<T> {
-    let end = Instant::now() + timeout;
+    read_frame_until(stream, maximum, Instant::now() + timeout)
+}
+
+fn read_frame_until<T: DeserializeOwned>(
+    stream: &mut TcpStream,
+    maximum: usize,
+    end: Instant,
+) -> io::Result<T> {
     let mut header = [0; 4];
     read_until(stream, &mut header, end)?;
     let length = u32::from_le_bytes(header) as usize;
@@ -240,16 +244,11 @@ pub(crate) fn write_frame(
 }
 
 pub(crate) fn connect(address: SocketAddr, intent: Intent) -> io::Result<(TcpStream, Welcome)> {
-    let reply_limit = if matches!(intent, Intent::Describe) {
-        DESCRIPTION_LIMIT
-    } else {
-        INITIAL_LIMIT
-    };
     let mut stream = TcpStream::connect_timeout(&address, QUERY_TIMEOUT)?;
     stream.set_nodelay(true)?;
     stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
     write_frame(&mut stream, &Greeting::new(intent), INITIAL_LIMIT)?;
-    let welcome = read_frame(&mut stream, reply_limit, CONTROL_TIMEOUT)?;
+    let welcome = read_frame(&mut stream, INITIAL_LIMIT, CONTROL_TIMEOUT)?;
     match welcome {
         Welcome::Refused(reason) => Err(io::Error::other(reason)),
         welcome => Ok((stream, welcome)),
@@ -257,13 +256,28 @@ pub(crate) fn connect(address: SocketAddr, intent: Intent) -> io::Result<(TcpStr
 }
 
 pub fn describe(address: SocketAddr) -> io::Result<Description> {
-    match connect(address, Intent::Describe)?.1 {
-        Welcome::Description {
-            version: CONTROL_VERSION,
-            description,
-        } => Ok(description),
-        _ => Err(io::Error::other("Incompatible FX service description")),
+    let (mut stream, welcome) = connect(address, Intent::Describe)?;
+    let Welcome::Description {
+        version: CONTROL_VERSION,
+        instance,
+        pid,
+        kinds,
+        chain_count,
+    } = welcome
+    else {
+        return Err(io::Error::other("Incompatible FX service description"));
+    };
+    let end = Instant::now() + CONTROL_TIMEOUT;
+    let mut chains = Vec::new();
+    for _ in 0..chain_count {
+        chains.push(read_frame_until(&mut stream, INITIAL_LIMIT, end)?);
     }
+    Ok(Description {
+        instance,
+        pid,
+        kinds,
+        chains,
+    })
 }
 
 pub fn set_editor(
@@ -363,18 +377,39 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn inspection_can_return_counters_for_all_slots() {
+    fn inspection_can_return_a_large_chain_inventory() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
+        let ports = crate::MediaLimits {
+            channels: 2,
+            midi: true,
+            midi_events: 4,
+            midi_bytes: 16,
+        };
+        let chains = (0..160)
+            .map(|index| ChainDescription {
+                id: format!("849bc9e3-df81-4c3c-9b9d-{index:012}"),
+                kind: Kind::Rack,
+                config: Config {
+                    sample_rate: 8_000,
+                    quantum: 32,
+                    batch_quanta: 1,
+                    slack_quanta: 12,
+                    input: ports,
+                    output: ports,
+                    datagram_bytes: 1200,
+                    copies: 2,
+                },
+                attached: true,
+                status: Status::default(),
+            })
+            .collect::<Vec<_>>();
+        assert!(serde_json::to_vec(&chains).unwrap().len() > 64 * 1024);
         let report = Description {
             instance: "desktop".into(),
             pid: 1,
-            slots: 32,
-            reserved: 32,
-            active: 32,
             kinds: vec![Kind::Rack],
-            streams: vec![Counters::default(); 32],
-            chains: vec![],
+            chains,
         };
         thread::scope(|scope| {
             let server = scope.spawn(|| {
@@ -384,9 +419,15 @@ mod tests {
                 assert!(matches!(greeting.intent, Intent::Describe));
                 let response = Welcome::Description {
                     version: CONTROL_VERSION,
-                    description: report.clone(),
+                    instance: report.instance.clone(),
+                    pid: report.pid,
+                    kinds: report.kinds.clone(),
+                    chain_count: report.chains.len(),
                 };
-                write_frame(&mut peer, &response, DESCRIPTION_LIMIT).unwrap();
+                write_frame(&mut peer, &response, INITIAL_LIMIT).unwrap();
+                for chain in &report.chains {
+                    write_frame(&mut peer, chain, INITIAL_LIMIT).unwrap();
+                }
             });
             assert_eq!(describe(address).unwrap(), report);
             server.join().unwrap();

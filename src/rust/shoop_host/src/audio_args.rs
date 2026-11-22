@@ -81,15 +81,6 @@ pub struct AudioArgs {
     /// Carla Native hosting mode for this host launch.
     #[arg(long, value_enum, help_heading = "Track processors")]
     pub carla_hosting: Option<CarlaChoice>,
-    #[arg(long, help_heading = "Track processors")]
-    pub carla_rack_instances: Option<u16>,
-    #[arg(long, help_heading = "Track processors")]
-    pub carla_patchbay_instances: Option<u16>,
-    #[arg(
-        long = "carla-patchbay-16x-instances",
-        help_heading = "Track processors"
-    )]
-    pub carla_patchbay16x_instances: Option<u16>,
     /// Desktop FX service TCP address for remote Carla.
     #[arg(long, help_heading = "Track processors")]
     pub carla_fx_address: Option<std::net::SocketAddr>,
@@ -161,15 +152,12 @@ impl AudioArgs {
         }
         if let Some(value) = self.carla_hosting {
             base.carla.hosting = value.into();
-        }
-        if let Some(value) = self.carla_rack_instances {
-            base.carla.rack_instances = value;
-        }
-        if let Some(value) = self.carla_patchbay_instances {
-            base.carla.patchbay_instances = value;
-        }
-        if let Some(value) = self.carla_patchbay16x_instances {
-            base.carla.patchbay16x_instances = value;
+            if base.carla.hosting != shoop_app_api::CarlaHosting::Disabled
+                && base.memory_mb != 0
+                && base.carla.configured_instances() == 0
+            {
+                base.carla.rack_instances = 1;
+            }
         }
         base.validate()?;
         Ok(base)
@@ -439,6 +427,24 @@ mod tests {
                 .unwrap(),
             ProcessorSettings::disabled()
         );
+    }
+
+    #[shoop_test]
+    fn carla_cli_uses_prepared_defaults_without_instance_count_flags() {
+        for flag in [
+            "--carla-rack-instances",
+            "--carla-patchbay-instances",
+            "--carla-patchbay-16x-instances",
+        ] {
+            assert!(Cli::try_parse_from(["host", flag, "1"]).is_err());
+        }
+        let options = Cli::parse_from(["host", "--carla-hosting", "remote"]).audio;
+        let processors = options.apply_processors(Default::default()).unwrap();
+        assert_eq!(processors.carla.rack_instances, 1);
+        let processors = options
+            .apply_processors(shoop_app_api::ProcessorSettings::disabled())
+            .unwrap();
+        assert_eq!(processors.carla.configured_instances(), 0);
     }
 
     #[shoop_test]

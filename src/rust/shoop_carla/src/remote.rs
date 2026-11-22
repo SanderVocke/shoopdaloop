@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-pub fn serve(address: SocketAddr, slots: usize, worker: Option<PathBuf>) -> Result<()> {
+pub fn serve(address: SocketAddr, worker: Option<PathBuf>) -> Result<()> {
     carla_runtime_availability().map_err(anyhow::Error::msg)?;
     let listener = TcpListener::bind(address)?;
     let (mut ui, dispatcher) = CarlaMainThreadUiService::new();
@@ -38,7 +38,7 @@ pub fn serve(address: SocketAddr, slots: usize, worker: Option<PathBuf>) -> Resu
     let broker = thread::Builder::new()
         .name("remote-fx-service".into())
         .spawn(move || {
-            shoop_remote_fx::serve(listener, slots, stopping, move |kind, config| {
+            shoop_remote_fx::serve(listener, stopping, move |kind, config| {
                 make_chain(kind, config, worker.as_deref(), &dispatcher, &next)
                     .map_err(|error| error.to_string())
             })

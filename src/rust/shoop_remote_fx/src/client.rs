@@ -728,7 +728,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
-            serve(listener, 2, Arc::new(AtomicBool::new(false)), |_, _| {
+            serve(listener, Arc::new(AtomicBool::new(false)), |_, _| {
                 Ok(Chain {
                     dsp: Box::new(TestChain::default()),
                     controls: Box::new(TestChain::default()),
@@ -756,7 +756,7 @@ mod tests {
             let (mut endpoint, client) =
                 Client::prepare_slot(Kind::Patchbay16x, config, None).unwrap();
             let empty = describe(address).unwrap();
-            assert_eq!(empty.reserved, 0);
+            assert!(empty.chains.is_empty());
             client.configure_claim(
                 1,
                 Some(RemoteFxTarget {

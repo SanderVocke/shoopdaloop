@@ -73,7 +73,7 @@ fn negotiates_udp_processes_pipelined_batches_and_uses_reliable_state() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let thread = thread::spawn(move || {
-        serve(listener, 2, Arc::new(AtomicBool::new(false)), |_, _| {
+        serve(listener, Arc::new(AtomicBool::new(false)), |_, _| {
             Ok(Chain {
                 dsp: Box::new(Gain),
                 controls: Box::new(Controls::default()),
@@ -82,7 +82,7 @@ fn negotiates_udp_processes_pipelined_batches_and_uses_reliable_state() {
         .unwrap();
     });
     let description = describe(address).unwrap();
-    assert_eq!(description.slots, 2);
+    assert!(description.chains.is_empty());
     let ports = MediaLimits {
         channels: 2,
         midi: true,
@@ -104,10 +104,19 @@ fn negotiates_udp_processes_pipelined_batches_and_uses_reliable_state() {
         ..config
     };
     let (mut endpoint, client) = Client::prepare(address, Kind::Rack, config).unwrap();
-    let second = Client::prepare(address, Kind::Rack, config).unwrap();
-    let refused = Client::prepare(address, Kind::Rack, config).err().unwrap();
-    assert!(refused.to_string().contains("prepared capacity"));
-    drop(second);
+    let other_chains: Vec<_> = (0..11)
+        .map(|_| Client::prepare(address, Kind::Rack, config).unwrap())
+        .collect();
+    assert_eq!(describe(address).unwrap().chains.len(), 12);
+    for (_, other) in other_chains {
+        let observed = other.observation();
+        other
+            .request(observed.owner, observed.generation, Action::Close)
+            .unwrap()
+            .wait()
+            .unwrap();
+    }
+    assert_eq!(describe(address).unwrap().chains.len(), 1);
     let observed = client.observation();
     let command = |action| {
         client

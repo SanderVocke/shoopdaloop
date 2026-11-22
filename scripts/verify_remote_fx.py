@@ -132,17 +132,26 @@ async def relay(mode):
         await server.serve_forever()
 
 
+def service_record(reply):
+    size = int.from_bytes(reply.read(4), "little")
+    return json.loads(reply.read(size))
+
+
 def service_request(intent):
-    request = json.dumps({"version": 2, "intent": intent}).encode()
+    request = json.dumps({"version": 3, "intent": intent}).encode()
     with socket.create_connection((DESKTOP, SERVICE_PORT), timeout=1) as sock:
         sock.sendall(len(request).to_bytes(4, "little") + request)
         with sock.makefile("rb") as reply:
-            size = int.from_bytes(reply.read(4), "little")
-            return json.loads(reply.read(size))
+            response = service_record(reply)
+            if intent == "describe":
+                description = response["description"]
+                description["chains"] = [service_record(reply) for _ in range(description["chain_count"])]
+                return description
+            return response
 
 
 def query_service():
-    return service_request("describe")["description"]["description"]
+    return service_request("describe")
 
 
 def shutdown_service():
@@ -168,7 +177,11 @@ def run_archive(args, env, width, restart=None):
                     restart()
                     restart = None
                     previous = None
-                streams = query_service()["streams"]
+                streams = [
+                    chain["status"]["counters"]
+                    for chain in query_service()["chains"]
+                    if chain["attached"]
+                ]
                 packets = sum(item["sent_datagrams"] + item["received_datagrams"] for item in streams)
                 now = time.monotonic()
                 if previous is not None and packets >= previous[0]:

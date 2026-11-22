@@ -1,8 +1,8 @@
 use crate::{
     control::{
-        read_frame, write_frame, Action, ChainDescription, Credential, Description, Greeting,
-        Intent, Kind, Lifecycle, Request, Response, Status, Welcome, CONTROL_TIMEOUT,
-        CONTROL_VERSION, DESCRIPTION_LIMIT, INITIAL_LIMIT, LEASE, STATE_LIMIT,
+        read_frame, write_frame, Action, ChainDescription, Credential, Greeting, Intent, Kind,
+        Lifecycle, Request, Response, Status, Welcome, CONTROL_TIMEOUT, CONTROL_VERSION,
+        INITIAL_LIMIT, LEASE, STATE_LIMIT,
     },
     Config, Counters, Dsp, ServerMedia,
 };
@@ -11,16 +11,13 @@ use std::{
     io,
     net::{TcpListener, TcpStream, UdpSocket},
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     thread,
     time::{Duration, Instant},
 };
 
-const MAX_CONNECTIONS: usize = 64;
-const MEDIA_BUDGET: usize = 512 * 1024 * 1024;
-const WIRE_BUDGET: usize = 256 * 1024 * 1024;
 const RETAIN_CHAIN: Duration = Duration::from_secs(30);
 
 pub trait ChainControls: Send {
@@ -36,43 +33,11 @@ pub struct Chain {
     pub controls: Box<dyn ChainControls>,
 }
 
-struct Resources {
-    slots: usize,
-    media: usize,
-    wire: usize,
-}
-
 struct Server {
     instance: String,
-    slots: usize,
-    resources: Arc<Mutex<Resources>>,
-    pending: AtomicUsize,
     chains: Mutex<BTreeMap<String, RegisteredChain>>,
     stopping: Arc<AtomicBool>,
     factory: Box<dyn Fn(Kind, Config) -> Result<Chain, String> + Send + Sync>,
-}
-
-struct Connection(Arc<Server>);
-
-impl Drop for Connection {
-    fn drop(&mut self) {
-        self.0.pending.fetch_sub(1, Ordering::Relaxed);
-    }
-}
-
-struct Reservation {
-    resources: Arc<Mutex<Resources>>,
-    media: usize,
-    wire: usize,
-}
-
-impl Drop for Reservation {
-    fn drop(&mut self) {
-        let mut resources = self.resources.lock().unwrap();
-        resources.slots -= 1;
-        resources.media -= self.media;
-        resources.wire -= self.wire;
-    }
 }
 
 struct RegisteredChain {
@@ -91,64 +56,11 @@ struct ChainInfo {
 
 struct ParkedChain {
     dsp: Box<dyn Dsp>,
-    reservation: Reservation,
     expires: Instant,
 }
 
 impl Server {
-    fn reserve(&self, kind: Kind, config: Config) -> io::Result<Reservation> {
-        if config.input.channels > kind.channels()
-            || config.output.channels > kind.channels()
-            || !config.input.midi
-            || !config.output.midi
-        {
-            return Err(io::Error::other(
-                "Requested ports do not match the Carla chain",
-            ));
-        }
-        let timing = config
-            .prepare()
-            .map_err(|error| io::Error::other(format!("{error:?}")))?;
-        let media = crate::transport_bytes(config)
-            .map_err(|error| io::Error::other(format!("{error:?}")))?
-            + timing.batch_frames() * usize::from(kind.channels()) * 8
-            + 2 * 8192 * usize::from(kind.channels()) * 4
-            + 2 * STATE_LIMIT;
-        let rate = config.sample_rate as usize;
-        let quantum = usize::from(config.quantum);
-        let payload = config.input.payload(quantum) + config.output.payload(quantum);
-        let fragments = payload.div_ceil(config.fragment_bytes()) + 1;
-        let wire = (payload + fragments * (crate::wire::HEADER + 48))
-            .saturating_mul(rate.div_ceil(quantum))
-            .saturating_mul(usize::from(config.copies));
-        let mut resources = self.resources.lock().unwrap();
-        if resources.slots == self.slots {
-            return Err(io::Error::other(
-                "FX service prepared capacity is exhausted",
-            ));
-        }
-        if resources.media.saturating_add(media) > MEDIA_BUDGET {
-            return Err(io::Error::other(
-                "FX service prepared memory budget is exhausted",
-            ));
-        }
-        if resources.wire.saturating_add(wire) > WIRE_BUDGET {
-            return Err(io::Error::other(
-                "FX service traffic budget is exhausted for the requested audio and MIDI limits",
-            ));
-        }
-        resources.slots += 1;
-        resources.media += media;
-        resources.wire += wire;
-        Ok(Reservation {
-            resources: Arc::clone(&self.resources),
-            media,
-            wire,
-        })
-    }
-
-    fn describe(&self) -> Description {
-        let reserved = self.resources.lock().unwrap().slots;
+    fn describe(&self, tcp: &mut TcpStream) -> io::Result<()> {
         let chains: Vec<_> = self
             .chains
             .lock()
@@ -162,23 +74,21 @@ impl Server {
                 status: *entry.chain.status.lock().unwrap(),
             })
             .collect();
-        Description {
-            instance: self.instance.clone(),
-            pid: std::process::id(),
-            slots: self.slots,
-            reserved,
-            active: chains
-                .iter()
-                .filter(|chain| chain.attached && chain.status.active)
-                .count(),
-            kinds: vec![Kind::Rack, Kind::Patchbay, Kind::Patchbay16x],
-            streams: chains
-                .iter()
-                .filter(|chain| chain.attached)
-                .map(|chain| chain.status.counters)
-                .collect(),
-            chains,
+        write_frame(
+            tcp,
+            &Welcome::Description {
+                version: CONTROL_VERSION,
+                instance: self.instance.clone(),
+                pid: std::process::id(),
+                kinds: vec![Kind::Rack, Kind::Patchbay, Kind::Patchbay16x],
+                chain_count: chains.len(),
+            },
+            INITIAL_LIMIT,
+        )?;
+        for chain in chains {
+            write_frame(tcp, &chain, INITIAL_LIMIT)?;
         }
+        Ok(())
     }
 
     fn local_management(&self, tcp: &TcpStream, instance: &str) -> io::Result<()> {
@@ -201,14 +111,7 @@ impl Server {
             return self.refuse(&mut tcp, "Incompatible FX service version".into());
         }
         match intent {
-            Intent::Describe => write_frame(
-                &mut tcp,
-                &Welcome::Description {
-                    version: CONTROL_VERSION,
-                    description: self.describe(),
-                },
-                DESCRIPTION_LIMIT,
-            ),
+            Intent::Describe => self.describe(&mut tcp),
             Intent::Shutdown { instance } => {
                 if let Err(error) = self.local_management(&tcp, &instance) {
                     return self.refuse(&mut tcp, error.to_string());
@@ -281,13 +184,22 @@ impl Server {
         config: Config,
         retain: bool,
     ) -> io::Result<()> {
-        let prepared = self.reserve(kind, config).and_then(|reservation| {
-            let chain = (self.factory)(kind, config).map_err(io::Error::other)?;
-            Ok((reservation, chain))
-        });
-        let (reservation, Chain { dsp, controls }) = match prepared {
-            Ok(prepared) => prepared,
-            Err(error) => return self.refuse(&mut tcp, error.to_string()),
+        if config.input.channels > kind.channels()
+            || config.output.channels > kind.channels()
+            || !config.input.midi
+            || !config.output.midi
+        {
+            return self.refuse(
+                &mut tcp,
+                "Requested ports do not match the Carla chain".into(),
+            );
+        }
+        if let Err(error) = config.prepare() {
+            return self.refuse(&mut tcp, format!("{error:?}"));
+        }
+        let Chain { dsp, controls } = match (self.factory)(kind, config) {
+            Ok(chain) => chain,
+            Err(error) => return self.refuse(&mut tcp, error),
         };
         let id = uuid::Uuid::new_v4().to_string();
         let chain = ChainInfo {
@@ -304,7 +216,7 @@ impl Server {
                 parked: None,
             },
         );
-        self.attach(tcp, id, chain, reservation, dsp, false)
+        self.attach(tcp, id, chain, dsp, false)
     }
 
     fn resume_chain(&self, mut tcp: TcpStream, credential: Credential) -> io::Result<()> {
@@ -328,14 +240,7 @@ impl Server {
         }
         let chain = entry.chain.clone();
         drop(chains);
-        self.attach(
-            tcp,
-            credential.chain,
-            chain,
-            parked.reservation,
-            parked.dsp,
-            true,
-        )
+        self.attach(tcp, credential.chain, chain, parked.dsp, true)
     }
 
     fn reap_expired(&self) {
@@ -357,7 +262,6 @@ impl Server {
         mut tcp: TcpStream,
         id: String,
         chain: ChainInfo,
-        reservation: Reservation,
         mut dsp: Box<dyn Dsp>,
         mut retainable: bool,
     ) -> io::Result<()> {
@@ -368,7 +272,6 @@ impl Server {
             drop(chains);
             drop(chain);
             drop(dsp);
-            drop(reservation);
             return write_frame(&mut tcp, &reply, STATE_LIMIT);
         }
         if chain.secret.is_some() && retainable && !self.stopping.load(Ordering::Acquire) {
@@ -376,7 +279,6 @@ impl Server {
             chain.status.lock().unwrap().lifecycle = Lifecycle::Unavailable;
             entry.parked = Some(ParkedChain {
                 dsp,
-                reservation,
                 expires: Instant::now() + RETAIN_CHAIN,
             });
         } else {
@@ -414,27 +316,30 @@ impl Server {
             INITIAL_LIMIT,
         )?;
         crate::control::prove_server(&socket, tcp.peer_addr()?.ip(), stream)?;
-        *retainable = true;
         socket.set_read_timeout(Some(Duration::from_millis(1)))?;
         let closed = AtomicBool::new(false);
         let counters = Mutex::new(Counters::default());
         thread::scope(|scope| {
-            let media = scope.spawn(|| {
-                let mut published = Instant::now();
-                while !closed.load(Ordering::Acquire) && !self.stopping.load(Ordering::Acquire) {
-                    if wait_for_media(&socket)
-                        .and_then(|()| server.poll(&socket, stream, dsp))
-                        .is_err()
+            let media = thread::Builder::new()
+                .name("remote-fx-media".into())
+                .spawn_scoped(scope, || {
+                    let mut published = Instant::now();
+                    while !closed.load(Ordering::Acquire) && !self.stopping.load(Ordering::Acquire)
                     {
-                        closed.store(true, Ordering::Release);
-                        break;
+                        if wait_for_media(&socket)
+                            .and_then(|()| server.poll(&socket, stream, dsp))
+                            .is_err()
+                        {
+                            closed.store(true, Ordering::Release);
+                            break;
+                        }
+                        if published.elapsed() >= crate::control::HEARTBEAT {
+                            *counters.lock().unwrap() = server.counters();
+                            published = Instant::now();
+                        }
                     }
-                    if published.elapsed() >= crate::control::HEARTBEAT {
-                        *counters.lock().unwrap() = server.counters();
-                        published = Instant::now();
-                    }
-                }
-            });
+                })?;
+            *retainable = true;
             let result = self.control(tcp, chain, &closed, &counters);
             closed.store(true, Ordering::Release);
             let _ = media.join();
@@ -512,13 +417,9 @@ fn wait_for_media(socket: &UdpSocket) -> io::Result<()> {
 
 pub fn serve(
     listener: TcpListener,
-    slots: usize,
     stopping: Arc<AtomicBool>,
     factory: impl Fn(Kind, Config) -> Result<Chain, String> + Send + Sync + 'static,
 ) -> io::Result<()> {
-    if !(1..=32).contains(&slots) {
-        return Err(io::Error::other("FX service needs 1–32 prepared slots"));
-    }
     listener.set_nonblocking(true)?;
     let advertiser =
         crate::discovery::Advertiser::bind(listener.local_addr()?).unwrap_or_else(|error| {
@@ -527,18 +428,11 @@ pub fn serve(
         });
     let server = Arc::new(Server {
         instance: uuid::Uuid::new_v4().to_string(),
-        slots,
-        resources: Arc::new(Mutex::new(Resources {
-            slots: 0,
-            media: 0,
-            wire: 0,
-        })),
-        pending: AtomicUsize::new(0),
         chains: Mutex::new(BTreeMap::new()),
         stopping,
         factory: Box::new(factory),
     });
-    let mut connections = Vec::with_capacity(MAX_CONNECTIONS);
+    let mut connections = Vec::new();
     while !server.stopping.load(Ordering::Acquire) {
         if let Some(advertiser) = &advertiser {
             advertiser.answer();
@@ -546,18 +440,20 @@ pub fn serve(
         server.reap_expired();
         connections.retain(|thread: &thread::JoinHandle<_>| !thread.is_finished());
         match listener.accept() {
-            Ok((socket, _)) if server.pending.load(Ordering::Relaxed) < MAX_CONNECTIONS => {
-                server.pending.fetch_add(1, Ordering::Relaxed);
-                let connection = Connection(Arc::clone(&server));
-                let handle = thread::Builder::new()
+            Ok((socket, _)) => {
+                let connection = Arc::clone(&server);
+                match thread::Builder::new()
                     .name("remote-fx-control".into())
                     .spawn(move || {
-                        let _ = connection.0.open(socket);
-                        drop(connection);
-                    })?;
-                connections.push(handle);
+                        let _ = connection.open(socket);
+                    }) {
+                    Ok(handle) => connections.push(handle),
+                    Err(error) => {
+                        eprintln!("Could not start an FX connection: {error}");
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                }
             }
-            Ok(_) => {}
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(10));
             }

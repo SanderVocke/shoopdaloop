@@ -12,7 +12,7 @@ Use Carla-enabled Native companions from the same build on the desktop and loope
 
 The desktop picker discovers services on the same machine and IPv4 services on the local network. Use a manual address for a service across a routed network or on an IPv6-only network. The service address must be reachable from the Native host. The default Native pools prepare up to two remote Rack slots and two remote Patchbay slots within the available processor memory. Hosts configured for 16 channels can also prepare one Patchbay 16x slot.
 
-Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
+The desktop service opens chains as the Native host requests them. The capacity of the service machine determines how many can run. Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
 
 ## Start from the command line
 
@@ -25,11 +25,10 @@ shoop_host --fx-service --lan --listen 192.168.1.50:24510
 For sessions and buses that use a host-wide FX service, set a default endpoint on the Native looper.
 
 ```sh
-shoop_host --backend native --carla-hosting remote \
-  --carla-fx-address 192.168.1.50:24510 --carla-rack-instances 1
+shoop_host --backend native --carla-fx-address 192.168.1.50:24510
 ```
 
-Use `--carla-hosting mixed` to configure custom per-type limits for both local and remote Carla. Supply `--carla-fx-address` if buses need a default service. The address in an individual track takes precedence over the host default. Start the FX service with `--isolated` for one supervised Carla worker process per chain. The default runs Carla in the service process with a dedicated media thread for each chain.
+The address in an individual track takes precedence over the host default. Start the FX service with `--isolated` for one supervised Carla worker process per chain. The default runs Carla in the service process with a dedicated media thread for each chain.
 
 Control uses TCP on the configured port. Each chain uses an OS-assigned UDP port on the desktop and a UDP socket on the looper. Input and output widths are negotiated separately from the track or bus layout. Rack and stereo Patchbay support up to two lanes on each side and Patchbay 16x supports up to sixteen. Use a trusted network that allows both directions. The default service binding is loopback.
 
