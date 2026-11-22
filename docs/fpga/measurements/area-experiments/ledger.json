@@ -855,17 +855,19 @@
       "control_summary": "s2-path-repeat-100-summary.json",
       "changed_contract": "None intended; private descriptor/record cursors, allocation exhaustion sentinel, format scan and retirement ring fields derive widths from capacities. Public handles keep32-bit slots; rawDDR values, global times, generations and ownership counts stay wide.",
       "validation": [
-        "All10311 boundary response/cycle/traffic rows exactly match C2, including primary256view/128retirement indices and minimum/odd capacities"
+        "All10311 boundary response/cycle/traffic rows exactly match C2, including primary256view/128retirement indices and minimum/odd capacities",
+        "All16MIDI tests passed527.04sec, including AXI32/64, dense events, exhaustion, stalehandles, retakes, protocol/memory faults",
+        "All33connected mixed/state-on/delay7 sample/state/cycle/traffic rows exactly match same C2longrun prefix"
       ],
       "unit_summaries": [
         "c2-midi-primary-index-control-summary.json",
         "s3-midi-boundaries-summary.json"
       ],
       "pending": [
-        "Full16MIDI tests",
-        "Connected mixed/state-on/delay7 callbacks",
+        "Expression-state suite",
         "Optimized implementation, then route if viable"
-      ]
+      ],
+      "functional_log": "s3-midi-tests.log"
     }
   ],
   "provisioning": {
