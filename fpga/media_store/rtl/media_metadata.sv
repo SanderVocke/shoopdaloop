@@ -46,10 +46,15 @@ module media_metadata #(
     (* fsm_encoding = "one_hot" *) phase_t phase;
     phase_t resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
-    wire [127:0] root_ram_data;
+    localparam integer MIDDLE_WORDS = LEVELS > 2 ? LEVELS-2 : 1;
+    localparam integer ROOT_BITS = 192+MIDDLE_WORDS*32;
+    wire [ROOT_BITS-1:0] root_ram_data;
+    // Contents share the roots RAM and its existing leaf-valid lifetime.
     reg root_used_nonzero;
+    reg cached_translation_match;
+    reg [31:0] cached_block, cached_ordinal;
     reg [63:0] memory_origin;
-    reg [127:0] root_data;
+    reg [ROOT_BITS-1:0] root_data;
     localparam integer LEVEL_BITS = LEVELS < 2 ? 1 : $clog2(LEVELS);
     reg [31:0] view, ordinal, payload, root, used, page;
     reg [LEVEL_BITS-1:0] level;
@@ -67,6 +72,22 @@ module media_metadata #(
     wire unused_operations = &{1'b0,directory_reads,table_reads,operations[0],operations[1],operations[2],operations[3],operations[4],operations[5],operations[6],operations[7],operations[8],operations[9]};
     reg [63:0] parent_address;
     reg [31:0] path_page [0:LEVELS-1];
+    wire [MIDDLE_WORDS*32-1:0] directory_path;
+    wire unused_path_padding = &{1'b0,root_data[ROOT_BITS-1:192]};
+    reg directory_hit, path_match;
+    reg [LEVEL_BITS-1:0] directory_level, path_match_level;
+    reg [31:0] directory_page, path_match_page;
+    generate for (genvar d=0; d<MIDDLE_WORDS; d=d+1) begin : cached_directory
+        assign directory_path[d*32+:32] = LEVELS > 2 ? path_page[d+1] : 32'b0;
+    end endgenerate
+    always @* begin
+        directory_hit = 0; directory_level = 0; directory_page = 0;
+        for (integer d=LEVELS-2; d>0; d=d-1) begin
+            if (path_page[d] != 0 && (cached_index >> (d*4)) == (ordinal >> ((d+1)*4))) begin
+                directory_hit = 1; directory_level = LEVEL_BITS'(d); directory_page = path_page[d];
+            end
+        end
+    end
     reg [63:0] path_address [0:LEVELS-1];
     reg [31:0] trim_count, trim_start;
     reg [31:0] trim_used_pages, trim_requested_pages;
@@ -110,9 +131,9 @@ module media_metadata #(
     wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (32'(level)*4)) & 64'd15)*4;
     wire bad_tree_request = (opcode != 11 && view >= 32'(VIEWS)) || ordinal > 32'(SLOTS)
         || (opcode < 2 && ordinal == 32'(SLOTS));
-    media_ram #(.WIDTH(128),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
+    media_ram #(.WIDTH(ROOT_BITS),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
         .clk(clk),.read_enable(request_valid && request_ready && request_view < 32'(VIEWS)),.read_address(VIEW_BITS'(request_view)),.read_data(root_ram_data),
-        .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({cached_leaf,cached_index,used,root})
+        .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({directory_path,cached_block,cached_ordinal,cached_leaf,cached_index,used,root})
     );
     generate for (genvar i=0; i<3; i=i+1) begin : banks
         wire [63:0] hits, misses, fills, writebacks;
@@ -123,7 +144,7 @@ module media_metadata #(
         assign bus_read_data[i*32+:32] = memory_read_data;
         assign bus_response_valid[i] = bank == i && memory_response_valid;
         assign bus_response_error[i] = memory_response_error;
-        metadata_cache #(.LINES(i == 0 ? TABLE_LINES : i == 1 ? REF_LINES : STACK_LINES),.BURST_MEMORY(BURST_MEMORY)) cache (
+        metadata_cache #(.LINES(i == 0 ? (TABLE_LINES > 8 ? 8 : TABLE_LINES) : i == 1 ? REF_LINES : STACK_LINES),.BURST_MEMORY(BURST_MEMORY)) cache (
             .clk(clk),.reset(reset),.request_valid(phase == CACHE_SEND && bank == i),.request_ready(cache_ready[i]),
             .request_opcode(cache_opcode),.request_invalidate(cache_invalidate),.request_address(cache_address),.request_data(cache_data),
             .response_valid(cache_valid[i]),.response_ready(phase == CACHE_WAIT && bank == i),
@@ -144,9 +165,9 @@ module media_metadata #(
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8 || RETIRED_TABLES < 1) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
+            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; cached_block <= 0; cached_ordinal <= 0; path_match <= 0; path_match_level <= 0; path_match_page <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
-            invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0;
+            invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0; cached_translation_match <= 0;
             allocated <= 0; parent_is_root <= 1; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             trim_used_pages <= 0; trim_requested_pages <= 0; trim_finished <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
@@ -175,6 +196,8 @@ module media_metadata #(
                     used <= root_exists ? root_data[63:32] : 0;
                     cached_leaf <= root_exists && leaf_valid[VIEW_BITS'(view)] ? root_data[127:96] : 0;
                     cached_index <= root_data[95:64];
+                    cached_ordinal <= root_data[159:128]; cached_block <= root_data[191:160];
+                    for (integer d=1; d<LEVELS-1; d=d+1) path_page[d] <= root_data[192+(d-1)*32+:32];
                     if (opcode == 9) leaf_valid <= 0;
                     if (opcode == 6) begin leaf_valid[VIEW_BITS'(view)] <= 0; cached_leaf <= 0; end
                     if (opcode == 10) begin
@@ -221,6 +244,9 @@ module media_metadata #(
                     invalid_read_extent <= opcode == 0 && ordinal >= used;
                     invalid_write_extent <= (opcode == 1 || opcode == 6) && ordinal > used;
                     cached_leaf_match <= cached_leaf != 0 && cached_index == (ordinal >> 4);
+                    cached_translation_match <= cached_leaf != 0 && cached_ordinal == ordinal;
+                    path_match <= cached_leaf != 0 && directory_hit;
+                    path_match_level <= directory_level; path_match_page <= directory_page;
                     phase <= opcode == 1 || opcode == 7 ? COUNT_NODES : WALK;
                 end
                 COUNT_NODES: begin
@@ -249,8 +275,12 @@ module media_metadata #(
                     else if (invalid_write_extent) begin response_error <= 4; phase <= RESPONSE; end
                     else if (opcode == 7) phase <= RESPONSE;
                     else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_COUNT; end
-                    else if (!checked && cached_leaf_match) begin
+                    else if (!checked && opcode == 0 && cached_translation_match) begin
+                        response_data <= cached_block; phase <= RESPONSE;
+                    end else if (!checked && cached_leaf_match) begin
                         page <= cached_leaf; level <= 0;
+                    end else if (!checked && path_match) begin
+                        page <= path_match_page; level <= path_match_level;
                     end else if (page == 0) begin
                         if (opcode == 0 || opcode == 11) begin response_error <= 1; phase <= RESPONSE; end
                         else phase <= ALLOCATE;
@@ -287,6 +317,7 @@ module media_metadata #(
                 ACCESS_DONE: begin
                     response_data <= value;
                     if (opcode < 2) begin
+                        cached_block <= opcode == 1 ? payload : value; cached_ordinal <= ordinal;
                         cached_leaf <= page; cached_index <= ordinal >> 4;
                         if (opcode == 1 && ordinal >= used) used <= ordinal+1;
                         phase <= PUBLISH;
