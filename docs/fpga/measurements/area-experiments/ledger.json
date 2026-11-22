@@ -1123,10 +1123,10 @@
         "Lintwarningfatalpassesminimum/odd/primary; onlyMIDIstoreRTLdiffersfromC3",
         "All10311rawstore +54reserved +108relocated rows match control in every non-cycle field; same transfer counts and logical replies",
         "All33mixed/on/delay7connected rows match control in every non-cycle field; cold92745 vs88446, steady median53258 vs52994 and max53947 vs53617 clocks",
-        "All16MIDIregressionspass931.50sec; bothAXIwidths/DDRstalls/faults/full3000events/publicationprogress included"
+        "All16MIDIregressionspass931.50sec; bothAXIwidths/DDRstalls/faults/full3000events/publicationprogress included",
+        "All5expression/restoration/quanta/AXI32/64stalltests pass883.11sec; tworeserved/relocationtests pass1.87sec; all23affectedtests passed"
       ],
       "pending": [
-        "Full5expression+2reservedregressions after16MIDI passed931.50sec",
         "Routedarea/timing/controlsets andselectiondecision"
       ],
       "unit_summaries": [
@@ -1147,7 +1147,8 @@
         "muxf7": -57,
         "muxf8": -35,
         "control_sets": 3
-      }
+      },
+      "regression_summary": "s4-midi-address-regressions-summary.json"
     }
   ],
   "provisioning": {
