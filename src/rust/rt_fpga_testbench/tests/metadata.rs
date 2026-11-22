@@ -18,3 +18,10 @@ fn prefetch_resolver_wrap_missing_metadata_and_independent_backpressure() {
         rt_fpga_testbench::suites::resolver::resolver_conformance(c).unwrap();
     }
 }
+
+#[shoop_test]
+fn primary_cache_capacity_preserves_fences_backpressure_faults_and_reset() {
+    for width in [32, 64] {
+        rt_fpga_testbench::suites::metadata::coherent_cache_lines(width, 16, 128).unwrap();
+    }
+}

@@ -367,8 +367,14 @@ impl Agent for Stalls {
     }
 }
 pub fn coherent_cache_and_transport(width: u64, words: u64) -> Result<()> {
-    let compiled = design("metadata_cache_tb", width, words, 0)
-        .build(&crate::root().join("work/marlin-suite/metadata"))?;
+    coherent_cache_lines(width, words, 2)
+}
+pub fn coherent_cache_lines(width: u64, words: u64, lines: u64) -> Result<()> {
+    let mut design = design("metadata_cache_tb", width, words, 0);
+    design
+        .parameters
+        .insert("CACHE_LINES".into(), lines.to_string());
+    let compiled = design.build(&crate::root().join("work/marlin-suite/metadata"))?;
     let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
     let memory = Memory::attach(
         &mut s,
@@ -498,4 +504,93 @@ pub fn coherent_cache_and_transport(width: u64, words: u64) -> Result<()> {
     request(&mut s, 1, 3, 0, 0, 0, 1);
     assert_ne!(s.model.get("c1_fault"), 0);
     Ok(())
+}
+
+pub fn cache_area_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut design = design("metadata_cache_tb", width, 16, 0);
+    design.parameters.insert("CACHE_LINES".into(), "128".into());
+    let compiled = design.build(&crate::root().join("work/marlin-suite/metadata-area"))?;
+    let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+    let memory = Memory::attach(
+        &mut s,
+        Mode::Instant,
+        8192,
+        0x01000000,
+        &crate::artifact_directory("metadata-cache-area"),
+        7654,
+    )?;
+    memory.borrow_mut().control.stalls = false;
+    let port = Request::new(&mut s, "c0_");
+    s.model.set("reset", 1);
+    s.idle(1);
+    s.model.set("reset", 0);
+    s.idle(1);
+    let mut rng = Random::new(7654);
+    let mut image: Vec<_> = (0..8192).map(|_| rng.next() as u32).collect();
+    Memory::load(&memory, &mut s, &image);
+    let counters =
+        |s: &Sim<'_>| ["hits", "misses", "fills", "writebacks"].map(|name| port.get(s, name));
+    let mut measurements = Vec::new();
+    for (kind, order) in [
+        ("sequential", (0..128).collect::<Vec<_>>()),
+        ("strided", (0..128).map(|i| i * 17 % 128).collect()),
+        ("set_conflict", (0..5).map(|i| i * 32).collect()),
+    ] {
+        port.transaction(
+            &mut s,
+            &[("request_opcode", 3), ("request_invalidate", 1)],
+            0,
+            0,
+        );
+        for pass in 0..3 {
+            for &line in &order {
+                let word = line * 16 + (pass * 7 % 16);
+                let write = kind == "set_conflict" && pass != 1;
+                let value = rng.next() as u32;
+                let before = counters(&s);
+                let start = s.cycles;
+                let actual = port
+                    .transaction(
+                        &mut s,
+                        &[
+                            ("request_opcode", u64::from(write)),
+                            ("request_invalidate", 0),
+                            ("request_address", 0x01000000 + word as u64 * 4),
+                            ("request_data", u64::from(value)),
+                        ],
+                        0,
+                        0,
+                    )
+                    .get(0, 32);
+                let cycles = s.cycles - start;
+                let after = counters(&s);
+                if write {
+                    image[word] = value;
+                } else {
+                    assert_eq!(actual, u64::from(image[word]));
+                }
+                measurements.push(json!({
+                    "kind":kind,"pass":pass,"line":line,"word":word,"write":write,
+                    "cycles":cycles,"hits":after[0]-before[0],"misses":after[1]-before[1],
+                    "fills":after[2]-before[2],"writebacks":after[3]-before[3]
+                }));
+            }
+        }
+        let start = s.cycles;
+        port.transaction(
+            &mut s,
+            &[("request_opcode", 3), ("request_invalidate", 1)],
+            0,
+            0,
+        );
+        measurements.push(json!({"kind":format!("{kind}_fence"),"cycles":s.cycles-start}));
+        assert_eq!(Memory::read(&memory, &mut s), image);
+    }
+    Ok(json!({
+        "schema_version":1,"scope":"cache plus shared AXI and direct-memory timing model; request assertion through response acceptance; hold=0; preparation/readback excluded",
+        "cache_lines":128,"line_words":16,"axi_data_width":width,"seed":7654,
+        "validation":"read values and final fenced memory match an independent word array; protocol agents check held responses",
+        "measurements":measurements,"provenance":crate::report::provenance()
+    }))
 }
