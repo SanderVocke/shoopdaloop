@@ -8,9 +8,10 @@ fn main() {
         false,
     )
     .unwrap();
-    let mut result = rt_fpga_testbench::suites::media::area::operations(
+    let mut result = rt_fpga_testbench::suites::media::area::operations_local_frames(
         args.get(2).map_or(64, |v| v.parse().unwrap()),
         args.get(3).map_or(32, |v| v.parse().unwrap()),
+        args.get(4).map(|v| v.parse().unwrap()),
     )
     .unwrap();
     result["provenance"] = rt_fpga_testbench::report::provenance();

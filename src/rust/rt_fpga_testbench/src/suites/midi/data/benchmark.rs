@@ -373,11 +373,22 @@ fn run_case(
         design.parameters.insert(name.into(), value.to_string());
     }
     for (name, value) in parameters {
-        if !design.parameters.contains_key(name) && name != "READ_HINT_POLICY" {
+        if !design.parameters.contains_key(name)
+            && !matches!(name.as_str(), "READ_HINT_POLICY" | "LOCAL_FRAME_BITS")
+        {
             return Err(format!("Unknown benchmark parameter: {name}").into());
         }
         if name == "READ_HINT_POLICY" && !matches!(value.as_str(), "0" | "1" | "2") {
             return Err("READ_HINT_POLICY must be 0, 1 or 2".into());
+        }
+        if name == "LOCAL_FRAME_BITS" {
+            let bits: u32 = value.parse()?;
+            if !(1..=64).contains(&bits) {
+                return Err("LOCAL_FRAME_BITS must be between 1 and 64".into());
+            }
+            if audio && bits < 64 && frames as u64 >= (1u64 << bits) {
+                return Err("Audio preload exceeds the explicit local-frame limit".into());
+            }
         }
         design.parameters.insert(name.clone(), value.clone());
     }

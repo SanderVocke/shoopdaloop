@@ -1,0 +1,39 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.56s
+     Running tests/midi.rs (target/debug/build/rt_fpga_testbench/f5d8bc6f90abf0a0/out/midi-f5d8bc6f90abf0a0)
+
+running 16 tests
+test compiled_midi_output_refusal_stops_the_shared_jp_and_latches_the_fault ... [32m[1m   Compiling[0m[39m bench_top#14271931738266979788 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-data-pipeline/midi_audio_pipeline-067eb3cab036a4b6/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 27.36s
+ok
+test compiled_midi_rejects_bad_input_before_sp_and_keeps_shared_contents_on_retake ... ok
+test compiled_midi_sp_and_shared_jp_match_rust_with_audio_and_dense_events ... ok
+test full_audio_midi_axi32_pipeline_matches_rust_with_delayed_ddr ... [32m[1m   Compiling[0m[39m bench_top#12718631497324140237 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-connected-axi/midi_audio_pipeline_axi-15549207ebc2263e/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 32.13s
+ok
+test full_audio_midi_axi64_pipeline_matches_rust_with_ideal_ddr ... [32m[1m   Compiling[0m[39m bench_top#9548041670582572027 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-connected-axi/midi_audio_pipeline_axi-6938dea97084f8e5/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 47.18s
+ok
+test midi_data_axi32_matches_rust_with_stalls_and_memory_faults ... [32m[1m   Compiling[0m[39m bench_top#2695063257938545758 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-data-axi/midi_data_jobs_axi-10336948c37e3e9c/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 12.10s
+ok
+test midi_data_axi64_matches_rust_with_stalls_and_memory_faults ... [32m[1m   Compiling[0m[39m bench_top#10395276675975430250 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-data-axi/midi_data_jobs_axi-cd92d0c80b80d0a9/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 10.93s
+ok
+test midi_data_jobs_cross_partial_blocks_and_keep_offsets_for_all_quanta ... [32m[1m   Compiling[0m[39m bench_top#10316603673680580208 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-data/midi_data_jobs-717d237dcb965da3/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 13.85s
+ok
+test midi_data_jobs_match_rust_for_dense_recording_merge_repeat_and_stop ... ok
+test midi_data_jobs_shared_ranges_survive_retakes_and_stale_handles_are_rejected ... ok
+test midi_filters_channels_and_passes_short_system_packets_without_instrument_state ... ok
+test midi_idle_playback_reuses_future_event_without_ddr_access ... ok
+test midi_scratch_and_storage_exhaustion_report_errors_without_false_completion ... [32m[1m   Compiling[0m[39m bench_top#17709066177700069279 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-capacity/midi_data_jobs-696d81120c2de89b/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 16.84s
+[32m[1m   Compiling[0m[39m bench_top#10494334986065340941 (/workspace/shoopdaloop/work/area-experiments/s3-midi-simulation-source/work/marlin-suite/midi-capacity/midi_data_jobs-0c267a73752dfd52/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 12.03s
+ok
+test midi_storage_width_boundaries_preserve_full_pools_generations_and_retirement ... ok
+test midi_three_thousand_messages_finish_within_one_quantum_transaction ... ok
+test pending_ui_command_cannot_deadlock_midi_quantum_completion ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 527.04s
+

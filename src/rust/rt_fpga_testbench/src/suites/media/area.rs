@@ -50,11 +50,22 @@ fn read(
 }
 
 pub fn operations(width: u64, block_chunks: u64) -> Result<Value> {
+    operations_local_frames(width, block_chunks, None)
+}
+
+pub fn operations_local_frames(
+    width: u64,
+    block_chunks: u64,
+    frame_bits: Option<u64>,
+) -> Result<Value> {
     let mut g = Geometry::new([512, 5_763_072, 32], block_chunks);
     g.table_lines = 128;
     g.reuse_views = true;
-    let compiled = super::design(&g, width, Mode::Instant)
-        .build(&crate::root().join("work/marlin-suite/store-area"))?;
+    let mut design = super::design(&g, width, Mode::Instant);
+    if let Some(bits) = frame_bits {
+        design = design.parameters(&[("LOCAL_FRAME_BITS", bits)]);
+    }
+    let compiled = design.build(&crate::root().join("work/marlin-suite/store-area"))?;
     let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
     s.max_ps = 100_000_000_000_000;
     let mut d = Store::new(&mut s, g.clone(), Mode::Instant, 20261122, "")?;
@@ -182,7 +193,7 @@ pub fn operations(width: u64, block_chunks: u64) -> Result<Value> {
     Ok(
         json!({"scope":"public media store at primary capacity; 128 captures of1057 frames, offset33-frame exports, clear/retake/read and final retirement; ideal AXI memory, no SP/JP or DDR-added delay",
         "validation":"all commands complete; retained and replacement samples match independent Rust vectors; every allocated block is recovered uniquely and all metadata pages are freed",
-        "axi_data_width":width,"block_chunks":block_chunks,"parameters":g.parameters(),"reset_cycles":reset_cycles,
+        "axi_data_width":width,"block_chunks":block_chunks,"local_frame_bits":frame_bits,"parameters":g.parameters(),"reset_cycles":reset_cycles,
         "measurements":rows,"allocated_blocks":allocated,"memory":d.memory.borrow_mut().report(true)}),
     )
 }

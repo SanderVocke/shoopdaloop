@@ -67,12 +67,12 @@ fn command(
 
 pub fn boundaries() -> Result<Value> {
     let mut cases = Vec::new();
-    for (views, events, retired) in [(1, 1, 1), (3, 3, 1), (5, 3, 3)] {
+    for (views, events, retired) in [(1, 1, 1), (3, 3, 1), (5, 3, 3), (256, 1, 128)] {
         let limits = StoreLimits {
             views,
             max_events: events,
-            block_events: 1,
-            blocks: views * events,
+            block_events: if views == 256 { 256 } else { 1 },
+            blocks: if views == 256 { 2432 } else { views * events },
             retirements: retired,
         };
         let mut design = Design::new(
@@ -84,7 +84,7 @@ pub fn boundaries() -> Result<Value> {
             .parameters(&[
                 ("VIEWS", u64::from(views)),
                 ("MAX_EVENTS", u64::from(events)),
-                ("BLOCK_EVENTS", 1),
+                ("BLOCK_EVENTS", u64::from(limits.block_events)),
                 ("BLOCKS", u64::from(limits.blocks)),
                 ("RETIREMENTS", u64::from(retired)),
             ])
@@ -282,10 +282,161 @@ pub fn boundaries() -> Result<Value> {
         command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 4);
         command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
         command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0);
-        cases.push(json!({"views":views,"blocks":limits.blocks,"events_per_view":events,"retirements":retired,"measurements":rows}));
+        cases.push(json!({"views":views,"blocks":limits.blocks,"block_events":limits.block_events,"events_per_view":events,"retirements":retired,"measurements":rows}));
     }
     Ok(
-        json!({"scope":"standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps",
+        json!({"scope":"standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps; fourth case has primary256-view/128-retirement/2432-block indices and256-event blocks with an explicit reduced one-event view limit",
         "validation":"exact ContentStore record/frame/packet and usage agreement; high-bit invalid handles, max-plus-one refusal, generation overflow, poisoned accepted command inputs, held responses, memory faults and stale-RAM reset","cases":cases}),
+    )
+}
+
+pub fn reserved_words() -> Result<Value> {
+    reserved_at(0)
+}
+
+pub fn relocated_words() -> Result<Value> {
+    let mut result = reserved_at(0x1234_0000_0000)?;
+    let wrapped = reserved_at(u64::MAX - 127)?;
+    result["cases"]
+        .as_array_mut()
+        .unwrap()
+        .extend(wrapped["cases"].as_array().unwrap().iter().cloned());
+    result["scope"] = json!(
+        "standalone 64-bit word interface at high and wrapping arena bases; descriptor, event, reference, free and retirement address regions; does not qualify board DDR mappings"
+    );
+    Ok(result)
+}
+
+fn reserved_at(base: u64) -> Result<Value> {
+    let mut cases = Vec::new();
+    for views in [1u64, 3] {
+        let mut design = Design::new(
+            "midi_store",
+            vec![crate::root().join("fpga/midi/rtl/midi_store.sv")],
+        );
+        design.includes.push(crate::root().join("fpga/midi/rtl"));
+        let compiled = design
+            .parameters(&[
+                ("VIEWS", views),
+                ("MAX_EVENTS", 4),
+                ("BLOCK_EVENTS", 2),
+                ("BLOCKS", views * 2),
+                ("RETIREMENTS", views),
+            ])
+            .build(&crate::root().join("work/marlin-suite/midi-reserved"))?;
+        let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10000, 0)]);
+        let memory = Rc::new(RefCell::new(Memory::new(
+            (s.model.get("arena_bytes") / 4) as usize,
+        )));
+        memory.borrow_mut().base = base;
+        s.agent(memory.clone());
+        s.agent(crate::protocol::ReadyValid::new(
+            "memory_valid",
+            "memory_ready",
+            &["memory_address", "memory_write", "memory_write_data"],
+        ));
+        s.agent(crate::protocol::ReadyValid::new(
+            "response_valid",
+            "response_ready",
+            &[
+                "response_error",
+                "response_handle",
+                "response_frame",
+                "response_order",
+                "response_packet",
+                "response_length",
+                "response_work",
+                "response_events",
+                "response_status",
+                "response_blocks",
+                "response_owner",
+                "response_references",
+            ],
+        ));
+        s.model.set_all(&[
+            ("reset", 1),
+            ("arena_base", base),
+            ("command_valid", 0),
+            ("response_ready", 0),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        let mut rows = Vec::new();
+        command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
+        let mut handles = Vec::new();
+        for slot in 0..views {
+            let handle = command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0)["handle"]
+                .as_u64()
+                .unwrap();
+            let frame = (1u64 << 40) + slot * 4;
+            command(&mut s, &memory, &mut rows, 5, handle, frame, 0x633c90, 0);
+            let poison = [
+                0x80000001u32 ^ (slot as u32),
+                0xdeadbeef ^ (slot as u32),
+                u32::MAX - (slot as u32),
+            ];
+            for (&field, &value) in [10usize, 11, 14].iter().zip(&poison) {
+                memory.borrow_mut().words[(handle as u32 as usize) * 16 + field] = value;
+            }
+            command(&mut s, &memory, &mut rows, 2, 0, 0, 0, 2);
+            command(&mut s, &memory, &mut rows, 12, handle, 0, 0, 0);
+            command(
+                &mut s,
+                &memory,
+                &mut rows,
+                5,
+                handle,
+                frame + 1,
+                0x003c80,
+                0,
+            );
+            command(&mut s, &memory, &mut rows, 6, handle, frame + 2, 0, 0);
+            command(&mut s, &memory, &mut rows, 8, handle, 0, 0, 0);
+            command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 0);
+            for (&field, &value) in [10usize, 11, 14].iter().zip(&poison) {
+                assert_eq!(
+                    memory.borrow().words[(handle as u32 as usize) * 16 + field],
+                    value
+                );
+            }
+            for (index, packet) in [0x633c90u64, 0x003c80].into_iter().enumerate() {
+                let r = command(&mut s, &memory, &mut rows, 10, handle, index as u64, 0, 0);
+                assert_eq!(r["frame"], frame + index as u64);
+                assert_eq!(r["order"], index);
+                assert_eq!(r["packet"], packet);
+                assert_eq!(r["length"], 3);
+            }
+            handles.push(handle);
+        }
+        for handle in handles {
+            command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 0);
+        }
+        command(&mut s, &memory, &mut rows, 11, 0, u64::from(u32::MAX), 0, 0);
+        assert_eq!(s.model.get("free_view_slots"), views);
+        assert_eq!(s.model.get("free_block_slots"), views * 2);
+        assert_eq!(s.model.get("free_retirement_slots"), views);
+        for reset in [false, true] {
+            if reset {
+                s.model.set("reset", 1);
+                s.idle(1);
+                s.model.set("reset", 0);
+                command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
+            }
+            let handle = command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0)["handle"]
+                .as_u64()
+                .unwrap();
+            for field in [10usize, 11, 14] {
+                assert_eq!(
+                    memory.borrow().words[(handle as u32 as usize) * 16 + field],
+                    0
+                );
+            }
+        }
+        cases.push(json!({"arena_base":base,"views":views,"reserved_fields":[10,11,14],"measurements":rows}));
+    }
+    Ok(
+        json!({"scope":"standalone MIDI store: reserved DDR descriptor words preserve opaque high-bit values through append/finish/retain/release; create/reuse/reset clears stale reserved values",
+        "validation":"independent two-packet vectors retain high64 timestamps/order/length, raw reserved words preserved, all ownership recovered; held responses, memory backpressure and poisoned accepted command inputs",
+        "cases":cases}),
     )
 }

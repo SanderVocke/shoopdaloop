@@ -1,0 +1,15 @@
+{
+  "archive": "s3-midi-boundaries-raw.tar.gz",
+  "archive_sha256": "0dba6d93af0fce774291bb034bc24bb7e9cc01c9735f593f5f8158e96571ac7b",
+  "members_sha256": {
+    "fixture/src/rust/rt_fpga_testbench/examples/midi_store_boundaries.rs": "1da7b773fb26a4f5737a8f030651fbecae8e7d54f55890ec0f29f73e57950850",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/midi/store_area.rs": "9744a75d37ce0ebdcfc06530f5c228491a150b94bda545d238e6ebff7652443c",
+    "logs/0-s3-midi-boundaries.log": "75e8529c6f90be2d7aa914481c0b26edd88a1741051133f4605b160ed12ccb9f",
+    "replay/archive-area-unit.py": "45e950cb2d74b8efec0f9deebf97afd0f6018c384db83cfa8a71cbebe2654364",
+    "samples/s3-midi-boundaries.json": "8cdc754e2ba45921214cf9241db342b14be5c46d906457eb8c94964bf4171721",
+    "source/fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+    "source/fpga/midi/rtl/midi_store.sv": "fb757e2534df20a3f989bd541fb6a19cda2b5e7fe3968d1da1a85dcbd19695a5",
+    "source/fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+    "source/fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+  }
+}

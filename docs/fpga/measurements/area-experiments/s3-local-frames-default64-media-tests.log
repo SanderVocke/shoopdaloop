@@ -1,0 +1,86 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.70s
+     Running tests/deferred.rs (target/debug/build/rt_fpga_testbench/3ddc86bd6a52ff61/out/deferred-3ddc86bd6a52ff61)
+
+running 1 test
+test detached_ownership_bounded_cleanup_faults_and_preemption ... [32m[1m   Compiling[0m[39m bench_top#13653103617037037120 (/workspace/shoopdaloop/work/marlin-suite/deferred/media_store_axi-d35cede6a5f18e2e/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 21.98s
+[32m[1m   Compiling[0m[39m bench_top#9708171401643480465 (/workspace/shoopdaloop/work/marlin-suite/deferred/media_store_axi-fb220ad7380480bd/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 31.05s
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 132.21s
+
+     Running tests/media.rs (target/debug/build/rt_fpga_testbench/b9fd8daccb48dd79/out/media-b9fd8daccb48dd79)
+
+running 1 test
+test media_store_retained_slices_atomic_refusals_protocols_and_reset ... [32m[1m   Compiling[0m[39m bench_top#505750929404511418 (/workspace/shoopdaloop/work/marlin-suite/media/media_store_axi-431d30953f41d89d/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 37.83s
+[32m[1m   Compiling[0m[39m bench_top#10638740966173456242 (/workspace/shoopdaloop/work/marlin-suite/media/media_store_axi-a23f7df34a391470/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 19.43s
+[32m[1m   Compiling[0m[39m bench_top#6642903087488749801 (/workspace/shoopdaloop/work/marlin-suite/media/media_store_axi-7a01a404f4f8fdf1/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 20.57s
+[32m[1m   Compiling[0m[39m bench_top#1083921313748177253 (/workspace/shoopdaloop/work/marlin-suite/media/media_store_axi-9e3343d18e56f1f9/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 16.32s
+[32m[1m   Compiling[0m[39m bench_top#15058612834112410048 (/workspace/shoopdaloop/work/marlin-suite/media/media_store_axi-8817ef6f2b3f3050/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 22.93s
+[32m[1m   Compiling[0m[39m bench_top#9649703503551892070 (/workspace/shoopdaloop/work/marlin-suite/media/media_store_axi-ce27c6b80a63f26f/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 19.50s
+[32m[1m   Compiling[0m[39m bench_top#1087245086278163441 (/workspace/shoopdaloop/work/marlin-suite/media/media_store-bce81a9684751af9/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 14.41s
+[32m[1m   Compiling[0m[39m bench_top#9853128745428873587 (/workspace/shoopdaloop/work/marlin-suite/media/media_store-e1b6f68b4b090d06/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 12.52s
+[32m[1m   Compiling[0m[39m bench_top#3615149087747174241 (/workspace/shoopdaloop/work/marlin-suite/media/media_store-34a6de4a7848839b/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 13.33s
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 392.92s
+
+     Running tests/ownership.rs (target/debug/build/rt_fpga_testbench/a582660ae7a792de/out/ownership-a582660ae7a792de)
+
+running 2 tests
+test descriptor_statistics_count_distinct_views_and_discard_stale_ram_after_reset ... [32m[1m   Compiling[0m[39m bench_top#15841089998050118278 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-f4b2d156a15b4d81/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 15.27s
+[32m[1m   Compiling[0m[39m bench_top#8237584650784890204 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-71d8144cc970448d/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 13.78s
+[32m[1m   Compiling[0m[39m bench_top#15518782004369412451 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-48209f0e37c0690c/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 16.25s
+[32m[1m   Compiling[0m[39m bench_top#613244410989876439 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-df1f796492f2ed81/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 17.65s
+[32m[1m   Compiling[0m[39m bench_top#3784521165483529903 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-7a62b243bfd2e4c6/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 19.06s
+[32m[1m   Compiling[0m[39m bench_top#11961901097986952778 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-286c33faf0747309/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 26.09s
+[32m[1m   Compiling[0m[39m bench_top#3838895735755642511 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-12a84c3755db85f5/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 22.32s
+[32m[1m   Compiling[0m[39m bench_top#13008253639126496443 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-9102c0dd9c6c27a3/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 20.54s
+ok
+test full_pools_transactional_view_reuse_block_sharing_and_allocator_statistics ... [32m[1m   Compiling[0m[39m bench_top#476247932195091532 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-f9cc0ba58da3629b/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 25.94s
+[32m[1m   Compiling[0m[39m bench_top#3384992592719527339 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-437fe3646bab2880/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 33.50s
+[32m[1m   Compiling[0m[39m bench_top#18056065693245821415 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-8b7ffb9998ef47c4/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 22.21s
+[32m[1m   Compiling[0m[39m bench_top#11534981100826864188 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-77907d15ffa7a73c/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 24.95s
+[32m[1m   Compiling[0m[39m bench_top#12424822976849408216 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-e35c86fa1db5e115/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 20.85s
+[32m[1m   Compiling[0m[39m bench_top#11720124591101053962 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-9891bf28b69345cb/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 31.15s
+[32m[1m   Compiling[0m[39m bench_top#968632049832064323 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-aa67dfa05c665352/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 21.61s
+[32m[1m   Compiling[0m[39m bench_top#6389819929988779623 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-801507b97590b8d3/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 21.52s
+[32m[1m   Compiling[0m[39m bench_top#6558396477030537454 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-3ac179e940f9e3d0/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 20.01s
+[32m[1m   Compiling[0m[39m bench_top#9129489276671108431 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-dac87c7a2d111482/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 21.29s
+[32m[1m   Compiling[0m[39m bench_top#10605046711405752546 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-7d2db9c05747b357/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 23.31s
+[32m[1m   Compiling[0m[39m bench_top#13076036496299985600 (/workspace/shoopdaloop/work/marlin-suite/media-ownership/media_store_axi-d7eba9c8300ae6b3/bench_top.sv)
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 18.90s
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 525.85s
+

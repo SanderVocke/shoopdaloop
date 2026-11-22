@@ -1,0 +1,212 @@
+{
+  "cases": [
+    {
+      "arena_base": 0,
+      "reserved_fields": [
+        10,
+        11,
+        14
+      ],
+      "views": 1,
+      "measurement_count": 16,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 129,
+          "median": 132.5,
+          "max": 136,
+          "memory_transactions": 40
+        },
+        "opcode2/expected_error2": {
+          "count": 1,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error0": {
+          "count": 3,
+          "min": 112,
+          "median": 122,
+          "max": 129,
+          "memory_transactions": 57
+        },
+        "opcode5/expected_error0": {
+          "count": 2,
+          "min": 145,
+          "median": 156.5,
+          "max": 168,
+          "memory_transactions": 49
+        },
+        "opcode6/expected_error0": {
+          "count": 1,
+          "min": 135,
+          "median": 135,
+          "max": 135,
+          "memory_transactions": 20
+        },
+        "opcode8/expected_error0": {
+          "count": 1,
+          "min": 96,
+          "median": 96,
+          "max": 96,
+          "memory_transactions": 16
+        },
+        "opcode9/expected_error0": {
+          "count": 2,
+          "min": 101,
+          "median": 107.5,
+          "max": 114,
+          "memory_transactions": 34
+        },
+        "opcode10/expected_error0": {
+          "count": 2,
+          "min": 31,
+          "median": 31.0,
+          "max": 31,
+          "memory_transactions": 8
+        },
+        "opcode11/expected_error0": {
+          "count": 1,
+          "min": 455,
+          "median": 455,
+          "max": 455,
+          "memory_transactions": 72
+        },
+        "opcode12/expected_error0": {
+          "count": 1,
+          "min": 109,
+          "median": 109,
+          "max": 109,
+          "memory_transactions": 16
+        }
+      }
+    },
+    {
+      "arena_base": 0,
+      "reserved_fields": [
+        10,
+        11,
+        14
+      ],
+      "views": 3,
+      "measurement_count": 38,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 350,
+          "median": 366.0,
+          "max": 382,
+          "memory_transactions": 120
+        },
+        "opcode2/expected_error2": {
+          "count": 3,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error0": {
+          "count": 5,
+          "min": 114,
+          "median": 127,
+          "max": 151,
+          "memory_transactions": 104
+        },
+        "opcode5/expected_error0": {
+          "count": 6,
+          "min": 135,
+          "median": 158.5,
+          "max": 170,
+          "memory_transactions": 147
+        },
+        "opcode6/expected_error0": {
+          "count": 3,
+          "min": 125,
+          "median": 125,
+          "max": 131,
+          "memory_transactions": 60
+        },
+        "opcode8/expected_error0": {
+          "count": 3,
+          "min": 99,
+          "median": 101,
+          "max": 109,
+          "memory_transactions": 48
+        },
+        "opcode9/expected_error0": {
+          "count": 6,
+          "min": 100,
+          "median": 154.5,
+          "max": 218,
+          "memory_transactions": 150
+        },
+        "opcode10/expected_error0": {
+          "count": 6,
+          "min": 33,
+          "median": 34.5,
+          "max": 35,
+          "memory_transactions": 24
+        },
+        "opcode11/expected_error0": {
+          "count": 1,
+          "min": 1288,
+          "median": 1288,
+          "max": 1288,
+          "memory_transactions": 216
+        },
+        "opcode12/expected_error0": {
+          "count": 3,
+          "min": 93,
+          "median": 103,
+          "max": 108,
+          "memory_transactions": 48
+        }
+      }
+    }
+  ],
+  "scope": "standalone MIDI store: reserved DDR descriptor words preserve opaque high-bit values through append/finish/retain/release; create/reuse/reset clears stale reserved values",
+  "validation": "independent two-packet vectors retain high64 timestamps/order/length, raw reserved words preserved, all ownership recovered; held responses, memory backpressure and poisoned accepted command inputs",
+  "label": "c2-midi-reserved-zero-replay",
+  "fixture_revision": "05e7f02b",
+  "models": [
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "2",
+        "BLOCK_EVENTS": "2",
+        "MAX_EVENTS": "4",
+        "RETIREMENTS": "1",
+        "VIEWS": "1"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "6",
+        "BLOCK_EVENTS": "2",
+        "MAX_EVENTS": "4",
+        "RETIREMENTS": "3",
+        "VIEWS": "3"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    }
+  ],
+  "retention": "c2-midi-reserved-zero-replay-retention.json",
+  "per_request_samples": "c2-midi-reserved-zero-replay-raw.tar.gz"
+}

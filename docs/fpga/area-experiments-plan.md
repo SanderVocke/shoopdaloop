@@ -165,13 +165,22 @@ connected and physical results, including rejected tradeoffs.
 
 Depends on stage 2's decision. Keep external precision and capacities unchanged.
 
-- [ ] Derive ID, count, page, offset, and intermediate widths from capacities;
+Execution status: audio capacity bookkeeping and MIDI traversal/queue widths
+are complete. Both preserve tested behavior and cycles but increase routed
+slices, so neither replaces C2. The optional bounded local-frame family is also
+complete: it preserves common behavior/cycles and saves LUTs/FFs/BRAM, but adds
+70 slices against C2 and a duration restriction. It remains an unselected
+tradeoff. The arena-relative/path-context sibling is selected as C3 after all four
+physical stages repeat exactly: 82 fewer LUTs and 42 fewer routed slices than
+C2, unchanged measured cycles/BRAM, and 13 more carries. Timing still fails.
+
+- [x] Derive ID, count, page, offset, and intermediate widths from capacities;
   replace saved traversal addresses with page/index context where useful. Split
   changes into audio metadata and MIDI storage candidates for attribution.
-- [ ] Separately trial bounded local frame positions and arena-relative addresses;
+- [x] Separately trial bounded local frame positions and arena-relative addresses;
   label any new duration/address restriction as a changed-contract variant.
   Check commands and DDR metadata before truncation, including carry/borrow cases.
-- [ ] Verify minimum and non-power-of-two capacities, highest IDs, full counts,
+- [x] Verify minimum and non-power-of-two capacities, highest IDs, full counts,
   invalid high input bits, overflow, malformed metadata, and generation handling.
   Run metadata/media/MIDI tests and measure connected FF/LUT/carry and cycle deltas.
 

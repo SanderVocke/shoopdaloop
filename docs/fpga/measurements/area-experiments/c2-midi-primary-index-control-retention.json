@@ -1,0 +1,17 @@
+{
+  "archive": "c2-midi-primary-index-control-raw.tar.gz",
+  "archive_sha256": "79367cdda3e6a9a006403fd3a0c8acc50d2e18cf8a73c3bb1f498444ab9d78bc",
+  "members_sha256": {
+    "fixture/src/rust/rt_fpga_testbench/examples/midi_store_boundaries.rs": "1da7b773fb26a4f5737a8f030651fbecae8e7d54f55890ec0f29f73e57950850",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/midi/store_area.rs": "9744a75d37ce0ebdcfc06530f5c228491a150b94bda545d238e6ebff7652443c",
+    "logs/0-c2-midi-primary-index-control.log": "15f1ab18bc134fadcac7013b98063aed27d371f6ef5d600c5663a4dd6a7fd45a",
+    "logs/1-c2-midi-primary-index-control-test.log": "4ccb915b5d5aef5db3c9c1b2eaf6bf7001d7ca155e6e0c1b92d25985b055810a",
+    "logs/2-midi-primary-index-build.log": "371d58ae5de90fa1a8292b6c8dc81ad6808d69efb0ee8be989bc627383b15ced",
+    "replay/archive-area-unit.py": "45e950cb2d74b8efec0f9deebf97afd0f6018c384db83cfa8a71cbebe2654364",
+    "samples/c2-midi-primary-index-control.json": "7f56dc7874cf2ecbc730f6475e91df574db71763e2cf7c403e139f655fa127df",
+    "source/fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+    "source/fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+    "source/fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+    "source/fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+  }
+}
