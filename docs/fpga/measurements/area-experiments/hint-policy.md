@@ -1,34 +1,43 @@
 # Generated payload hint experiment
 
-The control remains C1 (`6be27ce0`). `READ_HINT_POLICY=2` preserves early SP
-and late JP hints and is the default. Value1 enables only the late JP hints;
-value0 acknowledges late hints and emits no generated payload hints. The public
-media-store hint port and all read/write operations remain implemented. Samples,
-MIDI, accepted command semantics, publication, fault and reset guarantees must
-remain exact; only speculative traffic and latency may change.
+Both alternatives are rejected as behavior-preserving defaults. The original
+early SP plus late JP policy remains selected. The comparison control is C1
+(`6be27ce0`); canonical wrappers are `d09bd1cb`/`e6fce1e7` with identical HDL.
 
-All three policies use the same five parameterized wrappers. The canonical
-default first needs exact connected-cycle calibration against C1 and a physical
-control to separate RTL naming/parameter effects. Then measure1 and0 sequentially,
-including FIFO/resolver costs, traffic, stalls and full quantum latency.
-Capacity tuning, if warranted, is a separate experiment.
+`READ_HINT_POLICY=2` preserves early and late hints and is the default. Value1
+enables only late JP hints; value0 acknowledges late hints and emits no generated
+hints. Public media-store hint handling and all read/write operations remain.
+The intended contract preserves samples, MIDI, accepted commands, publication,
+fault/reset and progress semantics; only speculative traffic and latency may
+change. The failed fault checks are retained rather than redefining that contract.
 
-A new pipeline fixture runs policies1/0 with publication, held-output, fault,
-reset and progress checks in Instant, Fixed, DRAMsim3 and Legacy memory modes.
-The original default-policy test remains. The separate benchmark executable
-`midi_area_experiment` uses the same fixture/CLI; it preserves the frozen original
-benchmark executable. The explicit new parameter allowlist admits only0/1/2.
+The canonical default reproduces all 33 C1/B0 callback rows exactly and passes
+all eight protocol cases. Every mapped resource count matches C1 exactly;
+pre-route setup slack differs by 0.001 ns. All screens use the same pinned
+connected flow at 100 MHz.
 
-Status: canonical default2 reproduces all33 C1/B0 connected rows exactly. Its
-physical control is running. Late-only1 passes blocked paths and Legacy protocol
-cases but fails the original first-buffer validity assertion after an injected
-second-view read fault in Instant, Fixed and DRAMsim3 modes: the first cached
-buffer is published before the later fault arrives. The probe waits for the
-actual failing transaction before releasing its paused response; the original
-default test still requires the fault to be in flight at the first scratch write.
-Neither assertion is relaxed. This is a rejection for a behavior-preserving
-default, pending area and normal playback measurements.
+| Policy | Optimized LUT delta | FF delta | BRAM delta | Ordinary clocks | Playback start |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original early + late | 0 | 0 | 0 | 54,146 | 110,356 |
+| Late only | -106 | -4 | 0 | 54,146 | 114,990 |
+| No generated hints | -417 | -416 | -1 | 60,438 | 121,319 |
 
-The optional `hint_policy_protocol` executable records each case's pass/failure,
-including source hashes, without turning an experimental failure into a passing
-default test. No-hint0 still needs its own probe and measurements.
+Both reduce steady payload requests from 256 to 128. Normal data/MIDI/state
+agree exactly on all 33 short rows. Late-only's first warm quantum takes 59,979
+clocks versus 54,809; no-hint takes 66,308 and adds 6,292 ordinary clocks.
+
+Both fail the first-buffer publication assertion after an injected second-view
+read fault in Instant, Fixed and DRAMsim3 modes. The first cached buffer becomes
+ready before the later fault arrives. The probe waits for the actual failing
+transaction before releasing its paused response; the original default test still
+requires that fault to be in flight at the first scratch write. Neither assertion
+is relaxed. Five blocked/Legacy cases pass for each candidate; a failing protocol
+case stops before its remaining checks.
+
+The optional `hint_policy_protocol` executable records each case's result and
+actual source hashes. `midi_area_experiment` uses the same callback fixture/CLI,
+preserving the frozen original executable. Its explicit new parameter allowlist
+admits only values0/1/2. Failed variants have no routed-slice or long-boundary
+qualification. FIFO capacity tuning is not pursued for a rejected policy.
+All raw failures, samples, HDL, fixture sources and mapped reports are retained
+in the `s2-hints-*` archives and summaries.

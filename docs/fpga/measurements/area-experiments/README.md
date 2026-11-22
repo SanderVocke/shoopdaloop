@@ -316,3 +316,12 @@ second-view fault in three AXI memory modes. They also add 4,634 clocks to the
 start and 5,170 to the first warm quantum; the remaining short rows are unchanged.
 The original policy stays default, and failed variants remain experiment results.
 See [policy contract and status](hint-policy.md); no-hint and area screens remain.
+
+
+![Cache footprint and observed boundary latency](cache-tradeoffs.png)
+
+[Exportable PDF](cache-tradeoffs.pdf). The plot uses the same 1,024 steady
+quanta for every point; B0 has no matching long run and is excluded. All six
+physical builds fail setup timing. One-block and directory-path remain the
+area/latency alternatives; BRAM and adversarial/maintenance costs remain in the
+tables and raw reports.

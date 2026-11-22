@@ -36,7 +36,7 @@
     "All five cache siblings plus C1 pass the identical primary-capacity1282-row public capture/retake/retained-export/retirement fixture; clocks/traffic/raw commands archived"
   ],
   "pending": [
-    "Stage2 generated payload hint siblings, cache selection and physical repeat"
+    "Stage2 exact-source path-cache physical repeat, then selection"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -657,7 +657,8 @@
         "New deep-boundary retirement/live-ID-reuse independent-map check passed AXI32/64 on C1 and candidate",
         "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults",
         "Full ownership/deferred/media regressions passed, including legacy scalar and DRAMsim3",
-        "128 primary-capacity captures, retained offset slices, clear/retake/read and reclamation: all1282 rows pass independent sample/unique block recovery checks; ideal AXI/noSPJP scope"
+        "128 primary-capacity captures, retained offset slices, clear/retake/read and reclamation: all1282 rows pass independent sample/unique block recovery checks; ideal AXI/noSPJP scope",
+        "Minimum/odd/primary-count boundary control:187 rows per AXI width exactly match C1 responses, including high input bits, full small pools, highest view, opaque values, malformed retired count and stale-RAM reset"
       ],
       "translation_summary": "s2-path-translation-unit-summary.json",
       "deep_directory_summary": "s2-path-directory-unit-summary.json",
@@ -679,8 +680,7 @@
         "timing_met": false
       },
       "pending": [
-        "Compare generated-hint policy siblings",
-        "Repeat selected cache winner"
+        "Exact-source/context physical repeat before selection"
       ],
       "routed_summary": "s2-path-extended-100-summary.json",
       "extended_summary": "s2-path-extended-100-summary.json",
@@ -738,12 +738,16 @@
       "outcome": "shortlisted_pending_hint_siblings",
       "decision": "337 more routed LUTs,21 more slices and1 more BRAM than basic current-block, but observed maximum falls74575 to59446 clocks. Compared with C1,3910 fewer LUTs,642 fewer slices and1152 fewer median clocks. All logical oracles pass. Favor this latency/area tradeoff pending hints and physical repeat; setup timing still fails.",
       "public_store_operation_summary": "s2-path-store-operations-unit-summary.json",
-      "public_store_operation_control": "c1-store-operations-unit-summary.json"
+      "public_store_operation_control": "c1-store-operations-unit-summary.json",
+      "width_boundary_summaries": [
+        "s2-path-width-boundaries-axi32-summary.json",
+        "s2-path-width-boundaries-axi64-summary.json"
+      ]
     },
     {
       "label": "s2-hints",
       "stage": 2,
-      "status": "measuring",
+      "status": "completed",
       "rtl_source_revision": "d09bd1cb",
       "control_revision": "6be27ce0",
       "changed_contract": "No change intended in exact samples, command/fault/publication semantics. Original early+late policy2 remains default; opt-in1late-only and0none change generated speculation only. Public store hint port remains.",
@@ -754,13 +758,28 @@
         "All8 canonical default2 protocol cases pass across four memory models"
       ],
       "late_protocol_summary": "s2-hints-late-protocol-summary.json",
-      "pending": [
-        "Late-only connected/area result",
-        "No-hint protocol/connected/area result"
-      ],
+      "pending": [],
       "provisional_decision": "Reject late-only as behavior-preserving default due fault-ordering/publication difference; record area and normal-playback cost separately.",
       "canonical_default_protocol_summary": "s2-hints-default2-protocol-summary.json",
-      "canonical_optimized_delta_vs_c1": "All mapped resource counts identical; setup slack differs0.001ns at pre-route opt"
+      "canonical_optimized_delta_vs_c1": "All mapped resource counts identical; setup slack differs0.001ns at pre-route opt",
+      "late_optimized_summary": "s2-hints-late-opt-summary.json",
+      "none_protocol_summary": "s2-hints-none-protocol-summary.json",
+      "late_outcome": "rejected",
+      "late_rejection": "Only106 fewer optimized LUTs/four fewer FF; first-buffer publication fails three AXI fault cases and cold/firstwarm costs increase. Routed slices unavailable because functional qualification failed.",
+      "none_protocol_outcome": "Same3publication failures; fiveblocked/Legacy cases pass",
+      "none_callback": {
+        "cold_cycles": 121319,
+        "first_warm_cycles": 66308,
+        "ordinary_cycles": 60438,
+        "ordinary_delta_vs_c1": 6292,
+        "normal_data_midi_state": "all33rows pass exact logical oracles",
+        "steady_audio_burst_reads": 128,
+        "c1_steady_audio_burst_reads": 256
+      },
+      "none_optimized_summary": "s2-hints-none-opt-summary.json",
+      "none_outcome": "rejected",
+      "none_rejection": "417 fewer optimized LUTs,416 fewer FF,one fewer BRAM andthree fewer CARRY4; ordinary quantum+6292clocks and first-buffer publication fails three AXI fault cases. Routed slices unavailable because functional qualification failed.",
+      "outcome": "Both generated-hint alternatives rejected for default; original early+late policy retained"
     }
   ],
   "provisioning": {

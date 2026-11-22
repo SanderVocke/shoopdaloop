@@ -126,8 +126,8 @@ Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
 Depends on stage 1's recorded decision; all cache alternatives share one control.
 
 Execution status: four-way, banked, full-leaf, current-block and directory-path
-experiments are complete. Generated-hint policy siblings, selection and repeat
-remain. See the [ledger](measurements/area-experiments/ledger.json) for retained
+experiments are complete. Both generated-hint policy siblings are measured and
+rejected; the exact-source path repeat and selection remain. See the [ledger](measurements/area-experiments/ledger.json) for retained
 source, unit, connected and physical results.
 
 - [x] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
@@ -153,7 +153,7 @@ source, unit, connected and physical results.
 - [ ] Route viable alternatives, select by connected area and latency, and record
   any capacity/hash tuning as separate runs. Do not treat a fully serial scan's
   reduced logic as a win without accounting for its complete quantum cost.
-- [ ] Separately trial late-only generated payload hints, then no generated
+- [x] Separately trial late-only generated payload hints, then no generated
   payload hints, from the same C1 control. The measured control issues 256 payload
   burst reads for 128 channel chunks and emits both early SP and late JP hints.
   Preserve the original default policy, all read/media operations, and public
