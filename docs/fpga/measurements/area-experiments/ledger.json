@@ -400,6 +400,53 @@
       },
       "outcome": "rejected_for_default",
       "decision": "Measured full-associativity tradeoff: 73 fewer slices and 186 fewer LUTs than four-way, but steady median 1920 clocks slower than C1 and leaf maximum 13960 clocks slower. Prefer four-way latency over this small area difference, pending per-view candidates. Setup still fails. Retain raw candidate and reports; repeat only if later selected."
+    },
+    {
+      "label": "s2-leaf",
+      "stage": 2,
+      "status": "measuring",
+      "rtl_source_revision": "7672afed",
+      "control_revision": "6be27ce0",
+      "control_summary": "c1-extended-100-summary.json",
+      "changed_contract": "No logical data/ownership/error change intended. Root RAM grows128 to640 bits per view, caching sixteen 32-bit leaf entries with existing leaf_valid lifetime. The shared table/directory cache uses min(TABLE_LINES,8) lines; primary top input budget remains128 and effective directory lines are8. Read hits bypass table cache after original extent checks. Foreground writes update cached leaf, misses fill sixteen words through coherent cache; GC never populates live-view leaf data.",
+      "effective_geometry": {
+        "root_ram_bits_per_view": 640,
+        "leaf_words_per_view": 16,
+        "primary_directory_lines": 8,
+        "views": 512
+      },
+      "validation": [
+        "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64"
+      ],
+      "pending": [
+        "Finish all metadata/media/ownership/deferred checks",
+        "Archive per-operation unit samples against C1",
+        "Finish optimized screen and long connected workload, then route viable result"
+      ],
+      "translation_summary": "s2-leaf-translation-unit-summary.json",
+      "unit_cycles": {
+        "scope": "whole metadata controller driver call, not cache-only scope",
+        "hot_read": {
+          "control": 15,
+          "candidate": 6
+        },
+        "cold_read_max_axi64": {
+          "control": 135,
+          "candidate": 247
+        },
+        "cold_read_max_axi32": {
+          "control": 159,
+          "candidate": 271
+        },
+        "strided_read_median_axi64": {
+          "control": 30,
+          "candidate": 247
+        },
+        "strided_table_misses": {
+          "control": 80,
+          "candidate": 3264
+        }
+      }
     }
   ],
   "provisioning": {
@@ -460,12 +507,12 @@
   "ci": {
     "draft_pr": 1026,
     "initial_head": "8c02b795",
-    "fpga_run": 45044752861,
+    "fpga_run": 45050934028,
     "standalone_synthesis": "All four standalone synthesis checks passed",
     "reference_integration": "Passed",
     "dependency_isolation": "Passed",
-    "native_verification": "Component/execution, DRAMsim3, serialized application, numeric gates passed. Final Python reporting check failed on concurrent start-order assertion; fixed by f77ba06b / selected 58edd767; 18 tests pass locally.",
-    "head": "6be27ce0",
+    "native_verification": "Passed complete native Marlin verification, including component/execution matrices, DRAMsim3, serialized application/bridge, production numeric gates and shared benchmark reporting. Concurrent-start-order assertion fix resolves the final report failure.",
+    "head": "58edd76784049444e098a51d397b2eb3fde059ef",
     "usb": "TinyUSB integration timed out draining USB OUT queues; isolated job rerun requested. Other firmware jobs passed."
   },
   "selected_control": {
