@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 import area_results
+import area_resume
 import midi_shared_jobs
 
 
@@ -91,6 +92,38 @@ class AreaExperiments(unittest.TestCase):
         b = {'provenance': {'clock_mhz': 150, 'part': 'xc7z020'}}
         with self.assertRaisesRegex(ValueError, 'clock_mhz'):
             area_results.compare(a, b)
+
+    def test_resume_preserves_context_sources_and_checkpoint_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)/'screen'
+            output = Path(directory)/'route'
+            midi_shared_jobs.prepare(build, BASE, 100, PROFILE, 'opt')
+            (build/'outcome.txt').write_text('stage=opt\nstatus=0\nmessage=0\n')
+            (build/'post_opt.dcp').write_bytes(b'checkpoint fixture')
+            (build/'post_opt.json').write_text('{"wns_ns":-1,"whs_ns":0}\n')
+            area_resume.prepare(build, output)
+            for name in ('source-manifest.json', 'context.sv', 'context.xdc', 'post_opt.json'):
+                self.assertEqual((build/name).read_bytes(), (output/name).read_bytes())
+            self.assertEqual((output/'input.dcp').read_bytes(), b'checkpoint fixture')
+            self.assertTrue((output/'run.tcl').read_text().startswith(
+                'set stop_after route\nset resume_after opt\n'))
+            area_results.verify_manifest(output, 'artifact-manifest.json', '')
+            provenance = json.loads((output/'provenance.json').read_text())
+            self.assertEqual(provenance['resumed_from']['checkpoint_sha256'],
+                             area_results.digest(build/'post_opt.dcp'))
+            with self.assertRaisesRegex(ValueError, 'advance'):
+                area_resume.prepare(build, Path(directory)/'invalid', 'synth')
+            (build/'context.xdc').write_text('changed constraints')
+            with self.assertRaisesRegex(ValueError, 'Manifest mismatch'):
+                area_resume.prepare(build, Path(directory)/'tampered')
+
+    def test_unmanifested_hdl_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            midi_shared_jobs.prepare(build, BASE, 100, PROFILE)
+            (build/'source/fpga/midi/rtl/extra.sv').write_text('module extra; endmodule\n')
+            with self.assertRaisesRegex(ValueError, 'file set mismatch'):
+                area_results.verify_manifest(build, 'source-manifest.json', 'source')
 
 
 if __name__ == '__main__':

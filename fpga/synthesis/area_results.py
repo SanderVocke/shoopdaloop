@@ -35,6 +35,11 @@ def resources(path):
 
 def verify_manifest(build, name, prefix):
     manifest = json.loads((build/name).read_text())
+    if prefix == 'source':
+        actual = {str(path.relative_to(build/prefix)) for path in (build/prefix).rglob('*')
+                  if path.suffix in ('.sv', '.svh')}
+        if actual != set(manifest):
+            raise ValueError('Source manifest file set mismatch')
     for relative, expected in manifest.items():
         path = (build/prefix/relative).resolve()
         if not path.is_relative_to(build.resolve()) or digest(path) != expected:
