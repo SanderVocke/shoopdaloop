@@ -936,7 +936,7 @@
       ],
       "pending": [
         "Canonical64 route and explicitdecision",
-        "Primary21 optimized screen androuteifviable"
+        "Primary21 route andcontract/packing decision"
       ],
       "functional_log": "s3-local-frames-tests.log",
       "canonical64_optimized_summary": "s3-local-frames64-control-opt-summary.json",
@@ -953,7 +953,32 @@
         "control_sets": -1
       },
       "calibration_note": "Canonical64 behavior/cycles/traffic match C2 but mappedcounts differ(-127LUT,-19FF,-2CARRY4,-1controlset). Routingcanonical64 separately; attribute21delta againstsameRTL64control aswellas C2, notallnarrowing.",
-      "media_log": "s3-local-frames-default64-media-tests.log"
+      "media_log": "s3-local-frames-default64-media-tests.log",
+      "optimized21_summary": "s3-local-frames21-opt-summary.json",
+      "optimized21_deltas_vs_canonical64": {
+        "lut": -227,
+        "logic_lut": -227,
+        "memory_lut": 0,
+        "ff": -339,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -55,
+        "muxf7": -177,
+        "muxf8": -32,
+        "control_sets": -1
+      },
+      "optimized21_deltas_vs_c2": {
+        "lut": -354,
+        "logic_lut": -354,
+        "memory_lut": 0,
+        "ff": -358,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -57,
+        "muxf7": -186,
+        "muxf8": -62,
+        "control_sets": -2
+      }
     }
   ],
   "provisioning": {
