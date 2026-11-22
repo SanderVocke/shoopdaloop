@@ -164,3 +164,45 @@ resource, timing, and control-set metric exactly.
 Deferred cleanup, fault, reset, and preemption regressions pass, including
 DRAMsim3. The optimized and
 routed raw archives preserve separate report stages and source/checkpoint hashes.
+
+## Stage 2 measurements in progress
+
+All siblings compare with C1, the selected serial-count implementation. The
+four-way result is a candidate, pending comparison with the banked and per-view
+alternatives and generated-hint policies.
+
+| Routed 100 MHz result | C1 | Four-way RAM tags |
+| --- | ---: | ---: |
+| LUTs | 39,399 | 36,656 |
+| Slices | 12,616 | 12,336 |
+| Registers | 32,987 | 28,737 |
+| CARRY4 | 3,958 | 3,352 |
+| Control sets | 1,494 | 1,406 |
+| BRAM tiles | 77.5 | 77.5 |
+| Setup slack ns | -4.157 | -4.744 |
+| Hold slack ns | +0.005 | +0.015 |
+| Cold mixed/on/delay7 clocks | 110,356 | 110,572 |
+| 1,024-quantum steady median clocks | 54,146 | 54,146 |
+| 1,024-quantum steady maximum clocks | 84,284 | 83,891 |
+
+The four-way cache reduces the main tag lookup from 128 comparisons to four,
+using synchronous tag RAM. Read hits still take six clocks in the standalone
+fixture. Five competing lines in one set now cause evictions, independently
+checked against an array oracle; final fenced memory remains exact. Metadata,
+ownership, deferred cleanup and media regressions pass, including DRAMsim3 and
+legacy scalar memory.
+
+The long connected fixture reaches frames 16,384 and 32,768. Those leaf crossings
+cost 84,284/83,711 clocks with C1 and 83,891/83,257 with four-way tags. Both exceed
+the nominal 66,666.7-clock callback budget at 100 MHz, and both fail physical
+setup timing. The short fixture alone hides these boundary costs. Raw long-run
+samples are retained in `c1-extended-100-raw.tar.gz` and
+`s2-fourway-extended-100-raw.tar.gz`; summaries and retention manifests identify
+their sources and hashes.
+
+The banked alternative retains all 128 fully associative entries while comparing
+eight tags at a time. Independent sequential, strided and dirty-conflict traces
+on AXI32/64 match C1's 261 misses exactly. Read hits range from six to 36 clocks
+(median 20 in this unit workload); cold fills add 30 clocks. All metadata tests
+pass. Connected workload and physical results are still pending; these unit
+numbers alone do not select an implementation.
