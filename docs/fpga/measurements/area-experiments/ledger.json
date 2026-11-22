@@ -1061,7 +1061,7 @@
       "Docs": "passed",
       "firmware_run": 45068655379,
       "firmware_failed_job": 137350428223,
-      "firmware": "All5other jobs passed; firmware fixture timed out1200sec after recording-pool fill batch768. ExactPCM/MIDI/40MiB/100soak checks passed before timeout; isolated jobretryaccepted. Cause unproven, no host/firmware behavioral patch.",
+      "firmware": "Isolatedretry137365898513 passed with unchanged code. Allotherfirmware jobs passed. Original1200sec fixturetimeout preserved; cause unproven andno speculativefix.",
       "firmware_artifact": 14773838894,
       "firmware_local_evidence": "work/area-experiments/setup/c2-firmware-ci-evidence",
       "firmware_evidence_sha256": {
