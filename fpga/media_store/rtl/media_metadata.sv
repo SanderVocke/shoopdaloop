@@ -65,7 +65,10 @@ module media_metadata #(
     reg [31:0] new_count;
     reg [31:0] gc_root, gc_used;
     reg gc_loaded;
-    reg [63:0] required_nodes, existing_nodes, unallocated_pages, additional, available;
+    // Eight radix levels need at most 0x11111111 nodes for any 32-bit count.
+    reg [28:0] required_nodes, existing_nodes, additional;
+    reg [31:0] unallocated_pages;
+    reg [32:0] available;
     reg capacity_grow, capacity_insufficient;
     reg [63:0] operations [0:9];
     reg [63:0] directory_reads, table_reads;
@@ -120,11 +123,12 @@ module media_metadata #(
     function automatic [63:0] page_address(input [31:0] id);
         page_address = (PAGE_BASE-64)+64'(id)*64;
     endfunction
-    function automatic [63:0] nodes(input [31:0] count);
-        reg [63:0] n, total;
+    function automatic [28:0] nodes(input [31:0] count);
+        reg [32:0] n;
+        reg [28:0] total;
         begin
-            n = {32'b0,count}; total = 0;
-            for (integer i=0; i<LEVELS; i=i+1) begin n = (n+15) >> 4; total = total+n; end
+            n = {1'b0,count}; total = 0;
+            for (integer i=0; i<LEVELS; i=i+1) begin n = (n+33'd15) >> 4; total = total+29'(n); end
             nodes = total;
         end
     endfunction
@@ -253,16 +257,16 @@ module media_metadata #(
                     required_nodes <= nodes(new_count);
                     existing_nodes <= nodes(used);
                     capacity_grow <= new_count > used;
-                    unallocated_pages <= 64'(TABLE_PAGES)-{32'b0,high_water};
+                    unallocated_pages <= 32'(TABLE_PAGES)-high_water;
                     phase <= CAPACITY;
                 end
                 CAPACITY: begin
-                    additional <= capacity_grow ? required_nodes-existing_nodes : 64'b0;
-                    available <= unallocated_pages+{32'b0,free_pages};
+                    additional <= capacity_grow ? required_nodes-existing_nodes : 29'b0;
+                    available <= {1'b0,unallocated_pages}+{1'b0,free_pages};
                     phase <= CHECK_CAPACITY;
                 end
                 CHECK_CAPACITY: begin
-                    capacity_insufficient <= additional > available;
+                    capacity_insufficient <= 33'(additional) > available;
                     phase <= WALK;
                 end
                 WALK: begin
