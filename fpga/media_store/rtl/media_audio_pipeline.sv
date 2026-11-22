@@ -11,8 +11,7 @@ module media_audio_pipeline #(
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
     parameter integer MAINTENANCE_AT_RUN = 1,
-    parameter integer VIEWS = 32,
-    parameter integer LOCAL_FRAME_BITS = 64, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
+    parameter integer VIEWS = 32, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
     parameter integer RETIRED_TABLES = 256,
@@ -195,7 +194,7 @@ module media_audio_pipeline #(
         .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.LOCAL_FRAME_BITS(LOCAL_FRAME_BITS), .REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
+    media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
         .maintenance_tick(maintenance_tick || (MAINTENANCE_AT_RUN != 0 && run_valid && run_ready)),.reclaim_pages_used(reclaim_pages_used),.reclaim_pages_available(reclaim_pages_available),
         .reclaim_pages_freed(reclaim_pages_freed),.reclaim_capacity_failures(reclaim_capacity_failures),
