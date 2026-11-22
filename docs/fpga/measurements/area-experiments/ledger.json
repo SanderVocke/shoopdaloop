@@ -1275,7 +1275,17 @@
       "fpga_run": 45082037257,
       "workspace_run": 45082037273,
       "firmware_run": 45082037270,
-      "status": "Docs passed; other workflows running"
+      "status": "Incomplete: strict standalone unused-bit warnings reproduced; integration of newly advanced base exposes deterministic firmware/browser/capability errors and legacy Carla expectations. Fixes isolated on area/base-integration; measured C3 remains frozen.",
+      "tested_merge": "1ba135dd089c5f185d3bfe946b8f2560a6238b5f",
+      "merge_base": "34f04abde81f1e49f0b22a5b2f82890c5dad610c",
+      "fpga_standalone": "137392124825 failed two Verilator UNUSEDSIGNAL warnings; project-pattern constant unused reductions prepared and full standalone media check running",
+      "firmware": "All failed builds report stale nested Cargo.lock; reproduced only after merging34f04abd; adding rtrb dependency passes pinned1.99.1 locked ARM check",
+      "workspace": "Packaged native smoke bus catalog/capability mismatch; browser release unknown carla.hosting_mode. Focused fixes/tests running on integration branch. Coverage first3551 tests pass; hosted gate3failures under new dynamic-Carla contract retained for later integration followup.",
+      "passing_workflows": [
+        "Hosted track processors",
+        "Docs",
+        "CodeQL"
+      ]
     }
   },
   "selected_control": {
