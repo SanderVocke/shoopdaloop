@@ -1,6 +1,12 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use shoop_wasm_test_support::shoop_test;
 #[shoop_test]
+fn translation_boundaries_and_lifetimes_match_an_independent_map() {
+    for width in [32, 64] {
+        rt_fpga_testbench::suites::metadata::translation_area_workloads(width).unwrap();
+    }
+}
+#[shoop_test]
 fn indexed_metadata_detached_roots_and_coherent_shared_cache_transport() {
     use rt_fpga_testbench::suites::metadata;
     for width in [32, 64] {

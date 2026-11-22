@@ -1,4 +1,8 @@
-module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer LINE_WORDS = 16, parameter integer LARGE = 0) (
+module media_metadata_tb #(
+    parameter integer DATA_WIDTH = 64, parameter integer LINE_WORDS = 16, parameter integer LARGE = 0,
+    parameter integer TABLE_PAGES = LARGE == 2 ? 48 : LARGE != 0 ? 32 : 8,
+    parameter integer TABLE_LINES = 2
+) (
     input wire clk, input wire reset,
     input wire request_valid, output wire request_ready, input wire [3:0] request_opcode,
     input wire [31:0] request_view, input wire [31:0] request_index, input wire [31:0] request_data,
@@ -67,7 +71,7 @@ module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     wire unused_sample = &{1'b0,memory_ready,memory_write_ready,memory_read_valid,memory_response_valid,memory_response_error,memory_read_data};
     localparam integer TEST_SLOTS = LARGE == 2 ? 5760000 : LARGE != 0 ? 512 : 256;
     localparam integer TEST_WORDS = LARGE == 2 ? 3*TEST_SLOTS+1024 : 8192;
-    media_metadata #(.VIEWS(4),.SLOTS(TEST_SLOTS),.CHUNK_FRAMES(1),.TABLE_PAGES(LARGE == 2 ? 48 : LARGE != 0 ? 32 : 8),.RETIRED_TABLES(2),.TABLE_LINES(2),.REF_LINES(1),.STACK_LINES(1)) metadata (
+    media_metadata #(.VIEWS(4),.SLOTS(TEST_SLOTS),.CHUNK_FRAMES(1),.TABLE_PAGES(TABLE_PAGES),.RETIRED_TABLES(2),.TABLE_LINES(TABLE_LINES),.REF_LINES(1),.STACK_LINES(1)) metadata (
         .clk(clk),
         .reset(reset),
         .arena_base(64'h01000000),

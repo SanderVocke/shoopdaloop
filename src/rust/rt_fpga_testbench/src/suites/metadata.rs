@@ -594,3 +594,114 @@ pub fn cache_area_workloads(width: u64) -> Result<serde_json::Value> {
         "measurements":measurements,"provenance":crate::report::provenance()
     }))
 }
+
+pub fn translation_area_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut design = design("media_metadata_tb", width, 16, 1);
+    design.parameters.insert("TABLE_PAGES".into(), "128".into());
+    design.parameters.insert("TABLE_LINES".into(), "128".into());
+    for name in ["directory_reads", "table_reads"] {
+        design
+            .probes
+            .push(Probe::observe(&format!("metadata.{name}")));
+    }
+    for name in ["hits", "misses", "fills", "writebacks"] {
+        design
+            .probes
+            .push(Probe::observe(&format!("metadata.banks[0].cache.{name}")));
+    }
+    let compiled = design.build(&crate::root().join("work/marlin-suite/translation-area"))?;
+    let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+    let memory = Memory::attach(
+        &mut s,
+        Mode::Instant,
+        8192,
+        0x01000000,
+        &crate::artifact_directory("metadata-translation-area"),
+        91833,
+    )?;
+    memory.borrow_mut().control.stalls = false;
+    let d = Metadata {
+        port: Request::new(&mut s, ""),
+        memory,
+        slots: 512,
+    };
+    d.reset(&mut s);
+    let mut expected = vec![vec![0_u64; 272]; 4];
+    for (view, values) in expected.iter_mut().enumerate() {
+        for (ordinal, value) in values.iter_mut().enumerate() {
+            *value = 1 + view as u64 * 4096 + ordinal as u64;
+            d.request(&mut s, 1, view as u64, ordinal as u64, *value, 0);
+        }
+    }
+    let counters = |s: &Sim<'_>| {
+        ["hits", "misses", "fills", "writebacks"]
+            .map(|name| s.model.get(&format!("metadata.banks[0].cache.{name}")))
+    };
+    let mut measurements = Vec::new();
+    for (kind, order) in [
+        ("repeated_block", vec![0_usize; 32]),
+        ("sequential", (0..272).collect::<Vec<_>>()),
+        ("strided", (0..272).map(|i| i * 19 % 272).collect()),
+        (
+            "leaf_boundaries",
+            vec![0, 15, 16, 255, 256, 271, 256, 255, 16, 15, 0],
+        ),
+    ] {
+        d.request(&mut s, 9, 0, 0, 0, 0);
+        for (step, &ordinal) in order.iter().enumerate() {
+            for (view, values) in expected.iter().enumerate() {
+                let before = counters(&s);
+                let start = s.cycles;
+                assert_eq!(
+                    d.request(&mut s, 0, view as u64, ordinal as u64, 0, 0),
+                    values[ordinal]
+                );
+                let elapsed = s.cycles - start;
+                let after = counters(&s);
+                measurements.push(
+                    json!({"kind":kind,"step":step,"view":view,"ordinal":ordinal,
+                    "cycles":elapsed,"hits":after[0]-before[0],"misses":after[1]-before[1],
+                    "fills":after[2]-before[2],"writebacks":after[3]-before[3]}),
+                );
+            }
+        }
+    }
+    // Keep a logical map independent of cache layout through mutations and reuse.
+    for (view, values) in expected.iter_mut().enumerate() {
+        for ordinal in [0, 7, 15, 16, 255, 256, 271, 0] {
+            values[ordinal] += 65536;
+            d.request(&mut s, 1, view as u64, ordinal as u64, values[ordinal], 0);
+            for i in [0, 7, 15, 16, 255, 256, 271] {
+                assert_eq!(d.request(&mut s, 0, view as u64, i as u64, 0, 0), values[i]);
+            }
+        }
+        d.request(&mut s, 6, view as u64, 257, 0, 0);
+        values.truncate(257);
+        assert_eq!(d.request(&mut s, 0, view as u64, 256, 0, 0), values[256]);
+        d.request(&mut s, 0, view as u64, 257, 0, 1);
+        values.push(0x12340000 + view as u64);
+        d.request(&mut s, 1, view as u64, 257, values[257], 0);
+        assert_eq!(d.request(&mut s, 0, view as u64, 257, 0, 0), values[257]);
+    }
+    d.request(&mut s, 6, 0, 0, 0, 0);
+    d.request(&mut s, 0, 0, 0, 0, 1);
+    d.request(&mut s, 1, 0, 0, 0xaa, 0);
+    assert_eq!(d.request(&mut s, 10, 0, 0, 0, 0), 1);
+    d.request(&mut s, 1, 0, 0, 0xbb, 0);
+    assert_eq!(d.request(&mut s, 11, 0, 0, 0, 0), 0xaa);
+    assert_eq!(d.request(&mut s, 12, 0, 0, 0, 0), 0);
+    assert_eq!(d.request(&mut s, 0, 0, 0, 0, 0), 0xbb);
+    d.request(&mut s, 9, 0, 0, 0, 0);
+    assert_eq!(d.request(&mut s, 0, 0, 0, 0, 0), 0xbb);
+    d.reset(&mut s);
+    d.request(&mut s, 0, 0, 0, 0, 1);
+    d.request(&mut s, 1, 0, 0, 0xcc, 0);
+    assert_eq!(d.request(&mut s, 0, 0, 0, 0, 0), 0xcc);
+    Ok(
+        json!({"schema_version":1,"axi_data_width":width,"seed":91833,
+        "scope":"metadata controller plus coherent cache, AXI and direct-memory model; driver request assertion through response acceptance and cleanup; preparation excluded; four views with 272 entries",
+        "validation":"reads, repeated writes, trim/regrow, global invalidation, detached GC with live view reuse, and reset agree with an independent logical map",
+        "measurements":measurements,"provenance":crate::report::provenance()}),
+    )
+}
