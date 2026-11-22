@@ -42,18 +42,17 @@ module media_metadata #(
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
         TRIM_COUNT, TRIM_CHECK, TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
         CHECK_TREE, COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
-        GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT, LEAF_WORD} phase_t;
+        GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT} phase_t;
     (* fsm_encoding = "one_hot" *) phase_t phase;
     phase_t resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
-    wire [639:0] root_ram_data;
+    wire [191:0] root_ram_data;
     // Contents share the roots RAM and its existing leaf-valid lifetime.
     reg root_used_nonzero;
     reg cached_translation_match;
-    reg [511:0] leaf_contents;
-    reg [3:0] leaf_word;
+    reg [31:0] cached_block, cached_ordinal;
     reg [63:0] memory_origin;
-    reg [639:0] root_data;
+    reg [191:0] root_data;
     localparam integer LEVEL_BITS = LEVELS < 2 ? 1 : $clog2(LEVELS);
     reg [31:0] view, ordinal, payload, root, used, page;
     reg [LEVEL_BITS-1:0] level;
@@ -114,9 +113,9 @@ module media_metadata #(
     wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (32'(level)*4)) & 64'd15)*4;
     wire bad_tree_request = (opcode != 11 && view >= 32'(VIEWS)) || ordinal > 32'(SLOTS)
         || (opcode < 2 && ordinal == 32'(SLOTS));
-    media_ram #(.WIDTH(640),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
+    media_ram #(.WIDTH(192),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
         .clk(clk),.read_enable(request_valid && request_ready && request_view < 32'(VIEWS)),.read_address(VIEW_BITS'(request_view)),.read_data(root_ram_data),
-        .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({leaf_contents,cached_leaf,cached_index,used,root})
+        .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({cached_block,cached_ordinal,cached_leaf,cached_index,used,root})
     );
     generate for (genvar i=0; i<3; i=i+1) begin : banks
         wire [63:0] hits, misses, fills, writebacks;
@@ -148,7 +147,7 @@ module media_metadata #(
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8 || RETIRED_TABLES < 1) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; leaf_contents <= 0; leaf_word <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
+            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; cached_block <= 0; cached_ordinal <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
             invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0; cached_translation_match <= 0;
             allocated <= 0; parent_is_root <= 1; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
@@ -179,7 +178,7 @@ module media_metadata #(
                     used <= root_exists ? root_data[63:32] : 0;
                     cached_leaf <= root_exists && leaf_valid[VIEW_BITS'(view)] ? root_data[127:96] : 0;
                     cached_index <= root_data[95:64];
-                    leaf_contents <= root_data[639:128];
+                    cached_ordinal <= root_data[159:128]; cached_block <= root_data[191:160];
                     if (opcode == 9) leaf_valid <= 0;
                     if (opcode == 6) begin leaf_valid[VIEW_BITS'(view)] <= 0; cached_leaf <= 0; end
                     if (opcode == 10) begin
@@ -226,7 +225,7 @@ module media_metadata #(
                     invalid_read_extent <= opcode == 0 && ordinal >= used;
                     invalid_write_extent <= (opcode == 1 || opcode == 6) && ordinal > used;
                     cached_leaf_match <= cached_leaf != 0 && cached_index == (ordinal >> 4);
-                    cached_translation_match <= cached_leaf != 0 && cached_index == (ordinal >> 4);
+                    cached_translation_match <= cached_leaf != 0 && cached_ordinal == ordinal;
                     phase <= opcode == 1 || opcode == 7 ? COUNT_NODES : WALK;
                 end
                 COUNT_NODES: begin
@@ -256,7 +255,7 @@ module media_metadata #(
                     else if (opcode == 7) phase <= RESPONSE;
                     else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_COUNT; end
                     else if (!checked && opcode == 0 && cached_translation_match) begin
-                        response_data <= leaf_contents[32'(ordinal[3:0])*32+:32]; phase <= RESPONSE;
+                        response_data <= cached_block; phase <= RESPONSE;
                     end else if (!checked && cached_leaf_match) begin
                         page <= cached_leaf; level <= 0;
                     end else if (page == 0) begin
@@ -295,23 +294,11 @@ module media_metadata #(
                 ACCESS_DONE: begin
                     response_data <= value;
                     if (opcode < 2) begin
+                        cached_block <= opcode == 1 ? payload : value; cached_ordinal <= ordinal;
                         cached_leaf <= page; cached_index <= ordinal >> 4;
                         if (opcode == 1 && ordinal >= used) used <= ordinal+1;
-                        if (cached_leaf_match) begin
-                            if (opcode == 1) leaf_contents[32'(ordinal[3:0])*32+:32] <= payload;
-                            phase <= PUBLISH;
-                        end else begin
-                            leaf_word <= 0; access_cache(0,0,page_address(page),0,LEAF_WORD);
-                        end
+                        phase <= PUBLISH;
                     end else phase <= RESPONSE;
-                end
-                LEAF_WORD: begin
-                    leaf_contents[32'(leaf_word)*32+:32] <= value;
-                    if (leaf_word == 15) phase <= PUBLISH;
-                    else begin
-                        leaf_word <= leaf_word+1'b1;
-                        access_cache(0,0,page_address(page)+64'(leaf_word+4'd1)*4,0,LEAF_WORD);
-                    end
                 end
                 PUBLISH: begin
                     if (opcode == 12) phase <= GC_SAVE_ROOT;
