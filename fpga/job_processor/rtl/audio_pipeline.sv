@@ -7,6 +7,7 @@ module audio_pipeline #(
     parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32,
     parameter integer READ_HINT_DEPTH = JOB_DEPTH,
+    parameter integer READ_HINT_POLICY = 2,
     parameter integer LOOP_DEPTH = STATE_DEPTH,
     parameter integer EXTERNAL_IO = 0,
     parameter integer ENABLE_MIDI = 0,
@@ -146,13 +147,17 @@ module audio_pipeline #(
     reg hint_stage_valid;
     reg [`SHOOP_SP_JOB_BITS-1:0] hint_push_data;
     wire hint_stage_ready = !hint_stage_valid || hint_push_ready;
-    wire hint_stage_input = ENABLE_MEDIA != 0 && (read_intent_valid || (late_hint_valid && phase == JOB_WAIT));
+    // 2 keeps early and late hints; 1 keeps late hints; 0 disables generated hints.
+    wire early_hint = READ_HINT_POLICY == 2 && read_intent_valid;
+    wire hint_stage_input = ENABLE_MEDIA != 0 && (early_hint
+        || (READ_HINT_POLICY != 0 && late_hint_valid && phase == JOB_WAIT));
+    initial if (READ_HINT_POLICY < 0 || READ_HINT_POLICY > 2) $fatal(1,"Invalid read hint policy");
     wire [63:0] hint_overflow_mask = ~(64'hffffffffffffffff >> chunk_shift);
     wire hint_push_in_range = ((hint_push_data[191:128] | hint_push_data[255:192]) & hint_overflow_mask) == 0;
     wire [`SHOOP_SP_JOB_BITS-1:0] translated_hint = {hint_push_data[255:192] << chunk_shift,
         hint_push_data[191:128] << chunk_shift,hint_push_data[127:64],63'b0,hint_push_in_range};
     wire hint_in_range = hint_pop_data[0];
-    assign late_hint_ready = phase != JOB_WAIT || (hint_stage_ready && !read_intent_valid);
+    assign late_hint_ready = READ_HINT_POLICY == 0 || phase != JOB_WAIT || (hint_stage_ready && !early_hint);
     assign media_hint_valid = ENABLE_MEDIA != 0 && hint_pop_valid && hint_in_range && !reset;
     assign media_hint_view = hint_pop_data[127:64];
     assign media_hint_position = hint_pop_data[191:128];
@@ -172,7 +177,7 @@ module audio_pipeline #(
             hint_push_data <= 0;
         end else if (hint_stage_ready) begin
             hint_stage_valid <= hint_stage_input;
-            if (hint_stage_input) hint_push_data <= read_intent_valid ? read_intent_data : late_hint_data;
+            if (hint_stage_input) hint_push_data <= early_hint ? read_intent_data : late_hint_data;
         end
     end
     assign unused_pc = &{1'b0, state_pc};

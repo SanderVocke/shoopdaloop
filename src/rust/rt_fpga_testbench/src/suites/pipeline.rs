@@ -632,7 +632,21 @@ pub fn run(
     response_cycles: u64,
     random: u64,
 ) -> Result<()> {
+    run_parameters(name, c, g, width, mode, response_cycles, random, &[])
+}
+
+pub fn run_parameters(
+    name: &str,
+    c: [u64; 7],
+    g: Geometry,
+    width: u64,
+    mode: Mode,
+    response_cycles: u64,
+    random: u64,
+    parameters: &[(&str, u64)],
+) -> Result<()> {
     let compiled = design(c, &g, width, mode, response_cycles)
+        .parameters(parameters)
         .build(&crate::root().join("work/marlin-suite/pipeline"))?;
     if g.block_chunks != 1 {
         let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);

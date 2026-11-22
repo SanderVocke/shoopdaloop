@@ -36,3 +36,34 @@ fn ordered_media_audio_publication_protocols_faults_reset_and_retained_blocks() 
         .unwrap();
     }
 }
+
+#[shoop_test]
+fn generated_hint_policies_preserve_publication_faults_reset_and_progress() {
+    use rt_fpga_testbench::{drivers::store::Geometry, memory::Mode, suites::pipeline};
+    for policy in [1, 0] {
+        for mode in [Mode::Instant, Mode::Fixed, Mode::Dramsim3, Mode::Legacy] {
+            pipeline::run_parameters(
+                &format!("hint-policy-{policy}"),
+                [32, 16, 32, 32, 16, 2, 2],
+                Geometry::new([32, 32, 32], 1),
+                64,
+                mode,
+                1,
+                20,
+                &[("READ_HINT_POLICY", policy)],
+            )
+            .unwrap();
+            pipeline::run_parameters(
+                &format!("blocked-hint-policy-{policy}"),
+                [32, 16, 32, 32, 16, 2, 2],
+                Geometry::new([16, 32 * 32, 4], 32),
+                64,
+                mode,
+                1,
+                0,
+                &[("READ_HINT_POLICY", policy)],
+            )
+            .unwrap();
+        }
+    }
+}
