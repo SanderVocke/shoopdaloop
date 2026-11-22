@@ -798,7 +798,8 @@
       "validation": [
         "Both AXI widths:all187 boundary/response/cycle rows exactly match C2",
         "All1282 publicstore command/result/cycle/traffic rows exactly match C2",
-        "Expanded six-test metadata suite passes348.84sec; deferred182.50sec andmedia411.41sec pass; ownership still running"
+        "Expanded six-test metadata suite passes348.84sec; deferred182.50sec andmedia411.41sec pass; ownership still running",
+        "Allownership/media/deferred tests pass, including DRAMsim3/Legacy; ownership2tests275.75sec"
       ],
       "unit_summaries": [
         "s3-audio-width-boundaries-axi32-summary.json",
@@ -806,9 +807,8 @@
         "s3-audio-store-operations-unit-summary.json"
       ],
       "pending": [
-        "Fullmedia/ownership regressions(deferred passed182.50sec)",
-        "Shortconnectedcallback andoptimizedarea screen",
-        "Routeifbeneficialandqualified"
+        "Routedarea/timing result",
+        "CompareMIDI sibling and decide/repeat ifselected"
       ],
       "optimized_summary": "s3-audio-opt-summary.json",
       "optimized_deltas_vs_c2": {
