@@ -269,7 +269,7 @@ impl Fixture {
     }
     fn from_engine(engine: Engine, q: usize, partition: usize, d: &EngineDescription) -> Self {
         let outbox = engine.outbox();
-        let transfer_bytes = crate::runtime_capacities(d, q, 0).budgets.transfer_bytes;
+        let transfer_bytes = crate::runtime_capacities(d, q, 0, 0).budgets.transfer_bytes;
         let mut h = Self {
             engine,
             outbox,

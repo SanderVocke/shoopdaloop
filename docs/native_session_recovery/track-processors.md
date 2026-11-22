@@ -32,24 +32,19 @@ dry audio samples. FX also requires dry MIDI. External tracks support independen
 dry/wet widths and optional dry MIDI where native host ports support the shape.
 Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and track FX share prepared slots and channel limits.
 
-## Carla development builds
+## Carla
 
-An independent Native session host built with `shoop_host/carla` can advertise
-Rack, stereo Patchbay, and Patchbay 16x on tracks and buses when it discovers the
-Carla runtime and has prepared slots. The independent session host uses its own executable to launch
-isolated Carla workers. The separate RT engine companion uses
-`shoop_rt_host_process/carla-worker` for the same capability. The catalogue
-reports whether each type is available and how many instances the host prepared.
+Native hosts can open Rack, stereo Patchbay, and Patchbay 16x on tracks and
+buses. Local Carla uses the runtime on the host machine, and Remote Carla
+uses a connected FX service. The host creates each chain and its buffers
+when assigned. Patchbay 16x supports narrower tracks and buses. Set
+**Track channels** or **Bus channels** to 16 to use all 16 lanes for that
+part of the session. [Remote Carla setup](../remote-fx.md)
 
-In desktop settings, choose **Native** and an independent host under **Audio →
-Session delivery**. Under **Carla**, choose **In session host** or **One
-subprocess per FX chain**, and set the instance counts for the types you need.
-For Patchbay 16x, set **Track channels** to 16 under **Audio** and also set **Bus
-channels** to 16 to use all lanes on a bus. The startup pool reserves processor
-slots and their buffering within the processor memory budget. Set all instance
-counts to zero to disable Carla. Restart the owning host to apply changes. The
-host manager's **New host** dialog also accepts Carla mode and counts under
-**Track processors**. These settings belong to the host configuration.
+For local processing in an independent Native host, **Local Carla isolation**
+in Audio settings controls whether each chain runs inside the session host or
+in its own subprocess. The independent session host uses its own executable to
+launch those workers. The FX service offers its own isolation setting.
 
 Linux development tests exercise both modes with the pinned runtime and actual
 Carla editors. In isolated mode the FX control can restart a crashed worker and
@@ -112,10 +107,9 @@ Processor storage is prepared, activated, retired/reset in bounded pieces, and
 destroyed off-render or after callbacks stop. Session candidates reserve their own
 bank; failure returns reservations and leaves current audio and media untouched.
 
-In a Carla-enabled Native host, choose an available Carla type when adding a
-Dry/Wet track or a bus. Buses use matching input and output widths. Select the
-track or bus FX control to open the Carla editor. The host's startup settings
-select in-process or isolated hosting and set the available instance counts.
+In a Native host, choose an available Carla type when adding a Dry/Wet track
+or selecting bus FX. Buses use matching input and output widths. Select the
+track or bus FX control to open the Carla editor on the machine running the chain.
 In isolation mode, the FX control can restart a failed worker. Linux desktop
 validation covered selecting an Audio File source in the editor, recording
 its stereo Rack output, and exporting the dry and wet channels in both modes.

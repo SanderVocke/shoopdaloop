@@ -1079,6 +1079,7 @@ pub fn hosted(
                     dry_midi: true,
                     processor_type: descriptor.id.clone(),
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    remote_fx: None,
                 },
                 latency: Default::default(),
                 initial_output_bus_names: vec!["Master".into()],

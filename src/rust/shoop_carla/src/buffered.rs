@@ -193,7 +193,7 @@ impl Backend for RenderEndpoint {
     }
 }
 
-fn process(
+pub(crate) fn process(
     processor: &mut dyn CarlaProcessor,
     midi_output: &mut PreparedMidiBuffer,
     discontinuous: bool,
@@ -238,11 +238,15 @@ fn process(
     }
     let channels = processor.info().audio_inputs;
     for channel in 0..channels {
-        let input = batch.audio.input(channel).ok_or(Error::InvalidShape)?;
         let target = processor
             .audio_input_mut(channel)
             .ok_or(Error::InvalidShape)?;
-        target[..batch.frames].copy_from_slice(input);
+        let target = &mut target[..batch.frames];
+        if let Some(input) = batch.audio.input(channel) {
+            target.copy_from_slice(input);
+        } else {
+            target.fill(0.0);
+        }
     }
     processor
         .process_at(
@@ -256,7 +260,7 @@ fn process(
     if processor.lifecycle() == CarlaProcessorLifecycle::Degraded {
         return Err(Error::Incomplete);
     }
-    for channel in 0..channels {
+    for channel in 0..batch.audio.output_count() {
         let source = processor.audio_output(channel).ok_or(Error::InvalidShape)?;
         let target = batch.audio.output(channel).ok_or(Error::InvalidShape)?;
         target.copy_from_slice(&source[..batch.frames]);

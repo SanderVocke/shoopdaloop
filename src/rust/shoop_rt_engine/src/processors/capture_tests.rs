@@ -186,6 +186,7 @@ impl Fixture {
                 midi_output: false,
             },
             kind,
+            remote_fx: None,
         });
         for (kind, index, host) in [
             (PortKind::AudioIn, 0, 0),

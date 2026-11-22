@@ -64,6 +64,7 @@ pub enum ReplacementEdit {
         shape: StripShape,
         controls: StripPreset,
         kind: crate::ProcessorKind,
+        remote_fx: Option<shoop_processor_protocol::RemoteFxTarget>,
         default_dry: bool,
         state: Option<crate::processors::Control>,
     },

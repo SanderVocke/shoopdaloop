@@ -565,7 +565,8 @@ impl ControlEndpoint {
         excluding: Option<BusId>,
     ) -> Result<crate::model::ProcessorOwner, Staged> {
         let limit = self.processor_catalog.effective.instances(kind);
-        if limit == 0 {
+        let dynamic = self.processor_catalog.dynamic_carla.timing(kind).is_some();
+        if limit == 0 && !dynamic {
             return Err(Staged::Refused(Refusal::Unsupported));
         }
         let owners = || {
@@ -583,14 +584,21 @@ impl ControlEndpoint {
                         .filter_map(|bus| bus.processor),
                 )
         };
-        if owners().filter(|owner| owner.kind == kind).count() >= limit as usize {
+        if !dynamic && owners().filter(|owner| owner.kind == kind).count() >= limit as usize {
             return Err(Staged::Refused(Refusal::Capacity));
         }
         for (index, cells) in self.processor_cells.iter().enumerate() {
+            let handoff = self
+                .dynamic_processors
+                .as_ref()
+                .and_then(|layout| layout.slot(index));
+            if handoff.is_some() != dynamic || handoff.is_some_and(|slot| !slot.available()) {
+                continue;
+            }
             let Some(state) = cells.read() else {
                 continue;
             };
-            if state.kind != kind
+            if (!dynamic && state.kind != kind)
                 || state.phase != crate::ProcessorPhase::Free
                 || owners().any(|owner| owner.slot.is_some_and(|slot| slot.index as usize == index))
             {
@@ -602,11 +610,15 @@ impl ControlEndpoint {
                 .ok_or(Staged::Refused(Refusal::Capacity))?;
             return Ok(crate::model::ProcessorOwner {
                 kind,
+                remote_fx: None,
                 slot: Some(shoop_rt_protocol::ProcessorSlot {
                     index: index as u16,
                     generation,
                 }),
             });
+        }
+        if dynamic {
+            return Err(Staged::Wait);
         }
         if self.processor_cells.iter().any(|cells| {
             cells.read().is_some_and(|state| {
@@ -628,7 +640,10 @@ impl ControlEndpoint {
             return Err(Staged::Refused(Refusal::Unsupported));
         }
         let width = kind.prepared_audio_channels(self.shape.processor_channels);
-        if usize::from(channels) > width || usize::from(channels) > self.shape.processor_channels {
+        let dynamic = self.processor_catalog.dynamic_carla.timing(kind).is_some();
+        if usize::from(channels) > width
+            || (!dynamic && usize::from(channels) > self.shape.processor_channels)
+        {
             return Err(Staged::Refused(Refusal::Capacity));
         }
         self.reserve_processor(kind, excluding)
@@ -704,7 +719,13 @@ impl ControlEndpoint {
             },
             Request::CreateStrip { strip, shape }
             | Request::CreateProcessedStrip { strip, shape, .. } => {
-                let processor = if let Request::CreateProcessedStrip { kind, .. } = request {
+                let processor = if let Request::CreateProcessedStrip {
+                    kind, remote_fx, ..
+                } = request
+                {
+                    if remote_fx.is_some_and(|target| !kind.is_remote_carla() || !target.valid()) {
+                        return Staged::Refused(Refusal::InvalidValue);
+                    }
                     if kind == shoop_rt_protocol::ProcessorKind::External {
                         if !self.settings.external_dry_wet {
                             return Staged::Refused(Refusal::Unsupported);
@@ -716,7 +737,11 @@ impl ControlEndpoint {
                         {
                             return Staged::Refused(Refusal::InvalidValue);
                         }
-                        Some(crate::model::ProcessorOwner { kind, slot: None })
+                        Some(crate::model::ProcessorOwner {
+                            kind,
+                            slot: None,
+                            remote_fx: None,
+                        })
                     } else {
                         if kind.is_carla() {
                             let width = kind.fixed_audio_channels().unwrap_or_default();
@@ -741,7 +766,10 @@ impl ControlEndpoint {
                             return Staged::Refused(Refusal::InvalidValue);
                         }
                         match self.reserve_processor(kind, None) {
-                            Ok(owner) => Some(owner),
+                            Ok(mut owner) => {
+                                owner.remote_fx = remote_fx;
+                                Some(owner)
+                            }
                             Err(staged) => return staged,
                         }
                     }

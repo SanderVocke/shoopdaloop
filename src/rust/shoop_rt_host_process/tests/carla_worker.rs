@@ -116,6 +116,7 @@ fn companion_installs_real_carla_track_and_bus_banks() {
                     wet_audio_channels: 2,
                     dry_midi: false,
                     processor_type: rack.id.to_string(),
+                    remote_fx: None,
                 },
                 initial_loops: 1,
             })
@@ -616,6 +617,7 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                         wet_audio_channels: 16,
                         dry_midi: true,
                         processor_type: wide.into(),
+                        remote_fx: None,
                     },
                     initial_loops: 1,
                 })

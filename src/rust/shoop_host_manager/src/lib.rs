@@ -4,7 +4,7 @@ mod args;
 mod host_manager;
 
 pub use args::ManagerArgs;
-pub use host_manager::{run, verify_host_discovery};
+pub use host_manager::{discover_fx_services, prepare_desktop_fx_host, run, verify_host_discovery};
 
 fn application_icon() -> eframe::egui::IconData {
     eframe::icon_data::from_png_bytes(include_bytes!(concat!(

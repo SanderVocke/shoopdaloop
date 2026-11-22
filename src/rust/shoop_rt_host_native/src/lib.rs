@@ -11,6 +11,8 @@ use std::sync::Arc;
 mod benchmark;
 #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
 mod carla;
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+mod remote_carla;
 pub use drivers::DriverStatusReport as NativeStatus;
 #[cfg(feature = "jack")]
 pub use drivers::JackConfig;
@@ -38,8 +40,19 @@ pub struct NativeConfig {
 #[derive(Clone, Debug, Default)]
 pub struct CarlaHostOptions {
     pub worker: Option<std::path::PathBuf>,
+    pub remote: Option<RemoteCarla>,
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
     pub ui: Option<shoop_carla::native::CarlaMainThreadUiDispatcher>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteCarla {
+    pub address: std::net::SocketAddr,
+    pub slack_quanta: Option<u16>,
+    pub copies: u8,
+    pub retain_chain: bool,
+    pub auto_reconnect: bool,
+    pub dry_on_loss: bool,
 }
 pub struct Started {
     pub host: NativeHost,
@@ -347,22 +360,25 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
     let processors =
         shoop_host_processors::prepare(&description).map_err(StartError::Processors)?;
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    let carla_first_slot = processors.instances.len();
-    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    let (processors, carla_services) = carla::prepare(
-        &description,
-        driver.buffer_frames as usize,
-        &factory.carla,
-        processors,
-    );
+    let (processors, providers) = {
+        let mut processors = processors;
+        let (dynamic, providers) = remote_carla::Providers::new(
+            &description,
+            driver.buffer_frames as usize,
+            factory.carla.clone(),
+        )
+        .map_err(PrepareError::Runtime)?;
+        processors.dynamic_carla = dynamic;
+        processors.effective.carla = shoop_rt_protocol::processors::EffectiveCarla::unavailable(
+            shoop_rt_protocol::processors::Unavailable::Runtime,
+        );
+        (processors, providers)
+    };
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    if !carla_services.is_empty() {
-        let controls = carla::Controls::new(carla_first_slot, &carla_services);
-        engine
-            .endpoint
-            .install_hosted_processor_controls(Box::new(controls));
-    }
+    engine
+        .endpoint
+        .install_hosted_processor_controls(Box::new(providers));
     engine
         .render
         .set_profiling_clock(drivers::profiling_clock());
@@ -389,11 +405,7 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
             output_midi_events: capacity.events,
             output_midi_bytes: capacity.bytes,
         },
-        renderer: Box::new(NativeRenderer(
-            engine.render,
-            #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-            carla_services,
-        )),
+        renderer: Box::new(NativeRenderer(engine.render)),
         observer: Arc::new(NativeObserver {
             host: engine.host,
             benchmark,
@@ -403,11 +415,7 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
         master_connections,
     })
 }
-pub struct NativeRenderer(
-    pub Render,
-    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    Vec<shoop_carla::service::ChainService>,
-);
+pub struct NativeRenderer(pub Render);
 impl rt_runtime::host::Renderer for NativeRenderer {
     fn next_frame(&self) -> rt_runtime::Frame {
         self.0.next_frame()
@@ -427,10 +435,6 @@ impl drivers::Processor for NativeRenderer {
     fn finish(self: Box<Self>) -> Result<Box<dyn std::any::Any + Send>, rt_runtime::Error> {
         let mut stopped = self.0.into_stopped();
         stopped.cleanup()?;
-        #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-        for service in self.1 {
-            let _ = service.stop(std::time::Duration::from_secs(2));
-        }
         Ok(Box::new(stopped))
     }
     fn diagnostic_work(&self) -> [u64; 14] {
