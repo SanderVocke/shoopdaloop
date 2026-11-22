@@ -52,7 +52,7 @@
     {
       "label": "s1-incremental",
       "stage": 1,
-      "status": "in_progress",
+      "status": "measured_pending_sibling",
       "control_revision": "3fd4e673",
       "source_revision": "b4146e9d",
       "changed_contract": "None; exact descriptor statistics including reuse-disabled issued-view semantics",
@@ -67,8 +67,8 @@
       "physical_build": "work/area-experiments/s1-incremental-route100",
       "callback_build": "work/area-experiments/s1-incremental-benchmark",
       "pending": [
-        "Finish routing from the hashed optimized checkpoint; measure slices and next critical path",
-        "Compare sibling RAM-backed serial count before final stage 1 selection"
+        "Compare sibling RAM-backed serial count against the same baseline RTL control",
+        "Repeat a small physical winner before final selection"
       ],
       "callback_evidence": "s1-incremental-mixed-on-delay7.json",
       "optimized_summary": "s1-incremental-opt-summary.json",
@@ -83,7 +83,30 @@
         "wns_ns": -5.32,
         "whs_ns": 0.002,
         "limiting_path": "metadata.used_reg[4] to metadata.existing_nodes_reg[29], 17 CARRY4 and two LUT3 levels"
-      }
+      },
+      "routed_summary": "s1-incremental-100-summary.json",
+      "routed_deltas_vs_b0": {
+        "lut": -2040,
+        "slices": -189,
+        "ff": 15,
+        "carry4": -1526,
+        "control_sets": -543,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.995,
+        "whs_ns": 0.005,
+        "timing_met": false,
+        "limiting_path": "metadata.new_count_reg[6] to metadata.required_nodes_reg[29], 18 CARRY4 and two LUT3 levels"
+      },
+      "route_status": {
+        "routing_errors": 0,
+        "drc_errors": 0,
+        "drc_warnings": 18,
+        "unconstrained_internal_endpoints": 0
+      },
+      "decision": "Useful behavior-preserving candidate: callback rows unchanged, 4.86% routed LUT reduction, 1.43% slice reduction, and improved but failing setup timing. Compare RAM-backed serial count before final selection; repeat this small slice win if it is selected."
     }
   ],
   "provisioning": {
@@ -105,7 +128,8 @@
     "mixed_delay7_steady_table_cache_hits_per_quantum": 384,
     "mixed_delay7_steady_table_cache_misses_per_quantum": 0,
     "stage_2_followup": "Include a current-block translation per view within the indexed-view cache avenue; it may avoid repeated lookup of the same allocation block between 1024-frame boundaries.",
-    "stage_1_opt": "Incremental count removes 2121 LUT and 1526 CARRY4 versus B0; no callback-cycle/traffic change. Routed slices pending."
+    "stage_1_opt": "Incremental count removes 2121 LUT and 1526 CARRY4 versus B0; no callback-cycle/traffic change. Routed slices pending.",
+    "stage_1_route": "Incremental counter saves 2040 LUT but only 189 slices; the whole connected result remains packing-limited. Next critical path is metadata node arithmetic."
   },
   "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/1026",
   "plan_adjustments": [

@@ -7,7 +7,8 @@ The immutable implementation control is
 
 Current status: the fresh B0 implementation reproduces the archived 100 MHz
 resources and timing exactly. All twelve callback control cases pass and reproduce all 396 archived
-per-quantum rows exactly; stage 1 is ready to begin. See `ledger.json` for
+per-quantum rows exactly. The incremental counter is measured; the serial
+RAM count is next. See `ledger.json` for
 completed checks, pending measurements, and local artifact locations.
 
 | B0 routed control | Archived | Fresh |
@@ -28,7 +29,7 @@ cache counter, reducing measured wall time from 440.97 to 361.20 seconds.
 
 The SP and JP/audio standalone checks pass. Unchanged B0 media lint reports
 unnamed population-count generate blocks and an unused validity bitmap when
-view reuse is disabled; stage 1 will resolve these with the replacement count.
+view reuse is disabled; the incremental replacement resolves these warnings.
 The [workload matrix](workload-matrix.md) maps directed regression and boundary
 coverage to experiment families. Raw callback controls are in `b0-matrix/`.
 Descriptor-statistics controls cover repeated writes, sparse restore, reset with
@@ -117,3 +118,30 @@ Runner checks:
 ```sh
 PYTHONPATH=fpga/synthesis python3 -m unittest fpga/synthesis/test_area_experiments.py
 ```
+
+## Stage 1 measurements
+
+| Routed 100 MHz result | B0 | Incremental count | Change |
+| --- | ---: | ---: | ---: |
+| LUTs | 41,980 | 39,940 | -2,040 |
+| Slices | 13,205 | 13,016 | -189 |
+| Registers | 33,441 | 33,456 | +15 |
+| CARRY4 | 5,491 | 3,965 | -1,526 |
+| Control sets | 2,215 | 1,672 | -543 |
+| Setup slack ns | -5.429 | -3.995 | +1.434 |
+| Hold slack ns | +0.008 | +0.005 | -0.003 |
+
+BRAM remains 77.5 tiles and DSP use remains four. All 33 mixed/on/delay7
+measurement rows, including cycles and traffic, are identical: cold start
+110,356 clocks, steady median/max 54,146/54,753. Diagnostic reads remain six
+clocks. These cycle counts do not qualify 100 MHz operation because setup timing
+fails. There are zero routing or DRC errors, 18 DRC warnings, and zero
+unconstrained internal endpoints in the registered OOC context. The warnings
+cover DSP pipelining and the OOC boundary/absent PS7. Board DDR and I/O remain
+outside this context.
+
+The original combinatorial population-count path disappears. Metadata node
+arithmetic is now the worst routed path (18 CARRY4 plus two LUT3 levels).
+The RAM-backed serial sibling and a repeat of any selected small physical win
+remain pending; the incremental candidate is provisional. The optimized and
+routed raw archives preserve separate report stages and source/checkpoint hashes.
