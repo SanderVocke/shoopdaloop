@@ -353,3 +353,17 @@ its observed maximum is 15,129 clocks higher. C2 favors the primary sequential
 playback workload while retaining all strided, deep retirement and operation
 regressions/costs in the comparison. This selection establishes the control for
 Stage 3; it does not complete the remaining architectural or precision trials.
+
+
+The first Stage 3 audio bookkeeping trial is complete and rejected for the
+default. Every one of 33 callback rows, 1,282 public storage rows and 187 boundary
+rows per AXI width matches C2 exactly, including cycles and traffic. Full
+metadata, ownership, media and deferred regressions pass. It saves 115 LUTs/28
+FFs/22 carries at optimization, but after routing saves only 97 LUTs/four FFs
+and uses **100 more slices** and 25 more physical control sets. Setup slack
+improves from -3.881 to -3.610 ns and still fails.
+
+This small type change illustrates the packing constraint: logical control sets
+fall by one while physical control groups increase. C2 remains the default;
+the MIDI width sibling starts from C2, without inheriting this rejected trial.
+See `s3-audio-100-*` for full reports and matching operation/callback samples.

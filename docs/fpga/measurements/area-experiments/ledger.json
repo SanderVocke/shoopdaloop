@@ -41,7 +41,7 @@
     "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec"
   ],
   "pending": [
-    "Stage3 audio bookkeeping and MIDI bounded-type siblings, then local-frame/arena-relative variants"
+    "Stage3 MIDI bounded types from unchanged C2, then separate local-frame/arena-relative variants"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -790,7 +790,7 @@
     {
       "label": "s3-audio",
       "stage": 3,
-      "status": "measuring",
+      "status": "completed",
       "rtl_source_revision": "85a79735",
       "control_revision": "a046e9c5",
       "control_summary": "s2-path-repeat-100-summary.json",
@@ -806,10 +806,7 @@
         "s3-audio-width-boundaries-axi64-summary.json",
         "s3-audio-store-operations-unit-summary.json"
       ],
-      "pending": [
-        "Routedarea/timing result",
-        "CompareMIDI sibling and decide/repeat ifselected"
-      ],
+      "pending": [],
       "optimized_summary": "s3-audio-opt-summary.json",
       "optimized_deltas_vs_c2": {
         "lut": -115,
@@ -827,7 +824,27 @@
         "wns_ns": -5.215,
         "whs_ns": 0.002
       },
-      "short_callback": "All33 sample/state/cycle/traffic rows exactly match the same logical-frame prefix of C2 extended run"
+      "short_callback": "All33 sample/state/cycle/traffic rows exactly match the same logical-frame prefix of C2 extended run",
+      "routed_summary": "s3-audio-100-summary.json",
+      "routed_deltas_vs_c2": {
+        "lut": -97,
+        "logic_lut": -97,
+        "memory_lut": 0,
+        "ff": -4,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -22,
+        "muxf7": -88,
+        "muxf8": -32,
+        "slices": 100,
+        "control_sets": 25
+      },
+      "routed_timing": {
+        "wns_ns": -3.61,
+        "whs_ns": 0.006
+      },
+      "outcome": "rejected_for_default",
+      "decision": "Exact behavior/cycles preserved, but97 fewer LUTs/four fewer FF/22 fewer carry cost100 more routed slices and25 more physical control sets. Setup improves0.271ns but stillfails. Prefer C2 under slice pressure; retain narrower types as documented alternative, not a default winner."
     }
   ],
   "provisioning": {
