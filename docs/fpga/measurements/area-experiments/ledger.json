@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 1,
-  "status": "stage_0_complete",
+  "status": "in_progress",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -25,7 +25,9 @@
     "Fresh B0 100 MHz route matches archived post-opt and routed resources exactly, including 13205 slices and setup/hold slack -5.429/+0.008 ns; no routing errors",
     "All twelve B0 callback cases passed; all 396 archived per-quantum measurement rows match exactly",
     "Frozen executable SHA-256 and optimized-model source provenance retained with all raw callback JSON and logs",
-    "Workload-to-test mapping established; focused reference/metadata/ownership controls passed; full regression remains a final-stage gate"
+    "Workload-to-test mapping established; focused reference/metadata/ownership controls passed; full regression remains a final-stage gate",
+    "Eleven measurement-tool checks pass, including checkpoint/context preservation, modified constraints, and unmanifested HDL detection",
+    "Incremental occupancy candidate passes all eight descriptor configurations including reset during diagnostics; six-clock reads preserved; warning-denying targeted build passed"
   ],
   "pending": [
     "Compare stage 1 incremental and RAM-backed serial population counts"
@@ -45,6 +47,26 @@
       "raw_reports": "b0-100",
       "timing_met": false,
       "decision": "Immutable B0 control reproduced exactly for physical resources, timing, and the complete short callback matrix"
+    },
+    {
+      "label": "s1-incremental",
+      "stage": 1,
+      "status": "in_progress",
+      "control_revision": "3fd4e673",
+      "source_revision": "b4146e9d",
+      "changed_contract": "None; exact descriptor statistics including reuse-disabled issued-view semantics",
+      "validation": [
+        "Descriptor count/reset/full-pool test passed for 1/7/512/513 views, reuse off/on",
+        "Rust formatting, test attribute policy, and warning-denying targeted build passed",
+        "Standalone media_store lint and generic/ECP5 synthesis passed; connected media_audio_pipeline standalone check still running"
+      ],
+      "physical_build": "work/area-experiments/s1-incremental-opt",
+      "callback_build": "work/area-experiments/s1-incremental-benchmark",
+      "pending": [
+        "Complete full ownership suite and connected callback comparison",
+        "Collect optimized resources and route viable candidate",
+        "Compare sibling RAM-backed serial count before final stage 1 selection"
+      ]
     }
   ],
   "provisioning": {
@@ -74,5 +96,14 @@
       "change": "Open the authorized draft PR before implementation to overlap CI with long baseline measurements",
       "reason": "Expose measurement-tool and regression problems while baseline runs; preserve stage 11 completion gates and no autonomous merge"
     }
-  ]
+  ],
+  "ci": {
+    "draft_pr": 1026,
+    "initial_head": "8c02b795",
+    "fpga_run": 45035631920,
+    "standalone_synthesis": "Fails at unchanged B0 media-store check, consistent with the locally reproduced population-count lint warnings; stage 1 resolves them",
+    "reference_integration": "Passed",
+    "dependency_isolation": "Passed",
+    "native_verification": "In progress"
+  }
 }

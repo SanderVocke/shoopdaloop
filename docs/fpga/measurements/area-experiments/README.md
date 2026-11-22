@@ -54,6 +54,17 @@ run `vivado -mode batch -source run.tcl` in the prepared directory. Preserve
 optimized/routed checkpoints for controls and selected candidates by setting
 `MIDI_SAVE_CHECKPOINTS=1` when using the container runner.
 
+After a successful screen, resume its saved checkpoint into a new directory:
+
+```sh
+python3 fpga/synthesis/area_resume.py --build SCREEN_DIRECTORY \
+  --output NEW_ROUTE_DIRECTORY --stage route
+```
+
+The resume path checks source and context manifests, requires the same flow,
+and records the parent checkpoint hash. It retains the earlier stage reports.
+Changed HDL, constraints, or implementation settings require a fresh screen.
+
 Build the checked benchmark and run the fixed workload matrix:
 
 ```sh
