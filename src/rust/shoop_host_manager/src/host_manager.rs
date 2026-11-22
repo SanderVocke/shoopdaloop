@@ -13,9 +13,13 @@ use shoop_host::{
     remote::{RemoteProfile, Target},
 };
 use std::{
+    net::SocketAddr,
     path::PathBuf,
     process::Command,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -43,14 +47,30 @@ fn ui_command() -> Result<Command> {
 #[derive(Clone)]
 struct Host {
     source: Source,
-    target: Option<Target>,
     name: String,
     endpoint: String,
-    transport: AppTransport,
     remote: bool,
+    details: HostDetails,
+}
+
+#[derive(Clone)]
+enum HostDetails {
+    Session(SessionHost),
+    Fx {
+        address: SocketAddr,
+        instance: String,
+        report: Result<Arc<shoop_remote_fx::Description>, String>,
+    },
+}
+
+#[derive(Clone)]
+struct SessionHost {
+    target: Option<Target>,
+    transport: AppTransport,
     log_file: Option<PathBuf>,
     report: Result<HostReport, String>,
 }
+
 impl Host {
     fn from_target(source: Source, target: Target) -> Self {
         let report = connection::host_report(&target, Duration::from_secs(2))
@@ -60,17 +80,29 @@ impl Host {
             source,
             name: target.name.clone(),
             endpoint: target.endpoint.clone(),
-            transport: target.transport,
-            log_file: target.log_file.clone(),
-            target: Some(target),
-            report,
+            details: HostDetails::Session(SessionHost {
+                transport: target.transport,
+                log_file: target.log_file.clone(),
+                target: Some(target),
+                report,
+            }),
         }
     }
-    fn query(address: String) -> Self {
-        let source = Source::Address(address.clone());
-        match connection::describe(&address, Duration::from_secs(2)) {
-            Ok(target) => Self::from_target(source, target),
-            Err(error) => Self::unavailable(source, format!("{error:#}")),
+    fn from_fx(
+        source: Source,
+        address: SocketAddr,
+        description: shoop_remote_fx::Description,
+    ) -> Self {
+        Self {
+            remote: matches!(source, Source::Address(_)),
+            source,
+            name: format!("FX host · {address}"),
+            endpoint: address.to_string(),
+            details: HostDetails::Fx {
+                address,
+                instance: description.instance.clone(),
+                report: Ok(Arc::new(description)),
+            },
         }
     }
     fn unavailable(source: Source, error: String) -> Self {
@@ -81,18 +113,73 @@ impl Host {
             },
             remote: matches!(source, Source::Address(_)),
             source,
-            target: None,
             endpoint: String::new(),
-            transport: AppTransport::Socket,
-            log_file: None,
-            report: Err(error),
+            details: HostDetails::Session(SessionHost {
+                target: None,
+                transport: AppTransport::Socket,
+                log_file: None,
+                report: Err(error),
+            }),
         }
     }
+    fn session(&self) -> Option<&SessionHost> {
+        match &self.details {
+            HostDetails::Session(session) => Some(session),
+            HostDetails::Fx { .. } => None,
+        }
+    }
+    #[cfg(test)]
+    fn session_mut(&mut self) -> &mut SessionHost {
+        let HostDetails::Session(session) = &mut self.details else {
+            panic!("Expected a session host");
+        };
+        session
+    }
+    fn target(&self) -> Option<&Target> {
+        self.session()?.target.as_ref()
+    }
+    fn inspection_error(&self) -> Option<&str> {
+        match &self.details {
+            HostDetails::Session(session) => session.report.as_ref().err(),
+            HostDetails::Fx { report, .. } => report.as_ref().err(),
+        }
+        .map(String::as_str)
+    }
+    fn mark_unavailable(&mut self, error: String) {
+        match &mut self.details {
+            HostDetails::Session(session) => session.report = Err(error),
+            HostDetails::Fx { report, .. } => *report = Err(error),
+        }
+    }
+    fn local_fx(&self) -> Result<(&shoop_host_processes::Identity, SocketAddr, &str)> {
+        let (
+            Source::Process(identity),
+            HostDetails::Fx {
+                address,
+                instance,
+                report: Ok(_),
+            },
+        ) = (&self.source, &self.details)
+        else {
+            anyhow::bail!("Manage this FX host from the computer running it");
+        };
+        Ok((identity, *address, instance))
+    }
+    fn stop(&self) -> Result<String> {
+        if matches!(self.details, HostDetails::Fx { .. }) {
+            let (identity, address, instance) = self.local_fx()?;
+            fx_services::stop_service(address, identity, instance)?;
+        } else {
+            let mut target = self.current_target()?;
+            if matches!(self.source, Source::Process(_)) {
+                target.use_local_addresses();
+            }
+            connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
+        }
+        Ok("Host stopped.".into())
+    }
     fn current_target(&self) -> Result<Target> {
-        let previous = self
-            .target
-            .as_ref()
-            .context("Host description unavailable")?;
+        let previous = self.target().context("Host description unavailable")?;
         let target = connection::describe(&previous.management, Duration::from_secs(2))?;
         if let Source::Process(expected) = &self.source {
             anyhow::ensure!(
@@ -107,17 +194,33 @@ impl Host {
         self.remote
     }
     fn state(&self) -> (&'static str, egui::Color32) {
+        if let Some(error) = self.inspection_error() {
+            return match error {
+                error if error.starts_with("No listening sockets") => {
+                    ("Starting / unavailable", MUTED)
+                }
+                error if error.contains("Protocol") || error.contains("incompatible") => {
+                    ("Incompatible", AMBER)
+                }
+                error if error.to_lowercase().contains("inspection") => {
+                    ("Inspection unavailable", AMBER)
+                }
+                _ => ("Unreachable", MUTED),
+            };
+        }
+        match &self.details {
+            HostDetails::Fx {
+                report: Ok(report), ..
+            } if fx_services::has_chain_failure(report) => ("Warning", AMBER),
+            HostDetails::Session(session) => session.state(),
+            _ => ("Running", ACCENT),
+        }
+    }
+}
+
+impl SessionHost {
+    fn state(&self) -> (&'static str, egui::Color32) {
         match &self.report {
-            Err(error) if error.starts_with("No listening sockets") => {
-                ("Starting / unavailable", MUTED)
-            }
-            Err(error) if error.contains("Protocol") || error.contains("incompatible") => {
-                ("Incompatible", AMBER)
-            }
-            Err(error) if error.to_lowercase().contains("inspection") => {
-                ("Inspection unavailable", AMBER)
-            }
-            Err(_) => ("Unreachable", MUTED),
             Ok(report) if report.closed => ("Closed", MUTED),
             Ok(report) if !report.ready => ("Not ready", AMBER),
             Ok(report) if audio_fallback(report) => ("Audio fallback", AMBER),
@@ -136,7 +239,7 @@ impl Host {
             {
                 ("Dummy audio", BLUE)
             }
-            Ok(_) => ("Running", ACCENT),
+            _ => ("Running", ACCENT),
         }
     }
 }
@@ -202,7 +305,6 @@ struct Manager {
     tab: Tab,
     saved_log: bool,
     start_dialog: Option<start_host::Dialog>,
-    fx_services: fx_services::Panel,
 }
 impl Manager {
     fn new(profile: Option<PathBuf>) -> Self {
@@ -243,7 +345,6 @@ impl Manager {
             tab: Tab::Overview,
             saved_log: false,
             start_dialog: None,
-            fx_services: fx_services::Panel::default(),
         }
     }
     fn scan(&mut self) {
@@ -336,12 +437,9 @@ impl Manager {
                                 .iter()
                                 .find(|previous| previous.source == host.source)
                             {
-                                host.name = previous.name.clone();
-                                host.endpoint = previous.endpoint.clone();
-                                host.transport = previous.transport;
-                                host.remote = previous.remote;
-                                host.log_file = previous.log_file.clone();
-                                host.target = previous.target.clone();
+                                let error = host.inspection_error().unwrap_or_default().to_owned();
+                                *host = previous.clone();
+                                host.mark_unavailable(error);
                             }
                         }
                     }
@@ -435,7 +533,7 @@ impl Manager {
             .hosts
             .iter()
             .find(|host| Some(&host.source) == self.selected.as_ref())
-            .filter(|host| host.target.is_some())
+            .filter(|host| host.target().is_some())
             .cloned();
         if ui
             .add_enabled(host.is_some(), egui::Button::new("Export profile…"))
@@ -462,7 +560,7 @@ impl Manager {
         egui::Window::new("Connect to address")
             .collapsible(false)
             .show(context, |ui| {
-                ui.label("Host address (HOST:PORT)");
+                ui.label("Session or FX host address (HOST:PORT)");
                 ui.text_edit_singleline(&mut address);
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
@@ -496,18 +594,7 @@ impl Manager {
             let sender = self.sender.clone();
             std::thread::spawn(move || {
                 let _ = sender.send(Event::Started(
-                    request
-                        .start()
-                        .and_then(|target| {
-                            let source = Source::Process(
-                                target
-                                    .process
-                                    .clone()
-                                    .context("Host process identity unavailable")?,
-                            );
-                            Ok(Host::from_target(source, target))
-                        })
-                        .map_err(|error| format!("{error:#}")),
+                    request.start().map_err(|error| format!("{error:#}")),
                 ));
             });
         }
@@ -568,9 +655,6 @@ impl Manager {
                             self.new_host();
                         }
                         ui.menu_button("Advanced", |ui| self.advanced_menu(ui));
-                        if ui.button("FX services…").clicked() {
-                            self.fx_services.open = true;
-                        }
                     });
                 });
             });
@@ -584,7 +668,7 @@ impl Manager {
                 ui.horizontal(|ui| {
                     if self.inspection_errors.is_empty() {
                         ui.label(
-                            egui::RichText::new("Local process discovery")
+                            egui::RichText::new("Host discovery")
                                 .size(12.0)
                                 .color(MUTED),
                         );
@@ -650,12 +734,6 @@ impl Manager {
                 self.show_content(ui);
             });
         self.show_address_dialog(ui.ctx());
-        if let Some(address) = self.fx_services.show(ui.ctx()) {
-            self.new_host();
-            if let Some(dialog) = &mut self.start_dialog {
-                dialog.select_fx_service(address);
-            }
-        }
         self.show_start_dialog(ui.ctx());
         self.show_stop_dialog(ui.ctx());
         self.show_force_dialog(ui.ctx());
@@ -685,19 +763,21 @@ impl Manager {
             );
             return;
         };
-        let can_open = host.target.as_ref().is_some_and(|target| target.can_attach)
-            && host
-                .report
-                .as_ref()
-                .is_ok_and(|report| report.ready && !report.busy && !report.closed);
-        let can_stop = host
-            .report
-            .as_ref()
-            .is_ok_and(|report| !report.busy && !report.closed);
-        let busy = host
-            .report
-            .as_ref()
-            .is_ok_and(|report| report.busy && !report.closed);
+        let session = host.session();
+        let report = session.and_then(|session| session.report.as_ref().ok());
+        let fx_address = match &host.details {
+            HostDetails::Fx {
+                address,
+                report: Ok(_),
+                ..
+            } => Some(*address),
+            _ => None,
+        };
+        let can_open = host.target().is_some_and(|target| target.can_attach)
+            && report.is_some_and(|report| report.ready && !report.busy && !report.closed);
+        let can_stop =
+            report.is_some_and(|report| !report.busy && !report.closed) || host.local_fx().is_ok();
+        let busy = report.is_some_and(|report| report.busy && !report.closed);
         ui.horizontal(|ui| {
             let title_width = (ui.available_width() - 196.0).max(100.0);
             ui.allocate_ui_with_layout(
@@ -742,6 +822,8 @@ impl Manager {
                         )
                         .on_disabled_hover_text(if busy {
                             "The connected UI controls shutdown. Close it to release control."
+                        } else if fx_address.is_some() {
+                            "Stop this FX host from the computer running it."
                         } else {
                             "This host is unavailable."
                         })
@@ -764,6 +846,17 @@ impl Manager {
                         .on_hover_text(
                         "Close the looper UI to release control, or stop the host from that UI.",
                     );
+                } else if let Some(address) = fx_address {
+                    if ui
+                        .add_enabled(!self.action_pending, primary_button("Start session host…"))
+                        .on_hover_text("Use this FX host for the new session.")
+                        .clicked()
+                    {
+                        self.new_host();
+                        if let Some(dialog) = &mut self.start_dialog {
+                            dialog.select_fx_service(address);
+                        }
+                    }
                 } else if can_open {
                     if ui
                         .add_enabled(!self.action_pending, primary_button("Open UI"))
@@ -791,15 +884,15 @@ impl Manager {
             if tab_button(ui, "Overview", self.tab == Tab::Overview).clicked() {
                 self.tab = Tab::Overview;
             }
-            if tab_button(ui, "Logs", self.tab == Tab::Logs).clicked() {
+            if session.is_some() && tab_button(ui, "Logs", self.tab == Tab::Logs).clicked() {
                 self.tab = Tab::Logs;
             }
         });
         ui.separator();
         ui.add_space(6.0);
-        if self.tab == Tab::Logs {
+        if let Some(session) = session.filter(|_| self.tab == Tab::Logs) {
             if previous_tab != Tab::Logs && !host.is_remote() {
-                if let Some(path) = host.log_file.clone() {
+                if let Some(path) = session.log_file.clone() {
                     self.read_logs(path);
                 }
             }
@@ -810,7 +903,7 @@ impl Manager {
                         .strong(),
                 );
                 ui.label(egui::RichText::new("Log file access is local to the host.").color(MUTED));
-            } else if host.log_file.is_none() {
+            } else if session.log_file.is_none() {
                 ui.label(
                     egui::RichText::new("No log file configured")
                         .size(18.0)
@@ -827,11 +920,39 @@ impl Manager {
                 .id_salt(("overview", &host.source))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    match &host.report {
-                        Ok(report) => show_overview(ui, report),
-                        Err(error) => {
+                    match &host.details {
+                        HostDetails::Session(SessionHost {
+                            report: Ok(report), ..
+                        }) => show_overview(ui, report),
+                        HostDetails::Fx {
+                            report: Ok(report), ..
+                        } => {
+                            if let Some((chain, visible)) = fx_services::show_overview(
+                                ui,
+                                report,
+                                host.local_fx().is_ok() && !self.action_pending,
+                            ) {
+                                let host = host.clone();
+                                self.action(move || {
+                                    let (identity, address, instance) = host.local_fx()?;
+                                    fx_services::set_editor(
+                                        address, identity, instance, chain, visible,
+                                    )?;
+                                    Ok(if visible {
+                                        "Editor opened"
+                                    } else {
+                                        "Editor closed"
+                                    }
+                                    .into())
+                                });
+                            }
+                        }
+                        _ => {
                             ui.label(egui::RichText::new("Host unreachable").size(15.0).strong());
-                            ui.label(egui::RichText::new(error).color(MUTED));
+                            ui.label(
+                                egui::RichText::new(host.inspection_error().unwrap_or_default())
+                                    .color(MUTED),
+                            );
                             ui.add_space(4.0);
                             if ui
                                 .add_enabled(
@@ -844,11 +965,9 @@ impl Manager {
                             }
                         }
                     }
-                    if host.transport == AppTransport::SharedMemory
-                        && host
-                            .target
-                            .as_ref()
-                            .is_some_and(|target| !target.can_attach)
+                    if session
+                        .is_some_and(|session| session.transport == AppTransport::SharedMemory)
+                        && host.target().is_some_and(|target| !target.can_attach)
                     {
                         ui.add_space(6.0);
                         ui.label(
@@ -953,11 +1072,16 @@ impl Manager {
             .resizable(false)
             .default_width(400.0)
             .show(context, |ui| {
-                if let Some(host) = self.hosts.iter().find(|host| host.source == source) {
+                let host = self.hosts.iter().find(|host| host.source == source);
+                if let Some(host) = host {
                     ui.strong(&host.name);
                 }
                 ui.label(
-                    "Stopping ends playback and recording and discards the in-memory session.",
+                    if host.is_some_and(|host| matches!(host.details, HostDetails::Fx { .. })) {
+                        "Stopping closes its chains and interrupts remote FX processing."
+                    } else {
+                        "Stopping ends playback and recording and discards the in-memory session."
+                    },
                 );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -977,15 +1101,7 @@ impl Manager {
                             .iter()
                             .find(|host| host.source == source)
                             .cloned();
-                        self.action(move || {
-                            let host = host.context("Host no longer selected")?;
-                            let mut target = host.current_target()?;
-                            if matches!(host.source, Source::Process(_)) {
-                                target.use_local_addresses();
-                            }
-                            connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
-                            Ok("Host stopped.".into())
-                        });
+                        self.action(move || host.context("Host no longer selected")?.stop());
                     }
                 });
             });
@@ -999,7 +1115,13 @@ impl Manager {
             .collapsible(false).resizable(false).default_width(400.0)
             .show(context, |ui| {
                 ui.strong(source.label());
-                ui.label("Terminates the process without session cleanup. Playback and recording stop; unsaved state is lost.");
+                let fx = self.hosts.iter().find(|host| host.source == source)
+                    .is_some_and(|host| matches!(host.details, HostDetails::Fx { .. }));
+                ui.label(if fx {
+                    "Terminates the process immediately. Remote FX processing stops and unsaved changes may be lost."
+                } else {
+                    "Terminates the process without session cleanup. Playback and recording stop; unsaved state is lost."
+                });
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() { self.confirm_force = None; }
                     if ui.button("Force stop").clicked() {
@@ -1070,11 +1192,12 @@ pub fn verify_host_discovery(target: &Target, expected: Option<(bool, bool)>) ->
     });
     if let Some((busy, can_attach)) = expected {
         let host = host.context("Fresh manager did not discover the companion")?;
-        let description = host
+        let session = host.session().context("Companion is not a session host")?;
+        let description = session
             .target
             .as_ref()
             .context("Companion description unavailable")?;
-        let report = host
+        let report = session
             .report
             .as_ref()
             .map_err(|error| anyhow::anyhow!(error.clone()))?;
@@ -1166,11 +1289,20 @@ fn host_row(ui: &mut egui::Ui, host: &Host, selected: bool) -> egui::Response {
         color,
     );
     let location = if host.is_remote() { "Remote" } else { "Local" };
-    let subtitle = match &host.report {
-        Ok(report) if !report.closed && report.ready => format!(
+    let subtitle = match &host.details {
+        HostDetails::Session(SessionHost {
+            report: Ok(report), ..
+        }) if !report.closed && report.ready => format!(
             "{location}  ·  {}",
             if report.busy { "In use" } else { "Available" }
         ),
+        HostDetails::Fx {
+            report: Ok(report), ..
+        } => {
+            let count = report.chains.len();
+            let label = if count == 1 { "chain" } else { "chains" };
+            format!("{location}  ·  {count} {label}")
+        }
         _ => location.to_owned(),
     };
     painter.text(
@@ -1307,6 +1439,9 @@ fn show_overview(ui: &mut egui::Ui, report: &HostReport) {
     });
 }
 fn show_advanced(ui: &mut egui::Ui, host: &Host) {
+    let session = host
+        .session()
+        .and_then(|session| session.report.as_ref().ok());
     ui.add_space(4.0);
     egui::Grid::new("host_details")
         .num_columns(2)
@@ -1318,7 +1453,7 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
                 ui.end_row();
             };
             row("Endpoint", host.endpoint.clone());
-            if let Ok(report) = &host.report {
+            if let Some(report) = session {
                 row(
                     "Audio state",
                     format!("{:?}", report.effective.audio_driver),
@@ -1348,12 +1483,26 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
                     );
                 }
             }
+            if let HostDetails::Fx {
+                report: Ok(report), ..
+            } = &host.details
+            {
+                row(
+                    "Supported chains",
+                    report
+                        .kinds
+                        .iter()
+                        .map(|kind| kind.label())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+            }
         });
-    if let Err(error) = &host.report {
+    if let Some(error) = host.inspection_error() {
         ui.add_space(4.0);
         ui.colored_label(AMBER, error);
     }
-    if let Ok(report) = &host.report {
+    if let Some(report) = session {
         for diagnostic in &report.diagnostics {
             ui.colored_label(AMBER, diagnostic);
         }
@@ -1375,9 +1524,14 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
 }
 
 fn diagnostic_text(host: &Host) -> String {
-    let state = match &host.report {
-        Ok(report) => serde_json::to_string_pretty(report).unwrap_or_default(),
-        Err(error) => error.clone(),
+    let state = match &host.details {
+        HostDetails::Session(SessionHost {
+            report: Ok(report), ..
+        }) => serde_json::to_string_pretty(report).unwrap_or_default(),
+        HostDetails::Fx {
+            report: Ok(report), ..
+        } => format!("{report:#?}"),
+        _ => host.inspection_error().unwrap_or_default().to_owned(),
     };
     format!(
         "Host: {}\nEndpoint: {}\nSource: {}\n{state}",
@@ -1573,21 +1727,23 @@ mod tests {
             source: Source::Process(target.process.clone().unwrap()),
             name: target.name.clone(),
             endpoint: target.endpoint.clone(),
-            transport: target.transport,
             remote: false,
-            log_file: None,
-            target: Some(target),
-            report: Ok(HostReport {
-                ready: true,
-                busy: false,
-                closed: false,
-                master_auto_connect: true,
-                loop_smoothing_ms: 3,
-                requested: Some(Default::default()),
-                effective: Default::default(),
-                diagnostics: vec![],
-                pending_operations: 0,
-                restart_required_fields: vec![],
+            details: HostDetails::Session(SessionHost {
+                transport: target.transport,
+                log_file: None,
+                target: Some(target),
+                report: Ok(HostReport {
+                    ready: true,
+                    busy: false,
+                    closed: false,
+                    master_auto_connect: true,
+                    loop_smoothing_ms: 3,
+                    requested: Some(Default::default()),
+                    effective: Default::default(),
+                    diagnostics: vec![],
+                    pending_operations: 0,
+                    restart_required_fields: vec![],
+                }),
             }),
         }
     }
@@ -1599,6 +1755,78 @@ mod tests {
         manager.hosts.push(host);
         manager
     }
+    #[shoop_wasm_test_support::shoop_test]
+    fn fx_host_uses_the_shared_list_overview_and_actions() {
+        use shoop_remote_fx::{
+            ChainDescription, Config, Description, Kind, Lifecycle, MediaLimits, Status,
+        };
+
+        let mut manager = manager_with_host();
+        let address = "127.0.0.1:24510".parse().unwrap();
+        let source = Source::Process(shoop_host_processes::Identity {
+            pid: 4243,
+            started: 124,
+            executable: "shoop_host".into(),
+        });
+        let stereo = MediaLimits {
+            channels: 2,
+            midi: false,
+            midi_events: 0,
+            midi_bytes: 0,
+        };
+        let host = Host::from_fx(
+            source.clone(),
+            address,
+            Description {
+                instance: "fx-host".into(),
+                pid: 4243,
+                kinds: vec![Kind::Rack],
+                chains: vec![ChainDescription {
+                    id: "example-chain".into(),
+                    kind: Kind::Rack,
+                    config: Config {
+                        sample_rate: 48_000,
+                        quantum: 32,
+                        batch_quanta: 4,
+                        slack_quanta: 8,
+                        input: stereo,
+                        output: stereo,
+                        datagram_bytes: 1200,
+                        copies: 2,
+                    },
+                    attached: true,
+                    status: Status {
+                        active: true,
+                        lifecycle: Lifecycle::Running,
+                        editor_visible: Some(false),
+                        ..Default::default()
+                    },
+                }],
+            },
+        );
+        let name = host.name.clone();
+        manager.hosts.push(host);
+        let mut screen = Screen::new(egui::vec2(700.0, 400.0));
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Studio") && screen.contains(&name));
+        assert!(!screen.contains("FX services…"));
+        screen.click(&name, |ui| manager.show(ui));
+        assert_eq!(manager.selected.as_ref(), Some(&source));
+        assert!(screen.contains("Overview") && screen.contains("Running"));
+        assert!(screen.contains("Rack · example") && screen.contains("2 in / 2 out"));
+        assert!(screen.contains("Active") && screen.contains("Open editor"));
+        screen.click("Start session host…", |ui| manager.show(ui));
+        assert!(manager.start_dialog.is_some());
+        assert!(screen.contains("FX service"));
+        screen.click("Cancel", |ui| manager.show(ui));
+        screen.click("•••", |ui| manager.show(ui));
+        screen.click("Stop host…", |ui| manager.show(ui));
+        assert_eq!(manager.confirm_stop.as_ref(), Some(&source));
+        assert!(screen.contains("interrupts remote FX processing"));
+        screen.click("Cancel", |ui| manager.show(ui));
+        assert!(manager.confirm_stop.is_none());
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn compact_manager_preserves_operator_actions_and_live_controller_protection() {
         for size in [egui::vec2(700.0, 400.0), egui::vec2(800.0, 500.0)] {
@@ -1615,7 +1843,7 @@ mod tests {
             assert!(screen.contains("discards the in-memory session"));
             screen.click("Cancel", |ui| manager.show(ui));
             assert!(manager.confirm_stop.is_none() && !manager.action_pending);
-            manager.hosts[0].report.as_mut().unwrap().busy = true;
+            manager.hosts[0].session_mut().report.as_mut().unwrap().busy = true;
             screen.frame(vec![], |ui| manager.show(ui));
             assert!(screen.contains("UI connected") && !screen.contains("Open UI"));
             screen.click("•••", |ui| manager.show(ui));
@@ -1627,7 +1855,7 @@ mod tests {
     fn manager_presents_fallback_and_truthful_shared_attachment_availability() {
         let mut screen = Screen::new(egui::vec2(800.0, 700.0));
         let mut manager = manager_with_host();
-        let report = manager.hosts[0].report.as_mut().unwrap();
+        let report = manager.hosts[0].session_mut().report.as_mut().unwrap();
         report.requested.as_mut().unwrap().driver =
             shoop_app_api::AudioDriverConfig::Cpal(Default::default());
         report.diagnostics.push("Output device disconnected".into());
@@ -1643,13 +1871,18 @@ mod tests {
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("No log file configured"));
         screen.click("Overview", |ui| manager.show(ui));
-        manager.hosts[0].transport = AppTransport::SharedMemory;
+        manager.hosts[0].session_mut().transport = AppTransport::SharedMemory;
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("Open UI"));
-        manager.hosts[0].target.as_mut().unwrap().can_attach = false;
+        manager.hosts[0]
+            .session_mut()
+            .target
+            .as_mut()
+            .unwrap()
+            .can_attach = false;
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("cannot reattach") && !screen.contains("Open UI"));
-        manager.hosts[0].report = Err("Connection refused".into());
+        manager.hosts[0].session_mut().report = Err("Connection refused".into());
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("Host unreachable") && screen.contains("Connection refused"));
         screen.click("Advanced details", |ui| manager.show(ui));
@@ -1675,7 +1908,7 @@ mod tests {
         };
         let mut manager = manager_with_host();
         let selected = manager.selected.clone();
-        manager.hosts[0].log_file = Some(path.clone());
+        manager.hosts[0].session_mut().log_file = Some(path.clone());
         let mut screen = Screen::new(egui::vec2(800.0, 500.0));
         screen.frame(vec![], |ui| manager.show(ui));
         screen.click("Logs", |ui| manager.show(ui));
@@ -1818,7 +2051,7 @@ mod tests {
     fn force_stop_requires_local_identity_and_separate_confirmation() {
         let mut manager = manager_with_host();
         let mut screen = Screen::new(egui::vec2(800.0, 500.0));
-        manager.hosts[0].report = Err("Host not responding".into());
+        manager.hosts[0].session_mut().report = Err("Host not responding".into());
         screen.frame(vec![], |ui| manager.show(ui));
         screen.click("•••", |ui| manager.show(ui));
         screen.click("Force stop…", |ui| manager.show(ui));
@@ -1895,18 +2128,22 @@ mod tests {
     fn intended_dummy_audio_and_physical_driver_fallback_are_distinct() {
         let mut host = host();
         assert_eq!(host.state().0, "Dummy audio");
-        let report = host.report.as_mut().unwrap();
+        let report = host.session_mut().report.as_mut().unwrap();
         report.effective.audio_driver = shoop_app_api::AudioDriverState::Running;
         assert_eq!(host.state().0, "Running");
-        host.report.as_mut().unwrap().effective.audio_driver =
-            shoop_app_api::AudioDriverState::Failed;
+        host.session_mut()
+            .report
+            .as_mut()
+            .unwrap()
+            .effective
+            .audio_driver = shoop_app_api::AudioDriverState::Failed;
         assert_eq!(host.state().0, "Warning");
-        let report = host.report.as_mut().unwrap();
+        let report = host.session_mut().report.as_mut().unwrap();
         report.effective.audio_driver = shoop_app_api::AudioDriverState::Dummy;
         report.requested.as_mut().unwrap().driver =
             shoop_app_api::AudioDriverConfig::Cpal(Default::default());
         assert_eq!(host.state().0, "Audio fallback");
-        host.report = Err("Unavailable".into());
+        host.mark_unavailable("Unavailable".into());
         assert_eq!(host.state().0, "Unreachable");
     }
     #[shoop_wasm_test_support::shoop_test]

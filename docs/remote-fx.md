@@ -6,13 +6,13 @@ The default Native build includes Carla support. Use companions from the same bu
 
 ## Start from Host Manager
 
-1. On the desktop, open **Host Manager → FX services** and start a service. Enable **LAN access** if the looper runs on another machine. **One process per chain** enables supervised Carla subprocesses.
-2. In Host Manager on the looper machine, choose **Start host with this service…**, then start the Native host. The service is selected for the new session’s tracks and buses.
+1. On the desktop, open **Host Manager → New host… → FX host** and select **Start host**. Enable **LAN access** if the looper runs on another machine. **One process per chain** enables supervised Carla subprocesses.
+2. Select the FX host from the main list in Host Manager on the looper machine and choose **Start session host…**. The FX host is selected for the new session’s tracks and buses.
 3. In Shoop, use **Add track → Dry/wet** and select a **Remote Carla** processor, or select one from a bus’s FX menu. The host opens the chain when you apply the change. Use the regular **Carla** entries for local processing where Carla is installed.
 
-You can also choose a service from **Add track** in an existing session. A track can use the host’s service or choose a different one. Host Manager and the desktop picker discover services on the same machine and on the IPv4 LAN. Enter the IP address and TCP port for a service across a routed network or on an IPv6-only network. The service address must be reachable from the Native host.
+You can also choose a service from **Add track** in an existing session. A track can use the host’s service or choose a different one. Host Manager and the desktop picker discover services on the same machine and on the IPv4 LAN. For a routed or IPv6-only network, use **Advanced → Connect to address…** in Host Manager or enter the address in the track picker. The service address must be reachable from the Native host.
 
-Carla workers and their buffers are created on demand. Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. Host Manager on that machine also lists the current chains and their negotiated widths, and can open or close each editor. Closing either interface leaves the services and session running.
+Carla workers and their buffers are created on demand. Session loads stage their own chains before committing the new graph. Deleting a track, removing a bus's FX, or replacing a session releases the corresponding chains. The FX control in Shoop opens and closes the editor on the service machine. In Host Manager, select the FX host to see its current chains and negotiated widths. On that machine, use the chain's editor control or **••• → Stop host…**. Closing either interface leaves the services and session running.
 
 ## Start from the command line
 

@@ -1,315 +1,200 @@
-use super::discovery;
+use super::{discovery, Host, Source, AMBER, MUTED};
 use anyhow::{ensure, Context, Result};
 use eframe::egui;
 use shoop_host::launch;
 use shoop_host_processes::Identity;
-use shoop_remote_fx::{describe, Description};
+use shoop_remote_fx::{describe, ChainDescription, Description, Lifecycle};
 use std::{
     collections::HashSet,
     io::{BufRead, BufReader, Read},
     net::SocketAddr,
     process::{Command, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::mpsc,
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-type Reply = std::result::Result<Vec<Service>, String>;
-
-struct Service {
-    address: SocketAddr,
-    identity: Option<Identity>,
-    description: std::result::Result<Description, String>,
-}
-
-pub(super) struct Panel {
-    pub(super) open: bool,
+pub(super) struct Settings {
     bind: String,
     lan: bool,
     isolated: bool,
-    manual: String,
-    addresses: Vec<SocketAddr>,
-    services: Vec<Service>,
-    next: Instant,
-    pending: Option<Receiver<Reply>>,
-    error: Option<String>,
 }
 
-impl Default for Panel {
+impl Default for Settings {
     fn default() -> Self {
         Self {
-            open: false,
             bind: "127.0.0.1:0".into(),
             lan: false,
             isolated: false,
-            manual: String::new(),
-            addresses: Vec::new(),
-            services: Vec::new(),
-            next: Instant::now(),
-            pending: None,
-            error: None,
         }
     }
 }
 
-impl Panel {
-    pub(super) fn show(&mut self, context: &egui::Context) -> Option<SocketAddr> {
-        if let Some(pending) = &self.pending {
-            match pending.try_recv() {
-                Ok(result) => {
-                    self.pending = None;
-                    match result {
-                        Ok(services) => self.services = services,
-                        Err(error) => self.error = Some(error),
-                    }
-                    self.next = Instant::now() + Duration::from_secs(2);
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.pending = None;
-                    self.error = Some("FX service inspection stopped".into());
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-            }
-        }
-        if !self.open {
-            return None;
-        }
-        context.request_repaint_after(Duration::from_millis(100));
-        if self.pending.is_none() && Instant::now() >= self.next {
-            self.refresh(|| Ok(()));
-        }
-        let mut selected = None;
-        let mut open = self.open;
-        let mut stop = None;
-        let mut editor = None;
-        egui::Window::new("FX services")
-            .open(&mut open)
-            .show(context, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Listen address");
-                    ui.text_edit_singleline(&mut self.bind);
-                    if ui.checkbox(&mut self.lan, "LAN access").changed()
-                        && matches!(self.bind.as_str(), "127.0.0.1:0" | "0.0.0.0:0")
-                    {
-                        self.bind = if self.lan { "0.0.0.0:0" } else { "127.0.0.1:0" }.into();
-                    }
-                    if ui
-                        .add_enabled(self.pending.is_none(), egui::Button::new("Start service"))
-                        .clicked()
-                    {
-                        let bind = self.bind.clone();
-                        let lan = self.lan;
-                        let isolated = self.isolated;
-                        self.refresh(move || {
-                            let address =
-                                bind.parse().context("Invalid FX service listen address")?;
-                            launch_service(address, lan, isolated)?;
-                            Ok(())
-                        });
-                    }
-                });
-                ui.checkbox(&mut self.isolated, "One process per chain");
-                ui.horizontal(|ui| {
-                    ui.label("Service address");
-                    ui.text_edit_singleline(&mut self.manual);
-                    if ui.button("Inspect address").clicked() {
-                        match self.manual.trim().parse() {
-                            Ok(address) if !self.addresses.contains(&address) => {
-                                self.addresses.push(address);
-                                self.next = Instant::now();
-                            }
-                            Ok(_) => self.next = Instant::now(),
-                            Err(_) => self.error = Some("Enter an IP address and port".into()),
-                        }
-                    }
-                });
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                for service in &self.services {
-                    ui.separator();
-                    ui.strong(service.address.to_string());
-                    match &service.description {
-                        Ok(description) => {
-                            let active = description
-                                .chains
-                                .iter()
-                                .filter(|chain| chain.attached && chain.status.active)
-                                .count();
-                            ui.label(format!(
-                                "{active} active · {} chains",
-                                description.chains.len()
-                            ));
-                            ui.label(format!(
-                                "Supported chains: {}",
-                                description
-                                    .kinds
-                                    .iter()
-                                    .map(|kind| kind.label())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ));
-                            ui.horizontal(|ui| {
-                                if ui.button("Start host with this service…").clicked() {
-                                    selected = Some(service.address);
-                                }
-                                if let Some(identity) = &service.identity {
-                                    if ui
-                                        .add_enabled(
-                                            self.pending.is_none(),
-                                            egui::Button::new("Stop service"),
-                                        )
-                                        .clicked()
-                                    {
-                                        stop = Some((
-                                            service.address,
-                                            identity.clone(),
-                                            description.instance.clone(),
-                                        ));
-                                    }
-                                }
-                            });
-                            for chain in &description.chains {
-                                ui.horizontal(|ui| {
-                                    let id = chain.id.split('-').next().unwrap_or(&chain.id);
-                                    ui.label(format!(
-                                        "{} {id} · {} in / {} out",
-                                        chain.kind.label(),
-                                        chain.config.input.channels,
-                                        chain.config.output.channels
-                                    ));
-                                    if !chain.attached {
-                                        ui.label("Waiting for owner");
-                                    } else if chain.status.active {
-                                        ui.label("Active");
-                                    } else {
-                                        ui.label("Idle");
-                                    }
-                                    if let (Some(identity), Some(visible)) =
-                                        (&service.identity, chain.status.editor_visible)
-                                    {
-                                        let label = if visible {
-                                            "Close editor"
-                                        } else {
-                                            "Open editor"
-                                        };
-                                        if ui
-                                            .add_enabled(
-                                                self.pending.is_none(),
-                                                egui::Button::new(label),
-                                            )
-                                            .clicked()
-                                        {
-                                            editor = Some((
-                                                service.address,
-                                                identity.clone(),
-                                                description.instance.clone(),
-                                                chain.id.clone(),
-                                                !visible,
-                                            ));
-                                        }
-                                    }
-                                });
-                            }
-                        }
-                        Err(error) => {
-                            ui.colored_label(egui::Color32::LIGHT_RED, error);
-                        }
-                    }
-                }
-            });
-        if let Some((address, identity, instance)) = stop {
-            self.refresh(move || stop_service(address, &identity, instance));
-        }
-        if let Some((address, identity, instance, chain, visible)) = editor {
-            self.refresh(move || {
-                ensure!(
-                    shoop_host_processes::identity(identity.pid)?.as_ref() == Some(&identity),
-                    "FX service identity changed"
-                );
-                shoop_remote_fx::set_editor(address, instance, chain, visible)?;
-                Ok(())
-            });
-        }
-        self.open = open && selected.is_none();
-        selected
-    }
-
-    fn refresh(&mut self, first: impl FnOnce() -> Result<()> + Send + 'static) {
-        let mut addresses = self.addresses.clone();
-        let (reply, pending) = mpsc::channel();
-        self.pending = Some(pending);
-        self.error = None;
-        thread::spawn(move || {
-            let result = first()
-                .and_then(|()| {
-                    for address in shoop_remote_fx::discover_lan().unwrap_or_default() {
-                        if !addresses.contains(&address) {
-                            addresses.push(address);
-                        }
-                    }
-                    scan(addresses)
-                })
-                .map_err(|error| format!("{error:#}"));
-            let _ = reply.send(result);
-        });
-    }
-}
-
-fn scan(addresses: Vec<SocketAddr>) -> Result<Vec<Service>> {
-    let mut services = Vec::new();
-    let mut instances = HashSet::new();
-    for process in shoop_host_processes::snapshot()?.processes {
-        for address in process.addresses.into_iter().map(discovery::local_address) {
-            if let Ok(description) = describe(address) {
-                if description.pid == process.identity.pid
-                    && instances.insert(description.instance.clone())
+impl Settings {
+    pub(super) fn fields(&mut self, ui: &mut egui::Ui) {
+        egui::Grid::new("new_fx_host")
+            .num_columns(2)
+            .show(ui, |ui| {
+                ui.label("Listen address");
+                ui.text_edit_singleline(&mut self.bind);
+                ui.end_row();
+                ui.label("Network");
+                if ui.checkbox(&mut self.lan, "LAN access").changed()
+                    && matches!(self.bind.as_str(), "127.0.0.1:0" | "0.0.0.0:0")
                 {
-                    services.push(Service {
-                        address,
-                        identity: Some(process.identity.clone()),
-                        description: Ok(description),
-                    });
+                    self.bind = if self.lan { "0.0.0.0:0" } else { "127.0.0.1:0" }.into();
+                }
+                ui.end_row();
+                ui.label("Carla isolation");
+                ui.checkbox(&mut self.isolated, "One process per chain");
+                ui.end_row();
+            });
+    }
+
+    pub(super) fn request(&self) -> Result<Request> {
+        let address: SocketAddr = self
+            .bind
+            .trim()
+            .parse()
+            .context("Invalid FX host listen address")?;
+        ensure!(
+            self.lan || address.ip().is_loopback(),
+            "Enable LAN access for a non-loopback FX host"
+        );
+        Ok(Request {
+            address,
+            lan: self.lan,
+            isolated: self.isolated,
+        })
+    }
+}
+
+pub(super) struct Request {
+    address: SocketAddr,
+    lan: bool,
+    isolated: bool,
+}
+
+impl Request {
+    pub(super) fn start(self) -> Result<Host> {
+        let (address, description) = launch_service(self.address, self.lan, self.isolated)?;
+        let identity = shoop_host_processes::identity(description.pid)?
+            .context("FX host process identity unavailable")?;
+        Ok(Host::from_fx(
+            Source::Process(identity),
+            address,
+            description,
+        ))
+    }
+}
+
+fn chain_status(chain: &ChainDescription) -> (&'static str, egui::Color32) {
+    if !chain.attached {
+        return ("Waiting for owner", MUTED);
+    }
+    match chain.status.lifecycle {
+        Lifecycle::Starting => ("Starting", MUTED),
+        Lifecycle::Restarting => ("Restarting", AMBER),
+        Lifecycle::Degraded => ("Degraded", AMBER),
+        Lifecycle::Crashed => ("Crashed", AMBER),
+        Lifecycle::Unavailable => ("Unavailable", AMBER),
+        Lifecycle::Running if chain.status.active => ("Active", super::ACCENT),
+        Lifecycle::Running | Lifecycle::Stopped => ("Idle", MUTED),
+    }
+}
+
+pub(super) fn has_chain_failure(description: &Description) -> bool {
+    description.chains.iter().any(|chain| {
+        chain.attached
+            && matches!(
+                chain.status.lifecycle,
+                Lifecycle::Degraded | Lifecycle::Crashed | Lifecycle::Unavailable
+            )
+    })
+}
+
+pub(super) fn show_overview(
+    ui: &mut egui::Ui,
+    description: &Description,
+    can_edit: bool,
+) -> Option<(String, bool)> {
+    let active = description
+        .chains
+        .iter()
+        .filter(|chain| chain.attached && chain.status.active)
+        .count();
+    ui.columns(2, |columns| {
+        super::metric(
+            &mut columns[0],
+            "CHAINS",
+            description.chains.len().to_string(),
+        );
+        super::metric(&mut columns[1], "ACTIVE", active.to_string());
+    });
+    if description.chains.is_empty() {
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new("No chains assigned").color(MUTED));
+        return None;
+    }
+    ui.add_space(6.0);
+    let mut editor = None;
+    egui::Grid::new("fx_chains").striped(true).show(ui, |ui| {
+        for chain in &description.chains {
+            let id = chain.id.split('-').next().unwrap_or(&chain.id);
+            ui.label(format!("{} · {id}", chain.kind.label()))
+                .on_hover_text(&chain.id);
+            ui.label(format!(
+                "{} in / {} out",
+                chain.config.input.channels, chain.config.output.channels
+            ));
+            let (label, color) = chain_status(chain);
+            ui.colored_label(color, label);
+            if let Some(visible) = chain.status.editor_visible {
+                let label = if visible {
+                    "Close editor"
+                } else {
+                    "Open editor"
+                };
+                if ui
+                    .add_enabled(can_edit, egui::Button::new(label))
+                    .on_disabled_hover_text(
+                        "Editor controls are available on the computer running this FX host.",
+                    )
+                    .clicked()
+                {
+                    editor = Some((chain.id.clone(), !visible));
                 }
             }
+            ui.end_row();
         }
-    }
-    for address in addresses {
-        let description =
-            describe(address).map_err(|error| format!("FX service unavailable: {error}"));
-        if description
-            .as_ref()
-            .is_ok_and(|value| !instances.insert(value.instance.clone()))
-        {
-            continue;
-        }
-        services.push(Service {
-            address,
-            identity: None,
-            description,
-        });
-    }
-    Ok(services)
+    });
+    editor
 }
 
 pub fn discover_fx_services() -> Vec<SocketAddr> {
+    let lan = shoop_remote_fx::discover_lan().unwrap_or_default();
+    let local = shoop_host_processes::snapshot()
+        .ok()
+        .into_iter()
+        .flat_map(|snapshot| snapshot.processes)
+        .flat_map(|process| {
+            process.addresses.into_iter().map(move |address| {
+                (
+                    discovery::local_address(address),
+                    Some(process.identity.pid),
+                )
+            })
+        });
     let mut instances = HashSet::new();
-    let mut addresses = Vec::new();
-    for address in shoop_remote_fx::discover_lan().unwrap_or_default() {
-        if let Ok(description) = describe(address) {
-            if instances.insert(description.instance) {
-                addresses.push(address);
-            }
-        }
-    }
-    for service in scan(Vec::new()).unwrap_or_default() {
-        if let Ok(description) = service.description {
-            if instances.insert(description.instance) {
-                addresses.push(service.address);
-            }
-        }
-    }
-    addresses
+    lan.into_iter()
+        .map(|address| (address, None))
+        .chain(local)
+        .filter_map(|(address, pid)| {
+            let description = describe(address).ok()?;
+            let matches = pid.is_none_or(|pid| pid == description.pid);
+            (matches && instances.insert(description.instance)).then_some(address)
+        })
+        .collect()
 }
 
 fn launch_service(
@@ -393,28 +278,57 @@ fn launch_service(
     result
 }
 
-fn stop_service(address: SocketAddr, identity: &Identity, instance: String) -> Result<()> {
+fn verify_identity(identity: &Identity) -> Result<()> {
     ensure!(
         shoop_host_processes::identity(identity.pid)?.as_ref() == Some(identity),
-        "FX service identity changed"
+        "FX host process identity changed"
     );
-    shoop_remote_fx::shutdown(address, instance)?;
+    Ok(())
+}
+
+pub(super) fn stop_service(address: SocketAddr, identity: &Identity, instance: &str) -> Result<()> {
+    verify_identity(identity)?;
+    shoop_remote_fx::shutdown(address, instance.to_owned())?;
+    Ok(())
+}
+
+pub(super) fn set_editor(
+    address: SocketAddr,
+    identity: &Identity,
+    instance: &str,
+    chain: String,
+    visible: bool,
+) -> Result<()> {
+    verify_identity(identity)?;
+    shoop_remote_fx::set_editor(address, instance.to_owned(), chain, visible)?;
     Ok(())
 }
 
 pub(super) fn probe() -> Result<()> {
     if let Ok(address) = std::env::var("SHOOP_FX_PROBE_DISCOVER_ADDRESS") {
         let address = address.parse()?;
+        let expected = describe(address)?;
+        ensure!(
+            shoop_remote_fx::discover_lan()?.contains(&address),
+            "FX host at {address} did not answer LAN discovery"
+        );
+        ensure!(
+            discovery::scan(vec![], vec![]).hosts.iter().any(|host| {
+                matches!(&host.details, super::HostDetails::Fx { report: Ok(report), .. }
+                    if report.instance == expected.instance)
+            }),
+            "Network FX host at {address} is missing from the Manager list"
+        );
         ensure!(
             discover_fx_services().contains(&address),
-            "FX service at {address} was not discovered"
+            "The Add Track picker could not discover the network FX host"
         );
         return Ok(());
     }
     const LAUNCH_ONLY: &str = "SHOOP_FX_PROBE_LAUNCH_ONLY";
     if std::env::var_os(LAUNCH_ONLY).is_some() {
-        let (address, _) = launch_service("127.0.0.1:0".parse()?, false, false)?;
-        println!("{address}");
+        let host = Settings::default().request()?.start()?;
+        println!("{}", host.endpoint);
         return Ok(());
     }
     let launcher = Command::new(std::env::current_exe()?)
@@ -430,23 +344,27 @@ pub(super) fn probe() -> Result<()> {
     let started = describe(address).context("FX service did not survive its manager")?;
     let identity =
         shoop_host_processes::identity(started.pid)?.context("FX service locally unavailable")?;
-    let result = scan(vec![address]).and_then(|services| {
+    let result = (|| {
         ensure!(
             discover_fx_services().contains(&address),
             "The Add Track picker could not discover the local FX service"
         );
-        let count = services
-            .iter()
-            .filter(|service| {
-                service
-                    .description
-                    .as_ref()
-                    .is_ok_and(|service| service.instance == started.instance)
-            })
-            .count();
+        let scan = discovery::scan(vec![address.to_string()], vec![]);
+        let mut matches = scan.hosts.iter().filter(|host| {
+            matches!(&host.details, super::HostDetails::Fx { report: Ok(report), .. }
+                if report.instance == started.instance)
+        });
+        let host = matches
+            .next()
+            .context("Local FX host is missing from the Manager list")?;
+        let local = Source::Process(identity.clone());
         ensure!(
-            count == 1,
-            "FX discovery did not reconcile its local and explicit addresses"
+            host.source == local
+                && matches.next().is_none()
+                && scan
+                    .aliases
+                    .contains(&(Source::Address(address.to_string()), local)),
+            "Manager discovery did not reconcile the local FX host with its explicit address"
         );
         let target = super::start_host::Dialog::probe_remote(address)?;
         let result = describe(address)
@@ -460,7 +378,7 @@ pub(super) fn probe() -> Result<()> {
             });
         let shutdown = shoop_host::connection::shutdown_ownerless(&target, Duration::from_secs(10));
         result.and(shutdown)
-    });
-    let stopped = stop_service(address, &identity, started.instance);
-    result.and(stopped)
+    })();
+    let stopped = Host::from_fx(Source::Process(identity), address, started).stop();
+    result.and(stopped.map(|_| ()))
 }

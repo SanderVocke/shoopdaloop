@@ -391,8 +391,8 @@ native looper UI. The three native entry points are `shoopdaloop` (looper),
 The manager runs in its own process without starting audio
 or taking control of a session. Closing the manager leaves hosts and UIs running.
 
-**New host…** configures and starts a detached companion. Set its name and audio
-settings, then Start host. Expand capacity/session defaults, channels/MIDI,
+**New host…** starts a detached session host or FX host. For a **Session host**,
+set its name and audio settings, then select **Start host**. Expand capacity/session defaults, channels/MIDI,
 connection or optional logging when needed. The form uses OS-assigned local ports;
 no profile, key or configuration path is required. Driver and capacity changes
 require a new host/session.
@@ -406,8 +406,8 @@ processes that cannot answer a compatible greeting are not presented as ready.
 
 **Advanced** contains **Connect to address…**, **Import profile…** and
 **Export profile…**. Manual targets exist only for the current manager session.
-Local and manual connections to the same live instance appear once. Remote hosts
-are added explicitly; LAN-wide discovery is outside scope.
+Connections to the same live instance appear once. Session hosts can be added
+by address or profile. FX hosts can be found on the IPv4 LAN or added by address.
 
 Select a host to inspect effective audio state, DSP load, xruns, startup settings
 and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
@@ -419,6 +419,10 @@ OS-identified local process, requires separate confirmation and terminates witho
 session cleanup. Its PID, creation identity and executable are revalidated before
 termination. Remote descriptor PIDs cannot select a local process to kill. Tray
 integration is not included.
+
+Select an FX host in the same list to inspect its chain status and diagnostics.
+**Start session host…** selects it for a new session. Use the Manager on the FX
+host's machine to open or close chain editors and stop the FX host. [Remote FX setup](../../../docs/remote-fx.md)
 
 Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
 host. This writes a rotating file only at the requested path, including
