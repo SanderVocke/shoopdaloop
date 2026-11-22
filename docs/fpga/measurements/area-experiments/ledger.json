@@ -416,12 +416,11 @@
         "views": 512
       },
       "validation": [
-        "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64"
+        "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64",
+        "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes"
       ],
       "pending": [
-        "Finish all metadata/media/ownership/deferred checks",
-        "Archive per-operation unit samples against C1",
-        "Finish optimized screen and long connected workload, then route viable result"
+        "Full ownership/deferred/media regressions, optimized physical screen, 1024 steady-quanta connected run and viable routing"
       ],
       "translation_summary": "s2-leaf-translation-unit-summary.json",
       "unit_cycles": {
