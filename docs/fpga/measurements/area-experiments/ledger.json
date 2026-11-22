@@ -405,7 +405,7 @@
     {
       "label": "s2-leaf",
       "stage": 2,
-      "status": "measuring",
+      "status": "completed",
       "rtl_source_revision": "7672afed",
       "control_revision": "6be27ce0",
       "control_summary": "c1-extended-100-summary.json",
@@ -419,10 +419,12 @@
       "validation": [
         "Independent map repeated/sequential/strided/boundary/rewrite/trim/regrow/detach-live-ID-reuse/reset test passed on AXI32 and AXI64",
         "All four metadata tests pass: AXI32/64, large and minimum geometries, scalar/burst cache paths, faults/fences/reset/backpressure and independent translation lifetimes",
-        "Full ownership/deferred/media regressions passed including DRAMsim3, scalar legacy, reset/config restoration, deferred faults, stale hints and retirement"
+        "Full ownership/deferred/media regressions passed including DRAMsim3, scalar legacy, reset/config restoration, deferred faults, stale hints and retirement",
+        "All1041 connected rows pass exact SP/MIDI/audio/state checks; kind/position/jobs/MIDI counts/state work match C1"
       ],
       "pending": [
-        "Finish 1024 steady quanta, archive paired connected/physical evidence and compare current-block sibling"
+        "Compare current-block and generated-hint policy siblings from C1",
+        "Repeat if this physical candidate is ultimately selected"
       ],
       "translation_summary": "s2-leaf-translation-unit-summary.json",
       "unit_cycles": {
@@ -477,8 +479,46 @@
       "routed_timing": {
         "wns_ns": -3.799,
         "whs_ns": 0.046,
-        "timing_met": false
-      }
+        "timing_met": false,
+        "limiting_path": "metadata.new_count[1] replica to required_nodes[29], 18 CARRY4 plus seven LUT levels"
+      },
+      "extended_summary": "s2-leaf-extended-100-summary.json",
+      "extended_callback": {
+        "steady_quanta": 1024,
+        "c1_median": 54146,
+        "candidate_median": 52994,
+        "c1_max": 84284,
+        "candidate_max": 86955,
+        "c1_table_misses": 1698,
+        "candidate_table_misses": 1280,
+        "cold_cycles": 110168,
+        "cold_delta_vs_c1": -188,
+        "frame_16384_cycles": {
+          "control": 84284,
+          "candidate": 86955
+        },
+        "frame_32768_cycles": {
+          "control": 83711,
+          "candidate": 86382
+        },
+        "cold_audio_reads": {
+          "control": 1248,
+          "candidate": 1024
+        },
+        "cold_audio_writes": {
+          "control": 128,
+          "candidate": 5
+        },
+        "traffic_different_rows": 5
+      },
+      "route_checks": {
+        "routing_errors": 0,
+        "drc_errors": 0,
+        "drc_warnings": 18
+      },
+      "outcome": "shortlisted_pending_siblings",
+      "decision": "Best measured area and ordinary-playback tradeoff so far: -3231 LUT/-497 slices vs C1 and -1152 median steady clocks, at +5.5 BRAM and +2671 clocks worst steady boundary. Strided unit reads worsen sharply (247 vs30 clocks AXI64). Timing still fails; compare current-block sibling before selecting and repeating a winner.",
+      "measurement_limits": "Playback-start timing excludes preparation. Reduced directory capacity moves dirty writebacks into preparation: start row has5 audio writes versus128 in C1. Do not interpret -188 playback-start clocks as a complete preparation or boot saving."
     }
   ],
   "provisioning": {

@@ -171,19 +171,19 @@ All siblings compare with C1, the selected serial-count implementation. The
 four-way result is a candidate, pending comparison with the banked and per-view
 alternatives and generated-hint policies.
 
-| Routed 100 MHz result | C1 | Four-way RAM tags |
-| --- | ---: | ---: |
-| LUTs | 39,399 | 36,656 |
-| Slices | 12,616 | 12,336 |
-| Registers | 32,987 | 28,737 |
-| CARRY4 | 3,958 | 3,352 |
-| Control sets | 1,494 | 1,406 |
-| BRAM tiles | 77.5 | 77.5 |
-| Setup slack ns | -4.157 | -4.744 |
-| Hold slack ns | +0.005 | +0.015 |
-| Cold mixed/on/delay7 clocks | 110,356 | 110,572 |
-| 1,024-quantum steady median clocks | 54,146 | 54,146 |
-| 1,024-quantum steady maximum clocks | 84,284 | 83,891 |
+| Routed 100 MHz result | C1 | Four-way | Banked | Full leaf |
+| --- | ---: | ---: | ---: | ---: |
+| LUTs | 39,399 | 36,656 | 36,470 | 36,168 |
+| Slices | 12,616 | 12,336 | 12,263 | 12,119 |
+| Registers | 32,987 | 28,737 | 28,801 | 28,975 |
+| CARRY4 | 3,958 | 3,352 | 3,369 | 3,382 |
+| Control sets | 1,494 | 1,406 | 1,434 | 1,444 |
+| BRAM tiles | 77.5 | 77.5 | 77.5 | 83 |
+| Setup slack ns | -4.157 | -4.744 | -3.950 | -3.799 |
+| Hold slack ns | +0.005 | +0.015 | +0.041 | +0.046 |
+| Playback-start mixed/on/delay7 clocks | 110,356 | 110,572 | 116,057 | 110,168 |
+| 1,024-quantum steady median clocks | 54,146 | 54,146 | 56,066 | 52,994 |
+| 1,024-quantum steady maximum clocks | 84,284 | 83,891 | 98,244 | 86,955 |
 
 The four-way cache reduces the main tag lookup from 128 comparisons to four,
 using synchronous tag RAM. Read hits still take six clocks in the standalone
@@ -219,3 +219,34 @@ Reject this banked variant for the default: its 73-slice advantage over four-way
 comes with greater ordinary and boundary latency. Retain it as a measured
 full-associativity tradeoff. `s2-banked-extended-100-*` retains physical reports
 and every long-run sample. The full-leaf and current-block alternatives follow.
+
+
+The full-leaf variant extends each private roots-RAM entry from 128 to 640 bits
+and caches sixteen table words per view. Its effective directory cache is eight
+lines, explicitly capped even with the top-level TABLE_LINES budget of128.
+Existing leaf-valid lifetimes guard reads; writes update the cache, and
+trim/detach/reset/global invalidation disable it. Hot whole-controller reads take
+six clocks versus15 with C1. Strided AXI64 unit reads that change leaf take247
+clocks versus30 median with C1; the independent map verifies data and lifetime
+semantics across those paths.
+
+Full metadata, ownership, deferred-cleanup and media regressions pass, including
+DRAMsim3 and scalar legacy paths. All1,041 connected rows pass. Ordinary steady
+cost falls1,152 clocks, but the two leaf crossings cost86,955/86,382 versus
+C1's84,284/83,711. Steady table misses fall from1,698 to1,280. Keep this candidate
+on the shortlist pending the current-block sibling. It has the best measured
+area so far, with5.5 extra BRAM tiles and worse strided/boundary latency. Setup
+still fails; repeat before selecting a small physical winner.
+
+Playback-start metrics exclude preparation. The full-leaf start row has five
+metadata writebacks versus128 with C1; its smaller directory cache evicts dirty
+lines during preparation. The188-clock start improvement does not measure
+complete preparation or boot time. `s2-leaf-extended-100-*` retains all physical
+reports and long-run samples; unit archives retain the controller traces.
+
+The read-only checkpoint taxonomy in `carry-taxonomy-c1-leaf-summary.json`
+attributes640 CARRY4s to C1's main metadata cache and40 to the full-leaf design's
+eight-line directory cache. Other C1 direct owners include MIDI content628,
+MIDI orchestration452, media_store496 and media_metadata282. These are disjoint
+primitive-owner counts, unlike overlapping hierarchical slice counts. They
+identify targets for the following width and arithmetic-sharing experiments.
