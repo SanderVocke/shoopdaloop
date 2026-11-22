@@ -422,8 +422,9 @@ C3 routes to **35,407 LUTs, 28,714 FFs, 11,932 slices, 78 BRAM tiles, four DSPs,
 and 42 slices, costing 33 FFs, 13 carries and 65 physical control sets. Setup
 slack is -3.865 ns and hold slack +0.039 ns. The full-flow repeat reproduces
 all four stages exactly. Its ordinary short-run steady median is 52,994 clocks,
-maximum 53,617; cold playback is 88,446. C3's extended connected run is still
-unmeasured; prior long-run results are C2's. These are not board timing claims.
+maximum 53,617; cold playback is 88,446. C3's completed extended run reproduces all 1,041 C2 rows exactly: 1,024 steady
+quanta have median 52,994 and maximum 59,446 clocks across two leaf spans.
+See `c3-extended-100-*`; these are not board timing claims.
 
 Before subsequent MIDI address/staging trials, new original-RTL controls preserve
 opaque reserved descriptor words through updates, clear them on reuse, and check
@@ -438,6 +439,10 @@ arithmetic through one 64-bit unit. All 10,311 raw storage, 54 reserved-word and
 callback rows preserve non-cycle fields. Steady median rises by 264 clocks
 (52,994 to 53,258), maximum by 330; cold start rises by 4,299 to 92,745.
 Optimization saves 117 LUTs, 151 CARRY4s and 92 F7/F8 muxes, but adds 130 FFs
-and three control sets, against C3. Memory/DSP counts stay unchanged. Routing
-and remaining expression tests are pending; C3 remains selected. See
+and three control sets, against C3. Memory/DSP counts stay unchanged. All 23 affected MIDI/expression/reserved tests pass. The first route uses
+35,299 LUTs, 28,888 FFs, 11,878 slices, 78 BRAM tiles, four DSPs and 3,205
+CARRY4s. Against C3 that saves 108 LUTs and 54 slices, costing 174 FFs and
+44 control sets. Setup slack is -3.668 ns; hold is +0.006 ns. Timing fails.
+The full physical repeat and extended callback comparison are running before
+selecting this small physical win; C3 remains selected. See
 `s4-midi-address-performance.json` and the retained unit/physical archives.

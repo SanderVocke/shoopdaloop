@@ -39,7 +39,8 @@
     "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks",
     "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls",
     "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec",
-    "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification."
+    "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification.",
+    "C3extended1041callbackrows matchC2exactly, includingboth16,384-frameleafspans: steady1024 median52994/max59446; cold88446. Frozenbinary8c51 andimmutablefe2184ea source."
   ],
   "pending": [
     "Complete Stage4 shared arithmetic siblings and decide each from measured behavior, cycles and area",
@@ -59,7 +60,8 @@
       "c2-midi-reserved-control-summary.json",
       "c2-midi-reserved-zero-replay-summary.json",
       "c2-midi-relocated-control-summary.json"
-    ]
+    ],
+    "c3_extended_control": "c3-extended-100-summary.json"
   },
   "experiments": [
     {
@@ -1127,7 +1129,8 @@
         "All5expression/restoration/quanta/AXI32/64stalltests pass883.11sec; tworeserved/relocationtests pass1.87sec; all23affectedtests passed"
       ],
       "pending": [
-        "Routedarea/timing/controlsets andselectiondecision"
+        "Fullphysicalrepeat7d2d7cd7 before selecting small54slicewin",
+        "Extended1024steadycallbackcomparisonagainstC3"
       ],
       "unit_summaries": [
         "s4-midi-address-boundaries-summary.json",
@@ -1148,7 +1151,27 @@
         "muxf8": -35,
         "control_sets": 3
       },
-      "regression_summary": "s4-midi-address-regressions-summary.json"
+      "regression_summary": "s4-midi-address-regressions-summary.json",
+      "routed_summary": "s4-midi-address-100-summary.json",
+      "routed_deltas_vs_c3": {
+        "lut": -108,
+        "logic_lut": -108,
+        "memory_lut": 0,
+        "ff": 174,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -151,
+        "muxf7": -57,
+        "muxf8": -35,
+        "slices": -54,
+        "control_sets": 44
+      },
+      "routed_timing": {
+        "wns_ns": -3.668,
+        "whs_ns": 0.006
+      },
+      "timing_met": false,
+      "provisional_decision": "Routedwin54slices108LUT151carry at+174FF/+44controlsets and+0.5%ordinarymedian clocks; fullrepeat andextendedcomparison running before finalselection."
     }
   ],
   "provisioning": {
