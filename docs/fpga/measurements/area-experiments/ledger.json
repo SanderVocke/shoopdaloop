@@ -1045,10 +1045,10 @@
         "BothAXIwidths:all187boundaryresponse/cycle rows exactlymatchC2",
         "BothAXIwidths:all207deep directoryresponse/cycle/cachecounter rows andsetupclocks exactlymatchC2",
         "All1282publicstorecommand/result/cycle/traffic rows andrecovery exactlymatchC2",
-        "Full6metadata tests pass371.95sec, includingbothAXIwidths,deepdirectories,malformedmetadata,translation/fence/fault/reset/cache protocols"
+        "Full6metadata tests pass371.95sec, includingbothAXIwidths,deepdirectories,malformedmetadata,translation/fence/fault/reset/cache protocols",
+        "All33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactlymatchsameC2longrunprefix"
       ],
       "pending": [
-        "33rowconnected equivalence",
         "Media/ownership/deferred tests",
         "Optimizedscreen thenrouteifviable"
       ],
