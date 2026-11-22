@@ -535,13 +535,46 @@
         "views": 512
       },
       "validation": [
-        "All4 metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes"
+        "All four metadata tests passed (183.70sec), including both AXI widths, large geometries, fences/faults/backpressure/reset and independent map lifetimes"
       ],
       "pending": [
-        "Finish full metadata/media/ownership/deferred checks",
-        "Archive unit trace and optimized/connected results; route viable candidate"
+        "Finish ownership regressions, long connected playback and routed packing/timing; archive matched evidence"
       ],
-      "translation_summary": "s2-block-translation-unit-summary.json"
+      "translation_summary": "s2-block-translation-unit-summary.json",
+      "optimized_summary": "s2-block-opt-summary.json",
+      "optimized_deltas_vs_c1": {
+        "lut": -4272,
+        "ff": -4488,
+        "bram36": -0.5,
+        "dsp": 0,
+        "carry4": -617,
+        "control_sets": -121,
+        "memory_lut": 0
+      },
+      "optimized_timing": {
+        "wns_ns": -5.321,
+        "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "unit_cycles": {
+        "hot_repeated_block_read": {
+          "control": 15,
+          "candidate": 6
+        },
+        "sequential_read_median": {
+          "control": 15,
+          "candidate": 15
+        },
+        "strided_read_median_axi64": {
+          "control": 30,
+          "full_leaf": 247,
+          "candidate": 135
+        },
+        "strided_table_misses": {
+          "control": 80,
+          "candidate": 3264
+        }
+      }
     }
   ],
   "provisioning": {
