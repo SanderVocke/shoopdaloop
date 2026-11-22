@@ -922,7 +922,8 @@
         "SeparateAXI32/64 rawduration/refusal/fault samples retained forF21 andF64; F5rawAXI64 also retained",
         "Default64 deferred test passed132.21sec; media andownership still running",
         "Originaldefault64 media suite passes392.92sec; ownership stillrunning",
-        "Optional21 all33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactly matchcanonical64 andC2. Cold88446,warmmedian53066,ordinarysteady52994/max53617. No timing/deadline claim."
+        "Optional21 all33mixed/state-on/delay7 connected sample/state/cycle/traffic rows exactly matchcanonical64 andC2. Cold88446,warmmedian53066,ordinarysteady52994/max53617. No timing/deadline claim.",
+        "Alloriginaldefault64 media/ownership/deferred suites pass:deferred132.21sec,media392.92sec,ownership2tests525.85sec,includingDRAMsim3/Legacy. Full logretained."
       ],
       "unit_summaries": [
         "s3-local-frames5-boundaries-summary.json",
@@ -934,7 +935,6 @@
         "s3-local-frames64-axi32-boundaries-summary.json"
       ],
       "pending": [
-        "Default64 ownership completion",
         "Canonical64 route and explicitdecision",
         "Primary21 optimized screen androuteifviable"
       ],
@@ -952,7 +952,8 @@
         "muxf8": -30,
         "control_sets": -1
       },
-      "calibration_note": "Canonical64 behavior/cycles/traffic match C2 but mappedcounts differ(-127LUT,-19FF,-2CARRY4,-1controlset). Routingcanonical64 separately; attribute21delta againstsameRTL64control aswellas C2, notallnarrowing."
+      "calibration_note": "Canonical64 behavior/cycles/traffic match C2 but mappedcounts differ(-127LUT,-19FF,-2CARRY4,-1controlset). Routingcanonical64 separately; attribute21delta againstsameRTL64control aswellas C2, notallnarrowing.",
+      "media_log": "s3-local-frames-default64-media-tests.log"
     }
   ],
   "provisioning": {
