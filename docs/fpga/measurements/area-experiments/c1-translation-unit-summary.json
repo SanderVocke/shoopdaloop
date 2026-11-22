@@ -1,0 +1,113 @@
+{
+  "label": "c1-translation-unit",
+  "fixture_revision": "9aaf6f9e",
+  "cases": {
+    "32": {
+      "scope": "metadata controller plus coherent cache, AXI and direct-memory model; driver request assertion through response acceptance and cleanup; preparation excluded; four views with 272 entries",
+      "validation": "reads, repeated writes, trim/regrow, global invalidation, detached GC with live view reuse, and reset agree with an independent logical map",
+      "parameters": {
+        "DATA_WIDTH": "32",
+        "LARGE": "1",
+        "LINE_WORDS": "16",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "128"
+      },
+      "populations": {
+        "repeated_block": {
+          "count": 128,
+          "min": 15,
+          "median": 15.0,
+          "max": 159,
+          "hits": 124,
+          "misses": 12,
+          "fills": 12,
+          "writebacks": 0
+        },
+        "sequential": {
+          "count": 1088,
+          "min": 15,
+          "median": 15.0,
+          "max": 159,
+          "hits": 1144,
+          "misses": 80,
+          "fills": 80,
+          "writebacks": 0
+        },
+        "strided": {
+          "count": 1088,
+          "min": 30,
+          "median": 30.0,
+          "max": 159,
+          "hits": 3184,
+          "misses": 80,
+          "fills": 80,
+          "writebacks": 0
+        },
+        "leaf_boundaries": {
+          "count": 44,
+          "min": 15,
+          "median": 30.0,
+          "max": 159,
+          "hits": 72,
+          "misses": 28,
+          "fills": 28,
+          "writebacks": 0
+        }
+      }
+    },
+    "64": {
+      "scope": "metadata controller plus coherent cache, AXI and direct-memory model; driver request assertion through response acceptance and cleanup; preparation excluded; four views with 272 entries",
+      "validation": "reads, repeated writes, trim/regrow, global invalidation, detached GC with live view reuse, and reset agree with an independent logical map",
+      "parameters": {
+        "DATA_WIDTH": "64",
+        "LARGE": "1",
+        "LINE_WORDS": "16",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "128"
+      },
+      "populations": {
+        "repeated_block": {
+          "count": 128,
+          "min": 15,
+          "median": 15.0,
+          "max": 135,
+          "hits": 124,
+          "misses": 12,
+          "fills": 12,
+          "writebacks": 0
+        },
+        "sequential": {
+          "count": 1088,
+          "min": 15,
+          "median": 15.0,
+          "max": 135,
+          "hits": 1144,
+          "misses": 80,
+          "fills": 80,
+          "writebacks": 0
+        },
+        "strided": {
+          "count": 1088,
+          "min": 30,
+          "median": 30.0,
+          "max": 135,
+          "hits": 3184,
+          "misses": 80,
+          "fills": 80,
+          "writebacks": 0
+        },
+        "leaf_boundaries": {
+          "count": 44,
+          "min": 15,
+          "median": 30.0,
+          "max": 135,
+          "hits": 72,
+          "misses": 28,
+          "fills": 28,
+          "writebacks": 0
+        }
+      }
+    }
+  },
+  "retention": "c1-translation-unit-retention.json"
+}
