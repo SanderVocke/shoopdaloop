@@ -421,7 +421,7 @@
         "Full ownership/deferred/media regressions passed including DRAMsim3, scalar legacy, reset/config restoration, deferred faults, stale hints and retirement"
       ],
       "pending": [
-        "Finish long connected playback and route, archive matched evidence and compare siblings"
+        "Finish 1024 steady quanta, archive paired connected/physical evidence and compare current-block sibling"
       ],
       "translation_summary": "s2-leaf-translation-unit-summary.json",
       "unit_cycles": {
@@ -460,6 +460,22 @@
       "optimized_timing": {
         "wns_ns": -5.321,
         "whs_ns": 0.002,
+        "timing_met": false
+      },
+      "routed_summary": "s2-leaf-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -3231,
+        "ff": -4012,
+        "slices": -497,
+        "bram36": 5.5,
+        "dsp": 0,
+        "carry4": -576,
+        "control_sets": -50,
+        "memory_lut": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.799,
+        "whs_ns": 0.046,
         "timing_met": false
       }
     }
