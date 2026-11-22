@@ -43,7 +43,8 @@
     "baseline_checkpoints": "work/area-experiments/b0-100/post_{opt,place,route}.dcp",
     "baseline_matrix": "b0-matrix/manifest.json",
     "c1_extended_control": "c1-extended-100-summary.json",
-    "translation_control": "c1-translation-unit-summary.json"
+    "translation_control": "c1-translation-unit-summary.json",
+    "carry_taxonomy": "carry-taxonomy-c1-leaf-summary.json"
   },
   "experiments": [
     {
@@ -515,7 +516,8 @@
       "metadata_fills": 0,
       "source": "audio_pipeline early read_intent and late JP hint arbitration; hint_count equals quantum"
     },
-    "leaf_boundary_cost": "C1 and four-way both exceed the nominal 66666.7-clock budget at 100 MHz at leaf boundaries; physical timing also fails. Short 16-quantum fixtures alone do not characterize these spikes."
+    "leaf_boundary_cost": "C1 and four-way both exceed the nominal 66666.7-clock budget at 100 MHz at leaf boundaries; physical timing also fails. Short 16-quantum fixtures alone do not characterize these spikes.",
+    "carry_ownership": "Optimized C1 main128-line metadata cache owns640 CARRY4, full-leaf8-line directory cache40. Remaining C1 direct-owner counts: MIDI content628, MIDI orchestration452, audio media_store496, media_metadata282, JP217, SPengine170. These exact checkpoint counts guide width/arithmetic trials; carry use is not all address arithmetic."
   },
   "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/1026",
   "plan_adjustments": [
