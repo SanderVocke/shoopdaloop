@@ -2,6 +2,7 @@ module metadata_cache #(
     parameter integer LINES = 8,
     parameter integer LINE_WORDS = 16,
     parameter integer BURST_MEMORY = 1,
+    parameter integer WAYS = (LINES >= 4 && (LINES & (LINES-1)) == 0) ? 4 : LINES,
     parameter integer ADDRESS_BITS = (LINES*LINE_WORDS < 2) ? 1 : $clog2(LINES*LINE_WORDS)
 ) (
     input wire clk, input wire reset,
@@ -22,15 +23,20 @@ module metadata_cache #(
     localparam integer WORD_BITS = $clog2(LINE_WORDS);
     localparam integer LINE_BITS = LINES < 2 ? 1 : $clog2(LINES);
     localparam integer SCAN_BITS = $clog2(LINES+1);
-    typedef enum logic [3:0] {IDLE, MATCH, LOOKUP, ACCESS, RESULT, RESPONSE, ZERO,
-        FILL_REQUEST, FILL_DATA, FILL_ACK, WRITE_REQUEST, WRITE_READ, WRITE_DATA, WRITE_ACK, SCAN} phase_t;
+    localparam integer SETS = LINES/WAYS, SET_SHIFT = $clog2(SETS);
+    localparam integer SET_BITS = SETS < 2 ? 1 : $clog2(SETS);
+    localparam integer WAY_BITS = WAYS < 2 ? 1 : $clog2(WAYS);
+    typedef enum logic [4:0] {IDLE, MATCH, LOOKUP, ACCESS, RESULT, RESPONSE, ZERO,
+        FILL_REQUEST, FILL_DATA, FILL_ACK, WRITE_REQUEST, WRITE_READ, WRITE_DATA, WRITE_ACK, SCAN, FLUSH_TAG} phase_t;
     phase_t phase;
     reg [LINES-1:0] valid, dirty;
-    reg [LINES-1:0] matched_lines;
-    reg [63:0] tags [0:LINES-1];
+    wire [WAYS*64-1:0] read_tags;
+    reg [WAY_BITS-1:0] replacement [0:SETS-1];
+    reg [63:0] victim_tag;
+    reg [WAY_BITS-1:0] miss_way;
     reg [63:0] address;
     reg [31:0] payload;
-    reg [LINE_BITS-1:0] target, victim;
+    reg [LINE_BITS-1:0] target;
     reg [SCAN_BITS-1:0] scan;
     reg [WORD_BITS-1:0] index;
     reg [1:0] opcode;
@@ -38,6 +44,16 @@ module metadata_cache #(
     reg hit;
     reg [LINE_BITS-1:0] hit_line;
     wire [63:0] tag = (address >> SHIFT) << SHIFT;
+    wire [SET_BITS-1:0] request_set = SETS == 1 ? 0 : SET_BITS'(address >> SHIFT);
+    wire [WAY_BITS-1:0] target_way = WAY_BITS'(32'(target) >> SET_SHIFT);
+    wire [LINE_BITS-1:0] miss_line = LINE_BITS'((32'(miss_way) << SET_SHIFT) | 32'(request_set));
+    wire miss_clean = phase == LOOKUP && !hit && (!valid[miss_line] || !dirty[miss_line]);
+    wire write_finished = phase == WRITE_ACK && memory_response_valid && !memory_response_error
+        && (BURST_MEMORY != 0 || index == WORD_BITS'(LINE_WORDS-1));
+    wire tag_write = miss_clean || (write_finished && !flushing)
+        || (phase == ZERO && index == WORD_BITS'(LINE_WORDS-1));
+    wire [LINE_BITS-1:0] tag_write_line = phase == LOOKUP ? miss_line : target;
+    wire [WAY_BITS-1:0] tag_write_way = WAY_BITS'(32'(tag_write_line) >> SET_SHIFT);
     wire [31:0] word_index = 32'((address-tag) >> 2);
     wire read_ram = phase == WRITE_READ || (phase == ACCESS && opcode == 0);
     wire [31:0] ram_read;
@@ -52,7 +68,8 @@ module metadata_cache #(
     assign memory_valid = !reset && (phase == FILL_REQUEST || phase == WRITE_REQUEST
         || (BURST_MEMORY == 0 && phase == WRITE_DATA));
     assign memory_write = phase == WRITE_REQUEST || phase == WRITE_DATA;
-    assign memory_address = tags[target] + (BURST_MEMORY != 0 ? 64'b0 : 64'(index)*4);
+    assign memory_address = ((phase == FILL_REQUEST || phase == FILL_DATA || phase == FILL_ACK)
+        ? tag : victim_tag) + (BURST_MEMORY != 0 ? 64'b0 : 64'(index)*4);
     assign memory_write_data = ram_read;
     assign memory_count = BURST_MEMORY != 0 ? 32'(LINE_WORDS) : 32'd1;
     assign memory_write_valid = BURST_MEMORY != 0 && phase == WRITE_DATA && !reset;
@@ -65,17 +82,44 @@ module metadata_cache #(
         .read_data(ram_read),.write_enable(ram_write),
         .write_address(ADDRESS_BITS'(32'(target)*32'(LINE_WORDS)+ram_index)),.write_data(ram_data)
     );
+    generate for (genvar way=0; way<WAYS; way=way+1) begin : tag_banks
+        if (SETS == 1) begin : one_set
+            reg [63:0] tag_value;
+            assign read_tags[way*64+:64] = tag_value;
+            always @(posedge clk)
+                if (tag_write && tag_write_way == WAY_BITS'(way)) tag_value <= tag;
+        end else begin : indexed_sets
+            wire tag_read = phase == MATCH || (phase == SCAN && scan != SCAN_BITS'(LINES));
+            wire [SET_BITS-1:0] tag_read_set = phase == MATCH ? request_set : SET_BITS'(scan);
+            wire [SET_BITS-1:0] tag_write_set = SET_BITS'(tag_write_line);
+            (* ram_style = "distributed" *) reg [63:0] tags [0:SETS-1];
+            reg [63:0] captured_tag;
+            assign read_tags[way*64+:64] = captured_tag;
+            always @(posedge clk) begin
+                if (tag_read) captured_tag <= tags[tag_read_set];
+                if (tag_write && tag_write_way == WAY_BITS'(way)) tags[tag_write_set] <= tag;
+            end
+        end
+    end endgenerate
     always @* begin
-        hit = 0; hit_line = 0;
-        for (integer i=0; i<LINES; i=i+1)
-            if (matched_lines[i]) begin hit = 1; hit_line = LINE_BITS'(i); end
+        hit = 0; hit_line = 0; miss_way = replacement[request_set];
+        for (integer way=0; way<WAYS; way=way+1) begin
+            if (valid[LINE_BITS'((32'(way) << SET_SHIFT) | 32'(request_set))]
+                && read_tags[way*64+:64] == tag) begin
+                hit = 1; hit_line = LINE_BITS'((32'(way) << SET_SHIFT) | 32'(request_set));
+            end
+            if (!valid[LINE_BITS'((32'(way) << SET_SHIFT) | 32'(request_set))])
+                miss_way = WAY_BITS'(way);
+        end
     end
-    initial if (LINES < 1 || LINE_WORDS < 2 || (LINE_WORDS & (LINE_WORDS-1)) != 0)
+    initial if (LINES < 1 || LINE_WORDS < 2 || (LINE_WORDS & (LINE_WORDS-1)) != 0
+        || WAYS < 1 || WAYS > LINES || SETS*WAYS != LINES || (SETS & (SETS-1)) != 0)
         $fatal(1,"Invalid metadata cache dimensions");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; valid <= 0; dirty <= 0; matched_lines <= 0; address <= 0; payload <= 0;
-            target <= 0; victim <= 0; index <= 0; scan <= 0; opcode <= 0;
+            phase <= IDLE; valid <= 0; dirty <= 0; address <= 0; payload <= 0;
+            target <= 0; victim_tag <= 0; index <= 0; scan <= 0; opcode <= 0;
+            for (integer set_index=0; set_index<SETS; set_index=set_index+1) replacement[set_index] <= 0;
             invalidate <= 0; flushing <= 0; response_data <= 0; response_error <= 0; fault <= 0;
             hits <= 0; misses <= 0; fills <= 0; writebacks <= 0;
         end else begin
@@ -86,20 +130,18 @@ module metadata_cache #(
                     flushing <= request_opcode == 3; scan <= 0;
                     phase <= request_opcode == 3 ? SCAN : MATCH;
                 end
-                MATCH: begin
-                    for (integer i=0; i<LINES; i=i+1) matched_lines[i] <= valid[i] && tags[i] == tag;
-                    phase <= LOOKUP;
-                end
+                MATCH: phase <= LOOKUP;
                 LOOKUP: begin
                     index <= 0;
                     if (hit) begin
                         hits <= hits+1; target <= hit_line; phase <= opcode == 2 ? ZERO : ACCESS;
                     end else begin
-                        misses <= misses+1; target <= victim;
-                        victim <= victim == LINE_BITS'(LINES-1) ? 0 : victim+1'b1;
-                        if (valid[victim] && dirty[victim]) phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
+                        misses <= misses+1; target <= miss_line;
+                        replacement[request_set] <= miss_way == WAY_BITS'(WAYS-1) ? 0 : miss_way+1'b1;
+                        victim_tag <= read_tags[32'(miss_way)*64+:64];
+                        if (valid[miss_line] && dirty[miss_line]) phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
                         else begin
-                            tags[victim] <= tag; valid[victim] <= 0;
+                            valid[miss_line] <= 0;
                             phase <= opcode == 2 ? ZERO : FILL_REQUEST;
                         end
                     end
@@ -112,7 +154,7 @@ module metadata_cache #(
                 RESPONSE: if (response_ready) phase <= IDLE;
                 ZERO: begin
                     if (index == WORD_BITS'(LINE_WORDS-1)) begin
-                        tags[target] <= tag; valid[target] <= 1; dirty[target] <= 1; phase <= RESPONSE;
+                        valid[target] <= 1; dirty[target] <= 1; phase <= RESPONSE;
                     end else index <= index+1'b1;
                 end
                 FILL_REQUEST: if (memory_ready) phase <= BURST_MEMORY != 0 ? FILL_DATA : FILL_ACK;
@@ -143,14 +185,18 @@ module metadata_cache #(
                     else begin
                         writebacks <= writebacks+1; dirty[target] <= 0; index <= 0;
                         if (flushing) begin valid[target] <= !invalidate; scan <= scan+1'b1; phase <= SCAN; end
-                        else begin tags[target] <= tag; valid[target] <= 0; phase <= opcode == 2 ? ZERO : FILL_REQUEST; end
+                        else begin valid[target] <= 0; phase <= opcode == 2 ? ZERO : FILL_REQUEST; end
                     end
                 end
                 SCAN: begin
                     if (scan == SCAN_BITS'(LINES)) phase <= RESPONSE;
                     else if (valid[LINE_BITS'(scan)] && dirty[LINE_BITS'(scan)]) begin
-                        target <= LINE_BITS'(scan); index <= 0; phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
+                        target <= LINE_BITS'(scan); index <= 0; phase <= FLUSH_TAG;
                     end else begin if (invalidate) valid[LINE_BITS'(scan)] <= 0; scan <= scan+1'b1; end
+                end
+                FLUSH_TAG: begin
+                    victim_tag <= read_tags[32'(target_way)*64+:64];
+                    phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
                 end
                 default: begin fault <= 1; response_error <= 1; phase <= RESPONSE; end
             endcase
