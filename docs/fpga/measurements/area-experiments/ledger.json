@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 3,
-  "status": "Stage2 complete; C2 selected. Stage3 audio widths measured/rejected for slice cost; MIDI bounded bookkeeping in measurement.",
+  "status": "Stage2 complete/C2 selected; Stage3 audio and MIDI bookkeeping widths measured/rejected for greater routed slice use. Local-frame and arena-relative siblings next.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -849,7 +849,7 @@
     {
       "label": "s3-midi",
       "stage": 3,
-      "status": "in_progress",
+      "status": "completed",
       "rtl_source_revision": "f28096cb",
       "control_revision": "a046e9c5",
       "control_summary": "s2-path-repeat-100-summary.json",
@@ -864,9 +864,7 @@
         "c2-midi-primary-index-control-summary.json",
         "s3-midi-boundaries-summary.json"
       ],
-      "pending": [
-        "Routed slice/timing/DRC comparison before selection"
-      ],
+      "pending": [],
       "functional_log": "s3-midi-tests.log",
       "optimized_summary": "s3-midi-opt-summary.json",
       "optimized_deltas_vs_c2": {
@@ -885,7 +883,27 @@
         "wns_ns": -5.321,
         "whs_ns": 0.002
       },
-      "expression_log": "s3-midi-expression-tests.log"
+      "expression_log": "s3-midi-expression-tests.log",
+      "routed_summary": "s3-midi-100-summary.json",
+      "routed_deltas_vs_c2": {
+        "lut": -286,
+        "logic_lut": -286,
+        "memory_lut": 0,
+        "ff": -106,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -59,
+        "muxf7": -152,
+        "muxf8": -16,
+        "slices": 130,
+        "control_sets": 156
+      },
+      "routed_timing": {
+        "wns_ns": -3.945,
+        "whs_ns": 0.003
+      },
+      "outcome": "rejected_for_default",
+      "decision": "Allfunctional andmeasuredexecution behavior retained, but286 fewer routedLUTs/106 fewerFF/59 fewerCARRY4 cost130 more slices and156 morephysical controlsets. Setupworsens0.064ns, holdmarginfalls0.040ns. KeepC2 under slice/timing pressure. Retain asalternative only. Preparedfullrepeat notexecuted becausecandidateunselected."
     }
   ],
   "provisioning": {

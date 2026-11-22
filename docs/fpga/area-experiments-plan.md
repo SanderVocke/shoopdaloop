@@ -165,6 +165,11 @@ connected and physical results, including rejected tradeoffs.
 
 Depends on stage 2's decision. Keep external precision and capacities unchanged.
 
+Execution status: audio capacity bookkeeping and MIDI traversal/queue widths
+are complete. Both preserve tested behavior and cycles but increase routed
+slices, so neither replaces C2. Bounded local frames and saved arena-relative
+addresses follow as separate siblings.
+
 - [ ] Derive ID, count, page, offset, and intermediate widths from capacities;
   replace saved traversal addresses with page/index context where useful. Split
   changes into audio metadata and MIDI storage candidates for attribution.

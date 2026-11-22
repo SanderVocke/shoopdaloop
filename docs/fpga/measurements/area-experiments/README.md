@@ -8,8 +8,8 @@ The immutable implementation control is
 Current status: stages 0–2 are complete. C2 selects the serial RAM occupancy
 count and directory-path cache, saving 6,491 LUTs and 1,231 routed slices against
 B0 with exact retained behavior. Stage 3 is in progress: audio capacity widths
-were rejected for higher slice use; bounded MIDI bookkeeping passes functional
-and connected comparisons and is routing. Timing still fails at 100 MHz.
+were rejected for higher slice use; bounded MIDI bookkeeping also passes functional
+and connected comparisons but uses more routed slices. Timing still fails at 100 MHz.
 See `ledger.json` for completed checks, pending measurements, and artifact hashes.
 
 | B0 routed control | Archived | Fresh |
@@ -374,6 +374,9 @@ with identical responses, clocks and memory traffic, including minimum/odd pools
 and primary 256-view/128-retirement indices. Full 16-test MIDI regression passes
 in 527.04 seconds. Its 33 mixed/state-on/delay7 callback rows exactly match the
 same prefix of C2's extended run. Optimization saves 363 LUTs, 146 FFs and 59
-CARRY4s, with unchanged memory/DSP/control-set counts. Routed slices and the
-selection decision remain pending. The critical path still runs through the
-audio metadata node-count arithmetic, unchanged by this MIDI candidate.
+CARRY4s, with unchanged memory/DSP/control-set counts. Routing saves 286 LUTs, 106 FFs and 59 CARRY4s but uses **130 more slices**
+and 156 more physical control sets. Setup slack worsens from -3.881 to -3.945 ns
+and still fails; hold slack remains positive at +0.003 ns. This candidate is
+also rejected for the default. C2 remains selected. The critical path still
+runs through audio metadata node-count arithmetic. See `s3-midi-100-*` for
+physical reports and exact callback/source evidence.
