@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 2,
-  "status": "in_progress",
+  "stage": 3,
+  "status": "Stage2 complete; C2 directory path selected after exact physical repeat. Stage3 width experiments next.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -37,10 +37,11 @@
     "C1 six-test metadata suite passes223.63s after adding parametric view/retirement adapter and wide-input/queue-corruption control",
     "C1/path boundary fixture187 shape/response rows per AXI width match exactly across minimum/odd/primary count cases",
     "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks",
-    "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls"
+    "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls",
+    "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec"
   ],
   "pending": [
-    "Stage2 exact-source path-cache physical repeat, then selection"
+    "Stage3 audio bookkeeping and MIDI bounded-type siblings, then local-frame/arena-relative variants"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -662,7 +663,8 @@
         "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults",
         "Full ownership/deferred/media regressions passed, including legacy scalar and DRAMsim3",
         "128 primary-capacity captures, retained offset slices, clear/retake/read and reclamation: all1282 rows pass independent sample/unique block recovery checks; ideal AXI/noSPJP scope",
-        "Minimum/odd/primary-count boundary control:187 rows per AXI width exactly match C1 responses, including high input bits, full small pools, highest view, opaque values, malformed retired count and stale-RAM reset"
+        "Minimum/odd/primary-count boundary control:187 rows per AXI width exactly match C1 responses, including high input bits, full small pools, highest view, opaque values, malformed retired count and stale-RAM reset",
+        "Expanded six-test path metadata regression passes217.75sec on immutable17f plus parameterized adapter"
       ],
       "translation_summary": "s2-path-translation-unit-summary.json",
       "deep_directory_summary": "s2-path-directory-unit-summary.json",
@@ -683,9 +685,7 @@
         "whs_ns": 0.002,
         "timing_met": false
       },
-      "pending": [
-        "Exact-source/context physical repeat before selection"
-      ],
+      "pending": [],
       "routed_summary": "s2-path-extended-100-summary.json",
       "extended_summary": "s2-path-extended-100-summary.json",
       "routed_deltas_vs_c1": {
@@ -739,14 +739,16 @@
           8
         ]
       },
-      "outcome": "shortlisted_pending_hint_siblings",
-      "decision": "337 more routed LUTs,21 more slices and1 more BRAM than basic current-block, but observed maximum falls74575 to59446 clocks. Compared with C1,3910 fewer LUTs,642 fewer slices and1152 fewer median clocks. All logical oracles pass. Favor this latency/area tradeoff pending hints and physical repeat; setup timing still fails.",
+      "outcome": "selected_as_C2",
+      "decision": "Choose directory path for the primary sequential128-channel workload:642 fewer slices/3910 fewer LUTs than C1, median52994/max59446 vs54146/84284. Compared with basic one-block,21 more slices/337 LUTs/one BRAM buys15129 fewer observed maximum clocks. Retain slower strided/deep-GC/removal tradeoffs. Original hints preserved; physical timing still fails.",
       "public_store_operation_summary": "s2-path-store-operations-unit-summary.json",
       "public_store_operation_control": "c1-store-operations-unit-summary.json",
       "width_boundary_summaries": [
         "s2-path-width-boundaries-axi32-summary.json",
         "s2-path-width-boundaries-axi64-summary.json"
-      ]
+      ],
+      "repeat_summary": "s2-path-repeat-100-summary.json",
+      "repeat_validation": "All four-stage mapped/routed resource, timing and control-set rows identical; source manifest and primary context parameters identical. Fresh full-flow repeat reproduces original opt-checkpoint-resumed route."
     },
     {
       "label": "s2-hints",
@@ -883,11 +885,22 @@
     }
   },
   "selected_control": {
-    "label": "C1",
-    "implementation": "s1-serial-100",
-    "rtl_revision": "50b59fe1",
-    "summary": "s1-serial-100-summary.json",
-    "repeat_summary": "s1-serial-repeat-100-summary.json",
-    "timing_met": false
+    "label": "C2",
+    "implementation": "s2-path-extended-100",
+    "rtl_revision": "17f69fd8",
+    "prepared_source_commit": "560472f1",
+    "summary": "s2-path-extended-100-summary.json",
+    "repeat_summary": "s2-path-repeat-100-summary.json",
+    "timing_met": false,
+    "cumulative_deltas_vs_B0": {
+      "lut": -6491,
+      "slices": -1231,
+      "ff": -4760,
+      "bram36": 0.5,
+      "dsp": 0,
+      "carry4": -2148,
+      "control_sets": -959
+    },
+    "hints": "original early+late"
   }
 }

@@ -125,10 +125,11 @@ Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
 
 Depends on stage 1's recorded decision; all cache alternatives share one control.
 
-Execution status: four-way, banked, full-leaf, current-block and directory-path
-experiments are complete. Both generated-hint policy siblings are measured and
-rejected; the exact-source path repeat and selection remain. See the [ledger](measurements/area-experiments/ledger.json) for retained
-source, unit, connected and physical results.
+Execution status: complete. Five cache alternatives and both generated-hint
+policies are measured. The directory-path cache is selected as C2 after an
+exact four-stage physical repeat; original early+late hints remain.
+See the [ledger](measurements/area-experiments/ledger.json) for source, unit,
+connected and physical results, including rejected tradeoffs.
 
 - [x] Implement and measure a 128-line, four-way cache with RAM-backed tags, then
   a banked full-associativity search, then a leaf cache indexed by view. For the
@@ -150,7 +151,7 @@ source, unit, connected and physical results.
   channels, and cold/retake traffic. Extend steady runs beyond two 16,384-frame
   leaf spans, or supply equivalent directed boundary fixtures. Compare cache
   capacity and traffic as well as comparator count and synthesized RAM inference.
-- [ ] Route viable alternatives, select by connected area and latency, and record
+- [x] Route viable alternatives, select by connected area and latency, and record
   any capacity/hash tuning as separate runs. Do not treat a fully serial scan's
   reduced logic as a win without accounting for its complete quantum cost.
 - [x] Separately trial late-only generated payload hints, then no generated

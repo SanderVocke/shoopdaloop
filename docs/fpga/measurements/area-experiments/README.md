@@ -339,3 +339,17 @@ overflow, faults and reset are included. These are baselines, not area wins.
 Compact per-opcode/error statistics are regenerated from the retained raw
 samples by `compact_unit_summaries.py`. Every original request and result stays
 in the verified archives; compacting a summary does not discard raw evidence.
+
+
+Stage 2 is complete. The full-flow path repeat reproduces the original
+checkpoint-resumed run exactly at all four stages: resources, timing and control
+sets. The expanded six-test path metadata suite passes in 217.75 seconds.
+C2 selects this cache and keeps original generated hints. Against B0, the
+combined implementation saves 6,491 LUTs, 1,231 slices, 4,760 FFs and 2,148 CARRY4s;
+it adds half a BRAM tile. Routed setup slack remains -3.881 ns.
+
+The one-block alternative saves another 21 slices, 337 LUTs and one BRAM, but
+its observed maximum is 15,129 clocks higher. C2 favors the primary sequential
+playback workload while retaining all strided, deep retirement and operation
+regressions/costs in the comparison. This selection establishes the control for
+Stage 3; it does not complete the remaining architectural or precision trials.
