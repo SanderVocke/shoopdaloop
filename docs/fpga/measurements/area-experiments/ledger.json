@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
+  "plan_commit": "bd98263d",
+  "stage": 0,
+  "status": "in_progress",
+  "completed_checks": [
+    "Experiment branch created and plan committed",
+    "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
+    "Prepared B0 public context, constraints, and profile match archived SHA-256 values",
+    "All 94 independent Rust FPGA reference tests passed with all features",
+    "Runner checks cover report stages, cold/steady separation, parameter propagation, and altered source evidence",
+    "Warning-denying benchmark/example cargo check passed before adding cache counter probes",
+    "Pinned Verilator 5.032 built and version verified",
+    "Yosys 0.52 available; SP default/small/minimum lint, generic, ECP5 gates passed",
+    "Warning-denying full workspace build passed after repairing host library symlinks",
+    "Instrumented benchmark release executable built successfully",
+    "Instrumented mixed-on-delay7 reproduces all 33 archived per-quantum rows exactly, including cold and steady timing/traffic/work"
+  ],
+  "pending": [
+    "Finish pinned Vivado OCI extraction and verify version",
+    "Reproduce B0 connected 100 MHz implementation and functional cycle matrix",
+    "Validate metadata/cache counters and commit the measurement foundation before stage 1"
+  ],
+  "artifacts": {
+    "prepared_baseline": "work/area-experiments/b0-100",
+    "setup_logs": "work/area-experiments/setup"
+  },
+  "experiments": [],
+  "provisioning": {
+    "docker_attempt": "Cancelled because the vfs storage driver duplicates the tool layer; task caches released",
+    "safe_alternative": "Single OCI download, 6129731028 declared compressed bytes; 6710886400 byte quota and 1610612736 byte free-space floor",
+    "approval_review": "Initial unbounded OCI download rejected for storage risk; bounded retry approved"
+  }
+}

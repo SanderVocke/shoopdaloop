@@ -81,7 +81,7 @@ PS7, board DDR arbitration, and board I/O are outside that measurement.
 
 Depends on the starting revision; finish before changing implementation RTL.
 
-- [ ] Create `feat/backend-replacement-area-experiments` from the verified base,
+- [x] Create `feat/backend-replacement-area-experiments` from the verified base,
   preserving this plan and existing edits. Keep disposable candidate branches or
   worktrees for alternatives and a separate branch for the selected combination.
 - [ ] Reuse or provision the documented pinned Vivado toolchain and Verilator
