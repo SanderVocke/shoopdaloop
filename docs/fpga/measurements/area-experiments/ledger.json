@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 3,
-  "status": "Stage2 complete/C2 selected; Stage3 audio and MIDI bookkeeping widths measured/rejected for greater routed slice use. Local-frame and arena-relative siblings next.",
+  "status": "Stage3 audio and MIDI bookkeeping trials completed/rejected; optional packed local audio frames now in functional/default64 calibration. C2 remains selected.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -904,6 +904,29 @@
       },
       "outcome": "rejected_for_default",
       "decision": "Allfunctional andmeasuredexecution behavior retained, but286 fewer routedLUTs/106 fewerFF/59 fewerCARRY4 cost130 more slices and156 morephysical controlsets. Setupworsens0.064ns, holdmarginfalls0.040ns. KeepC2 under slice/timing pressure. Retain asalternative only. Preparedfullrepeat notexecuted becausecandidateunselected."
+    },
+    {
+      "label": "s3-local-frames",
+      "stage": 3,
+      "status": "in_progress",
+      "rtl_source_revision": "3e47163d",
+      "control_revision": "a046e9c5",
+      "control_summary": "s2-path-repeat-100-summary.json",
+      "changed_contract": "Optional21bit audio view duration limit2097151frames=43.6906458sec@48k. Default64 retained, external widths/generations/global/MIDItime/sampleprecision unchanged. Explicitoverflow/configrefusal before narrowing. See stage3-local-frames-contract.md.",
+      "validation": [
+        "Initial21configuration cases (F5/21/64, AXI32/64, Instant/Fixed/DRAMsim3/Legacy) pass192.72sec; expandedpoisonedlargecount/fault checks subsequently added and running",
+        "Expanded F5 Fixed/AXI64 rawprobe passes max31 recording,+1refusal,wide count/noinput consumption,highbits/atomiccfgrefusal,offset/nested/wrap/retake,cleanup/reset andinjectedmemoryfault"
+      ],
+      "unit_summaries": [
+        "s3-local-frames5-boundaries-summary.json"
+      ],
+      "pending": [
+        "Expanded21configuration regression",
+        "64bit default fullmedia/deferred/ownership",
+        "Canonical64 connected/store equivalence and optimized calibration",
+        "Primary21 connected/store and bothwidths raw probes",
+        "Physical21 screen and route if viable"
+      ]
     }
   ],
   "provisioning": {
