@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 3,
-  "status": "Stage3 audio/MIDI bookkeeping and optional local-frame families completed/rejected for selected profile; arena-relative/path-context sibling next. C2 remains selected.",
+  "status": "Stage3 bookkeeping/local-frame families completed/unselected; C2-based arena-relative/path-context candidate fe2184ea in functional/physical screen.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1029,6 +1029,29 @@
       },
       "outcome": "rejected_for_selected_profile",
       "decision": "Optional21 saves184slices vsmodified64control butstilluses70moreslices/+98physicalcontrolsets thanC2. Saves334LUT/338FF/.5BRAM/57carry,setupimproves.131nsbutstillfails. Durationrestrictionto43.69sec notjustifiedforslicepressure. Bothfeatureconfigurations retainedonlyonexperimentalbranch; C2defaultproduction remainsunchanged. No physicalrepeat forunselectedtradeoff."
+    },
+    {
+      "label": "s3-path-context",
+      "stage": 3,
+      "status": "in_progress",
+      "rtl_source_revision": "fe2184ea",
+      "control_revision": "a046e9c5",
+      "control_summary": "s2-path-repeat-100-summary.json",
+      "changed_contract": "None intended. Full64arena origin/computation andraw32IDs retained; savedrelativeoffsetwidth from65bit worstcase bound with64fallback. Reusepath_page and4bitentryindex insteadofdualreadfulladdressRAM; reconstructselectedparentaddress. Seestage3-path-context-contract.md.",
+      "validation": [
+        "WarningfatalVerilatorlintpasses min/odd/primary/INTMAXgeometries",
+        "Deep directoryfixture passes first(fullmetadata suitecontinuing); C2checkpointconfirms oldpath_address37RAM32X1D/zeroFF, soFFsaving notassumed",
+        "Onlymedia_metadata.sv differs fromall38C2productionHDLfiles"
+      ],
+      "pending": [
+        "Full6metadata tests",
+        "AXI32/64 width/rawresponse/cycle equivalence",
+        "207rowdeep directory equivalence",
+        "1282rowpublicstore equivalence",
+        "33rowconnected equivalence",
+        "Media/ownership/deferred tests",
+        "Optimizedscreen thenrouteifviable"
+      ]
     }
   ],
   "provisioning": {
