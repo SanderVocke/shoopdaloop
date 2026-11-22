@@ -646,7 +646,8 @@
       "validation": [
         "Original four metadata tests passed170.38sec",
         "New deep-boundary retirement/live-ID-reuse independent-map check passed AXI32/64 on C1 and candidate",
-        "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults"
+        "Expanded five-test metadata suite passed275.01sec after adapter extension, preserving original defaults",
+        "Full ownership/deferred/media regressions passed, including legacy scalar and DRAMsim3"
       ],
       "translation_summary": "s2-path-translation-unit-summary.json",
       "deep_directory_summary": "s2-path-directory-unit-summary.json",
@@ -668,8 +669,8 @@
         "timing_met": false
       },
       "pending": [
-        "Finish ownership/deferred/media regression, 1024-quanta connected run and routing",
-        "Compare all cache/hint-policy siblings and repeat selected physical winner"
+        "Finish routed physical result and 1024-quanta connected run",
+        "Compare hint-policy siblings and repeat chosen cache winner"
       ]
     }
   ],
