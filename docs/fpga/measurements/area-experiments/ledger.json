@@ -915,18 +915,21 @@
       "changed_contract": "Optional21bit audio view duration limit2097151frames=43.6906458sec@48k. Default64 retained, external widths/generations/global/MIDItime/sampleprecision unchanged. Explicitoverflow/configrefusal before narrowing. See stage3-local-frames-contract.md.",
       "validation": [
         "Initial21configuration cases (F5/21/64, AXI32/64, Instant/Fixed/DRAMsim3/Legacy) pass192.72sec; expandedpoisonedlargecount/fault checks subsequently added and running",
-        "Expanded F5 Fixed/AXI64 rawprobe passes max31 recording,+1refusal,wide count/noinput consumption,highbits/atomiccfgrefusal,offset/nested/wrap/retake,cleanup/reset andinjectedmemoryfault"
+        "Expanded F5 Fixed/AXI64 rawprobe passes max31 recording,+1refusal,wide count/noinput consumption,highbits/atomiccfgrefusal,offset/nested/wrap/retake,cleanup/reset andinjectedmemoryfault",
+        "Expanded21configurations (F5/21/64 \u00d7AXI32/64\u00d7Instant/Fixed/DRAMsim3 andLegacy) pass28.10sec, withlargecount poisonedcommand/noinput/unchangedglobals/descriptor checks andfaultlatch/reset"
       ],
       "unit_summaries": [
-        "s3-local-frames5-boundaries-summary.json"
+        "s3-local-frames5-boundaries-summary.json",
+        "s3-local-frames21-boundaries-summary.json",
+        "s3-local-frames64-boundaries-summary.json"
       ],
       "pending": [
-        "Expanded21configuration regression",
         "64bit default fullmedia/deferred/ownership",
         "Canonical64 connected/store equivalence and optimized calibration",
         "Primary21 connected/store and bothwidths raw probes",
         "Physical21 screen and route if viable"
-      ]
+      ],
+      "functional_log": "s3-local-frames-tests.log"
     }
   ],
   "provisioning": {
