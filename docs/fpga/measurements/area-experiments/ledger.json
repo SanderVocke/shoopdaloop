@@ -112,7 +112,7 @@
     {
       "label": "s1-serial",
       "stage": 1,
-      "status": "in_progress",
+      "status": "measured_repeat_pending",
       "control_revision": "3fd4e673",
       "changed_contract": "Logical values, ownership, and errors preserved. Validity RAM initializes for VIEWS clocks; diagnostic requests scan all VIEWS entries and hold admission until the response. Measured driver reset/read latency increases explicitly.",
       "validation": [
@@ -175,8 +175,8 @@
         }
       ],
       "pending": [
-        "Finish serial route and compare both siblings",
-        "Repeat the selected physical winner before completing stage 1"
+        "Complete identical-checkpoint physical repeat before final stage 1 selection",
+        "Complete directed deferred-cleanup regressions for longer diagnostic admission holds"
       ],
       "latency_scope": "Driver reset includes one asserted reset clock and readiness wait. Diagnostic timing covers Config::access, including admission and response cleanup.",
       "source_revision": "50b59fe15aee7982664e92d5fd8e919e6d1b25a7",
@@ -196,7 +196,37 @@
         "carry4": -7,
         "memory_lut": 32
       },
-      "physical_build": "work/area-experiments/s1-serial-route100"
+      "physical_build": "work/area-experiments/s1-serial-route100",
+      "routed_summary": "s1-serial-100-summary.json",
+      "routed_deltas_vs_b0": {
+        "lut": -2581,
+        "slices": -589,
+        "ff": -454,
+        "carry4": -1533,
+        "control_sets": -721,
+        "memory_lut": 32,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "routed_deltas_vs_incremental": {
+        "lut": -541,
+        "slices": -400,
+        "ff": -469,
+        "carry4": -7,
+        "control_sets": -178
+      },
+      "routed_timing": {
+        "wns_ns": -4.157,
+        "whs_ns": 0.005,
+        "timing_met": false
+      },
+      "route_status": {
+        "routing_errors": 0,
+        "drc_errors": 0,
+        "drc_warnings": 18,
+        "unconstrained_internal_endpoints": 0
+      },
+      "decision": "Preferred stage 1 candidate pending repeat: lower routed LUT/FF/slices than the incremental sibling, with unchanged callback measurements. Accept explicitly measured diagnostic/reset latency because scans are outside the normal playback path. Both alternatives still fail 100 MHz setup; serial setup is 0.162 ns worse than incremental."
     }
   ],
   "provisioning": {

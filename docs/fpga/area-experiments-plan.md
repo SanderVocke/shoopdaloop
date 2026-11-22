@@ -111,9 +111,9 @@ measurement foundation before proceeding.
 
 Depends on stage 0. Target `media_store.sv`'s diagnostic adder tree and bitmap.
 
-- [ ] Compare an incremental occupancy count with an on-demand serial count using
+- [x] Compare an incremental occupancy count with an on-demand serial count using
   RAM-backed validity. Measure each separately, including any new bookkeeping.
-- [ ] Verify create/slice/clear/remove, repeated descriptor writes, configuration
+- [x] Verify create/slice/clear/remove, repeated descriptor writes, configuration
   restore, full pools, reuse on/off, and reset with stale descriptor RAM. Check
   diagnostic values and response latency exactly against the logical model.
 - [ ] Run focused ownership/media tests and connected cycle/area measurements.
