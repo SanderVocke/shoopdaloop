@@ -204,5 +204,10 @@ The banked alternative retains all 128 fully associative entries while comparing
 eight tags at a time. Independent sequential, strided and dirty-conflict traces
 on AXI32/64 match C1's 261 misses exactly. Read hits range from six to 36 clocks
 (median 20 in this unit workload); cold fills add 30 clocks. All metadata tests
-pass. Connected workload and physical results are still pending; these unit
-numbers alone do not select an implementation.
+pass. The routed banked result uses 36,470 LUTs, 28,801 registers and 12,263
+slices, with 3,369 CARRY4s and 1,434 control sets. BRAM and DSP use stay at
+77.5 and four. Setup/hold slack is -3.950/+0.041 ns: timing still fails.
+This is 2,929 fewer LUTs and 353 fewer slices than C1, and 73 fewer slices than
+the four-way route. Compare that small slice difference with the complete
+connected latency and boundary costs before selecting or repeating a winner.
+The long connected result is still pending.

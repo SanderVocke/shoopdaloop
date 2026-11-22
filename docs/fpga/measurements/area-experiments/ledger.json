@@ -319,7 +319,7 @@
       "control_summary": "c1-extended-100-summary.json",
       "changed_contract": "No data/ownership/error change intended. Fully associative capacity retained; eight comparisons scan sixteen groups for 128 lines. Hits add group-search clocks; dirty misses fetch victim tags separately.",
       "pending": [
-        "Route result and 1024 steady-quanta connected sample set"
+        "Finish 1024 steady-quanta connected sample set and archive together with physical reports"
       ],
       "rtl_source_revision": "6984b063",
       "validation": [
@@ -351,7 +351,23 @@
         "whs_ns": 0.002,
         "timing_met": false
       },
-      "translation_summary": "s2-banked-translation-unit-summary.json"
+      "translation_summary": "s2-banked-translation-unit-summary.json",
+      "routed_summary": "s2-banked-100-summary.json",
+      "routed_deltas_vs_c1": {
+        "lut": -2929,
+        "ff": -4186,
+        "slices": -353,
+        "carry4": -589,
+        "control_sets": -60,
+        "memory_lut": 192,
+        "bram36": 0,
+        "dsp": 0
+      },
+      "routed_timing": {
+        "wns_ns": -3.95,
+        "whs_ns": 0.041,
+        "timing_met": false
+      }
     }
   ],
   "provisioning": {
