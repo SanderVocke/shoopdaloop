@@ -419,6 +419,41 @@ pub fn descriptor_statistics_reset_restore(d: &mut Store, s: &mut Sim<'_>) {
         d.write_config(s, 1, view, 0);
     }
     assert_eq!(stats(d, s), [0, n, 0, 2, 0]);
+    for delay in [0, 3, 5, g.views / 2] {
+        d.write_config(s, 1, last, 1);
+        d.set(
+            s,
+            &[
+                ("cfg_valid", 1),
+                ("cfg_write", 0),
+                ("cfg_space", 6),
+                ("cfg_address", 16),
+            ],
+        );
+        let mut admitted = false;
+        for _ in 0..100_000 {
+            if d.tick(s).0.get("cfg_ready") != 0 {
+                admitted = true;
+                break;
+            }
+        }
+        assert!(admitted, "statistics request was not admitted");
+        d.set(s, &[("cfg_valid", 0)]);
+        let mut replied = false;
+        for _ in 0..delay {
+            let (before, _) = d.tick(s);
+            replied |= before.get("cfg_response_valid") != 0;
+            if !replied {
+                assert_eq!(before.get("cmd_ready"), 0);
+                assert_eq!(before.get("cfg_ready"), 0);
+            }
+        }
+        d.reset(s);
+        for _ in 0..g.views + 8 {
+            assert_eq!(d.tick(s).1.get("cfg_response_valid"), 0);
+        }
+        assert_eq!(stats(d, s), [0, n, 0, 2, 0]);
+    }
 }
 pub fn statistics_count_retired_storage_without_draining(d: &mut Store, s: &mut Sim<'_>) {
     d.reset(s);

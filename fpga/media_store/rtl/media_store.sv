@@ -96,17 +96,22 @@ module media_store #(
     reg reference_zero, reference_one, reference_max;
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
-    reg [VIEWS-1:0] valid_views;
     wire [31:0] views_used;
     generate if (REUSE_VIEWS != 0) begin : count_views
-        localparam integer LEAVES = 2**$clog2(VIEWS), BITS = $clog2(VIEWS+1);
-        for (genvar i=1; i<2*LEAVES; i=i+1) begin : tree
-            wire [BITS-1:0] count;
-            if (i<LEAVES) assign count = tree[2*i].count+tree[2*i+1].count;
-            else if (i-LEAVES<VIEWS) assign count = BITS'(valid_views[i-LEAVES]);
-            else assign count = 0;
+        localparam integer BITS = $clog2(VIEWS+1);
+        reg [VIEWS-1:0] valid_views;
+        reg [BITS-1:0] used;
+        always @(posedge clk) begin
+            if (reset) begin valid_views <= 0; used <= 0; end
+            else if (descriptor_write && advance) begin
+                valid_views[descriptor_write_address] <= descriptor_write_data[0];
+                if (valid_views[descriptor_write_address] != descriptor_write_data[0]) begin
+                    if (descriptor_write_data[0]) used <= used + 1'b1;
+                    else used <= used - 1'b1;
+                end
+            end
         end
-        assign views_used = 32'(tree[1].count);
+        assign views_used = 32'(used);
     end else begin : count_issued_views
         assign views_used = view_count;
     end endgenerate
@@ -604,7 +609,7 @@ module media_store #(
             error_code <= OK;
             result_view <= 0;
             result_empty <= 0;
-            view_count <= 0; allocation_view <= 0; valid_views <= 0;
+            view_count <= 0; allocation_view <= 0;
             slot_count <= 0;
             free_count <= 0;
             slot_limit <= 32'(BLOCKS);
@@ -658,7 +663,6 @@ module media_store #(
         end else begin
             done <= 0;
             if (cfg_pending) cfg_read_data <= cfg_result;
-            if (descriptor_write && advance) valid_views[descriptor_write_address] <= descriptor_write_data[0];
             if (advance && metadata_error == 0) begin
             if (cm_command && cm_cmd_ready) arena_bound <= 1;
             if (hint_valid && hint_ready && hint_base_valid) begin
