@@ -341,7 +341,7 @@ jobs:
         if: matrix.flavor == 'macos-intel-10.15'
         run: |
           python3 -m venv .script-test-venv
-          .script-test-venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
+          .script-test-venv/bin/pip install -r scripts/tests/requirements.txt
           .script-test-venv/bin/python -m unittest discover -s scripts/tests
       - name: Build without CPAL or Rodio
         if: matrix.flavor != 'macos-intel-10.15'
@@ -801,7 +801,7 @@ jobs:
           cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
           python3 scripts/check_dependency_boundaries.py --scope engine
           python3 -m venv .script-test-venv
-          .script-test-venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
+          .script-test-venv/bin/pip install -r scripts/tests/requirements.txt
           .script-test-venv/bin/python -m unittest discover -s scripts/tests
 
       - name: Run intentional Perfetto failure-capture canary
