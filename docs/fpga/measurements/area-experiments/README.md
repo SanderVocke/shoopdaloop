@@ -431,3 +431,13 @@ high/wrapping 64-bit arena bases. All 54 zero-base request rows reproduce the
 original memory agent exactly; all 108 relocated rows match their zero-base
 counterparts. This qualifies the standalone word interface, not board mappings.
 See `c2-midi-reserved*` and `c2-midi-relocated*` raw archives.
+
+Stage 4's first trial (`7d2d7cd7`) shares the MIDI store's region/index address
+arithmetic through one 64-bit unit. All 10,311 raw storage, 54 reserved-word and
+108 high/wrapping-base rows preserve replies and transfer counts. All 33 mixed
+callback rows preserve non-cycle fields. Steady median rises by 264 clocks
+(52,994 to 53,258), maximum by 330; cold start rises by 4,299 to 92,745.
+Optimization saves 117 LUTs, 151 CARRY4s and 92 F7/F8 muxes, but adds 130 FFs
+and three control sets, against C3. Memory/DSP counts stay unchanged. Routing
+and remaining expression tests are pending; C3 remains selected. See
+`s4-midi-address-performance.json` and the retained unit/physical archives.
