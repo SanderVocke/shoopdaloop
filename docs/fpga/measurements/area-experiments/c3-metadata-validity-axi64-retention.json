@@ -1,0 +1,28 @@
+{
+  "archive": "c3-metadata-validity-axi64-raw.tar.gz",
+  "archive_sha256": "2233e9cf71c55a60437d0a20dcfa99cf58893731ac1dc6a177c10cd60745fb66",
+  "members_sha256": {
+    "fixture/src/rust/rt_fpga_testbench/examples/metadata_validity.rs": "eb180325dd3fd4620b3f91d1e82cc3db974f4d32d30e821e786646819f898e0e",
+    "fixture/src/rust/rt_fpga_testbench/src/drivers/request.rs": "9d154cb07142c9c3bd3eaa4bc06f6f409b3ca7e8ed9bfdd890088b0b968fe8ca",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/metadata.rs": "8b53cfc1f5f7eea026c699fcadd34c98b8e55a0ce52b348d78da38a31887a884",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/metadata/validity.rs": "a0ecd2167818b2280166b30081b13bd291831119491866c87d41ae70ac888e24",
+    "fixture/src/rust/rt_fpga_testbench/tests/metadata_validity.rs": "ff1a597b2e1dca146b588b86a70450ec49356c1dac4715a7ab0059c221698591",
+    "logs/0-c3-metadata-validity-axi64.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/1-c3-metadata-validity-control-test-2.log": "0e3c148ed0a505968b454de7abaa6da3f4151594377a49e077eb87f278be42cc",
+    "replay/archive-area-unit.py": "45e950cb2d74b8efec0f9deebf97afd0f6018c384db83cfa8a71cbebe2654364",
+    "samples/c3-metadata-validity-axi64.json": "75ed3d015f548bbe505d29019111183c8b2e35d39a23c910711052b84fecba8d",
+    "source/fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+    "source/fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+    "source/fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+    "source/fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+    "source/fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+    "source/fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+    "source/fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+    "source/fpga/media_store/rtl/media_metadata.sv": "18cedcdf3d9cbe0398dc46d87753f7efda2b4756529912d87f22b71cc1d17ad8",
+    "source/fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+    "source/fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+    "source/fpga/media_store/tests/media_metadata_tb.sv": "633edad47c4f2ef66ea295c19617edf65645a7b70e939e3b023d53e48bf5cc11",
+    "source/fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+    "source/fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+  }
+}

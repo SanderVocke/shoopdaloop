@@ -40,7 +40,8 @@
     "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls",
     "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec",
     "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification.",
-    "C3extended1041callbackrows matchC2exactly, includingboth16,384-frameleafspans: steady1024 median52994/max59446; cold88446. Frozenbinary8c51 andimmutablefe2184ea source."
+    "C3extended1041callbackrows matchC2exactly, includingboth16,384-frameleafspans: steady1024 median52994/max59446; cold88446. Frozenbinary8c51 andimmutablefe2184ea source.",
+    "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
   ],
   "pending": [
     "Complete Stage4 shared arithmetic siblings and decide each from measured behavior, cycles and area",
@@ -61,7 +62,11 @@
       "c2-midi-reserved-zero-replay-summary.json",
       "c2-midi-relocated-control-summary.json"
     ],
-    "c3_extended_control": "c3-extended-100-summary.json"
+    "c3_extended_control": "c3-extended-100-summary.json",
+    "c3_metadata_validity_controls": [
+      "c3-metadata-validity-axi32-summary.json",
+      "c3-metadata-validity-axi64-summary.json"
+    ]
   },
   "experiments": [
     {

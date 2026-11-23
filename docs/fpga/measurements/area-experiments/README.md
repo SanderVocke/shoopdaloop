@@ -446,3 +446,12 @@ CARRY4s. Against C3 that saves 108 LUTs and 54 slices, costing 174 FFs and
 The full physical repeat and extended callback comparison are running before
 selecting this small physical win; C3 remains selected. See
 `s4-midi-address-performance.json` and the retained unit/physical archives.
+
+A separate original-RTL validity control is ready for Stage 5. Across AXI32/64
+and 1/5/512 views it retains 8,988 request rows with 512 completed invalidations
+per geometry, a view left untouched for 256 invalidations that must reload, high
+invalid trim IDs, rewrites, held replies and randomized AXI stalls. Reset five
+clocks after an accepted invalidation discards all old extents despite stale
+RAM. The direct Instant memory adapter is used; this is not a fixed-latency DDR
+measurement. All six cases pass on C3 in 69.21 seconds. Existing fixtures are
+unchanged; no Stage 5 implementation has been applied.
