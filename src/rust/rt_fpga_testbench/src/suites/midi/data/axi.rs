@@ -197,8 +197,10 @@ pub fn compiled_pipeline(width: u64, delay: u64) -> Result<()> {
         memory::{Control, axi::Axi},
         timing::Fixed,
     };
-    let mut design = super::pipeline::design(32);
+    let mut design =
+        super::pipeline::design(32).parameters(&[("DDR_PROGRAM", 1), ("AXI_DATA_WIDTH", width)]);
     design.top = "midi_audio_pipeline_axi".into();
+    design.memory = None;
     design
         .sources
         .push(crate::root().join("fpga/midi/rtl/midi_audio_pipeline_axi.sv"));
@@ -245,7 +247,11 @@ pub fn compiled_pipeline(width: u64, delay: u64) -> Result<()> {
         ],
     ));
     let mut audio = Audio::new(&mut sim, CAP, 601);
-    let mut store = Store::new(&mut sim, geometry(32), Mode::Instant, 617, "store_")?;
+    let mut store = Store::new(&mut sim, geometry(32), Mode::Fixed, 617, "store_")?;
+    store.reserve_ddr_program(CAP[0] as usize, 1);
+    if let Backend::Axi(memory) = &mut store.memory.borrow_mut().backend {
+        memory.timing = Box::new(Fixed::new(delay));
+    }
     let mut oracle = Oracle::new(32, true);
     let image = crate::target::RtlTarget::new(CAP, 16, &[0, 1]).build(&logical(32, true))?;
     audio.load_compiled(&mut sim, &image);

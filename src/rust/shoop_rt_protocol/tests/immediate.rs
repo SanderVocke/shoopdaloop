@@ -16,7 +16,6 @@ fn program_switch_descriptor_and_fenced_result_are_canonical_records() {
         instructions: 127,
         sync_count: 16,
         states: 64,
-        jobs: 85,
         buffers: 50,
     });
     assert!(command.valid());
@@ -33,6 +32,9 @@ fn program_switch_descriptor_and_fenced_result_are_canonical_records() {
     assert_eq!(codec::decode_engine(&bytes[..n]), Ok(message));
     let mut invalid = *record.bytes();
     invalid[24] = 1;
+    assert!(CommandRecord::from_bytes(invalid).is_none());
+    let mut invalid = *record.bytes();
+    invalid[20] = 1;
     assert!(CommandRecord::from_bytes(invalid).is_none());
 }
 

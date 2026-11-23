@@ -47,7 +47,7 @@ to follow.
    `read_intent_valid` and `read_intent_data` also expose a one-clock copy
    of that descriptor. The audio store can use this hint to start fetching
    samples before JP reaches the job.
-3. After SP finishes, JP reads and executes the jobs in FIFO order. A job
+3. JP reads and executes jobs in FIFO order as SP produces them. A job
    such as Gain reads samples from an on-chip scratch buffer written by an
    earlier job, then writes its result for a subsequent job such as Output.
    Audio media jobs and MIDI jobs can also wait for memory or I/O.
@@ -70,14 +70,26 @@ Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc
 
 # State processor
 
-The program has a sync prefix and a work section. The prefix executes one
-`ProcessLoop` instruction per loop. After the prefix, a capture prepass
-scans the work section for MIDI Capture and State instructions and queues
-writer transitions and optional state restore/cleanup jobs. SP then walks the
-work section again to build the audio and MIDI data jobs. All three scans use the same `sp_engine` hardware, including
-its instruction controller, working registers and 65-bit adder.
+The RTL compiler emits a sync prefix, MIDI setup instructions, and the work
+section in that order. The sync prefix executes one `ProcessLoop` per loop.
+The setup section emits writer transitions and playback-state restore or
+cleanup as needed. The work section emits the regular data jobs. The state
+processor advances through these sections once per quantum.
 
-![Figure 2. One engine runs the sync prefix, capture prepass and data pass. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
+With `DDR_PROGRAM=1`, the instruction regions occupy a 64-byte-aligned range
+after the audio media arena. Each instruction uses a 16-byte DDR record with
+three little-endian instruction words and one padding word. The existing
+program configuration port reads and writes these records and replies after the
+memory transaction completes. Live uploads continue to target the inactive region.
+
+The prefetcher reserves room in a 64-instruction FIFO before requesting up to
+four records. It shares the existing burst DMA with media metadata and
+alternates between pending requests at transaction boundaries. A single 32-bit
+BRAM supplies the three words of each instruction. Fetch waits for a complete
+instruction, and a DDR read fault terminates the state-processor run. Every run
+starts with an empty FIFO and its selected program region.
+
+![Figure 2. One engine runs the sync, setup, and data sections. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
 
 ## What lives on the FPGA
 
@@ -89,7 +101,7 @@ utilization for the target profile to see the BRAM mapping.
 
 | Storage | What it holds |
 | --- | --- |
-| Program RAM | 96-bit instructions. Live loading can provide a second program region. |
+| Program storage | 96-bit instructions in local RAM or DDR. Live loading can provide a second program region. |
 | Node-state RAM | 129-bit entries for values such as view IDs, enables and gain ramps. |
 | Loop RAM | Sixteen 64-bit words per loop. They hold loop identity, mode, positions, capture length, revisions and two plan slots. |
 | Job FIFO | 256-bit job descriptors for the current run. |
@@ -187,31 +199,24 @@ A gain instruction emits an immutable ramp snapshot and advances the
 persistent counter once per quantum. Audio playback jobs encode position and
 length in chunks. MIDI jobs address ports, sequences, cursor slots and
 event lists. Read also carries the loop identity to validate cursor reuse.
-The capture prepass uses the writer-open flag in loop RAM. Jobs stay in
-the FIFO until SP finishes.
-
-The compiler supplies the **maximum number of job descriptors one run can
-enqueue** as `run_job_budget` or, with live loading, in the switch descriptor.
-The budget is measured in FIFO entries. For example, a budget of 20 needs
-room for 20 descriptors even if a particular loop mode produces only 12.
-A single instruction can emit more than one job. For example, a MIDI retake
-can emit FinishCapture, BeginCapture and Append. Since JP starts only after SP finishes, the FIFO must
-hold the whole list at once. The bound says nothing about execution time
-or how many clock cycles those jobs take.
+The MIDI writer setup instruction uses the writer-open flag in loop RAM.
+A retake can emit FinishCapture and BeginCapture in the setup section,
+followed by Append in the data section.
 
 `run_valid && run_ready` starts admission checks for geometry, instruction
-and state counts, an empty FIFO and enough FIFO slots for the budget. SP
-reports a queue-full error when it cannot fit the declared budget.
-A fault can leave earlier state writes and a partial queue. A caller using
-the standalone core can inspect and drain that queue. The combined controller skips the normal JP pass on
-SP failure. Reset invalidates execution and FIFO state while retaining RAM
-payloads. Reload required records before resuming managed execution.
+and state counts, and an empty FIFO. In the combined pipeline, a full FIFO
+stalls SP until JP consumes a job. JP waits through empty gaps until SP finishes.
+A fault can leave earlier state writes, effects from jobs already accepted by JP,
+and queued jobs that the caller can inspect and drain. The standalone SP reports
+an error if the FIFO fills during job generation. Reset invalidates execution
+and FIFO state while retaining RAM payloads. Reload required records before
+resuming managed execution.
 
 | Port family | Use |
 | --- | --- |
 | `cfg_*` | Read/write program or persistent state, with `cfg_loop` selecting loop RAM. Observe the response beat. Live loading permits writes to the inactive instruction region under its dedicated rules. |
 | `run_*`, `done`, `error_code`, `instruction_pc` | Admit a run and identify success or the failing instruction. |
-| `job_*`, `queued_jobs` | Drain the FIFO after the run. SP holds the descriptor stable under backpressure. |
+| `job_*`, `queued_jobs` | Drain the FIFO while SP runs in streaming mode, or after completion in standalone mode. The descriptor stays stable under backpressure. |
 | `read_intent_*` | Advisory pulse on playback enqueue, with no ready input. |
 | `sync_event_*` | Ready/valid events, held until accepted. |
 
@@ -394,14 +399,12 @@ playback meaning in either mode.
    Sort the array by offset, keep offsets below Q, and preserve it until
    completion.
 2. **Settle loop timing and queue writer transitions.** SP runs its sync
-   prefix. It then scans the work program for MIDI Capture and State instructions
-   and queues FinishCapture or BeginCapture as needed. With prepared state
-   bindings, the prepass also visits MIDI State instructions and queues Restore
-   or Cleanup ahead of the ordinary data jobs. The writer-open
-   bit in SP loop RAM records the intended writer lifecycle. This pass
-   completes before any regular data job is queued.
+   prefix, then executes the explicit MIDI setup instructions. Capture setup
+   queues FinishCapture or BeginCapture as needed. MIDI State instructions
+   queue Restore or Cleanup ahead of the ordinary data jobs. The writer-open
+   bit in SP loop RAM records the intended writer lifecycle.
 3. **Queue and execute the data jobs.** SP walks the regular work pass in
-   program order. JP then dispatches each queued descriptor and waits for
+   program order. JP dispatches each descriptor as it becomes available and waits for
    its result. On playback, SP supplies the loop-relative starting
    position, Q, a channel mask and a restart flag. The MIDI unit resolves
    the sequence's view and moves the messages in that interval. It gets
@@ -422,7 +425,7 @@ playback meaning in either mode.
 | MIDI Output | One ready scratch list | Packet handshakes for the selected output port; optional accepted-output tracking |
 | MIDI Restore / Cleanup | Prepared binding, current output state, snapshot/differences or owned activity | Ordered correction packets and updated tracking state; requires the state extension |
 
-## Variable event counts and the job budget
+## Variable event counts and job descriptors
 
 An audio quantum fixes a sample count. A MIDI quantum fixes a time
 window. It can carry zero messages or many messages at the same offset.
@@ -430,12 +433,10 @@ The input count is supplied with the run as a 32-bit record count. The
 RTL checks input shape and memory access. The size of a storage block
 places no per-quantum event limit on the run.
 
-The compiler reserves one job for each MIDI Input, Playback, Merge, or
-Output instruction, and up to three for each MIDI Capture instruction.
-Three slots cover a retake that finishes an old writer, begins a new
-one and appends a list. Reserve one additional job per MIDI State instruction
-for its possible Restore or Cleanup. This sizing depends on the graph. A burst makes
-the jobs run longer without adding FIFO descriptors. The RTL component
+MIDI Input, Playback, Merge, and Output each produce one job. MIDI Capture can
+produce up to three jobs when a retake finishes an old writer, begins a new one,
+and appends a list. MIDI State can produce a Restore or Cleanup job. An event
+burst makes the jobs run longer without adding FIFO descriptors. The RTL component
 tests record and play 3,000 messages at one sample offset and separately
 merge 1,200 messages. At the default block geometry, 3,000 stored events
 take twelve blocks. Deadline measurements use their stated graph, memory
@@ -546,7 +547,7 @@ compiled MIDI State instructions supply those choices.
 
 A binding identifies the loop slot and generation, sequence, direct input,
 output-port mask and MIDI-channel mask. The compiler puts MIDI State
-instructions after all Capture instructions. The loader installs matching
+instructions after all writer setup instructions. The loader installs matching
 bindings with command 21 before rendering. SP uses loop RAM to decide when to
 queue Restore or Cleanup; `midi_expression_state` performs the data work under
 the same JP used for audio. It adds no separate instruction processor or MIDI

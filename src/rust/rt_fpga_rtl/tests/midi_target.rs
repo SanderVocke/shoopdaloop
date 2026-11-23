@@ -39,7 +39,7 @@ fn midi_target_lowers_data_jobs_and_rejects_legacy_phases_and_wide_read_operands
     base.work_pass.clear();
     base.jobs_per_quantum = 0;
     base.resources.buffers = 512;
-    let target = RtlTarget::new([64, 16, 64, 128, 512, 2, 2], 16, &[0, 1]);
+    let target = RtlTarget::new([64, 16, 1, 128, 512, 2, 2], 16, &[0, 1]);
     let id = base.loops[0].id;
     let operations = [
         M::Input {
@@ -62,14 +62,22 @@ fn midi_target_lowers_data_jobs_and_rejects_legacy_phases_and_wide_read_operands
     ];
     let valid = base.clone().with_midi_data(&operations).unwrap();
     let image = target.build(&valid).unwrap();
+    assert!(image.jobs_per_quantum > target.capacities.jobs);
     assert_eq!(
         image
             .instructions
             .iter()
             .map(|b| b.get(0, 8))
             .collect::<Vec<_>>(),
-        vec![12, 12, 14, 16, 15, 18]
+        vec![12, 12, 20, 14, 16, 15, 18]
     );
+    let smaller = RtlTarget::new([6, 16, 1, 128, 512, 2, 2], 16, &[0, 1]);
+    assert!(matches!(
+        smaller.build(&valid),
+        Err(CompileError::Capacity(
+            rt_fpga_compiler::Resource::Instructions
+        ))
+    ));
     for which in 0..3 {
         let mut ops = operations;
         ops[2] = match which {

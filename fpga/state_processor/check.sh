@@ -6,7 +6,7 @@ rtl_dir="$repo_root/fpga/state_processor/rtl"
 output_dir=${1:-"$repo_root/work/fpga-state-processor"}
 mkdir -p -- "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
-sources=(sp_ram.sv sp_job_fifo.sv sp_engine.sv state_processor.sv)
+sources=(sp_ram.sv sp_job_fifo.sv sp_program_prefetch.sv sp_engine.sv state_processor.sv)
 source_paths=()
 read_command="read_verilog -sv -I\"$rtl_dir\""
 for source in "${sources[@]}"; do

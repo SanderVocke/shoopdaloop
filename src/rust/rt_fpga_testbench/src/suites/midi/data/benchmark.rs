@@ -372,6 +372,11 @@ fn run_case(
     ] {
         design.parameters.insert(name.into(), value.to_string());
     }
+    if std::fs::read_to_string(crate::root().join("fpga/midi/rtl/midi_audio_pipeline_axi.sv"))?
+        .contains("parameter integer DDR_PROGRAM")
+    {
+        design.parameters.insert("DDR_PROGRAM".into(), "1".into());
+    }
     for (name, value) in parameters {
         if !design.parameters.contains_key(name)
             && !matches!(name.as_str(), "READ_HINT_POLICY" | "LOCAL_FRAME_BITS")
@@ -413,6 +418,17 @@ fn run_case(
     let output = Rc::new(RefCell::new(Output::default()));
     sim.agent(output.clone());
     let mut driver = Pipeline::new(&mut sim, cap, geometry, Mode::Fixed, 1021)?;
+    if model_parameters
+        .get("DDR_PROGRAM")
+        .is_some_and(|v| v != "0")
+    {
+        driver.store.reserve_ddr_program(
+            model_parameters["PROGRAM_DEPTH"].parse()?,
+            model_parameters
+                .get("PROGRAM_REGIONS")
+                .map_or(Ok(1), |v| v.parse())?,
+        );
+    }
     if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
         memory.timing = Box::new(Fixed::new(delay));
     }

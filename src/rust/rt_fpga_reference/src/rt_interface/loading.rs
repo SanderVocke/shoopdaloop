@@ -22,7 +22,6 @@ impl PreparedProgram {
             instructions: count(c.program.instructions.len() + c.program.sync_instructions.len())?,
             sync_count: count(c.program.sync_instructions.len())?,
             states: count(c.memory.len())?,
-            jobs: count(c.program.jobs_per_quantum)?,
             buffers: count(c.resources.buffers as usize)?,
         };
         let mut rows = Vec::new();

@@ -56,7 +56,11 @@ pub enum Instruction {
         channels: u16,
         destination: u8,
     },
-    MidiCapture {
+    MidiPrepareCapture {
+        loop_id: Identity,
+        sequence: u16,
+    },
+    MidiAppend {
         loop_id: Identity,
         sequence: u16,
         source: u16,
@@ -134,7 +138,16 @@ pub fn value_words(value: Value) -> [u32; 5] {
 pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
     let (opcode, args) = match value {
         Instruction::MidiInput { port, destination } => (14, vec![port, destination]),
-        Instruction::MidiCapture {
+        Instruction::MidiPrepareCapture { loop_id, sequence } => (
+            20,
+            vec![
+                u16::try_from(loop_id.slot)?,
+                loop_id.generation as u16,
+                (loop_id.generation >> 16) as u16,
+                sequence,
+            ],
+        ),
+        Instruction::MidiAppend {
             loop_id,
             sequence,
             source,

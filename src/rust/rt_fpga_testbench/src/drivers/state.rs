@@ -58,7 +58,6 @@ impl State {
             "run_state_count",
             "run_quantum",
             "run_chunk_frames",
-            "run_job_budget",
             "cfg_valid",
             "cfg_state",
             "cfg_write",
@@ -187,7 +186,6 @@ impl Program {
     pub fn load_compiled(&mut self, sim: &mut Sim<'_>, compiled: &crate::target::CompiledProgram) {
         assert!(compiled.instructions.len() as u64 <= self.depths[0]);
         assert!(compiled.state.len() as u64 <= self.depths[1]);
-        assert!(u64::from(compiled.resources.queue_capacity) <= self.depths[2]);
         self.state_count = compiled.state.len();
         self.program = json!({
             "instructions": compiled.instructions.iter().map(|b| b.array::<3>()).collect::<Vec<_>>(),
@@ -279,10 +277,6 @@ impl Program {
             (
                 "run_chunk_frames",
                 self.program["chunk_frames"].as_u64().unwrap(),
-            ),
-            (
-                "run_job_budget",
-                self.program["jobs_per_quantum"].as_u64().unwrap(),
             ),
         ]);
         if let Some(sync_count) = self.program["sync_count"].as_u64() {

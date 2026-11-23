@@ -84,6 +84,10 @@ shared AXI controller. AXI handshakes/transfers still cost cycles; there is no
 added refresh, bank contention or DRAM service delay. The existing `fixed` mode
 still adds seven cycles and is not used as the ideal baseline. DRAMsim3 retains
 the shared 150 MHz Z-turn V2 DDR3-1066 x32 configuration by default.
+DDR instruction fetches share the audio AXI port. Per-callback
+`instruction_reads` and `instruction_writes` count program transactions
+separately from audio media traffic. Fabric cycles include all instruction
+fetch and contention costs.
 
 Fixture revision 5 uses **64 loops, Q=callback=32, and 48 kHz**:
 

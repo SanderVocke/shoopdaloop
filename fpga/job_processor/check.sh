@@ -7,7 +7,7 @@ output_dir=$(cd -- "$output_dir" && pwd)
 state_rtl="$repo_root/fpga/state_processor/rtl"
 job_rtl="$repo_root/fpga/job_processor/rtl"
 sources=()
-for source in sp_ram sp_job_fifo sp_engine state_processor; do sources+=("$state_rtl/$source.sv"); done
+for source in sp_ram sp_job_fifo sp_program_prefetch sp_engine state_processor; do sources+=("$state_rtl/$source.sv"); done
 for source in jp_sample_ram jp_divider job_processor audio_pipeline; do sources+=("$job_rtl/$source.sv"); done
 read_command='read_verilog -sv -Ifpga/state_processor/rtl'
 for source in "${sources[@]}"; do read_command+=" \"$source\""; done
@@ -26,3 +26,10 @@ for top in job_processor audio_pipeline; do
         "$read_command; synth_ecp5 -top $top -json \"$output_dir/$top-ecp5.json\"; check -assert; stat"
     printf '%s: lint and generic/ECP5 synthesis passed\n' "$top"
 done
+if ! verilator --binary --timing -Wno-PINMISSING --top-module job_stream \
+    --Mdir "$output_dir/job-stream" -I"$state_rtl" \
+    "${sources[@]}" fpga/job_processor/tests/job_stream.sv > "$output_dir/job-stream-build.log" 2>&1; then
+    cat "$output_dir/job-stream-build.log"
+    exit 1
+fi
+"$output_dir/job-stream/Vjob_stream"

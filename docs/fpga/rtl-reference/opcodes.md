@@ -47,10 +47,11 @@ generation.
 | `0x0d` | ProcessHistorySmoothing | Loop slot | Control addr | Source | Destination | History index |
 | `0x0e` | MIDI Input | Input port | Destination list | — | — | — |
 | `0x0f` | MIDI Playback | Loop slot | Gen lo | Gen hi | Sequence and cursor | Channel mask |
-| `0x10` | MIDI Capture | Loop slot | Gen lo | Gen hi | Sequence | Source list |
+| `0x10` | MIDI Append | Loop slot | Gen lo | Gen hi | Sequence | Source list |
 | `0x11` | MIDI Merge | Left list | Right list | Destination list | — | — |
 | `0x12` | MIDI Output | Source list | Output port | — | — | — |
 | `0x13` | MIDI State | Owner slot | Gen lo | Gen hi | Sequence/input | Output mask/channel bits |
+| `0x14` | MIDI PrepareCapture | Loop slot | Gen lo | Gen hi | Sequence | — |
 
 Other opcode values cause `INVALID_PROGRAM` (`0x03`). Additional operand
 interpretation follows.
@@ -90,8 +91,8 @@ ID at 63:56 and an 8-bit cursor ID at 71:64. A4 is the 16-bit channel
 mask at 87:72. Bits 95:88 carry the 8-bit destination list ID. Use zero
 in bits 95:88 for the other opcodes except State. State has its own complete
 96-bit layout in Appendix E, with channel-mask bits extending through 95:88.
-In particular, capture has a u16
-sequence ID and a u16 source list ID. The playback sequence, cursor and
+PrepareCapture and Append use a u16 sequence ID. Append also uses a u16
+source list ID. The playback sequence, cursor and
 destination encodings limit each ID to 0–255. Instance capacities can
 be smaller.
 
@@ -99,16 +100,16 @@ be smaller.
 | -------------------------------- | ------------------------------------------------------------------- |
 | MIDI Input | Input for the selected port and destination list |
 | MIDI Playback | Read while playing inside content length, otherwise Empty. Sets restart for a pulse, a seek/reposition flag or position zero. |
-| MIDI Capture | FinishCapture for an open writer leaving recording mode or being replaced by a new take. BeginCapture for recording without an open writer. Append while recording, with start equal to captured frames minus Q. |
+| MIDI PrepareCapture | FinishCapture for an open writer leaving recording mode or being replaced by a new take. BeginCapture for recording without an open writer. |
+| MIDI Append | Append while recording, with start equal to captured frames minus Q. |
 | MIDI Merge | Merge the two source lists into the destination |
 | MIDI Output | Output the supplied source list on the selected port |
-| MIDI State | In the prepass, Restore when active playback starts/restarts/seeks, or Cleanup when previously active playback ends. Skip in the regular data pass. Requires matching prepared bindings and state-capable JP data jobs. |
+| MIDI State | Restore when active playback starts, restarts, or seeks. Cleanup when previously active playback ends. Requires matching prepared bindings and state-capable JP data jobs. |
 
-Playback, Capture and State require the managed sync prefix. SP emits
-FinishCapture and BeginCapture in the capture prepass so that every
-Read sees the correct completed view. Append is emitted in the
-ordinary data pass. State instructions follow all Capture instructions, so
-writer transitions precede state jobs and both precede ordinary events.
+Playback, PrepareCapture, Append, and State require the managed sync prefix.
+PrepareCapture instructions follow the sync prefix. State instructions follow
+PrepareCapture, and ordinary data instructions follow State. This puts writer
+transitions and playback state changes ahead of the data jobs.
 
 ## Node-state operands {.unnumbered}
 
@@ -465,13 +466,12 @@ This instruction uses all 96 bits; it is not the ordinary five-u16 encoding.
 | 79:72 | Output-port mask, u8; bit 0 selects output 0 |
 | 95:80 | MIDI-channel mask, u16; bit 0 selects MIDI channel 1 |
 
-Place all Capture instructions before all State instructions. The loader
+Place all PrepareCapture instructions before all State instructions. The loader
 installs the same binding through command 21. SP validates the owner against
 loop RAM and uses the sequence and loop's render state for job emission; it does
 not install the input/output/channel binding from this instruction each run.
-A State instruction can emit at most one Restore or Cleanup job in its prepass
-visit. The regular data pass skips it. Include this possible job in the compiled
-FIFO budget. Loop word 0 bit 59 remembers prior MIDI playback activity; preserve
+A State instruction can emit at most one Restore or Cleanup job per quantum.
+Loop word 0 bit 59 remembers prior MIDI playback activity. Preserve
 it alongside bits 57 and 58 when updating loop plans.
 
 ## State control commands {.unnumbered}

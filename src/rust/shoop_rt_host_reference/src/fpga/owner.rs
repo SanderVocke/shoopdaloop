@@ -80,7 +80,7 @@ where
             && geometry.instructions == limits.instructions
             && geometry.states == limits.state_values
             && geometry.views >= limits.state_values
-            && geometry.jobs >= limits.jobs
+            && geometry.jobs != 0
             && geometry.buffers >= limits.buffers
             && geometry.blocks != 0,
         "unsupported looping hardware geometry: {geometry:?}"

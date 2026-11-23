@@ -289,7 +289,12 @@ fn usage_lifecycle<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, rtl: b
     let committed = latest_usage(&mut client).unwrap();
     assert_eq!(pool(&committed, "State slots").used, 2);
     assert_eq!(pool(&committed, "State slots").reserved, 0);
-    assert_eq!(pool(&committed, "Job slots").used, 8);
+    let jobs = pool(
+        &committed,
+        if rtl { "Jobs per quantum" } else { "Job slots" },
+    );
+    assert_eq!(jobs.used, 8);
+    assert_eq!(jobs.capacity.is_none(), rtl);
     assert_eq!(pool(&committed, "Audio buffers").used, 4);
     let revision = installed.header.graph();
 

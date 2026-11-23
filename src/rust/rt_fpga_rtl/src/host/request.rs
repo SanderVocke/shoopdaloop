@@ -105,7 +105,7 @@ impl Request {
                 u32::from(program.instructions),
                 u32::from(program.sync_count),
                 u32::from(program.states),
-                u32::from(program.jobs),
+                0, // Reserved slot in the mailbox ABI.
                 u32::from(program.buffers),
             ],
         )

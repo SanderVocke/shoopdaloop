@@ -107,13 +107,18 @@ fn id(value: Identity) -> component::Identity {
 fn operand(value: u32) -> Result<u16, CompileError> {
     u16::try_from(value).map_err(|_| CompileError::InvalidProgram)
 }
+fn encode(instruction: component::Instruction) -> Result<Bits, CompileError> {
+    component::instruction_words(instruction)
+        .map(|words| Bits::from(words).resized(96))
+        .map_err(|_| CompileError::InvalidProgram)
+}
 impl StateProgramTarget for RtlTarget<'_> {
     type CompiledProgram = CompiledProgram;
     fn limits(&self) -> ProgramLimits {
         ProgramLimits {
             instructions: self.capacities.instructions.min(65535),
             state_values: self.capacities.state_values.min(65535),
-            jobs: self.capacities.jobs.min(65535),
+            jobs: u32::MAX,
             buffers: self.capacities.buffers.min(65535),
             history_slots: self.capacities.history_slots.min(65535),
             input_ports: self.capacities.input_ports.min(65535),
@@ -174,66 +179,79 @@ impl StateProgramTarget for RtlTarget<'_> {
                 .set(72, 1, 1);
             instructions.push(bits);
         }
+        use rt_fpga_compiler::MidiOperation as M;
+        let byte = |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
+        for op in &logical.work_pass {
+            match *op {
+                Operation::MidiData(M::Capture {
+                    loop_id, sequence, ..
+                }) => {
+                    instructions.push(encode(component::Instruction::MidiPrepareCapture {
+                        loop_id: id(loop_id),
+                        sequence,
+                    })?);
+                }
+                Operation::MidiData(M::State {
+                    loop_id,
+                    sequence,
+                    input,
+                    outputs,
+                    channels,
+                }) => {
+                    instructions.push(encode(component::Instruction::MidiState {
+                        loop_id: id(loop_id),
+                        sequence: byte(sequence)?,
+                        input: byte(input)?,
+                        outputs,
+                        channels,
+                    })?);
+                }
+                _ => {}
+            }
+        }
         for op in &logical.work_pass {
             let instruction = match *op {
                 Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
-                Operation::MidiData(operation) => {
-                    use rt_fpga_compiler::MidiOperation as M;
-                    let byte =
-                        |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
-                    match operation {
-                        M::State {
-                            loop_id,
-                            sequence,
-                            input,
-                            outputs,
-                            channels,
-                        } => component::Instruction::MidiState {
-                            loop_id: id(loop_id),
-                            sequence: byte(sequence)?,
-                            input: byte(input)?,
-                            outputs,
-                            channels,
-                        },
-                        M::Input { port, destination } => {
-                            component::Instruction::MidiInput { port, destination }
-                        }
-                        M::Capture {
-                            loop_id,
-                            sequence,
-                            source,
-                        } => component::Instruction::MidiCapture {
-                            loop_id: id(loop_id),
-                            sequence,
-                            source,
-                        },
-                        M::Playback {
-                            loop_id,
-                            sequence,
-                            cursor,
-                            channels,
-                            destination,
-                        } => component::Instruction::MidiPlayback {
-                            loop_id: id(loop_id),
-                            sequence: byte(sequence)?,
-                            cursor: byte(cursor)?,
-                            channels,
-                            destination: byte(destination)?,
-                        },
-                        M::Merge {
-                            left,
-                            right,
-                            destination,
-                        } => component::Instruction::MidiMerge {
-                            left,
-                            right,
-                            destination,
-                        },
-                        M::Output { source, port } => {
-                            component::Instruction::MidiOutput { source, port }
-                        }
+                Operation::MidiData(operation) => match operation {
+                    M::State { .. } => continue,
+                    M::Input { port, destination } => {
+                        component::Instruction::MidiInput { port, destination }
                     }
-                }
+                    M::Capture {
+                        loop_id,
+                        sequence,
+                        source,
+                    } => component::Instruction::MidiAppend {
+                        loop_id: id(loop_id),
+                        sequence,
+                        source,
+                    },
+                    M::Playback {
+                        loop_id,
+                        sequence,
+                        cursor,
+                        channels,
+                        destination,
+                    } => component::Instruction::MidiPlayback {
+                        loop_id: id(loop_id),
+                        sequence: byte(sequence)?,
+                        cursor: byte(cursor)?,
+                        channels,
+                        destination: byte(destination)?,
+                    },
+                    M::Merge {
+                        left,
+                        right,
+                        destination,
+                    } => component::Instruction::MidiMerge {
+                        left,
+                        right,
+                        destination,
+                    },
+                    M::Output { source, port } => {
+                        component::Instruction::MidiOutput { source, port }
+                    }
+                },
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,
                 },
@@ -303,13 +321,10 @@ impl StateProgramTarget for RtlTarget<'_> {
                     port: operand(port)?,
                 },
             };
-            instructions.push(
-                Bits::from(
-                    component::instruction_words(instruction)
-                        .map_err(|_| CompileError::InvalidProgram)?,
-                )
-                .resized(96),
-            );
+            instructions.push(encode(instruction)?);
+        }
+        if instructions.len() > self.limits().instructions as usize {
+            return Err(CompileError::Capacity(Resource::Instructions));
         }
         let loops = logical
             .loops

@@ -156,16 +156,14 @@ The configuration port is an idle-only request interface:
   configuration response is pending.
 
 A quantum starts when `run_valid && run_ready`. This latches
-`run_instruction_count`, `run_state_count`, `run_quantum`, and `run_chunk_frames` and checks
-`run_job_budget` against the available FIFO capacity. These inputs are unsigned
+`run_instruction_count`, `run_state_count`, `run_quantum`, and `run_chunk_frames`. These inputs are unsigned
 32-bit values. `run_state_count` is the logical length of the state vector, which
 may be smaller than the physical RAM. Only the first `run_instruction_count`
 program entries execute. Counts exceeding physical capacities are rejected.
 
-Admission first requires an empty FIFO and at least `run_job_budget` free entries,
-matching Rust queue-capacity admission. Use the compiled `Program::jobs_per_quantum` as the
-budget. A budget understated by a hand-written program can also cause a queue-full
-error during execution. Such a failure retains earlier jobs and state writes.
+Admission requires an empty FIFO. A full FIFO during execution stalls the
+engine in streaming mode (`STREAM_JOBS=1`). The standalone mode reports a
+queue-full error and retains earlier jobs and state writes.
 The quantum must be positive and an integral number of chunks. The RTL chunk
 size is a positive power of two. Media position/length words are chunk indices
 and counts. Arithmetic ramp counters retain samples. Shared loop records still
@@ -191,8 +189,9 @@ identifies the current/failing instruction and equals the instruction count afte
 successful execution. On an admission rejection it is zero.
 
 Jobs transfer when `job_valid && job_ready`. The descriptor remains stable while
-valid and stalled. FIFO draining is blocked while busy, so the external consumer
-sees only a completed or failed run's job prefix. After completion, drain the
+valid and stalled. Streaming allows the consumer to drain the FIFO while the
+engine is busy. In standalone mode, the consumer sees the queued jobs after
+the run completes. After completion, drain the
 FIFO before starting the next run. `queued_jobs` reports its current occupancy.
 `done` means job generation and state updates have completed; it does not mean
 the job processor has executed the jobs. FIFO head prefetch can add latency before
@@ -290,7 +289,7 @@ these requests only in its settled phase. The
 engine checks presence and generation, then reads the view operand when needed.
 Playback uses the same `plays()` predicate as Rust, including silence at a held
 repeat endpoint. Capture emits only in recording mode. On a new take it first emits BeginCapture,
-then Capture; include the extra preparation job in the static queue budget.
+then Capture.
 In explicit-record mode SP does not write this port or advance the loop clock. A standalone shared-memory client
 must supply responses; backpressure pauses the engine.
 

@@ -4,6 +4,7 @@ module midi_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
+    parameter integer DDR_PROGRAM = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32,
     parameter integer STATE_DEPTH = 16,
@@ -83,7 +84,6 @@ module midi_audio_pipeline #(
     input wire [15:0] switch_instructions,
     input wire [15:0] switch_sync_count,
     input wire [15:0] switch_states,
-    input wire [15:0] switch_jobs,
     input wire [15:0] switch_buffers,
     output wire switch_response_valid,
     input wire switch_response_ready,
@@ -100,7 +100,6 @@ module midi_audio_pipeline #(
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
-    input wire [31:0] run_job_budget,
     input wire [31:0] run_buffers,
     input wire [31:0] run_inputs,
     input wire [31:0] run_outputs,
@@ -265,7 +264,6 @@ module midi_audio_pipeline #(
     reg [31:0] saved_run_state_count;
     reg [31:0] saved_run_quantum;
     reg [31:0] saved_run_chunk_frames;
-    reg [31:0] saved_run_job_budget;
     reg [31:0] saved_run_buffers;
     reg [31:0] saved_run_inputs;
     reg [31:0] saved_run_outputs;
@@ -313,7 +311,6 @@ module midi_audio_pipeline #(
         saved_run_state_count<=run_state_count;
         saved_run_quantum<=run_quantum;
         saved_run_chunk_frames<=run_chunk_frames;
-        saved_run_job_budget<=run_job_budget;
         saved_run_buffers<=run_buffers;
         saved_run_inputs<=run_inputs;
         saved_run_outputs<=run_outputs;
@@ -327,6 +324,7 @@ module midi_audio_pipeline #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
+        .DDR_PROGRAM(DDR_PROGRAM),
         .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
@@ -399,7 +397,6 @@ module midi_audio_pipeline #(
         .switch_instructions(switch_instructions),
         .switch_sync_count(switch_sync_count),
         .switch_states(switch_states),
-        .switch_jobs(switch_jobs),
         .switch_buffers(switch_buffers),
         .switch_response_valid(switch_response_valid),
         .switch_response_ready(switch_response_ready),
@@ -416,7 +413,6 @@ module midi_audio_pipeline #(
         .run_state_count(saved_run_state_count),
         .run_quantum(saved_run_quantum),
         .run_chunk_frames(saved_run_chunk_frames),
-        .run_job_budget(saved_run_job_budget),
         .run_buffers(saved_run_buffers),
         .run_inputs(saved_run_inputs),
         .run_outputs(saved_run_outputs),

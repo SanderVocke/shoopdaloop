@@ -167,6 +167,9 @@ pub fn run(
         Mode::Fixed,
         MEMORY_SEED,
     ))?;
+    pipeline
+        .store
+        .reserve_ddr_program(CAPACITIES[0] as usize, 1);
     let timing: Box<dyn Timing> = if mode == Mode::Dramsim3 {
         let root = rt_fpga_rtl::root();
         let config = dram_config
@@ -322,6 +325,12 @@ impl Rtl<'_> {
                 axi.submission_stalls,
             ],
             _ => [0; 4],
+        }
+    }
+    fn audio_transactions(&self) -> usize {
+        match &self.pipeline.store.memory.borrow().backend {
+            Backend::Axi(axi) => axi.records.len(),
+            _ => 0,
         }
     }
     fn command(
@@ -495,6 +504,7 @@ impl Driver for Rtl<'_> {
         let cycles = self.sim.cycles;
         let reads = self.pipeline.store.memory.borrow().reads();
         let writes = self.pipeline.store.memory.borrow().writes();
+        let transactions = self.audio_transactions();
         let commands = host_timing::span("rtl.callback.commands");
         self.execution.commands.begin_callback();
         while let Some(group) = self.execution.commands.pop() {
@@ -608,11 +618,29 @@ impl Driver for Rtl<'_> {
         self.frame += QUANTUM as u64;
         let memory = self.pipeline.store.memory.borrow();
         let midi_stalls = memory_stalls(&self.midi_memory);
+        let (instruction_reads, instruction_writes) = match &memory.backend {
+            Backend::Axi(axi) => {
+                let program_base = axi.base
+                    + (self.pipeline.store.geometry.words().next_multiple_of(16) * 4) as u64;
+                axi.records[transactions..]
+                    .iter()
+                    .filter(|record| record.address >= program_base)
+                    .fold((0, 0), |(reads, writes), record| {
+                        (
+                            reads + u64::from(!record.write),
+                            writes + u64::from(record.write),
+                        )
+                    })
+            }
+            _ => (0, 0),
+        };
         Ok(Measurement {
             elapsed_ns,
             fabric_cycles: Some(fabric_cycles),
-            reads: memory.reads() - reads,
-            writes: memory.writes() - writes,
+            reads: memory.reads() - reads - instruction_reads,
+            writes: memory.writes() - writes - instruction_writes,
+            instruction_reads,
+            instruction_writes,
             storage_bytes: (self.sim.model.get("core.audio.core.media.slot_count")
                 - self.sim.model.get("core.audio.core.media.free_count"))
                 * FPGA_BLOCK_FRAMES as u64
@@ -661,6 +689,7 @@ impl Driver for Rtl<'_> {
     fn metadata(&self) -> serde_json::Value {
         serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":if self.mode == Mode::Instant {"Ideal".into()} else {format!("{:?}",self.mode)},"memory_seed":MEMORY_SEED,"shared_memory_controller":true,"memory_topology":"audio and MIDI AXI ports share one timing controller; one advance per fabric cycle",
             "chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"media_capacity_bytes":MEMORY_BYTES,
+            "instruction_storage":"DDR with 64-instruction prefetch FIFO","job_fifo_storage":"BRAM","job_fifo_depth":512,
             "window":"command configuration, input upload, SP/JP/media execution, mandatory completion and queue drain; passive output/state probes do not advance clocks",
             "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_rtl::report::provenance(),"midi_memory":self.midi_memory.borrow_mut().report(false),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
     }

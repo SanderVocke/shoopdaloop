@@ -5,6 +5,7 @@ module host_pipeline_axi #(
     parameter integer EXTERNAL_IO = 0,
     parameter integer LIVE_LOADING = 1,
     parameter integer EXPORT_SYNC_EVENTS = 1,
+    parameter integer DDR_PROGRAM = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
@@ -187,7 +188,6 @@ module host_pipeline_axi #(
     wire [15:0] switch_instructions;
     wire [15:0] switch_sync_count;
     wire [15:0] switch_states;
-    wire [15:0] switch_jobs;
     wire [15:0] switch_buffers;
     wire switch_response_valid;
     wire switch_response_ready;
@@ -263,7 +263,7 @@ module host_pipeline_axi #(
         if (QUANTUM > MAX_FRAMES || QUANTUM < 1) $fatal(1,"invalid host quantum");
     end
     host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES),
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH > 512 ? 512 : JOB_DEPTH),
         .BUFFERS(BUFFERS), .VIEWS(VIEWS), .MEDIA_BLOCKS(SLOTS/BLOCK_CHUNKS),
         .CHUNK_FRAMES(CHUNK_FRAMES), .BLOCK_CHUNKS(BLOCK_CHUNKS), .QUANTUM(QUANTUM)) mmio (.*);
     host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),
@@ -273,6 +273,7 @@ module host_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
+        .DDR_PROGRAM(DDR_PROGRAM),
         .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
@@ -309,7 +310,6 @@ module host_pipeline_axi #(
         .run_sync_count(32'b0),
         .run_instruction_count(32'b0),
         .run_state_count(32'b0),
-        .run_job_budget(32'b0),
         .run_buffers(32'b0),
         .job_enable(1'b1),
         .drain_ready(1'b0),

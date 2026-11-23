@@ -15,7 +15,9 @@ module audio_pipeline #(
     parameter integer INPUT_PORTS = 2,
     parameter integer OUTPUT_PORTS = 2,
     parameter integer CHUNK_FRAMES = 1,
-    parameter integer ENABLE_MEDIA = 0
+    parameter integer ENABLE_MEDIA = 0,
+    parameter integer DDR_PROGRAM = 0,
+    parameter integer JOB_FIFO_DEPTH = JOB_DEPTH > 512 ? 512 : JOB_DEPTH
 ) (
     output wire midi_job_valid, input wire midi_job_ready,
     output wire [255:0] midi_job_data,
@@ -37,7 +39,7 @@ module audio_pipeline #(
     input wire switch_valid, output wire switch_ready,
     input wire [63:0] switch_expected, switch_revision,
     input wire switch_region,
-    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_jobs, switch_buffers,
+    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_buffers,
     output reg switch_response_valid, input wire switch_response_ready,
     output reg switch_response_error,
     output reg [63:0] switch_first_frame,
@@ -46,7 +48,6 @@ module audio_pipeline #(
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
-    input wire [31:0] run_job_budget,
     input wire [31:0] run_buffers,
     input wire [31:0] run_inputs,
     input wire [31:0] run_outputs,
@@ -104,7 +105,16 @@ module audio_pipeline #(
     input wire media_read_valid, output wire media_read_ready, input wire [31:0] media_read_data,
     output wire media_hint_valid, input wire media_hint_ready,
     output wire [63:0] media_hint_view, output wire [63:0] media_hint_position, output wire [63:0] media_hint_length,
-    output wire [31:0] media_hint_count
+    output wire [31:0] media_hint_count,
+    output wire memory_program_valid, input wire memory_program_ready,
+    output wire memory_program_write,
+    output wire [15:0] memory_program_address, output wire [31:0] memory_program_count,
+    output wire [31:0] memory_program_write_data,
+    output wire memory_program_write_valid, input wire memory_program_write_ready,
+    input wire memory_program_read_valid, output wire memory_program_read_ready,
+    input wire [31:0] memory_program_read_data,
+    input wire memory_program_response_valid, output wire memory_program_response_ready,
+    input wire memory_program_response_error
 );
     typedef enum logic [2:0] {IDLE, STATE_START, STATE_WAIT, JOB_START, JOB_WAIT} phase_t;
     reg [5:0] chunk_shift;
@@ -121,18 +131,26 @@ module audio_pipeline #(
     wire [7:0] state_error, job_error;
     wire job_accept;
     wire sample_busy, sample_done;
+    reg state_finished, job_finished;
+    wire state_complete = state_finished || state_done;
+    wire jobs_complete = job_finished || jobs_done;
+    wire state_failed = state_complete && state_error != 0;
+    wire jobs_failed = jobs_complete && job_error != 0;
+    wire media_failed = ENABLE_MEDIA != 0 && media_fault;
+    wire abort_state = phase != IDLE
+        && (media_failed || (phase == JOB_WAIT && jobs_failed));
+    wire stream_done = state_failed || (state_complete && queued_jobs == 0);
     reg [31:0] quantum, buffers, inputs, outputs;
-    reg [31:0] state_instructions, state_sync_count, state_count, state_jobs;
+    reg [31:0] state_instructions, state_sync_count, state_count;
     reg state_region;
     wire state_admission = run_valid && run_ready;
     wire unused_pc;
     wire [31:0] state_pc;
     reg active_region, handoff_pending, handoff_drained;
-    reg [15:0] active_instructions, active_sync_count, active_states, active_jobs, active_buffers;
+    reg [15:0] active_instructions, active_sync_count, active_states, active_buffers;
     wire [31:0] selected_instructions = LIVE_LOADING != 0 ? {16'b0,active_instructions} : run_instruction_count;
     wire [31:0] selected_sync_count = LIVE_LOADING != 0 ? {16'b0,active_sync_count} : run_sync_count;
     wire [31:0] selected_states = LIVE_LOADING != 0 ? {16'b0,active_states} : run_state_count;
-    wire [31:0] selected_jobs = LIVE_LOADING != 0 ? {16'b0,active_jobs} : run_job_budget;
     wire [31:0] selected_buffers = LIVE_LOADING != 0 ? {16'b0,active_buffers} : run_buffers;
     wire boundary_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
     assign switch_ready = LIVE_LOADING != 0 && run_valid && boundary_ready && !handoff_pending && !switch_response_valid;
@@ -187,11 +205,13 @@ module audio_pipeline #(
     assign jobs_done = sample_done;
 
     state_processor #(
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .PROGRAM_REGIONS(PROGRAM_REGIONS), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .LOOP_DEPTH(LOOP_DEPTH)
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .PROGRAM_REGIONS(PROGRAM_REGIONS), .STATE_DEPTH(STATE_DEPTH),
+        .JOB_DEPTH(JOB_FIFO_DEPTH), .DDR_PROGRAM(DDR_PROGRAM), .STREAM_JOBS(1), .LOOP_DEPTH(LOOP_DEPTH)
     ) state_engine (
-        .clk(clk), .reset(reset), .run_valid(phase == STATE_START), .run_ready(state_run_ready),
+        .clk(clk), .reset(reset), .abort_run(abort_state),
+        .run_valid(phase == STATE_START && !media_failed), .run_ready(state_run_ready),
         .run_instruction_count(state_instructions), .run_sync_count(state_sync_count), .run_program_region(state_region), .run_state_count(state_count),
-        .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_job_budget(state_jobs),
+        .run_quantum(quantum), .run_chunk_frames(chunk_frames),
         .busy(state_busy), .done(state_done), .error_code(state_error), .instruction_pc(state_pc),
         .cfg_valid(cfg_valid && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write)) && !(PROGRAM_REGIONS == 2 && state_admission)), .cfg_ready(state_cfg_ready),
         .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
@@ -200,19 +220,35 @@ module audio_pipeline #(
         .read_intent_valid(read_intent_valid), .read_intent_data(read_intent_data),
         .sync_frame(sync_frame), .sync_event_valid(sync_event_valid), .sync_event_ready(sync_event_ready), .sync_event_data(sync_event_data),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
-        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
+        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
+        .memory_program_valid(memory_program_valid),
+        .memory_program_ready(memory_program_ready),
+        .memory_program_write(memory_program_write),
+        .memory_program_address(memory_program_address),
+        .memory_program_count(memory_program_count),
+        .memory_program_write_data(memory_program_write_data),
+        .memory_program_write_valid(memory_program_write_valid),
+        .memory_program_write_ready(memory_program_write_ready),
+        .memory_program_read_valid(memory_program_read_valid),
+        .memory_program_read_ready(memory_program_read_ready),
+        .memory_program_read_data(memory_program_read_data),
+        .memory_program_response_valid(memory_program_response_valid),
+        .memory_program_response_ready(memory_program_response_ready),
+        .memory_program_response_error(memory_program_response_error)
     );
     job_processor #(.EXTERNAL_IO(EXTERNAL_IO),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
-        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(ENABLE_MEDIA), .ENABLE_MIDI(ENABLE_MIDI)
+        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(ENABLE_MEDIA), .ENABLE_MIDI(ENABLE_MIDI), .STREAM_JOBS(1)
     ) sample_engine (
         .midi_job_valid(midi_job_valid), .midi_job_ready(midi_job_ready), .midi_job_data(midi_job_data),
         .midi_job_done(midi_job_done), .midi_job_error(midi_job_error), .midi_error_code(midi_error_code),
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
-        .clk(clk), .reset(reset), .run_valid(phase == JOB_START), .run_ready(job_run_ready),
+        .clk(clk), .reset(reset),
+        .run_valid(phase == JOB_START && !state_failed && !media_failed), .run_ready(job_run_ready),
         .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs),
-        .run_jobs(queued_jobs), .busy(sample_busy), .done(sample_done), .error_code(job_error), .buffer_ready(buffer_ready),
+        .run_jobs(32'd0), .job_stream_done(stream_done),
+        .busy(sample_busy), .done(sample_done), .error_code(job_error), .buffer_ready(buffer_ready),
         .job_valid(monitor_valid), .job_ready(job_accept), .job_enable(job_enable), .job_data(monitor_data),
         .cfg_valid(audio_cfg_valid && (phase == IDLE)), .cfg_ready(job_cfg_ready),
         .cfg_space(audio_cfg_space), .cfg_write(audio_cfg_write), .cfg_address(audio_cfg_address),
@@ -230,7 +266,7 @@ module audio_pipeline #(
     always @(posedge clk) begin
         if (reset) begin
             active_revision <= 0; active_region <= 0; handoff_pending <= 0; handoff_drained <= 0;
-            active_instructions <= 0; active_sync_count <= 0; active_states <= 0; active_jobs <= 0; active_buffers <= 0;
+            active_instructions <= 0; active_sync_count <= 0; active_states <= 0; active_buffers <= 0;
             switch_first_frame <= 0; switch_response_valid <= 0; switch_response_error <= 0;
         end else if (LIVE_LOADING != 0) begin
             if (handoff_pending && hint_count == 0 && !hint_stage_valid && queued_jobs == 0) handoff_drained <= 1;
@@ -244,7 +280,7 @@ module audio_pipeline #(
                 else begin
                     active_revision <= switch_revision; active_region <= switch_region;
                     active_instructions <= switch_instructions; active_sync_count <= switch_sync_count;
-                    active_states <= switch_states; active_jobs <= switch_jobs; active_buffers <= switch_buffers;
+                    active_states <= switch_states; active_buffers <= switch_buffers;
                     handoff_pending <= 1; handoff_drained <= 0;
                 end
             end
@@ -260,19 +296,22 @@ module audio_pipeline #(
             done <= 0;
             error_code <= 0;
             error_stage <= 0;
+            state_finished <= 0; job_finished <= 0;
             quantum <= 0; chunk_frames <= 0; chunk_shift <= 0;
-            state_instructions <= 0; state_sync_count <= 0; state_count <= 0; state_jobs <= 0; state_region <= 0;
+            state_instructions <= 0; state_sync_count <= 0; state_count <= 0; state_region <= 0;
             buffers <= 0;
             inputs <= 0;
             outputs <= 0;
         end else begin
             done <= 0;
-            if ((ENABLE_MEDIA != 0) && media_fault && phase != IDLE) begin
+            if (state_done) state_finished <= 1;
+            if (jobs_done) job_finished <= 1;
+            if (media_failed && phase != IDLE && phase != JOB_WAIT && !state_busy) begin
                 error_code <= 8; error_stage <= 2; done <= 1; phase <= IDLE;
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
                     state_instructions <= selected_instructions; state_sync_count <= selected_sync_count;
-                    state_count <= selected_states; state_jobs <= selected_jobs;
+                    state_count <= selected_states;
                     state_region <= LIVE_LOADING != 0 ? active_region : run_program_region;
                     quantum <= run_quantum; chunk_frames <= run_chunk_frames; chunk_shift <= shift_for(run_chunk_frames);
                     buffers <= selected_buffers;
@@ -280,11 +319,12 @@ module audio_pipeline #(
                     outputs <= run_outputs;
                     error_code <= 0;
                     error_stage <= 0;
+                    state_finished <= 0; job_finished <= 0;
                     phase <= STATE_START;
                 end
                 STATE_START: if (state_run_ready) phase <= STATE_WAIT;
-                STATE_WAIT: if (state_done) begin
-                    if (state_error != 0) begin
+                STATE_WAIT: if (state_done || (monitor_valid && !media_failed)) begin
+                    if (state_done && state_error != 0) begin
                         error_code <= state_error;
                         error_stage <= 1;
                         done <= 1;
@@ -292,10 +332,23 @@ module audio_pipeline #(
                     end else
                         phase <= JOB_START;
                 end
-                JOB_START: if (job_run_ready) phase <= JOB_WAIT;
-                JOB_WAIT: if (jobs_done) begin
-                    error_code <= job_error;
-                    error_stage <= 2;
+                JOB_START: if (state_failed) begin
+                    error_code <= state_error;
+                    error_stage <= 1;
+                    done <= 1;
+                    phase <= IDLE;
+                end else if (job_run_ready && !media_failed) phase <= JOB_WAIT;
+                JOB_WAIT: if (state_complete && jobs_complete) begin
+                    if (media_failed) begin
+                        error_code <= 8;
+                        error_stage <= 2;
+                    end else if (state_failed && !jobs_failed) begin
+                        error_code <= state_error;
+                        error_stage <= 1;
+                    end else begin
+                        error_code <= job_error;
+                        error_stage <= 2;
+                    end
                     done <= 1;
                     phase <= IDLE;
                 end
