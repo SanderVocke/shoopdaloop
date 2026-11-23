@@ -1298,11 +1298,11 @@
         "Independent closed-form/u64-wrap arithmetic preflight:144000boundary+100000seededrandomcases; notRTL qualification",
         "Focused both-width high-bit/malformed-queue boundary test passed35.76sec",
         "All187boundary rows/width,207deep rows/width,and1282public-store rows exactnoncycleC4control;finalDDRandtrafficexact",
-        "Deep77828growthwrites setup+1712176clocks: AXI32 1817747to3529923,AXI64 1810451to3522627;207postsetuprequests+46clocks;publicstore1224008to1238082(+14074)"
+        "Deep77828growthwrites setup+1712176clocks: AXI32 1817747to3529923,AXI64 1810451to3522627;207postsetuprequests+46clocks;publicstore1224008to1238082(+14074)",
+        "All33mixed/on/delay7 callback rows match C4 including cycles,metadata/cache counters,traffic andwork; finalmemoryexact. Cold92745,steady median53258/max53947. Deepgrowthsetup reported separately."
       ],
       "pending": [
         "Full11affected regressions",
-        "Connected cold/warm/steady callback comparison",
         "Pinned optimization screen, route/repeat if viable"
       ],
       "contract": "stage4-iterative-capacity-contract.md",
@@ -1313,7 +1313,8 @@
         "s4-iterative-capacity-width-axi64-summary.json",
         "s4-iterative-capacity-store-operations-unit-summary.json"
       ],
-      "arithmetic_preflight": "s4-iterative-capacity-arithmetic-summary.json"
+      "arithmetic_preflight": "s4-iterative-capacity-arithmetic-summary.json",
+      "callback_performance": "s4-iterative-capacity-callback-performance.json"
     }
   ],
   "provisioning": {
