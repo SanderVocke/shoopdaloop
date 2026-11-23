@@ -1,0 +1,11 @@
+{
+  "archive": "c5-ci-carla-wide-on-demand-raw.tar.gz",
+  "archive_sha256": "faf5fe6051e96d2857bafae1d501971021bb1d2ccec4a1b55285bd7f9b26eec7",
+  "members_sha256": {
+    "logs/integration-c5-carla-wide-on-demand.log": "32b03922fb54230e42fc461b2c63b2961116a89afb6bd8007f672edeef391f22",
+    "logs/integration-c5-carla-wide-build.log": "f92dab9cbe3b243772444bd8f17f10a7dd3fc483a1a264eee42aef77e5bce6e3",
+    "source/src/rust/shoop_rt_host_process/tests/carla_worker.rs": "d40db8dfa765cc3431c230f4f969146ac0dde3c172fdfe60ba26b32ec5407b50",
+    "source/src/rust/shoop_egui/src/app_widget.rs": "1d17ebf13e147007ef947ab10fa1e65aa7e676974d2eefb6eb2fea79ae8656f4",
+    "source/docs/native_session_recovery/track-processors.md": "ec6e89532e45fc5d1468c43a63b0b726f2e323e64f671eb7b33a9a7c739d51c8"
+  }
+}

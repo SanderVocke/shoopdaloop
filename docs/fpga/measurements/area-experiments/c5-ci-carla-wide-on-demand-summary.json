@@ -1,0 +1,22 @@
+{
+  "scope": "New-backend-base integration compatibility only; no measured FPGA HDL/source change",
+  "integration_parent": "18d8f695",
+  "runtime": "Pinned verified430-fileCarla component fromartifact14773879496,SHOOP_REQUIRE_CARLA_TESTS=1; identity retained c4-ci-carla-on-demand",
+  "contract_evidence": [
+    "CurrentCarla guide supportsPatchbay16x onnarrowtracks/buses with chains allocatedwhenassigned",
+    "CurrentUI settinglabels memory asBuilt-inprocessor memory(MiB)"
+  ],
+  "test_change": "Retainallfourconfigs(twohosting modes16/256MiB,8/256MiB,16/1MiB). Requiredynamicavailability,zero preallocation/reservation,exactconfigured built-inbudget. Exerciseactualchains inallfour instead oftwo legacycatalogrefusals; rejectoverwide request beforevalidallocation.",
+  "preserved_checks": "Same16channelcase lane1/8/9/16amplitudes/tolerances,unassignedsilence,exactMIDI59/184,twosession replacements,media/routes andclean shutdown. Narrowcasechecksitsactual8lanes; lowbuilt-inbudgetcasealsoexercises16.",
+  "result": "1passed58.98sec,6filtered; realruntime required, no skip",
+  "validation": [
+    "cargo fmt --all -- --check passed",
+    "check_shoop_test_usage.py passed",
+    "RUSTFLAGS=-Dwarnings cargo build --locked -p shoop_rt_host_process --features carla-worker passed"
+  ],
+  "pending": [
+    "Driver-period legacyexpectation",
+    "Fullintegration/selected-headCIqualification"
+  ],
+  "retention": "c5-ci-carla-wide-on-demand-retention.json"
+}

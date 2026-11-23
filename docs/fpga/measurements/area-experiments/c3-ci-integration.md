@@ -50,3 +50,14 @@ real audio/MIDI/state/recovery assertion. Both hosting modes pass (15.71 seconds
 Formatting, test-attribute policy and a warning-denying companion build pass.
 See `c4-ci-carla-on-demand-*`. The wide-chain and driver-period legacy expectations
 remain unresolved; this is not a claim of green CI or completed integration.
+
+The wide companion fixture now follows the current on-demand contract. The
+current UI names its setting “Built-in processor memory (MiB)”; local Carla
+allocates its own chains when assigned. All four original configurations now
+exercise actual loaded track/bus chains, including eight-channel hosts and a
+1 MiB built-in pool budget. Requests exceeding the host width are refused.
+The original sixteen-channel amplitudes/tolerances, exact MIDI offsets 59/184,
+silence checks and two session replacement roundtrips remain. All four cases
+pass with the verified real runtime in 58.98 seconds. Formatting, test policy
+and the warning-denying companion build pass; see `c5-ci-carla-wide-on-demand-*`.
+The driver-period expectation and fresh full integration CI remain pending.
