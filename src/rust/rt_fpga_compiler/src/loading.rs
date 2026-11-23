@@ -117,6 +117,10 @@ impl CompositeCut {
         self.allow_restart || self.wait_for_finish
     }
 
+    pub fn preserves_transport_at_finish(&self, at_end: bool) -> bool {
+        at_end && self.finish_at_boundary && self.restart_slot.is_none()
+    }
+
     pub fn reconciles_wrap(&self, position: u64, length: u64, waited: bool) -> bool {
         self.reconcile_ending && length != 0 && position == length && !waited
     }

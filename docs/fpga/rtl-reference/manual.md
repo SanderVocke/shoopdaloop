@@ -250,9 +250,9 @@ recording can start. See the admission rule under
   A timing change needs one free loop record while the new program is staged.
   An independent one-pass composite can finish its current run. When both
   one-pass plans end with the same child modes and use the same sync source,
-  the edit can take effect as the old run ends. Other one-pass edits take
-  effect one quantum later. Playback stays stopped until the loop is started
-  again.
+  the edit can take effect as the old run ends. If the iteration and pass
+  lengths also stay the same, the new plan keeps pending transport commands.
+  Other one-pass edits can take effect one quantum after the old run stops.
   Playback controls still run while an edit waits. If a scheduled stop is
   pending, it takes effect first and the edit can apply once the loop stops.
   Cancelling an edit that still waits leaves the active version in place. If

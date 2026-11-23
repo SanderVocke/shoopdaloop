@@ -891,16 +891,23 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
     }
 }
 
-fn retime_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+fn edit_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, scheduled_transport: bool) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
     while client.poll().is_some() {}
     let mut graph = stereo_graph();
-    graph.loops.truncate(1);
+    graph
+        .loops
+        .truncate(if scheduled_transport { 2 } else { 1 });
+    if scheduled_transport {
+        graph.loops[1].gain = 0.;
+    }
+    let parent_index = graph.loops.len();
     let mut parent = graph.loops[0].clone();
     parent.id = id(120);
     parent.strip = None;
+    parent.sync_source = scheduled_transport.then_some(id(101));
     let old_length = 64;
     parent.composite = Some(CompositeView {
         kind: CompositeKind::Explicit,
@@ -921,19 +928,59 @@ fn retime_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     });
     graph.loops.push(parent);
     upload(&mut client, &mut renderer, &graph, 0);
-    let play = |slot| Command::Transition(slot, TransitionMode::Playing.into());
+    let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
+    if scheduled_transport {
+        client
+            .immediate(Batch::new(1, 1, &[transition(101, TransitionMode::Recording)]).unwrap())
+            .unwrap();
+        let record_end = response(&mut client, &mut renderer) + old_length * Q as u64;
+        while renderer.next_frame().0 < record_end {
+            step(&mut renderer);
+        }
+        client
+            .immediate(Batch::new(1, 1, &[transition(101, TransitionMode::Stopped)]).unwrap())
+            .unwrap();
+        assert_eq!(response(&mut client, &mut renderer), record_end);
+    }
+    let start = [
+        transition(120, TransitionMode::Playing),
+        transition(101, TransitionMode::Playing),
+    ];
     client
-        .immediate(Batch::new(1, 1, &[play(120)]).unwrap())
+        .immediate(Batch::new(1, 1, &start[..if scheduled_transport { 2 } else { 1 }]).unwrap())
         .unwrap();
     let started = response(&mut client, &mut renderer);
     let end_frame = started + old_length * Q as u64;
+    if scheduled_transport {
+        let restart = Command::Transition(
+            120,
+            TransitionPlan {
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Stopped,
+                    skip: 0,
+                }),
+                second: Some(PlannedTransition {
+                    mode: TransitionMode::Playing,
+                    skip: 1,
+                }),
+                ..Default::default()
+            },
+        );
+        client
+            .immediate(Batch::new(1, 1, &[restart]).unwrap())
+            .unwrap();
+        assert_eq!(
+            wait_response(&mut client, &mut renderer).records()[0].code(),
+            Code::Scheduled
+        );
+    }
     let louder = 48;
-    let edited = graph.loops[1].composite.as_mut().unwrap();
+    let edited = graph.loops[parent_index].composite.as_mut().unwrap();
     edited.version = 2;
-    edited.iterations = 24;
+    edited.iterations = if scheduled_transport { old_length } else { 24 };
     let span = &mut edited.spans.to_mut()[0];
-    span.start = 4;
-    span.occurrence_start = 4;
+    span.start = if scheduled_transport { 16 } else { 4 };
+    span.occurrence_start = span.start;
     span.end = edited.iterations;
     let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, 43).unwrap();
     for (index, batch) in batches.iter().enumerate() {
@@ -962,7 +1009,7 @@ fn retime_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     assert_eq!(step(&mut renderer), [0., 0.]);
 
     client
-        .immediate(Batch::new(2, 2, &[play(100)]).unwrap())
+        .immediate(Batch::new(2, 2, &[transition(100, TransitionMode::Playing)]).unwrap())
         .unwrap();
     response(&mut client, &mut renderer);
     for iteration in 0..=old_length {
@@ -977,6 +1024,13 @@ fn retime_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
             "take iteration {iteration}"
         );
     }
+    if scheduled_transport {
+        let next_take = end_frame + (old_length + 17) * Q as u64;
+        while renderer.next_frame().0 < next_take {
+            assert_eq!(step(&mut renderer), [0.125, 0.125]);
+        }
+        assert_eq!(step(&mut renderer), [0., 0.]);
+    }
 }
 
 #[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
@@ -987,10 +1041,12 @@ fn a_compatible_one_shot_edit_applies_as_the_old_take_finishes() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-    retime_one_shot(rust.endpoint, rust.renderer);
-    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-    retime_one_shot(rtl.endpoint, rtl.renderer);
+    for scheduled_transport in [false, true] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        edit_one_shot(rust.endpoint, rust.renderer, scheduled_transport);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        edit_one_shot(rtl.endpoint, rtl.renderer, scheduled_transport);
+    }
 }
 
 fn edit_at_continuous_wrap<E: Endpoint>(

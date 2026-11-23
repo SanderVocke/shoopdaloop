@@ -117,8 +117,10 @@ impl Pipeline {
                         self.state.composite_restart_ready(cut, slot),
                         slot.composite_wait,
                     ));
+            let transport_before_switch = slot.planned.iter().any(Option::is_some)
+                && !cut.preserves_transport_at_finish(slot.state.at_end());
             if !ready
-                || slot.planned.iter().any(Option::is_some)
+                || transport_before_switch
                 || (cut.require_empty && slot.state.content_length != 0)
             {
                 return Err(PipelineError::State(Error::InvalidState));

@@ -267,7 +267,9 @@ impl Engine {
                 generation: cut.old_slot.generation,
             })
             .is_ok_and(|slot| {
-                if slot.planned.iter().any(Option::is_some) {
+                if slot.planned.iter().any(Option::is_some)
+                    && !cut.preserves_transport_at_finish(slot.state.at_end())
+                {
                     return cut.waits_for_control();
                 }
                 slot.state.mode == Mode::Playing

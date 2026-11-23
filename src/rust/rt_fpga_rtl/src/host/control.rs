@@ -125,14 +125,14 @@ pub fn composite_cut_status<E>(
     if !loop_identity_valid(cut.old_slot, words) || (cut.require_empty && words[3] != 0) {
         return Ok(Code::CannotApply);
     }
-    if has_loop_plan(words) {
+    let state = loop_state(cut.old_slot, words, None);
+    if has_loop_plan(words) && !cut.preserves_transport_at_finish(state.at_end()) {
         return Ok(if cut.waits_for_control() {
             Code::Scheduled
         } else {
             Code::CannotApply
         });
     }
-    let state = loop_state(cut.old_slot, words, None);
     let restart_ready = cut.restart_ready(state.repeat_sync, state.at_end(), |id| {
         Ok(read_clock(id)?
             .filter(|words| cut_loop_valid(id, words))
