@@ -854,7 +854,13 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
     }
 }
 
-fn edit_at_continuous_wrap<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, length: u64) {
+fn edit_at_continuous_wrap<E: Endpoint>(
+    endpoint: E,
+    mut renderer: impl Renderer,
+    length: u64,
+    drop_child: bool,
+    other_parent: bool,
+) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
@@ -883,6 +889,12 @@ fn edit_at_continuous_wrap<E: Endpoint>(endpoint: E, mut renderer: impl Renderer
         spans: vec![span(100, 0, old_length, 0), span(101, 0, 2, 1)].into(),
     });
     graph.loops.push(parent);
+    if other_parent {
+        let mut other = graph.loops[2].clone();
+        other.id = id(121);
+        other.composite.as_mut().unwrap().spans = vec![span(100, 0, old_length, 0)].into();
+        graph.loops.push(other);
+    }
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
     for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
@@ -907,13 +919,18 @@ fn edit_at_continuous_wrap<E: Endpoint>(endpoint: E, mut renderer: impl Renderer
     let edited = graph.loops[2].composite.as_mut().unwrap();
     edited.version = 2;
     edited.iterations = length;
-    edited.spans = vec![span(100, 4, 6, 0), span(101, 0, length, 1)].into();
+    edited.spans = if drop_child {
+        vec![span(101, 0, length, 1)]
+    } else {
+        vec![span(100, 4, 6, 0), span(101, 0, length, 1)]
+    }
+    .into();
     let switched = upload(&mut client, &mut renderer, &graph, 1);
     assert_eq!(switched, started + old_length * Q as u64);
     let first_sample = switched + Q as u64;
     assert_eq!(renderer.next_frame().0, first_sample);
     for iteration in 0..8 {
-        let sample = if (4..6).contains(&iteration) {
+        let sample = if !drop_child && (4..6).contains(&iteration) {
             0.1875
         } else {
             0.0625
@@ -943,11 +960,22 @@ fn continuous_wrap_edits_replace_the_old_ending_once() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for length in [24, 64] {
+    for (length, drop_child, other_parent) in [
+        (24, false, false),
+        (64, false, false),
+        (24, true, false),
+        (64, true, true),
+    ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-        edit_at_continuous_wrap(rust.endpoint, rust.renderer, length);
+        edit_at_continuous_wrap(
+            rust.endpoint,
+            rust.renderer,
+            length,
+            drop_child,
+            other_parent,
+        );
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-        edit_at_continuous_wrap(rtl.endpoint, rtl.renderer, length);
+        edit_at_continuous_wrap(rtl.endpoint, rtl.renderer, length, drop_child, other_parent);
     }
 }
 

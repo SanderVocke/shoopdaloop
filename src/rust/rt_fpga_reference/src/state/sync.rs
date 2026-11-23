@@ -307,7 +307,7 @@ impl LoopMemory {
         let composite = self.composite_clock(id).is_some();
         let slot = self.slot(id)?;
         let source = self.plan.specs[id.slot as usize].unwrap().sync_source;
-        if composite || !self.composite_parents(id).is_empty() {
+        if composite || self.has_composite_parent(id) {
             let planned =
                 prepare_composite_mode_plan(slot.state, source, self.frame, plan, composite)?;
             let slot = self.slot_mut(id)?;
@@ -462,7 +462,7 @@ impl LoopMemory {
             slot.state.last_pulse = Some(frame);
             self.event(id, EventKind::Pulse)?;
             if source == Some(id)
-                || (source.is_none() && (composite || !self.composite_parents(id).is_empty()))
+                || (source.is_none() && (composite || self.has_composite_parent(id)))
             {
                 if !self.slot(id)?.mode_plan {
                     self.apply_due(id, false)?;
@@ -503,6 +503,11 @@ impl LoopMemory {
             .composite_parents
             .get(id.slot as usize)
             .map_or(&[], Vec::as_slice)
+    }
+    fn has_composite_parent(&self, id: LoopId) -> bool {
+        self.composite_parents(id)
+            .iter()
+            .any(|parent| !parent.spans.is_empty())
     }
     fn apply_composite_parents(
         &mut self,

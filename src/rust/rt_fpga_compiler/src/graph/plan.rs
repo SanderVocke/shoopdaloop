@@ -615,22 +615,7 @@ pub(super) fn lower(
         composites.push(schedule);
     }
     composites.sort_by_key(|schedule| (!schedule.explicit, schedule.id));
-    let mut sync_pass = Vec::new();
-    while sync_pass.len() < graph.loops.len() {
-        let next = graph
-            .loops
-            .iter()
-            .filter(|l| !sync_pass.contains(&l.id))
-            .find(|l| {
-                l.sync_source
-                    .is_none_or(|s| s == l.id || sync_pass.contains(&s))
-                    && parents
-                        .get(&l.id)
-                        .is_none_or(|p| p.iter().all(|id| sync_pass.contains(id)))
-            })
-            .ok_or(CompileError::InvalidProgram)?;
-        sync_pass.push(next.id);
-    }
+    let sync_pass = super::sync_order(graph.loops.iter().map(|l| (l.id, l.sync_source)), &parents)?;
     let mut plan = Plan::new(graph);
     plan.build()?;
     plan.emit(context, chunk_frames, sync_pass, composites)

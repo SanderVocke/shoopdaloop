@@ -193,9 +193,13 @@ impl StateProgramTarget for RtlTarget<'_> {
             )
             .map_err(|_| CompileError::Capacity(Resource::Instructions))?;
             if words != 0 {
+                let handoff_only = logical
+                    .composite_parents(*loop_id)
+                    .all(|(_, child)| child.spans.is_empty());
                 bits.set(0, 8, 0x14)
                     .set(56, 16, u64::from(source))
-                    .set(72, 16, u64::from(words));
+                    .set(72, 16, u64::from(words))
+                    .set(88, 1, u64::from(handoff_only));
                 instructions.push(bits);
                 for (parent, child) in logical.composite_parents(*loop_id) {
                     let span_count = child.spans.len() as u64;
@@ -394,7 +398,10 @@ impl StateProgramTarget for RtlTarget<'_> {
                     words[0] |= (1 << 36) | (u64::from(source.slot) << 37);
                     words[1] |= u64::from(source.generation);
                 }
-                if logical.composite_parents(l.id).next().is_some() {
+                if logical
+                    .composite_parents(l.id)
+                    .any(|(_, child)| !child.spans.is_empty())
+                {
                     words[1] |= 1 << 44;
                 }
                 words[3] = l.length;

@@ -344,6 +344,16 @@ pub trait StateProgramTarget {
 }
 
 impl LogicalStateProgram {
+    pub(crate) fn instruction_rows(&self) -> u64 {
+        (self.sync_pass.len() + self.work_pass.len()) as u64
+            + self
+                .composites
+                .iter()
+                .flat_map(|schedule| &schedule.children)
+                .map(|child| 1 + child.spans.len() as u64)
+                .sum::<u64>()
+    }
+
     pub fn has_authored_recording(&self) -> bool {
         self.composites
             .iter()
@@ -486,13 +496,7 @@ impl LogicalStateProgram {
         for (resource, needed, available) in [
             (
                 Resource::Instructions,
-                (self.sync_pass.len() + self.work_pass.len()) as u64
-                    + self
-                        .composites
-                        .iter()
-                        .flat_map(|schedule| &schedule.children)
-                        .map(|child| 1 + child.spans.len() as u64)
-                        .sum::<u64>(),
+                self.instruction_rows(),
                 limits.instructions,
             ),
             (
@@ -576,7 +580,7 @@ impl LogicalStateProgram {
             for child in &schedule.children {
                 if !local_children.insert(child.id)
                     || !self.sync_pass[parent_position + 1..].contains(&child.id)
-                    || child.spans.is_empty()
+                    || (child.spans.is_empty() && child.previous_play_at_wrap != Some(true))
                     || (schedule.explicit && child.previous_play_at_wrap.is_some())
                 {
                     return Err(InvalidProgram);

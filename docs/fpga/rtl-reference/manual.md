@@ -237,14 +237,13 @@ recording can start. See the admission rule under
   to other composites.
   An independent repeating composite can pick up an edit at its next restart,
   including changes to the length of an iteration or the whole pass. Both plans
-  use the same sync source. At an uninterrupted restart, the edit can change
-  which children finish the pass if the new schedule still uses the children
-  that were playing at the end of the old pass. SP compares what was playing
-  with what should play next, so a continuing child keeps its place. A wait
-  for an independent clock gives the old schedule time to release its
-  children. The clock can be a primitive or a composite that plays on its own.
-  In that case the edit can take effect on the clock's pulse and drop a child
-  from the schedule while leaving the loop and its audio in the session.
+  use the same sync source. At an uninterrupted restart, SP compares what was
+  playing with what should play next. Continuing children keep their place.
+  The edit can drop a child from the schedule while leaving the loop and its
+  audio in the session. A child still playing at the end of the old pass needs
+  one extra program row so SP can stop it. If the row cannot fit, a wait for an
+  independent clock can give the old schedule time to release its children.
+  The clock can be a primitive or a composite that plays on its own.
   A timing change needs one free loop record while the new program is staged.
   An independent one-pass composite can finish its current run. The edit takes
   effect one quantum after the old run ends, and playback stays stopped until
@@ -921,9 +920,9 @@ restart of an independent repeating parent, and a future-only edit that leaves
 the next unit intact. A single compatible switch request can wait while the old
 program runs to a repeat boundary or finishes its one-pass schedule.
 For an uninterrupted repeat, the loader can put each child's old ending mode
-in the new parent header. SP uses it for the wrap at the switch, then reads
-the new spans for subsequent passes. A following switch waits for that
-quantum to run.
+in the new parent header. A dropped child that was still playing gets a header
+with no spans. SP uses the old mode for the wrap at the switch, then reads the
+new spans for subsequent passes. A following switch waits for that quantum to run.
 Continuing child media remains attached to its existing views through the
 handoff.
 

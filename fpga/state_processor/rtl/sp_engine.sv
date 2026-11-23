@@ -102,9 +102,10 @@ module sp_engine #(
     reg [7:0] opcode, instruction_reserved;
     wire [95:0] instruction={instruction_reserved,arg4,arg3,arg2,arg1,arg0,opcode};
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
-    wire composite_child = opcode == `SHOOP_SP_PROCESS_COMPOSITE_CHILD;
-    wire process_loop = opcode == `SHOOP_SP_PROCESS_LOOP || composite_child;
-    wire [31:0] next_pc = 32'(pc) + 1'b1 + (instruction_is_sync && composite_child ? {16'b0,arg4} : 32'b0);
+    wire composite_rows = opcode == `SHOOP_SP_PROCESS_COMPOSITE_CHILD;
+    wire composite_child = composite_rows && !instruction_reserved[0];
+    wire process_loop = opcode == `SHOOP_SP_PROCESS_LOOP || composite_rows;
+    wire [31:0] next_pc = 32'(pc) + 1'b1 + (instruction_is_sync && composite_rows ? {16'b0,arg4} : 32'b0);
     reg [PC_BITS-1:0] span_pc;
     reg [PC_BITS-1:0] parent_end_pc;
     reg [15:0] parent_slot;
@@ -408,7 +409,8 @@ module sp_engine #(
                             else phase<=SYNC_BEGIN;
                         end
                         `SHOOP_SP_PROCESS_COMPOSITE_CHILD: begin
-                            if (instruction_reserved!=0 || arg4<2 || next_pc>run_sync_count) begin
+                            if (instruction_reserved[7:1]!=0 || arg4==0
+                                || (arg4==1 && !instruction_reserved[0]) || next_pc>run_sync_count) begin
                                 finish_error(`SHOOP_SP_INVALID_PROGRAM);
                             end else begin
                                 last_sync_instruction<=next_pc==run_sync_count;
@@ -807,16 +809,22 @@ module sp_engine #(
                 end
                 SYNC_GROUP_DONE: begin
                     sync_natural_return<=sync_pass==0 ? SYNC_SOURCE : sync_pass==1 ? SYNC_DELIVER : SYNC_RENDER;
-                    if (sync_pass==0 && composite_child && !inherited
+                    if (sync_pass==0 && (composite_child || (composite_rows && run_program_changed)) && !inherited
                         && (!protected_valid || control[`SHOOP_SP_L_AUTHORED_CAPTURE])) begin
                         span_pc<=pc+1'b1; parent_end_pc<=pc+1'b1; phase<=COMPOSITE_TABLE_READ;
                     end else phase<=SYNC_NATURAL;
                 end
                 COMPOSITE_TABLE_READ: phase<=span_pc==parent_end_pc ? COMPOSITE_TABLE : COMPOSITE_SPAN;
                 COMPOSITE_TABLE: begin
-                    if (program_read_data[95:82]!=0 || program_read_data[81:80]==2'b01 || parent_span_count==0
+                    if (program_read_data[95:82]!=0 || program_read_data[81:80]==2'b01
+                        || (parent_span_count==0 && program_read_data[81:80]!=2'b11)
+                        || (parent_span_count!=0 && instruction_reserved[0])
                         || next_parent_pc>next_pc || {16'b0,program_read_data[15:0]}>=32'(LOOP_DEPTH)) sync_fail();
-                    else begin
+                    else if (parent_span_count==0 && !run_program_changed) begin
+                        parent_end_pc<=PC_BITS'(next_parent_pc);
+                        previous_mode<=0; desired_mode<=0;
+                        phase<=COMPOSITE_APPLY;
+                    end else begin
                         parent_slot<=program_read_data[15:0];
                         parent_previous_play<=program_read_data[81:80];
                         capture_permitted<=program_read_data[69:54]!=0 && program_read_data[69:54]<=run_capture_credits;
@@ -851,7 +859,8 @@ module sp_engine #(
                         parent_previous<=32'hffffffff;
                         previous_mode<={1'b0,parent_previous_play[0]};
                     end
-                    if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);
+                    if (span_pc==parent_end_pc) phase<=COMPOSITE_APPLY;
+                    else if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);
                     else begin
                         parent_position<=32'hffffffff;
                         phase<=COMPOSITE_TABLE_READ;

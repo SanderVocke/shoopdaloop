@@ -91,8 +91,9 @@ interpretation follows.
 
 ## Composite schedule rows {.unnumbered}
 
-`ProcessCompositeChild` uses the inline sync-source form and requires zero in
-bits 95:88. Its A4 counts the contiguous 96-bit rows following the instruction.
+`ProcessCompositeChild` uses the inline sync-source form. Its A4 counts the
+contiguous 96-bit rows following the instruction. Bit 88 is set when the child
+has only handoff rows. Bits 95:89 are zero.
 Each parent contributes one header followed by its spans in increasing start
 order. Parents appear in the compiler's action priority order. The engine
 reads those rows as data during the child visit and skips them on normal
@@ -113,9 +114,10 @@ and a processed stamp for the same boundary.
 | Span | 65:64 | Mode (1 Play, 2 Stop, 3 Record) |
 | Span | 95:66 | Reserved |
 
-Each header covers at least one span, and its block must fit within the rows
-declared by the instruction. All headers and spans count against the existing
-program region capacity. In the first quantum after a region change, SP marks
+Each header's block fits within the rows declared by the instruction. A
+header with no spans supplies the old Play mode of a dropped child during the
+handoff. All headers and spans count against the existing program region
+capacity. In the first quantum after a region change, SP marks
 the previous position of a composite that reached its end without a repeat
 hold. For a marked parent, the header can supply the old mode for that one
 comparison against the new schedule.

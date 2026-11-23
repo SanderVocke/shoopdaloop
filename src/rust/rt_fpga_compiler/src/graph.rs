@@ -4,6 +4,28 @@ use shoop_graph::{Graph, GraphView, Owner};
 mod plan;
 mod validate;
 
+pub(crate) fn sync_order(
+    loops: impl Iterator<Item = (Identity, Option<Identity>)> + Clone,
+    parents: &alloc::collections::BTreeMap<Identity, Vec<Identity>>,
+) -> Result<Vec<Identity>, CompileError> {
+    let count = loops.clone().count();
+    let mut order = Vec::with_capacity(count);
+    while order.len() < count {
+        let (next, _) = loops
+            .clone()
+            .filter(|(id, _)| !order.contains(id))
+            .find(|(id, source)| {
+                source.is_none_or(|source| source == *id || order.contains(&source))
+                    && parents
+                        .get(id)
+                        .is_none_or(|parents| parents.iter().all(|parent| order.contains(parent)))
+            })
+            .ok_or(CompileError::InvalidProgram)?;
+        order.push(next);
+    }
+    Ok(order)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct CompileContext {
     pub quantum: u32,

@@ -1,3 +1,5 @@
+#[path = "support/composite.rs"]
+mod composite;
 #[path = "support/mono.rs"]
 mod mono;
 use rt_fpga_compiler::{compile, CompileContext};
@@ -218,4 +220,57 @@ fn staging_requires_explicit_state_ownership_without_inference() {
     assert!(allocator.pending().is_none());
     let valid = allocator.stage(&graph(&[0])).unwrap();
     assert_eq!(valid.loops[0].physical.generation, 1);
+}
+
+#[shoop_test]
+fn a_dropped_child_at_wrap_uses_one_optional_instruction_row() {
+    let mut graph = composite::arbitration_graph();
+    let context = CompileContext {
+        quantum: 16,
+        limits: ProgramLimits {
+            loop_slots: 8,
+            ..limits()
+        },
+    };
+    let before = compile_composites(&graph, context, 16).unwrap();
+    let replacement = graph.loops[0].id;
+    let edited = graph.loops[1].composite.as_mut().unwrap();
+    edited.version = 2;
+    let dropped = edited.spans[0].target;
+    edited.spans.to_mut()[0].target = replacement;
+    let after = compile_composites(&graph, context, 16).unwrap();
+    let used = (1..64)
+        .find(|&instructions| {
+            after
+                .validate_logical(ProgramLimits {
+                    instructions,
+                    ..context.limits
+                })
+                .is_ok()
+        })
+        .unwrap();
+
+    for extra in [0, 1] {
+        let capacity = ProgramLimits {
+            instructions: used + extra,
+            ..context.limits
+        };
+        let mut allocator = Allocator::new(capacity);
+        let first = allocator.stage(&before).unwrap();
+        allocator.publish(first.revision).unwrap();
+        allocator.complete(first.revision).unwrap();
+        let next = allocator.stage(&after).unwrap();
+        assert_eq!(next.composite_cuts()[0].allow_restart, extra == 1);
+        assert_eq!(next.reconciles_composite_wrap(), extra == 1);
+        let bound = next.relocate(&after).unwrap();
+        bound.validate(capacity).unwrap();
+        let child = next.loop_id(dropped).unwrap();
+        assert_eq!(
+            bound
+                .composite_parents(child)
+                .filter(|(_, child)| child.spans.is_empty())
+                .count(),
+            extra as usize
+        );
+    }
 }

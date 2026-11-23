@@ -164,6 +164,71 @@ impl CompositeSchedule {
     }
 }
 
+fn wrap_only_children<'a>(
+    program: &'a LogicalStateProgram,
+    previous: &'a [(Identity, Vec<Identity>)],
+) -> impl Iterator<Item = (Identity, Identity)> + 'a {
+    previous.iter().flat_map(|(parent, ending)| {
+        let current = program
+            .composites
+            .iter()
+            .find(|schedule| schedule.id == *parent);
+        ending.iter().copied().filter_map(move |child| {
+            current
+                .is_some_and(|schedule| !schedule.children.iter().any(|row| row.id == child))
+                .then_some((*parent, child))
+        })
+    })
+}
+
+fn wrap_sync_order(
+    program: &LogicalStateProgram,
+    previous: &[(Identity, Vec<Identity>)],
+) -> Result<Vec<Identity>, CompileError> {
+    let mut parents = BTreeMap::<Identity, Vec<Identity>>::new();
+    for schedule in &program.composites {
+        for child in &schedule.children {
+            parents.entry(child.id).or_default().push(schedule.id);
+        }
+    }
+    for (parent, child) in wrap_only_children(program, previous) {
+        parents.entry(child).or_default().push(parent);
+    }
+    let loops = program.sync_pass.iter().filter_map(|id| {
+        program
+            .loops
+            .iter()
+            .find(|row| row.id == *id)
+            .map(|row| (row.id, row.sync_source))
+    });
+    graph::sync_order(loops, &parents)
+}
+
+fn keep_wrap_ending(
+    program: &LogicalStateProgram,
+    previous: &mut Vec<(Identity, Vec<Identity>)>,
+    before: &CompositeSchedule,
+    limit: u32,
+) -> bool {
+    let ending: Vec<_> = before.ending_children().collect();
+    if !ending
+        .iter()
+        .all(|id| program.loops.iter().any(|row| row.id == *id))
+    {
+        return false;
+    }
+    previous.push((before.id, ending));
+    let extra_rows = wrap_only_children(program, previous).count() as u64;
+    if program.instruction_rows() + extra_rows <= u64::from(limit)
+        && (extra_rows == 0 || wrap_sync_order(program, previous).is_ok())
+    {
+        true
+    } else {
+        previous.pop();
+        false
+    }
+}
+
 /// A bound image owns no mutable access to continuing allocations.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -346,6 +411,12 @@ impl Layout {
             l.id = id(l.id)?;
             l.sync_source = l.sync_source.map(id).transpose()?;
         }
+        if wrap_only_children(logical, &self.previous_wrap_children)
+            .next()
+            .is_some()
+        {
+            bound.sync_pass = wrap_sync_order(logical, &self.previous_wrap_children)?;
+        }
         for l in &mut bound.sync_pass {
             *l = id(*l)?;
         }
@@ -354,6 +425,17 @@ impl Layout {
                 .previous_wrap_children
                 .iter()
                 .find(|(parent, _)| *parent == schedule.id);
+            if let Some((_, ending)) = previous_ending {
+                for &previous in ending {
+                    if !schedule.children.iter().any(|child| child.id == previous) {
+                        schedule.children.push(CompositeChild {
+                            id: previous,
+                            spans: Vec::new(),
+                            previous_play_at_wrap: Some(true),
+                        });
+                    }
+                }
+            }
             schedule.id = id(schedule.id)?;
             for child in &mut schedule.children {
                 if let Some((_, ending)) = previous_ending {
@@ -552,34 +634,32 @@ impl Allocator {
                     let changed_ending = before.zip(after).filter(|(before, after)| {
                         !before.ending_children().eq(after.ending_children())
                     });
-                    let carry_ending = changed_ending.filter(|(before, after)| {
-                        before
-                            .ending_children()
-                            .all(|id| after.children.iter().any(|child| child.id == id))
-                    });
-                    let require_repeat_wait = changed_ending.is_some() && carry_ending.is_none();
-                    // A held pass has already released its children. A plan edit can
-                    // drop their spans while the graph keeps their state and media.
-                    let allow_restart = changed_composites.contains(&row.logical)
+                    let compatible_restart = changed_composites.contains(&row.logical)
                         && independent
                         && same_source
                         && (external_source.is_none() || restart_source.is_some())
                         && before.zip(after).is_some_and(|(before, after)| {
-                            !before.explicit
-                                && !after.explicit
-                                && after.length != 0
-                                && (!require_repeat_wait
-                                    || (restart_source.is_some()
-                                        && before.children.iter().all(|old| {
-                                            program.loops.iter().any(|child| child.id == old.id)
-                                        })))
+                            !before.explicit && !after.explicit && after.length != 0
                         });
-                    if allow_restart {
-                        if let Some((before, _)) = carry_ending {
-                            previous_wrap_children
-                                .push((row.logical, before.ending_children().collect()));
-                        }
-                    }
+                    let require_repeat_wait = compatible_restart
+                        && changed_ending.is_some_and(|(before, _)| {
+                            !keep_wrap_ending(
+                                program,
+                                &mut previous_wrap_children,
+                                before,
+                                self.limits.instructions,
+                            )
+                        });
+                    // The old pass releases its children during a hold, even
+                    // when there is no room for a handoff-only row.
+                    let allow_restart = compatible_restart
+                        && (!require_repeat_wait
+                            || (restart_source.is_some()
+                                && before.is_some_and(|before| {
+                                    before.children.iter().all(|old| {
+                                        program.loops.iter().any(|child| child.id == old.id)
+                                    })
+                                })));
                     let wait_for_finish = changed_composites.contains(&row.logical)
                         && independent
                         && before.is_some_and(|schedule| schedule.explicit)
