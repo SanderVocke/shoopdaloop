@@ -149,7 +149,9 @@ module midi_store #(
     assign free_block_slots=free_count;
     assign free_view_slots=32'(VIEWS)-used_views;
     assign free_retirement_slots=32'(RETIREMENTS)-queue_count;
-    reg [31:0] record_index, record_word, payload [0:3];
+    reg [31:0] record_index, record_word, payload [0:2];
+    wire [31:0] append_payload_word = record_word[1:0]==3
+        ? {6'b0,length,packet} : payload[record_word[1:0]];
     reg [63:0] record_address, record_frame;
     reg [31:0] low, high, middle, range_first, range_count, first_table, table_count, table_cursor;
     reg [31:0] removed_blocks, discard_count, released_refs;
@@ -373,10 +375,10 @@ module midi_store #(
             APPEND_BLOCK_ID: begin
                 position=desc[4]+desc[5];origin={desc[7],desc[6]}+arg0;
                 append_block_valid<=1;append_ordinal<=position/32'(BLOCK_EVENTS);append_block<=data_word;
-                payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[10];payload[3]<={6'b0,length,packet};
+                payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[10];
                 record_word<=0;prepare_record(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)),APPEND_PAYLOAD);
             end
-            APPEND_PAYLOAD: write_region(ADDRESS_WORD,record_word,0,record_address,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
+            APPEND_PAYLOAD: write_region(ADDRESS_WORD,record_word,0,record_address,append_payload_word,APPEND_PAYLOAD_NEXT);
             APPEND_PAYLOAD_NEXT: if(record_word==3) begin
                     desc[5]<=desc[5]+1;desc[10]<=desc[10]+1;
                     if(op==15) begin batch_has_last<=1;batch_last_frame<=arg0;phase<=BATCH_NEXT;end
@@ -394,7 +396,7 @@ module midi_store #(
             end
             RECORD_PAYLOAD: read_region(ADDRESS_WORD,record_word,0,record_address,RECORD_PAYLOAD_NEXT);
             RECORD_PAYLOAD_NEXT: begin
-                payload[record_word[1:0]]<=data_word;
+                if (record_word[1:0]!=3) payload[record_word[1:0]]<=data_word;
                 if(record_word==3) begin
                     record_frame<={payload[1],payload[0]};response_frame<={payload[1],payload[0]}-{desc[7],desc[6]};
                     response_order<=payload[2];response_packet<=data_word[23:0];response_length<=data_word[25:24];
