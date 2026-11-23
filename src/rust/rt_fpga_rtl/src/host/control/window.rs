@@ -62,21 +62,21 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
 
     pub fn composite_cut_ready(
         &mut self,
-        cut: rt_fpga_compiler::loading::CompositeCut,
+        cut: &rt_fpga_compiler::loading::CompositeCut,
     ) -> Result<bool, Error<B::Error>> {
         Ok(self.composite_cut_status(cut)? == Code::Applied)
     }
 
     pub fn composite_cut_status(
         &mut self,
-        cut: rt_fpga_compiler::loading::CompositeCut,
+        cut: &rt_fpga_compiler::loading::CompositeCut,
     ) -> Result<Code, Error<B::Error>> {
         self.composite_cut(cut, None)
     }
 
     pub fn prepare_composite_cut(
         &mut self,
-        cut: rt_fpga_compiler::loading::CompositeCut,
+        cut: &rt_fpga_compiler::loading::CompositeCut,
         quantum: u32,
     ) -> Result<Code, Error<B::Error>> {
         self.composite_cut(cut, Some(quantum))
@@ -84,17 +84,15 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
 
     fn composite_cut(
         &mut self,
-        cut: rt_fpga_compiler::loading::CompositeCut,
+        cut: &rt_fpga_compiler::loading::CompositeCut,
         quantum: Option<u32>,
     ) -> Result<Code, Error<B::Error>> {
         let (_, Some(words)) = self.read_loop(cut.old_slot)? else {
             return Ok(Code::CannotApply);
         };
-        let source = match super::composite_cut_source(cut, &words) {
-            Some(id) => self.read_loop(id)?.1,
-            None => None,
-        };
-        let status = super::composite_cut_status(cut, &words, source.as_ref());
+        let status = super::composite_cut_status(cut, &words, |id| {
+            self.read_loop_words::<4>(id).map(|(_, row)| row)
+        })?;
         if status != Code::Applied || (words[0] >> 33) & 3 != 1 {
             return Ok(status);
         }
@@ -209,6 +207,13 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
     }
 
     fn read_loop(&mut self, id: Identity) -> Result<(u32, Option<[u64; 16]>), Error<B::Error>> {
+        self.read_loop_words(id)
+    }
+
+    fn read_loop_words<const N: usize>(
+        &mut self,
+        id: Identity,
+    ) -> Result<(u32, Option<[u64; N]>), Error<B::Error>> {
         let Some(base) = id.slot.checked_mul(16).filter(|&base| base <= 65520) else {
             return Err(Error::InvalidRequest);
         };
@@ -218,7 +223,7 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         {
             return Err(Error::UnexpectedResponse);
         }
-        let mut row = [0; 16];
+        let mut row = [0; N];
         for (index, words) in row.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
             let address = (index * (HOST_PAYLOAD_WORDS / 2)) as u32;
             let data = self.send(Request::read_snapshot(

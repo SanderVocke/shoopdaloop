@@ -242,8 +242,11 @@ recording can start. See the admission rule under
   The edit can drop a child from the schedule while leaving the loop and its
   audio in the session. A child still playing at the end of the old pass needs
   one extra program row so SP can stop it. If the row cannot fit, a wait for an
-  independent clock can give the old schedule time to release its children.
-  The clock can be a primitive or a composite that plays on its own.
+  sync clock can give the old schedule time to release its children. The
+  clock can be a primitive, a composite, or a chain of loops that sync to
+  one another. The chain keeps the same links and schedules during the edit,
+  and its loops run free of composite parent actions. A primitive can pass
+  along a source pulse. A composite clock supplies its own repeat pulse.
   A timing change needs one free loop record while the new program is staged.
   An independent one-pass composite can finish its current run. The edit takes
   effect one quantum after the old run ends, and playback stays stopped until

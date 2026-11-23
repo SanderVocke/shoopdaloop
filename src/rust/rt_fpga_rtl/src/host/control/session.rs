@@ -160,7 +160,7 @@ impl<B: RegisterBus> ProgramSession<B> {
                 if self.composite_wrap_frame == Some(window.frame()) {
                     return Ok(None);
                 }
-                for &cut in layout.composite_cuts() {
+                for cut in layout.composite_cuts() {
                     if window.prepare_composite_cut(cut, staged.image.compiled.quantum)?
                         != shoop_rt_protocol::immediate::Code::Applied
                     {

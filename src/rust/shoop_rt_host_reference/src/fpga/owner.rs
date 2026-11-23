@@ -488,7 +488,7 @@ where
             if let Some(slot) = layout.retiring_composite() {
                 status = device_result(window.prepare_composite_retirement(slot))?;
             } else {
-                for &cut in cuts {
+                for cut in cuts {
                     status =
                         device_result(window.prepare_composite_cut(cut, self.geometry.quantum))?;
                     if status != Code::Applied {

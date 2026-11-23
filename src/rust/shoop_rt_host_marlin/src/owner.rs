@@ -272,7 +272,10 @@ impl Owner<'_> {
         Ok(())
     }
     fn loop_words(&mut self, id: Identity) -> Result<[u64; 16]> {
-        let mut words = [0; 16];
+        self.read_loop_words(id)
+    }
+    fn read_loop_words<const N: usize>(&mut self, id: Identity) -> Result<[u64; N]> {
+        let mut words = [0; N];
         for (i, w) in words.iter_mut().enumerate() {
             *w = self
                 .access("cfg", 2, u64::from(id.slot) * 16 + i as u64, None)?
@@ -559,45 +562,36 @@ impl Owner<'_> {
             }
             return Ok(code == Code::Scheduled);
         }
-        let [cut] = upload.upload.image.layout.composite_cuts() else {
-            return Ok(false);
-        };
-        let cut = *cut;
-        if !cut.waits_for_control() {
-            return Ok(false);
-        }
-        let words = self.loop_words(cut.old_slot)?;
-        Ok(self.composite_cut_status(cut, &words)? == Code::Scheduled)
+        let upload = self.upload.take().unwrap();
+        let result = (|| {
+            let [cut] = upload.upload.image.layout.composite_cuts() else {
+                return Ok(false);
+            };
+            if !cut.waits_for_control() {
+                return Ok(false);
+            }
+            let words = self.loop_words(cut.old_slot)?;
+            Ok(self.composite_cut_status(cut, &words)? == Code::Scheduled)
+        })();
+        self.upload = Some(upload);
+        result
     }
 
-    fn composite_cut_status(&mut self, cut: CompositeCut, words: &[u64; 16]) -> Result<Code> {
-        let source = rt_fpga_rtl::host::control::composite_cut_source(cut, words)
-            .map(|id| self.loop_words(id))
-            .transpose()?;
-        Ok(rt_fpga_rtl::host::control::composite_cut_status(
-            cut,
-            words,
-            source.as_ref(),
-        ))
+    fn composite_cut_status(&mut self, cut: &CompositeCut, words: &[u64; 16]) -> Result<Code> {
+        rt_fpga_rtl::host::control::composite_cut_status(cut, words, |id| {
+            self.read_loop_words::<4>(id).map(Some)
+        })
     }
 
     fn prepare_composite_cuts(&mut self) -> Result<bool> {
-        let cuts = self
-            .upload
-            .as_ref()
-            .unwrap()
-            .upload
-            .image
-            .layout
-            .composite_cuts()
-            .to_vec();
-        for cut in cuts {
-            let old = self.loop_words(cut.old_slot)?;
-            if self.composite_cut_status(cut, &old)? != Code::Applied {
-                return Ok(false);
-            }
-            if let Some(next) = cut.restart_slot {
-                if (old[0] >> 33) & 3 != 0 {
+        let upload = self.upload.take().unwrap();
+        let result = (|| {
+            for cut in upload.upload.image.layout.composite_cuts() {
+                let old = self.loop_words(cut.old_slot)?;
+                if self.composite_cut_status(cut, &old)? != Code::Applied {
+                    return Ok(false);
+                }
+                if let Some(next) = cut.restart_slot.filter(|_| (old[0] >> 33) & 3 != 0) {
                     let mut words = self.loop_words(next)?;
                     if rt_fpga_rtl::host::control::prepare_composite_restart(
                         next,
@@ -611,8 +605,10 @@ impl Owner<'_> {
                     self.store_loop(next, &words)?;
                 }
             }
-        }
-        Ok(true)
+            Ok(true)
+        })();
+        self.upload = Some(upload);
+        result
     }
     fn publish(&mut self, execution: &mut rt::Execution, processed: bool) -> Result<()> {
         let mut bytes = std::mem::take(&mut self.snapshot);

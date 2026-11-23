@@ -595,13 +595,21 @@ enum Ending {
     ReplaceFirst,
 }
 
+#[derive(Clone, Copy)]
+enum Clock {
+    Primitive,
+    Composite,
+    RelayedComposite,
+    AlignedComposite,
+}
+
 fn edit_at_clock_restart<E: Endpoint>(
     endpoint: E,
     mut renderer: impl Renderer,
     iterations: u64,
     unit_quanta: u64,
     ending: Ending,
-    composite_clock_pass: Option<u64>,
+    clock: Clock,
     stop_at_pulse: bool,
 ) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
@@ -614,10 +622,9 @@ fn edit_at_clock_restart<E: Endpoint>(
         .truncate(if ending == Ending::Same { 2 } else { 3 });
     graph.loops[1].gain = 0.;
     let parent_index = graph.loops.len();
-    let clock_slot = if composite_clock_pass.is_some() {
-        121
-    } else {
-        101
+    let clock_slot = match clock {
+        Clock::Primitive | Clock::RelayedComposite => 101,
+        Clock::Composite | Clock::AlignedComposite => 121,
     };
     let mut parent = graph.loops[0].clone();
     parent.id = id(120);
@@ -642,15 +649,21 @@ fn edit_at_clock_restart<E: Endpoint>(
         .into(),
     });
     graph.loops.push(parent);
-    if let Some(iterations) = composite_clock_pass {
-        let mut clock = graph.loops[parent_index].clone();
-        clock.id = id(clock_slot);
-        clock.sync_source = None;
-        clock.repeat_sync = false;
-        let program = clock.composite.as_mut().unwrap();
+    if !matches!(clock, Clock::Primitive) {
+        let mut composite = graph.loops[parent_index].clone();
+        composite.id = id(121);
+        composite.sync_source = matches!(clock, Clock::AlignedComposite).then_some(id(101));
+        composite.repeat_sync = composite.sync_source.is_some();
+        let (iterations, child) = match clock {
+            Clock::Composite => (100, 101),
+            Clock::RelayedComposite => (72, 103),
+            Clock::AlignedComposite => (40, 103),
+            Clock::Primitive => unreachable!(),
+        };
+        let program = composite.composite.as_mut().unwrap();
         program.iterations = iterations;
         program.spans = vec![CompositeSpan {
-            target: id(101),
+            target: id(child),
             start: 0,
             end: iterations,
             occurrence_start: 0,
@@ -658,7 +671,18 @@ fn edit_at_clock_restart<E: Endpoint>(
             mode: LoopMode::Playing,
         }]
         .into();
-        graph.loops.push(clock);
+        graph.loops.push(composite);
+        if child == 103 {
+            let mut silent = graph.loops[1].clone();
+            silent.id = id(child);
+            graph.loops.push(silent.clone());
+            if matches!(clock, Clock::RelayedComposite) {
+                silent.id = id(104);
+                silent.sync_source = Some(id(121));
+                graph.loops[1].sync_source = Some(silent.id);
+                graph.loops.push(silent);
+            }
+        }
     }
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
@@ -687,11 +711,18 @@ fn edit_at_clock_restart<E: Endpoint>(
         }
     }
     let recorded_length = response(&mut client, &mut renderer) - capture_start;
-    let clock_length = composite_clock_pass.map_or(recorded_length, |pass| pass * Q as u64);
-    let play = [
-        transition(clock_slot, TransitionMode::Playing),
-        transition(120, TransitionMode::Playing),
-    ];
+    let (clock_length, clocks): (u64, &[u32]) = match clock {
+        Clock::Primitive => (recorded_length, &[101]),
+        Clock::Composite => (100 * Q as u64, &[121]),
+        Clock::RelayedComposite => (72 * Q as u64, &[121, 101]),
+        Clock::AlignedComposite => (recorded_length, &[101, 121]),
+    };
+    let play = clocks
+        .iter()
+        .copied()
+        .chain([120])
+        .map(|slot| transition(slot, TransitionMode::Playing))
+        .collect::<Vec<_>>();
     client.immediate(Batch::new(1, 1, &play).unwrap()).unwrap();
     let started = response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0.125, 0.125]);
@@ -821,15 +852,17 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for (iterations, unit_quanta, ending, composite_clock_pass, stop_at_pulse) in [
-        (16, 1, Ending::Same, None, false),
-        (24, 1, Ending::Same, None, false),
-        (12, 2, Ending::Same, None, false),
-        (24, 1, Ending::AddSecond, None, false),
-        (16, 1, Ending::ReplaceFirst, None, false),
-        (24, 1, Ending::Same, Some(100), false),
-        (24, 1, Ending::ReplaceFirst, Some(100), false),
-        (24, 1, Ending::Same, None, true),
+    for (iterations, unit_quanta, ending, clock, stop_at_pulse) in [
+        (16, 1, Ending::Same, Clock::Primitive, false),
+        (24, 1, Ending::Same, Clock::Primitive, false),
+        (12, 2, Ending::Same, Clock::Primitive, false),
+        (24, 1, Ending::AddSecond, Clock::Primitive, false),
+        (16, 1, Ending::ReplaceFirst, Clock::Primitive, false),
+        (24, 1, Ending::Same, Clock::Composite, false),
+        (24, 1, Ending::ReplaceFirst, Clock::Composite, false),
+        (24, 1, Ending::Same, Clock::Primitive, true),
+        (24, 1, Ending::ReplaceFirst, Clock::RelayedComposite, false),
+        (24, 1, Ending::Same, Clock::AlignedComposite, false),
     ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
         edit_at_clock_restart(
@@ -838,7 +871,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             iterations,
             unit_quanta,
             ending,
-            composite_clock_pass,
+            clock,
             stop_at_pulse,
         );
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
@@ -848,7 +881,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             iterations,
             unit_quanta,
             ending,
-            composite_clock_pass,
+            clock,
             stop_at_pulse,
         );
     }

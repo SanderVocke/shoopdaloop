@@ -376,21 +376,46 @@ impl StateProcessor {
     }
     pub(crate) fn composite_restart_ready(
         &self,
-        cut: rt_fpga_compiler::loading::CompositeCut,
+        cut: &rt_fpga_compiler::loading::CompositeCut,
         slot: &LoopSlot,
     ) -> bool {
-        !slot.state.repeat_sync
-            || cut.restart_source.is_none_or(|source| {
-                self.loop_state(LoopId {
-                    slot: source.slot,
-                    generation: source.generation,
-                })
-                .is_ok_and(|clock| {
-                    clock.planned.iter().all(Option::is_none)
-                        && (clock.state.mode != crate::transitions::Mode::Playing
-                            || clock.state.at_end())
-                })
-            })
+        use rt_fpga_compiler::{loading::ClockState, shoop_graph::CompositeKind};
+
+        let Some(loops) = self.loops.as_ref() else {
+            return false;
+        };
+        cut.restart_ready(slot.state.repeat_sync, slot.state.at_end(), |source| {
+            let id = LoopId {
+                slot: source.slot,
+                generation: source.generation,
+            };
+            let clock = loops
+                .slot(id)
+                .ok()
+                .filter(|clock| clock.planned.iter().all(Option::is_none));
+            Ok::<_, core::convert::Infallible>(clock.map(|clock| {
+                let kind = loops
+                    .plan
+                    .composite_clocks
+                    .get(id.slot as usize)
+                    .copied()
+                    .flatten()
+                    .map(|clock| {
+                        if clock.explicit {
+                            CompositeKind::Explicit
+                        } else {
+                            CompositeKind::Regular
+                        }
+                    });
+                ClockState {
+                    kind,
+                    playing: clock.state.mode == crate::transitions::Mode::Playing,
+                    at_end: clock.state.at_end(),
+                    repeat_sync: clock.state.repeat_sync,
+                }
+            }))
+        })
+        .unwrap()
     }
     pub fn composite_status(&self, id: LoopId) -> Option<CompositeStatus> {
         let loops = self.loops.as_ref()?;

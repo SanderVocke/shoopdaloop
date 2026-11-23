@@ -42,7 +42,7 @@ pub struct LoopSlot {
     pub sync_source: Option<Identity>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CompositeCut {
     pub old_slot: Identity,
@@ -57,8 +57,17 @@ pub struct CompositeCut {
     #[cfg_attr(feature = "serde", serde(default))]
     pub restart_source: Option<Identity>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub restart_ancestors: Vec<Identity>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub restart_slot: Option<Identity>,
     pub future_before: Option<u32>,
+}
+
+pub struct ClockState {
+    pub kind: Option<shoop_graph::CompositeKind>,
+    pub playing: bool,
+    pub at_end: bool,
+    pub repeat_sync: bool,
 }
 
 impl CompositeCut {
@@ -72,7 +81,7 @@ impl CompositeCut {
     }
 
     pub fn allows_playing(
-        self,
+        &self,
         position: u64,
         length: u64,
         restart_ready: bool,
@@ -90,7 +99,7 @@ impl CompositeCut {
     }
 
     pub fn waits_for_boundary(
-        self,
+        &self,
         position: u64,
         length: u64,
         restart_ready: bool,
@@ -103,12 +112,47 @@ impl CompositeCut {
             && !self.allows_playing(position, length, restart_ready, waited)
     }
 
-    pub fn waits_for_control(self) -> bool {
+    pub fn waits_for_control(&self) -> bool {
         self.allow_restart || self.wait_for_finish
     }
 
-    pub fn reconciles_wrap(self, position: u64, length: u64, waited: bool) -> bool {
+    pub fn reconciles_wrap(&self, position: u64, length: u64, waited: bool) -> bool {
         self.reconcile_ending && length != 0 && position == length && !waited
+    }
+
+    pub fn restart_ready<E>(
+        &self,
+        repeat_sync: bool,
+        at_end: bool,
+        mut read_clock: impl FnMut(Identity) -> Result<Option<ClockState>, E>,
+    ) -> Result<bool, E> {
+        if !self.allow_restart || !repeat_sync || !at_end {
+            return Ok(true);
+        }
+        let mut needs_pulse = false;
+        for &source in self.restart_source.iter().chain(&self.restart_ancestors) {
+            let Some(clock) = read_clock(source)? else {
+                return Ok(false);
+            };
+            if !needs_pulse && !clock.playing {
+                return Ok(true);
+            }
+            if clock.kind == Some(shoop_graph::CompositeKind::Explicit) {
+                return Ok(!needs_pulse && clock.at_end);
+            }
+            if clock.at_end {
+                if !clock.repeat_sync {
+                    return Ok(true);
+                }
+                needs_pulse = false;
+            } else if clock.kind.is_some() {
+                return Ok(false);
+            } else {
+                // A primitive away from its own boundary can only relay a pulse.
+                needs_pulse = true;
+            }
+        }
+        Ok(!needs_pulse)
     }
 }
 
@@ -342,6 +386,31 @@ impl Layout {
         self.composites
             .iter()
             .find(|schedule| schedule.id == logical)
+    }
+
+    fn restart_chain(
+        &self,
+        program: &LogicalStateProgram,
+        mut source: Option<Identity>,
+    ) -> Option<Vec<Identity>> {
+        let mut clocks = Vec::new();
+        while let Some(id) = source {
+            let old = self.loops.iter().find(|row| row.logical == id)?;
+            let new = program.loops.iter().find(|row| row.id == id)?;
+            if old.sync_source != new.sync_source
+                || self.composite_schedule(id) != program.composites.iter().find(|s| s.id == id)
+                || self
+                    .composites
+                    .iter()
+                    .chain(&program.composites)
+                    .any(|s| s.children.iter().any(|child| child.id == id))
+            {
+                return None;
+            }
+            clocks.push(old.physical);
+            source = old.sync_source.filter(|&parent| parent != id);
+        }
+        Some(clocks)
     }
     fn nested_future_cut(&self, program: &LogicalStateProgram, id: Identity) -> Option<u32> {
         let before = self.composite_schedule(id)?;
@@ -612,24 +681,11 @@ impl Allocator {
                         .chain(&program.composites)
                         .any(|s| s.children.iter().any(|child| child.id == row.logical));
                     let external_source = row.sync_source.filter(|source| *source != row.logical);
-                    let restart_source = external_source.and_then(|source| {
-                        let old_source = old.loops.iter().find(|loop_| loop_.logical == source)?;
-                        let new_source = program.loops.iter().find(|loop_| loop_.id == source)?;
-                        let independent_clock =
-                            old_source.sync_source.is_none_or(|id| id == source)
-                                && new_source.sync_source == old_source.sync_source
-                                && old.composite_schedule(source)
-                                    == program
-                                        .composites
-                                        .iter()
-                                        .find(|schedule| schedule.id == source)
-                                && !old.composites.iter().chain(&program.composites).any(
-                                    |schedule| {
-                                        schedule.children.iter().any(|child| child.id == source)
-                                    },
-                                );
-                        independent_clock.then_some(old_source.physical)
-                    });
+                    let mut restart_ancestors = old
+                        .restart_chain(program, external_source)
+                        .unwrap_or_default();
+                    let restart_source =
+                        (!restart_ancestors.is_empty()).then(|| restart_ancestors.remove(0));
                     let same_source = program
                         .loops
                         .iter()
@@ -692,6 +748,7 @@ impl Allocator {
                             require_repeat_wait,
                             reconcile_ending,
                             restart_source,
+                            restart_ancestors,
                             restart_slot: None,
                             future_before,
                         },

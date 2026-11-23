@@ -7,7 +7,8 @@ use crate::{
 };
 use rt_fpga_compiler::{
     Identity,
-    loading::{CompositeCut, Layout},
+    loading::{ClockState, CompositeCut, Layout},
+    shoop_graph::CompositeKind,
 };
 use rt_fpga_reference::{
     fixed::Fixed,
@@ -116,41 +117,49 @@ pub fn composite_telemetry(
     })
 }
 
-pub fn composite_cut_source(cut: CompositeCut, words: &[u64; 16]) -> Option<Identity> {
-    cut.restart_source.filter(|_| {
-        cut.allow_restart
-            && words[0] & (1 << 35) != 0
-            && loop_state(cut.old_slot, words, None).at_end()
-    })
-}
-
-pub fn composite_cut_status(
-    cut: CompositeCut,
+pub fn composite_cut_status<E>(
+    cut: &CompositeCut,
     words: &[u64; 16],
-    source_words: Option<&[u64; 16]>,
-) -> Code {
+    mut read_clock: impl FnMut(Identity) -> Result<Option<[u64; 4]>, E>,
+) -> Result<Code, E> {
     if !loop_identity_valid(cut.old_slot, words) || (cut.require_empty && words[3] != 0) {
-        return Code::CannotApply;
+        return Ok(Code::CannotApply);
     }
     if has_loop_plan(words) {
-        return if cut.waits_for_control() {
+        return Ok(if cut.waits_for_control() {
             Code::Scheduled
         } else {
             Code::CannotApply
-        };
+        });
     }
-    let restart_ready = composite_cut_source(cut, words).is_none_or(|source| {
-        source_words.is_some_and(|words| {
-            let clock = loop_state(source, words, None);
-            cut_loop_valid(source, words) && (clock.mode != Mode::Playing || clock.at_end())
-        })
-    });
+    let state = loop_state(cut.old_slot, words, None);
+    let restart_ready = cut.restart_ready(state.repeat_sync, state.at_end(), |id| {
+        Ok(read_clock(id)?
+            .filter(|words| cut_loop_valid(id, words))
+            .map(clock_state))
+    })?;
     let waited = words[1] & (1 << 42) != 0;
-    match (words[0] >> 33) & 3 {
+    Ok(match (words[0] >> 33) & 3 {
         0 => Code::Applied,
         1 if cut.allows_playing(words[2], words[3], restart_ready, waited) => Code::Applied,
         1 if cut.waits_for_boundary(words[2], words[3], restart_ready, waited) => Code::Scheduled,
         _ => Code::CannotApply,
+    })
+}
+
+fn clock_state(words: [u64; 4]) -> ClockState {
+    let playing = (words[0] >> 33) & 3 == 1;
+    ClockState {
+        kind: (words[1] & COMPOSITE_LOOP != 0).then(|| {
+            if words[0] & (1 << 62) == 0 {
+                CompositeKind::Regular
+            } else {
+                CompositeKind::Explicit
+            }
+        }),
+        playing,
+        at_end: playing && words[3] != 0 && words[2] == words[3],
+        repeat_sync: words[0] & (1 << 35) != 0,
     }
 }
 
@@ -191,15 +200,15 @@ pub fn prepare_composite_retirement(id: Identity, words: &mut [u64; 16], frame: 
     }
 }
 
-fn cut_loop_valid(slot: Identity, words: &[u64; 16]) -> bool {
+fn cut_loop_valid(slot: Identity, words: &[u64]) -> bool {
     loop_identity_valid(slot, words) && !has_loop_plan(words)
 }
 
-fn has_loop_plan(words: &[u64; 16]) -> bool {
+fn has_loop_plan(words: &[u64]) -> bool {
     words[1] & ((1 << 32) | (1 << 37)) != 0
 }
 
-fn loop_identity_valid(slot: Identity, words: &[u64; 16]) -> bool {
+fn loop_identity_valid(slot: Identity, words: &[u64]) -> bool {
     words[0] & 1 != 0 && (words[0] >> 1) as u32 == slot.generation
 }
 

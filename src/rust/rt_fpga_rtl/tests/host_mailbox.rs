@@ -669,6 +669,8 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
         generation: 1,
     };
     parent.strip = None;
+    parent.sync_source = Some(silent.id);
+    parent.repeat_sync = true;
     let parent_id = parent.id;
     graph.loops.push(parent);
     let quantum = u64::from(limits.quantum);
