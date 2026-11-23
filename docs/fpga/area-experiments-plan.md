@@ -194,8 +194,9 @@ rows and an exact four-stage physical repeat. It saves 108 LUTs/54 slices agains
 C3, costing 174 FFs and 0.5% ordinary mixed median cycles; musical prefix
 restoration costs 12.5% more. C3 remains the faster alternative. The separate MIDI scratch-sharing trial (`1c73f3fa`) is rejected at mapped
 screening: 254 more LUTs, 28 more FFs and 107 more F7/F8 muxes for 32 fewer
-carries. All 23 affected tests and 73 matched callback rows pass. Audio metadata
-sharing and iterative node counting have prepared drafts but remain unexecuted.
+carries. All 23 affected tests and 73 matched callback rows pass. The audio metadata address trial (`93843695`) is now active after restoring
+all 38 C4 HDL hashes; focused boundaries and connected checks are running.
+Iterative node counting has a prepared draft but remains unexecuted.
 Stage 5 has an original-RTL validity control ready; its
 implementation remains unexecuted.
 
