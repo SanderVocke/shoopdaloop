@@ -32,6 +32,9 @@ python3 platforms/zynq7000/fpga_pair.py verify work/zturn-v2/diagnostic-pair.jso
 
 The paired manifest records the board and mailbox contract and hashes the ELF,
 bitstream, XSA and PS files. The signed SD deployment has its own manifest.
+Mailbox version 7 includes the schedule rows for live composite wraps. Use a
+version 7 bitstream with the matching host or firmware before loading those
+programs.
 The diagnostic ELF checks the fabric aperture and requests an empty snapshot.
 Pass `looping` after `bitstream` to try the resource bounds used by the
 production image packer. This geometry uses 32 samples per media chunk and
