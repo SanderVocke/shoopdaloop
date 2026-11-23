@@ -50,10 +50,21 @@ pub struct CompositeCut {
     pub allow_restart: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub restart_source: Option<Identity>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub restart_slot: Option<Identity>,
     pub future_before: Option<u32>,
 }
 
 impl CompositeCut {
+    /// Preserve whether the previous render was inside the pass or waiting at its end.
+    pub fn restart_previous(old_previous: u64, old_length: u64, length: u64, quantum: u32) -> u64 {
+        if old_previous < old_length {
+            length - u64::from(quantum)
+        } else {
+            length
+        }
+    }
+
     pub fn allows_playing(self, position: u64, length: u64, restart_ready: bool) -> bool {
         (self.allow_restart && restart_ready && length != 0 && position == length)
             || (position < length
@@ -478,7 +489,7 @@ impl Allocator {
                         && independent
                         && same_source
                         && (external_source.is_none() || restart_source.is_some())
-                        && continuing.is_some_and(|(before, after)| {
+                        && before.zip(after).is_some_and(|(before, after)| {
                             let tail = |s: &CompositeSchedule| -> Vec<Identity> {
                                 s.children
                                     .iter()
@@ -488,7 +499,10 @@ impl Allocator {
                                     .map(|child| child.id)
                                     .collect()
                             };
-                            !before.explicit && tail(before) == tail(after)
+                            !before.explicit
+                                && !after.explicit
+                                && after.length != 0
+                                && tail(before) == tail(after)
                         });
                     let future_before = nested_future
                         .filter(|(id, _)| *id == row.logical)
@@ -504,13 +518,17 @@ impl Allocator {
                                 None
                             }
                         });
-                    composite_cuts.push(CompositeCut {
-                        old_slot: row.physical,
-                        require_empty: before.is_none(),
-                        allow_restart,
-                        restart_source,
-                        future_before,
-                    });
+                    composite_cuts.push((
+                        row.logical,
+                        CompositeCut {
+                            old_slot: row.physical,
+                            require_empty: before.is_none(),
+                            allow_restart,
+                            restart_source,
+                            restart_slot: None,
+                            future_before,
+                        },
+                    ));
                 }
             }
         }
@@ -630,6 +648,16 @@ impl Allocator {
             }
         }
         self.serial = self.serial.checked_add(1).ok_or(LoadError::Exhausted)?;
+        let composite_cuts = composite_cuts
+            .into_iter()
+            .map(|(logical, mut cut)| {
+                if cut.allow_restart && replaced_slots.contains(&logical) {
+                    let replacement = loops.iter().find(|slot| slot.logical == logical).unwrap();
+                    cut.restart_slot = Some(replacement.physical);
+                }
+                cut
+            })
+            .collect();
         let layout = Layout {
             expected: self.revision(),
             revision: self.serial,

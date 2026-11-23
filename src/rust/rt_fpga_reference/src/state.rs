@@ -268,11 +268,58 @@ impl StateProcessor {
             loops.reserve_loading(limits.loop_slots as usize);
         }
     }
-    pub(crate) fn switch_image(&mut self, image: &mut crate::target::ProgramImage) {
+    pub(crate) fn switch_image(
+        &mut self,
+        image: &mut crate::target::ProgramImage,
+    ) -> Result<(), Error> {
+        use rt_fpga_compiler::loading::CompositeCut;
+
+        let loops = self.loops.as_mut().expect("prepared loop pool");
+        for cut in image.layout.composite_cuts() {
+            let Some(destination) = cut.restart_slot else {
+                continue;
+            };
+            let old = loops
+                .slot(LoopId {
+                    slot: cut.old_slot.slot,
+                    generation: cut.old_slot.generation,
+                })
+                .map_err(|_| Error::InvalidState)?;
+            if old.state.mode != crate::transitions::Mode::Playing {
+                continue;
+            }
+            let slot = image
+                .new_loops
+                .iter_mut()
+                .flatten()
+                .find(|slot| {
+                    (slot.state.id.slot, slot.state.id.generation)
+                        == (destination.slot, destination.generation)
+                })
+                .ok_or(Error::InvalidState)?;
+            let length = slot.state.content_length;
+            let quantum = image.compiled.program.quantum;
+            if length < u64::from(quantum) {
+                return Err(Error::InvalidState);
+            }
+            slot.state.mode = old.state.mode;
+            slot.state.position = length;
+            slot.state.repeat_sync = old.state.repeat_sync;
+            slot.state.cycles = old.state.cycles;
+            slot.state.last_pulse = old.state.last_pulse;
+            slot.render.mode = old.render.mode;
+            slot.render.position = CompositeCut::restart_previous(
+                old.render.position,
+                old.state.content_length,
+                length,
+                quantum,
+            );
+            slot.composite_wait = old.composite_wait;
+            slot.mode_failures = old.mode_failures;
+        }
         for &(address, value) in &image.initializers {
             self.memory[address.0] = value;
         }
-        let loops = self.loops.as_mut().expect("prepared loop pool");
         for slot in &mut image.new_loops {
             if let Some(slot) = slot.take() {
                 let index = slot.state.id.slot as usize;
@@ -280,6 +327,7 @@ impl StateProcessor {
             }
         }
         core::mem::swap(&mut loops.plan, &mut image.compiled.plan);
+        Ok(())
     }
     pub fn new(memory: Vec<Value>) -> Self {
         Self {

@@ -69,6 +69,22 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         &mut self,
         cut: rt_fpga_compiler::loading::CompositeCut,
     ) -> Result<Code, Error<B::Error>> {
+        self.composite_cut(cut, None)
+    }
+
+    pub fn prepare_composite_cut(
+        &mut self,
+        cut: rt_fpga_compiler::loading::CompositeCut,
+        quantum: u32,
+    ) -> Result<Code, Error<B::Error>> {
+        self.composite_cut(cut, Some(quantum))
+    }
+
+    fn composite_cut(
+        &mut self,
+        cut: rt_fpga_compiler::loading::CompositeCut,
+        quantum: Option<u32>,
+    ) -> Result<Code, Error<B::Error>> {
         let (_, Some(words)) = self.read_loop(cut.old_slot)? else {
             return Ok(Code::CannotApply);
         };
@@ -76,7 +92,22 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
             Some(id) => self.read_loop(id)?.1,
             None => None,
         };
-        Ok(super::composite_cut_status(cut, &words, source.as_ref()))
+        let status = super::composite_cut_status(cut, &words, source.as_ref());
+        if status != Code::Applied || (words[0] >> 33) & 3 == 0 {
+            return Ok(status);
+        }
+        let Some((next, quantum)) = cut.restart_slot.zip(quantum) else {
+            return Ok(status);
+        };
+        let (base, Some(original)) = self.read_loop(next)? else {
+            return Ok(Code::CannotApply);
+        };
+        let mut updated = original;
+        let code = super::prepare_composite_restart(next, &words, &mut updated, quantum);
+        if code == Code::Applied {
+            self.update_loop(base, original, updated)?;
+        }
+        Ok(code)
     }
 
     pub fn apply_transition(

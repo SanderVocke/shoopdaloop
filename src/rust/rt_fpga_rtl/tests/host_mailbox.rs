@@ -432,9 +432,11 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
 
 #[cfg(feature = "rt-interface")]
 #[shoop_test(no_wasm = "Uses Marlin and the actual FPGA AXI bridge")]
-fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
+fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_mailbox() {
     use rt_fpga_compiler::{
-        CompileContext, Identity, ProgramLimits, compile_with_chunk_frames, loading::Allocator,
+        CompileContext, Identity, ProgramLimits, compile_composites, compile_with_chunk_frames,
+        loading::Allocator,
+        shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode},
     };
     use rt_fpga_rtl::{
         host::{
@@ -657,6 +659,80 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
                 let expected = if index == 0 { sample } else { sample / 2 };
                 assert_eq!(actual[0] as i32, expected, "port {port}, sample {i}");
             }
+        }
+    }
+
+    let mut graph = mono::session(&[looping, silent]);
+    let mut parent = graph.loops[0].clone();
+    parent.id = Identity {
+        slot: 2,
+        generation: 1,
+    };
+    parent.strip = None;
+    let parent_id = parent.id;
+    graph.loops.push(parent);
+    let quantum = u64::from(limits.quantum);
+    for (revision, iterations) in [(3, 2), (4, 3)] {
+        graph.loops[2].composite = Some(CompositeView {
+            kind: CompositeKind::Regular,
+            version: revision - 2,
+            unit_frames: quantum,
+            iterations,
+            sample_rate: 48_000,
+            quantum: limits.quantum,
+            spans: vec![CompositeSpan {
+                target: identity,
+                start: 0,
+                end: iterations,
+                occurrence_start: 0,
+                ordinal: 0,
+                mode: LoopMode::Playing,
+            }]
+            .into(),
+        });
+        let program = compile_composites(&graph, context, 32).unwrap();
+        let layout = allocator.stage(&program).unwrap();
+        let parent = layout.loop_id(parent_id).unwrap();
+        let media = layout.media_views(&program);
+        let image = RtlTarget {
+            capacities: limits,
+            media_views: &media,
+            state_base: 0,
+        }
+        .build_image(&program, layout)
+        .unwrap();
+        let requested = stage(&mut session, Upload::new(image, limits.instructions));
+        allocator.publish(revision).unwrap();
+        let (active, retired) = session.activate(requested, timeout()).unwrap();
+        assert_eq!(active.frame, (if revision == 3 { 6 } else { 10 }) * quantum);
+        assert_eq!(retired.unwrap().image.layout.revision, revision - 1);
+        allocator.complete(revision).unwrap();
+        if revision == 3 {
+            let mut window = ControlWindow::begin(session.client(), revision, timeout()).unwrap();
+            let play = TransitionPlan {
+                now: Some(TransitionMode::Playing),
+                ..Default::default()
+            };
+            assert_eq!(
+                window.apply_transition(parent, None, None, play),
+                Ok(Code::Applied)
+            );
+            window.release().unwrap();
+            for _ in 0..4 {
+                send(session.client(), Request::run_quantum());
+            }
+        } else {
+            send(session.client(), Request::run_quantum());
+            let capture = send(session.client(), Request::capture_loop(parent.slot));
+            let state = send(session.client(), Request::read_snapshot(capture[0], 0, 4));
+            assert_eq!((state[1] >> 1) & 3, 1);
+            assert_eq!(u64::from(state[4]) | (u64::from(state[5]) << 32), quantum);
+            assert_eq!(
+                u64::from(state[6]) | (u64::from(state[7]) << 32),
+                iterations * quantum
+            );
+            let passes = send(session.client(), Request::read_snapshot(capture[0], 5, 1));
+            assert_eq!(passes[..2], [2, 0]);
         }
     }
 }

@@ -148,7 +148,9 @@ impl Pipeline {
             .program
             .check_job_budget()
             .map_err(PipelineError::State)?;
-        self.state.switch_image(image);
+        self.state
+            .switch_image(image)
+            .map_err(PipelineError::State)?;
         core::mem::swap(&mut self.program, &mut image.compiled.program);
         self.revision = image.layout.revision;
         self.region = image.layout.region;

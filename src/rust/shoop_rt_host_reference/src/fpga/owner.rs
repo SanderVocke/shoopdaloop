@@ -478,7 +478,8 @@ where
         if switching.is_some() {
             let cuts = staged.unwrap().layout.composite_cuts();
             for &cut in cuts {
-                let status = device_result(window.composite_cut_status(cut))?;
+                let status =
+                    device_result(window.prepare_composite_cut(cut, self.geometry.quantum))?;
                 if status != Code::Applied {
                     device_result(window.release())?;
                     if status == Code::Scheduled && cuts.len() == 1 && records.len() == 1 {

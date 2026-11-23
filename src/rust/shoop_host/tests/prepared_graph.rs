@@ -270,6 +270,24 @@ fn composite_layout(
     wait(&mut backend, &|s| {
         s.composites[&parent].active_plan_version > updated
     });
+    let mut resized = edit;
+    resized.iterations = 80;
+    resized.spans[0].end = 80;
+    let resized = backend
+        .configure_prepared_composite_loop(parent, &resized)
+        .unwrap();
+    let pending = wait(&mut backend, &|s| {
+        s.composites[&parent].pending_plan_version == Some(resized)
+            && s.composites[&parent].pending_stage == Some(BackendCompositePending::AwaitingRestart)
+    });
+    assert_eq!(pending.composites[&parent].length, 64 * 32);
+    let applied = wait(&mut backend, &|s| {
+        s.composites[&parent].active_plan_version == resized
+    });
+    let composite = &applied.composites[&parent];
+    assert_eq!(composite.length, 80 * 32);
+    assert_eq!(composite.mode, BackendLoopMode::Playing);
+    assert!(composite.repeat_sync);
     backend
         .transition_composite_loop(parent, BackendLoopMode::Stopped, Some(1), None)
         .unwrap();

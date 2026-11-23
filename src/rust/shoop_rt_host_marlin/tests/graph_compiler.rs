@@ -587,7 +587,12 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
     }
 }
 
-fn edit_at_clock_restart<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+fn edit_at_clock_restart<E: Endpoint>(
+    endpoint: E,
+    mut renderer: impl Renderer,
+    iterations: u64,
+    unit_quanta: u64,
+) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
@@ -655,8 +660,12 @@ fn edit_at_clock_restart<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) 
 
     let edit = graph.loops[2].composite.as_mut().unwrap();
     edit.version = 2;
-    edit.spans.to_mut()[0].start = 4;
-    edit.spans.to_mut()[0].occurrence_start = 4;
+    edit.iterations = iterations;
+    edit.unit_frames = unit_quanta * Q as u64;
+    let span = &mut edit.spans.to_mut()[0];
+    span.start = 4;
+    span.occurrence_start = 4;
+    span.end = iterations;
     let key = 41;
     let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, key).unwrap();
     for (index, batch) in batches.iter().enumerate() {
@@ -674,7 +683,8 @@ fn edit_at_clock_restart<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) 
             );
         }
     }
-    assert_eq!(response(&mut client, &mut renderer), started + clock_length);
+    let switched = response(&mut client, &mut renderer);
+    assert_eq!(switched, started + clock_length);
     let cancel = Command::CancelCompositeGraph(key);
     client
         .immediate(Batch::new(2, 2, &[cancel]).unwrap())
@@ -683,8 +693,19 @@ fn edit_at_clock_restart<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) 
         wait_response(&mut client, &mut renderer).header.code(),
         Code::TargetUnavailable
     );
-    assert_eq!(step(&mut renderer), [0., 0.]);
-    assert!((0..8).any(|_| step(&mut renderer) == [0.125, 0.125]));
+    let audible_restart = switched + Q as u64;
+    let starts = audible_restart + 4 * unit_quanta * Q as u64;
+    let stops = audible_restart + iterations * unit_quanta * Q as u64;
+    assert!(renderer.next_frame().0 < starts);
+    while renderer.next_frame().0 <= stops {
+        let frame = renderer.next_frame().0;
+        let sample = if (starts..stops).contains(&frame) {
+            0.125
+        } else {
+            0.
+        };
+        assert_eq!(step(&mut renderer), [sample, sample], "frame {frame}");
+    }
 }
 
 #[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
@@ -695,10 +716,12 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-    edit_at_clock_restart(rust.endpoint, rust.renderer);
-    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-    edit_at_clock_restart(rtl.endpoint, rtl.renderer);
+    for (iterations, unit_quanta) in [(16, 1), (24, 1), (12, 2)] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        edit_at_clock_restart(rust.endpoint, rust.renderer, iterations, unit_quanta);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        edit_at_clock_restart(rtl.endpoint, rtl.renderer, iterations, unit_quanta);
+    }
 }
 
 #[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]

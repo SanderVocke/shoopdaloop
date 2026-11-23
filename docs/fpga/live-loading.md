@@ -52,6 +52,11 @@ cross a bounded program-memory handoff. Unused media views are prepared
 incrementally. The prepared hosts use a bounded, single-request switch queue
 alongside the ordinary command FIFO. The switch can wait for an eligible
 restart while playback commands continue through that FIFO.
+When an eligible edit changes the timing of a repeating pass, the allocator
+prepares a fresh loop record for the new timing in the existing loop RAM.
+At the restart boundary, the host carries the pass count, repeat setting, and
+playback state into that record. The switch publishes the new instructions
+and timing together, then retires the old record through the existing fence.
 
 `CancelCompositeGraph` identifies an edit by its key and base revision. It
 passes through the image upload channel, which also reaches the renderer

@@ -146,6 +146,28 @@ pub fn composite_cut_status(
     }
 }
 
+pub fn prepare_composite_restart(
+    destination: Identity,
+    old: &[u64; 16],
+    next: &mut [u64; 16],
+    quantum: u32,
+) -> Code {
+    if !cut_loop_valid(destination, next)
+        || next[1] & COMPOSITE_LOOP == 0
+        || next[3] < u64::from(quantum)
+    {
+        return Code::CannotApply;
+    }
+    const MODE_AND_REPEAT: u64 = 7 << 33;
+    const WAIT: u64 = 1 << 42;
+    next[0] = (next[0] & !MODE_AND_REPEAT) | (old[0] & MODE_AND_REPEAT);
+    next[1] = (next[1] & !WAIT) | (old[1] & WAIT);
+    next[2] = next[3];
+    next[5] = old[5];
+    next[8] = CompositeCut::restart_previous(old[8], old[3], next[3], quantum);
+    Code::Applied
+}
+
 fn cut_loop_valid(slot: Identity, words: &[u64; 16]) -> bool {
     words[0] & 1 != 0
         && (words[0] >> 1) as u32 == slot.generation

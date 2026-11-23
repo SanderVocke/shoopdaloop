@@ -146,7 +146,9 @@ impl<B: RegisterBus> ProgramSession<B> {
                 super::ControlWindow::begin(&mut self.client, layout.expected, &mut time_left)?;
             let result = (|| {
                 for &cut in layout.composite_cuts() {
-                    if !window.composite_cut_ready(cut)? {
+                    if window.prepare_composite_cut(cut, staged.image.compiled.quantum)?
+                        != shoop_rt_protocol::immediate::Code::Applied
+                    {
                         return Ok(None);
                     }
                 }

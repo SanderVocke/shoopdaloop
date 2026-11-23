@@ -463,7 +463,7 @@ impl Owner<'_> {
                     Code::CannotApply
                 } else if self.upload.as_ref().unwrap().cancelled {
                     Code::Cancelled
-                } else if !self.composite_cuts_ready()? {
+                } else if !self.prepare_composite_cuts()? {
                     Code::CannotApply
                 } else {
                     let changed = self
@@ -556,22 +556,22 @@ impl Owner<'_> {
         if !cut.allow_restart {
             return Ok(false);
         }
-        Ok(self.composite_cut_status(cut)? == Code::Scheduled)
+        let words = self.loop_words(cut.old_slot)?;
+        Ok(self.composite_cut_status(cut, &words)? == Code::Scheduled)
     }
 
-    fn composite_cut_status(&mut self, cut: CompositeCut) -> Result<Code> {
-        let words = self.loop_words(cut.old_slot)?;
-        let source = rt_fpga_rtl::host::control::composite_cut_source(cut, &words)
+    fn composite_cut_status(&mut self, cut: CompositeCut, words: &[u64; 16]) -> Result<Code> {
+        let source = rt_fpga_rtl::host::control::composite_cut_source(cut, words)
             .map(|id| self.loop_words(id))
             .transpose()?;
         Ok(rt_fpga_rtl::host::control::composite_cut_status(
             cut,
-            &words,
+            words,
             source.as_ref(),
         ))
     }
 
-    fn composite_cuts_ready(&mut self) -> Result<bool> {
+    fn prepare_composite_cuts(&mut self) -> Result<bool> {
         let cuts = self
             .upload
             .as_ref()
@@ -582,8 +582,24 @@ impl Owner<'_> {
             .composite_cuts()
             .to_vec();
         for cut in cuts {
-            if self.composite_cut_status(cut)? != Code::Applied {
+            let old = self.loop_words(cut.old_slot)?;
+            if self.composite_cut_status(cut, &old)? != Code::Applied {
                 return Ok(false);
+            }
+            if let Some(next) = cut.restart_slot {
+                if (old[0] >> 33) & 3 != 0 {
+                    let mut words = self.loop_words(next)?;
+                    if rt_fpga_rtl::host::control::prepare_composite_restart(
+                        next,
+                        &old,
+                        &mut words,
+                        self.quantum,
+                    ) != Code::Applied
+                    {
+                        return Ok(false);
+                    }
+                    self.store_loop(next, &words)?;
+                }
             }
         }
         Ok(true)
