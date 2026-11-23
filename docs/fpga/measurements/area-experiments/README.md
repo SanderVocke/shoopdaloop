@@ -484,3 +484,20 @@ All 23 affected tests pass: 16 MIDI, five expression and two descriptor/relocati
 checks, including supported quanta and both AXI widths.
 Routed slices are unavailable because the candidate is rejected at screening.
 C4 remains selected; see `s4-midi-scratch-opt-*` and its performance summary.
+
+The shared audio metadata relative-address unit (`93843695`) remains unselected.
+All 11 deferred/media/metadata/validity/ownership tests pass, including both AXI
+widths, DRAMsim3 and legacy memory. The initial missing simulator-library path
+was repaired without changing RTL, tests, memory settings or clocks; both logs
+and runtime hashes are retained. All 187 boundary rows per width, 207 deep rows
+per width and 1,282 public-store rows preserve non-cycle fields against C4's
+identical-audio C3 controls. Deep setup adds 93,444 clocks; the public-store
+fixture adds 21,309. Mixed steady median stays 53,258; worst short quantum adds
+one clock. Cold is 75 clocks faster, but adds 56 AXI reads/448 native reads.
+
+Routing uses **35,231 LUTs, 28,909 FFs, 11,934 slices, 78 BRAM tiles, four DSPs
+and 3,172 carries**. Against C4, 68 fewer LUTs and 33 fewer carries cost 56 more
+slices, 21 more FFs, 86 more control sets and 175 more F7/F8 muxes. Setup/hold
+slack is -3.939/+0.030 ns; setup still fails. The extra mux/packing and cold
+traffic costs outweigh the small LUT gain. C4 remains selected; no physical
+repeat is needed for this unselected tradeoff.

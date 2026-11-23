@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4storeaddress selectedC4, scratchsharingrejected; separateaudio metadataaddress93843695 infocused/callbackmeasurement. Iterativenodes andStages5\u201311 unexecuted.",
+  "status": "Stages0\u20133 complete; Stage4MIDIstoreaddress selectedC4, scratchsharing andaudioaddresssharing complete/unselected. Iterative node/capacity trialnext;Stages5\u201311 unexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1223,7 +1223,7 @@
     {
       "label": "s4-audio-address",
       "stage": 4,
-      "status": "in_progress",
+      "status": "completed",
       "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
       "prepared_control_revision": "6b20a007d64d042b688b876fe9e6606fed02b0db",
       "control_summary": "s4-midi-address-repeat-100-summary.json",
@@ -1238,12 +1238,10 @@
         "All33shortmixedcallbacklogical outputs/work/cachecounters exactC4. Steadymedian53258unchanged,max53948vs53947,cold92670vs92745; coldAudioAXIreads694->750/native4016->4464, writesunchanged. Trafficdifference retained, not claimedbitwise-performancematch.",
         "RerunwithlinkedpinnedDRAMsim3 passes full deferredsuite; media suiteinprogress",
         "Optimized35868LUT28751FF3172CARRY4: vsC4 -60LUT/+18FF/-33carry/+150F7/+25F8/+4controlsets, unchangedBRAM/DSP; setupstillfails-5.320ns",
-        "Full deferredsuite passes62.95sec afterruntimepathrepair; fullmedia suite passes370.55sec"
+        "Full deferredsuite passes62.95sec afterruntimepathrepair; fullmedia suite passes370.55sec",
+        "All11affectedtests pass afterruntimepathrepair: deferred1/62.95sec,media1/370.55sec,metadata6/280.34sec,validity1/55.45sec,ownership2/345.90sec; bothAXIwidths,DRAMsim3,legacy,reset/fault/heldrequests included"
       ],
-      "pending": [
-        "Remainingmetadata/validity/ownershipregressions",
-        "Routedresource/timingcomparison, thenrepeatonlyifselectingsmallwin"
-      ],
+      "pending": [],
       "unit_performance": "s4-audio-address-unit-performance.json",
       "unit_summaries": [
         "s4-audio-address-directory-unit-summary.json",
@@ -1265,7 +1263,25 @@
         "muxf7": 150,
         "muxf8": 25,
         "control_sets": 4
-      }
+      },
+      "selected": false,
+      "regression_summary": "s4-audio-address-regressions-summary.json",
+      "routed_summary": "s4-audio-address-100-summary.json",
+      "routed_deltas_vs_c4": {
+        "lut": -68,
+        "logic_lut": -68,
+        "memory_lut": 0,
+        "ff": 21,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -33,
+        "muxf7": 150,
+        "muxf8": 25,
+        "slices": 56,
+        "control_sets": 86
+      },
+      "timing_met": false,
+      "decision": "Rejectdefault: -68routedLUT/-33carry costs+56slices/+21FF/+86controlsets/+175F7/F8, worsenedfailingWNS-3.939ns andextracoldpayloadreads. All11affectedtests andmatchedrawlogicalrows pass; currentblocksteadycyclesmostlyunchanged. C4retained; no repeat forunselected area/traffictradeoff."
     }
   ],
   "provisioning": {
