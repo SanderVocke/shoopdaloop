@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4firstsharedMIDIstoreaddress trialcomplete, selectedasC4. Scratch/audio/node siblings andStages5\u201311 remain. C4defaultareachoiceincludesexplicitlatencytradeoff; CIintegrationqualificationsstillpending.",
+  "status": "Stages0\u20133 complete; Stage4MIDIstoreaddress selectedasC4; separateMIDI scratchaddress candidate1c73f3fa inmeasurement. Audioaddress/node siblings andStages5\u201311 unexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1183,6 +1183,26 @@
       "extended_summary": "s4-midi-address-extended-100-summary.json",
       "decision": "Retain as C4 area control after exact four-stage physical repeat,23affectedtestpasses,1041extendedmixedrows and40musicalrows. Saves108LUT54slices151carry vsC3 with174moreFF44morecontrolsets andunchangedBRAM/DSP. Ordinarymixedmedian+0.50%, boundarymax+0.56%; musicalseek+12.46% andrawstoragemorelatency. User-authorizedcycletradeoff; preserveC3fasteralternative anddo notclaimtiming/deadlinequalification.",
       "routed_limiting_path": "Audio metadata new_count_reg[1] -> required_nodes_reg[29]; repeated unrolled node-count arithmetic remains the setup bottleneck."
+    },
+    {
+      "label": "s4-midi-scratch",
+      "stage": 4,
+      "status": "in_progress",
+      "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "control_summary": "s4-midi-address-repeat-100-summary.json",
+      "rtl_source_revision": "1c73f3fac2854124c8a90a8f529aaea92c033554",
+      "changed_contract": "Logical/publiccontractsunchanged; onlymidi_data_jobs changes: one64bit ALU andexistingown_address baseholding;2formatterclocks perlocalwordandrecordsetup. See stage4-midi-scratch-contract.md. C4MIDIstoreformatterremainsunchanged.",
+      "validation": [
+        "Focused dense-recording/merge/repeat/stop test passes18.87sec; modelcompile9.10sec included",
+        "Primarylint passes withsamecontrolunusedsignal/parameter/pin categoriesexcluded; newarithmeticwidthwarningsremainfatal",
+        "C4selectedmergeall38HDLhashes verifiedagainstmeasured7d2d7cd7 source"
+      ],
+      "pending": [
+        "FullMIDI/expression/reservedregressions",
+        "ShortconnectedcomparisonagainstC4",
+        "Optimizedscreen thenrouteifviable",
+        "Musicalcomparisonifcandidateviable"
+      ]
     }
   ],
   "provisioning": {
@@ -1344,6 +1364,7 @@
     },
     "hints": "original early+late",
     "faster_alternative": "C3 fe2184ea / branch area/s3-path-context",
-    "connected": "1024steady median53258/max59776,cold92745;all1041noncyclefields exactC3. Musicalseek410865vs365340,+12.46%; all40musicalnoncyclefieldsexact."
+    "connected": "1024steady median53258/max59776,cold92745;all1041noncyclefields exactC3. Musicalseek410865vs365340,+12.46%; all40musicalnoncyclefieldsexact.",
+    "branch_head": "10cddabdbfe015f8a64c1105449aa5634be2f2fc"
   }
 }
