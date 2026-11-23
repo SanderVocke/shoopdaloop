@@ -1231,7 +1231,10 @@
       "changed_contract": "Logical/publiccontractsunchanged; onlymedia_metadata changes. SharedregisteredrelativeALU adds1clock toformattedcacheaccesses and1CHILDparentsetup clock; rawparent/fence/current-blockfastpaths unchanged. Reusescurrentparentpage/field heldthroughcachewait; full65bitderivedbound/64fallbackkept. See stage4-audio-address-contract.md.",
       "validation": [
         "Beforeapplying, restoredrejectedMIDI scratchmodule andverifiedall38HDLhashesexactmeasuredC4",
-        "Preparedsource strict-Walllintpassesdefault/min/odd/primarywithoutwaivers; candidatebyte-identicalto prelinteddraft2"
+        "Preparedsource strict-Walllintpassesdefault/min/odd/primarywithoutwaivers; candidatebyte-identicalto prelinteddraft2",
+        "Focusedbothwidths/minimum-odd-primaryboundarytest passes37.37sec",
+        "All187boundaryrows/width,207deepdirectoryrows/width and1282publicstorerows matchevery noncyclefield of C4audio-identicalC3controls; modelsourcehash equivalenceverified",
+        "Deep setup1810451->1903895(+93444)clocks AXI64; store1282operationstotal1224008->1245317(+21309)clocks"
       ],
       "pending": [
         "Bothwidths minimum/odd/primary focusedboundarytest",
@@ -1239,7 +1242,15 @@
         "Rawboundary/deepdirectory/publicstoreperformancecomparison",
         "ShortconnectedcomparisonagainstC4",
         "Optimizedscreen thenrouteifviable"
-      ]
+      ],
+      "unit_performance": "s4-audio-address-unit-performance.json",
+      "unit_summaries": [
+        "s4-audio-address-directory-unit-summary.json",
+        "s4-audio-address-width-axi32-summary.json",
+        "s4-audio-address-width-axi64-summary.json",
+        "s4-audio-address-store-operations-unit-summary.json"
+      ],
+      "environment_followup": "Firstfullregressionrun passedInstant/Fixeddeferredcases thenmissingDRAMsim3library undernewSourceRoot. Existingpinnedwork/dramsim3linkedintoroot/work, hashesrecordedsetup/s4-audio-address/dramsim3-runtime-link.json; originalfailurelogretained, exactfullcommandrerunning. NoRTL/test/config/clockchange."
     }
   ],
   "provisioning": {
