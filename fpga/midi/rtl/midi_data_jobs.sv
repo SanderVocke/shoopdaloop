@@ -61,7 +61,7 @@ module midi_data_jobs #(
         EXPORT_SEQUENCE, EXPORT_DESCRIBED, EXPORT_RETAINED, CONTROL_RESULT,
         EXPR_REPLACE, EXPR_REQUEST, EXPR_WAIT, EXPR_EVENT_REPLY, EXPR_JOB, EXPR_BIND, EXPR_RESULT,
         EXPR_SEED_CHECK, INPUT_OBSERVED, OUTPUT_ADVANCE, BEGIN_PUBLISH, FORMAT_EXPRESSION,
-        CONTROL_CREATED, CONTROL_RANGE_READY, CONTROL_RANGE_RESULT, ADDRESS_REGION, ADDRESS_FINAL
+        CONTROL_CREATED, CONTROL_RANGE_READY, CONTROL_RANGE_RESULT
     } phase_t;
     phase_t phase, after_memory, after_store, after_record, after_copy, after_sequence, after_buffer, after_write;
     reg [1:0] reply_kind;
@@ -83,13 +83,6 @@ module midi_data_jobs #(
     reg [31:0] own_write_data, word_data;
     reg [127:0] record_data, copy_data, head_a, head_b;
     reg [63:0] record_address;
-    localparam [64:0] MAX_ADDRESS_OFFSET = {1'b0,CONTENT_BYTES}+65'hfffffffff;
-    localparam integer ADDRESS_BITS = MAX_ADDRESS_OFFSET[64] ? 64 : $clog2(MAX_ADDRESS_OFFSET+1'b1);
-    reg [ADDRESS_BITS-1:0] address_offset;
-    reg address_scratch, address_writing, address_saving;
-    wire [63:0] address_left = phase==ADDRESS_REGION ? 64'(address_offset) : own_address;
-    wire [63:0] address_right = phase==ADDRESS_REGION ? CONTENT_BYTES : 64'(address_offset);
-    wire [63:0] address_sum = address_left+address_right;
     reg [1:0] record_word, record_last, copy_word;
     reg [31:0] sequence_index, buffer_index;
     reg [63:0] sequence_q, sequence_value, handle;
@@ -215,22 +208,14 @@ module midi_data_jobs #(
     task automatic store_command(input [3:0] op,input [63:0] view_id,input [63:0] arg0,input [63:0] arg1,input phase_t next);
         begin store_op<=op;store_view<=view_id;store_arg0<=arg0;store_arg1<=arg1;after_store<=next;phase<=STORE_REQUEST;end
     endtask
-    task automatic address_request(input [63:0] base, input [31:0] index, input [1:0] field,
-        input scratch, writing, saving, input [31:0] value, input phase_t next);
-        begin
-            own_address<=base;address_offset<=ADDRESS_BITS'({index,field,2'b0});
-            address_scratch<=scratch;address_writing<=writing;address_saving<=saving;
-            if(writing) own_write_data<=value;
-            if(saving) after_record<=next;else after_memory<=next;
-            phase<=ADDRESS_REGION;
-        end
+    task automatic load_record(input [63:0] address,input [1:0] last_word,input phase_t next);
+        begin record_address<=address;record_word<=0;record_last<=last_word;after_record<=next;phase<=LOAD_WORD;end
     endtask
-    task automatic load_record(input [63:0] base, input [31:0] index, input scratch,
-        input [1:0] last_word, input phase_t next);
-        begin
-            record_word<=0;record_last<=last_word;
-            address_request(base,index,0,scratch,0,1,0,next);
-        end
+    task automatic read_word(input [63:0] address,input phase_t next);
+        begin own_address<=address;after_memory<=next;phase<=READ_REQUEST;end
+    endtask
+    task automatic write_word(input [63:0] address,input [31:0] value,input phase_t next);
+        begin own_address<=address;own_write_data<=value;after_memory<=next;phase<=WRITE_REQUEST;end
     endtask
     task automatic load_sequence(input [31:0] index,input phase_t next);
         begin
@@ -273,7 +258,6 @@ module midi_data_jobs #(
             previous_offset<=0;run_quantum<=0;used<=0;list_start<=0;destination<=0;scan<=0;
             own_address<=0;own_write_data<=0;word_data<=0;record_data<=0;copy_data<=0;head_a<=0;head_b<=0;
             record_address<=0;record_word<=0;record_last<=0;copy_word<=0;
-            address_offset<=0;address_scratch<=0;address_writing<=0;address_saving<=0;
             sequence_index<=0;buffer_index<=0;sequence_value<=0;buffer_value<=0;handle<=0;span_a<=0;span_b<=0;
             buffers_ready<=0;cursor_valid<=0;cursor<='0;low<=0;high<=0;middle<=0;
             index_a<=0;index_b<=0;remaining_a<=0;remaining_b<=0;valid_a<=0;valid_b<=0;pick_a<=0;
@@ -337,21 +321,12 @@ module midi_data_jobs #(
                 end
                 WRITE_REQUEST: if(memory_ready) phase<=WRITE_WAIT;
                 WRITE_WAIT: if(memory_response_valid) begin if(memory_response_error) fail(7);else phase<=after_memory;end
-                ADDRESS_REGION: begin
-                    if(address_scratch) address_offset<=ADDRESS_BITS'(address_sum);
-                    phase<=ADDRESS_FINAL;
-                end
-                ADDRESS_FINAL: begin
-                    own_address<=address_sum;
-                    if(address_saving) begin record_address<=address_sum;phase<=LOAD_WORD;end
-                    else phase<=address_writing ? WRITE_REQUEST : READ_REQUEST;
-                end
-                LOAD_WORD: address_request(record_address,0,record_word,0,0,0,0,LOAD_CAPTURE);
+                LOAD_WORD: read_word(record_address+{60'b0,record_word,2'b0},LOAD_CAPTURE);
                 LOAD_CAPTURE: begin
                     record_data[32*record_word+:32]<=word_data;
                     if(record_word==record_last) phase<=after_record;else begin record_word<=record_word+1;phase<=LOAD_WORD;end
                 end
-                COPY_WORD: address_request(arena_base,used,copy_word,1,1,0,copy_data[32*copy_word+:32],COPY_NEXT);
+                COPY_WORD: write_word(arena_base+CONTENT_BYTES+64'(used)*16+{60'b0,copy_word,2'b0},copy_data[32*copy_word+:32],COPY_NEXT);
                 COPY_NEXT: if(copy_word==3) begin used<=used+1;phase<=after_copy;end else begin copy_word<=copy_word+1;phase<=COPY_WORD;end
                 SEQUENCE_REQUEST: phase<=SEQUENCE_LATCH;
                 SEQUENCE_LATCH: begin handle<=sequence_q;phase<=after_sequence;end
@@ -380,7 +355,7 @@ module midi_data_jobs #(
                 end
                 CONTROL_RANGE_RESULT: phase<=REPLY;
                 PREPARE_NEXT: if(input_index==input_count) phase<=REPLY;
-                    else load_record(input_address,input_index,0,2,PREPARE_CHECK);
+                    else load_record(input_address+64'(input_index)*16,2,PREPARE_CHECK);
                 PREPARE_CHECK: begin
                     if(record_data[31:0]>=32'(INPUTS) || record_data[63:32]>=run_quantum ||
                         (input_index!=0 && record_data[63:32]<previous_offset) || record_data[95:90]!=0 ||
@@ -417,7 +392,7 @@ module midi_data_jobs #(
                     endcase
                 end
                 INPUT_NEXT: if(input_index==input_count) begin observed_inputs[INPUT_BITS'(id0)]<=1;publish(list_start,used-list_start,REPLY);end
-                    else load_record(input_address,input_index,0,2,INPUT_CHECK);
+                    else load_record(input_address+64'(input_index)*16,2,INPUT_CHECK);
                 INPUT_CHECK: if(record_data[31:0]=={16'b0,id0}) begin
                     if(expression_enabled && !observed_inputs[INPUT_BITS'(id0)]) expression_command(1,{48'b0,id0},{32'b0,record_data[95:64]},0,0,INPUT_OBSERVED);else phase<=INPUT_OBSERVED;
                     end else phase<=INPUT_ADVANCE;
@@ -477,8 +452,8 @@ module midi_data_jobs #(
                     end else if({1'b0,span_a[31:0]}+{1'b0,buffer_value[31:0]}>33'(SCRATCH_EVENTS)-{1'b0,used}) fail(3);
                     else begin index_a<=span_a[63:32];index_b<=buffer_value[63:32];remaining_a<=span_a[31:0];remaining_b<=buffer_value[31:0];valid_a<=0;valid_b<=0;phase<=MERGE_NEXT;end
                 end
-                MERGE_NEXT: if(!valid_a && remaining_a!=0) load_record(arena_base,index_a,1,3,MERGE_A);
-                    else if(!valid_b && remaining_b!=0) load_record(arena_base,index_b,1,3,MERGE_B);
+                MERGE_NEXT: if(!valid_a && remaining_a!=0) load_record(arena_base+CONTENT_BYTES+64'(index_a)*16,3,MERGE_A);
+                    else if(!valid_b && remaining_b!=0) load_record(arena_base+CONTENT_BYTES+64'(index_b)*16,3,MERGE_B);
                     else if(!valid_a && !valid_b) publish(list_start,used-list_start,REPLY);
                     else phase<=MERGE_CHOOSE;
                 MERGE_A: begin head_a<=record_data;valid_a<=1;phase<=MERGE_NEXT;end
@@ -493,7 +468,7 @@ module midi_data_jobs #(
                     phase<=MERGE_NEXT;
                 end
                 OUTPUT_BUFFER: begin index_a<=buffer_value[63:32];remaining_a<=buffer_value[31:0];phase<=OUTPUT_NEXT;end
-                OUTPUT_NEXT: if(remaining_a==0) phase<=REPLY;else load_record(arena_base,index_a,1,3,OUTPUT_SEND);
+                OUTPUT_NEXT: if(remaining_a==0) phase<=REPLY;else load_record(arena_base+CONTENT_BYTES+64'(index_a)*16,3,OUTPUT_SEND);
                 OUTPUT_SEND: if(packet_ready) begin
                     if(packet_refused) fail(9);else if(expression_enabled) expression_command(2,{32'b0,normal_destination},{32'b0,record_data[127:96]},
                         record_data[63:32]<32'(CURSORS) && cursor_valid[CURSOR_BITS'(record_data[63:32])] ? {48'b0,cursor_sequence[CURSOR_BITS'(record_data[63:32])]} : 64'hffffffff,0,OUTPUT_ADVANCE);
