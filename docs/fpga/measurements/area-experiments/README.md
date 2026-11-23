@@ -524,3 +524,16 @@ identical final memory. Across 1,024 steady quanta the median/max remain
 53,258/59,776 clocks and cold playback 92,745. The primary implementation and
 benchmark parameter comparison is empty. The full physical repeat remains
 pending; no 100 MHz deadline qualification is claimed.
+
+The clean iterative-capacity repeat reproduces **all four physical stages
+exactly**, including utilization, control sets and setup/hold slack. All 38
+production source hashes and both context files match. Its 18 DRC warning
+instances are the same as C4 (DSP pipeline advice, one no-load net and the
+out-of-context PS7 warning); there are no routing/DRC errors. This candidate is
+selected as **C5**, with the explicitly measured growth/setup penalty. C4 remains
+available for faster setup. C5's measured cumulative change from B0 is **6,773
+fewer LUTs, 1,433 fewer slices, 4,594 fewer FFs and 2,397 fewer carries**, with
+half a BRAM tile more and 742 fewer physical control sets. DSP use stays four.
+Timing still fails at 100 MHz; no board or deadline qualification is implied.
+Stages 0–4 are complete. Stage 5's four separate contracts are in
+[stage5-state-contracts.md](stage5-state-contracts.md); its actual trials follow.

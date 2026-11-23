@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4C4selected, three siblings behavior/area measured; iterative candidate full11regressions passed, physical/extended qualification in progress. Stages5\u201311 unexecuted.",
+  "stage": 5,
+  "status": "Stages0\u20134 complete. Iterative node/capacity selected C5 after exactfourstage repeat andallbehavior/performancecontrols. Stage5contracts ready; implementationsunexecuted;Stages6\u201311 pending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -44,9 +44,9 @@
     "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
   ],
   "pending": [
-    "Complete Stage4 shared arithmetic siblings and decide each from measured behavior, cycles and area",
-    "Execute Stages5\u201310 one candidate at a time",
-    "Stage11 full selected-combination physical, regression and CI qualification"
+    "Execute four separate Stage5 working-state/reset/validity trials",
+    "ExecuteStages6\u201310 onecandidateatatime",
+    "Stage11 selected-combination physical/regression/CI qualification; integrationfixesisolated"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -1286,7 +1286,7 @@
     {
       "label": "s4-iterative-capacity",
       "stage": 4,
-      "status": "in progress",
+      "status": "complete",
       "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
       "prepared_control_revision": "06cfe5918aadcd148ecda773eb8ff074826b6bf1",
       "control_summary": "s4-midi-address-100-summary.json",
@@ -1305,9 +1305,7 @@
         "All11affected tests passed:deferred1/102.13sec,media1/373.57sec,metadata6/270.80sec,validity1/49.27sec,ownership2/397.92sec. Runtime linked from snapshot creation; no environmental failure. Connected-primary lint verified metadata180096blocks/1024frames/16119pages/512views.",
         "All1041extended mixed/on/delay7 rows match C4 exactly including cycles,counters,traffic,statework; finalmemoryexact. 1024steady median53258/max59776,cold92745. Benchmarkproductionparameterdifferences{}verifiedbyarchiver."
       ],
-      "pending": [
-        "Completeclean source-through-route repeat; verifyfourstage resource/timing equality and record selection"
-      ],
+      "pending": [],
       "contract": "stage4-iterative-capacity-contract.md",
       "unit_performance": "s4-iterative-capacity-unit-performance.json",
       "unit_summaries": [
@@ -1348,8 +1346,10 @@
         "control_sets": 108
       },
       "timing_met": false,
-      "decision": "First route promising: -92LUT/-106slices/-41FF/-111carry,unchangedBRAM78/DSP4,+108physicalcontrolsets;WNS-0.130nsversusC4-3.668ns. NewcriticalMIDIjob_reg[68]->store_arg0_reg[3]/CE. Await clean physical repeat and extended boundary run before promotion; growthsetup cost retained.",
-      "extended_summary": "s4-iterative-capacity-extended-100-summary.json"
+      "decision": "SelectC5: repeat exactall4stages; -92LUT/-106slices/-41FF/-111carry vsC4,sameBRAM/DSP,all11affectedtests+all1041extendedrows exactincludingcallbackclocks/traffic. Growthsetupslower (+1712176deepclocks,+14074publicstore),+108physicalcontrolsets; WNSimproves3.538nsbutstillfails-0.130. C4 retainedforfastergrowthsetup.",
+      "extended_summary": "s4-iterative-capacity-extended-100-summary.json",
+      "selected": true,
+      "repeat_summary": "s4-iterative-capacity-repeat-100-summary.json"
     }
   ],
   "provisioning": {
@@ -1512,26 +1512,26 @@
     }
   },
   "selected_control": {
-    "label": "C4",
-    "implementation": "s4-midi-address-100",
-    "rtl_revision": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
-    "summary": "s4-midi-address-100-summary.json",
-    "repeat_summary": "s4-midi-address-repeat-100-summary.json",
-    "extended_summary": "s4-midi-address-extended-100-summary.json",
-    "musical_summary": "s4-musical-comparison-summary.json",
+    "label": "C5",
+    "implementation": "s4-iterative-capacity-100",
+    "rtl_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+    "summary": "s4-iterative-capacity-100-summary.json",
+    "repeat_summary": "s4-iterative-capacity-repeat-100-summary.json",
+    "extended_summary": "s4-iterative-capacity-extended-100-summary.json",
     "timing_met": false,
     "cumulative_deltas_vs_B0": {
-      "lut": -6681,
-      "slices": -1327,
-      "ff": -4553,
+      "lut": -6773,
+      "slices": -1433,
+      "ff": -4594,
       "bram36": 0.5,
       "dsp": 0,
-      "carry4": -2286,
-      "control_sets": -850
+      "carry4": -2397,
+      "control_sets": -742
     },
     "hints": "original early+late",
-    "faster_alternative": "C3 fe2184ea / branch area/s3-path-context",
-    "connected": "1024steady median53258/max59776,cold92745;all1041noncyclefields exactC3. Musicalseek410865vs365340,+12.46%; all40musicalnoncyclefieldsexact.",
-    "branch_head": "10cddabdbfe015f8a64c1105449aa5634be2f2fc"
+    "faster_setup_alternative": "C4 7d2d7cd7 / area/s4-midi-address",
+    "connected": "All1041extended rows exactC4 includingcycles/traffic/work;1024steady median53258/max59776,cold92745. Growth-onlysetup penalty measured separately.",
+    "selection_branch": "feat/backend-replacement-area-selected",
+    "branch_promotion": "pending merge of completed experiment"
   }
 }
