@@ -10,9 +10,10 @@ least-significant byte first.
 
 ## Instruction word {.unnumbered}
 
-An SP instruction is 96 bits. SP selects its program pass by the instruction
-index and `run_sync_count`. The sync prefix consists of ProcessLoop
-instructions. The work pass uses the other opcodes.
+An SP instruction is 96 bits. Its opcode selects the operation.
+`run_sync_count` declares how many ProcessLoop instructions must execute.
+Work instructions can use a loop as soon as ProcessLoop stamps it for the
+current quantum.
 
 | Bits | Field | Width |
 | ---------------------- | ---------------------------------------------------------- | -------------------: |
@@ -63,7 +64,7 @@ interpretation follows.
   no descriptor. Enabled raw capture emits Capture.
 - **LogicalPlayback and LogicalCapture.** SP obtains the mode and render
   position from the stamped loop record, or from the explicit record port in
-  a fixture with no sync prefix. SP converts the frame position and length
+  a fixture with `run_sync_count=0`. SP converts the frame position and length
   to chunks for audio playback. Playback emits Silence when the loop is
   inactive or at the held endpoint. The first quantum of a logical capture
   emits BeginCapture followed by Capture.
@@ -106,10 +107,10 @@ be smaller.
 | MIDI Output | Output the supplied source list on the selected port |
 | MIDI State | Restore when active playback starts, restarts, or seeks. Cleanup when previously active playback ends. Requires matching prepared bindings and state-capable JP data jobs. |
 
-Playback, PrepareCapture, Append, and State require the managed sync prefix.
-PrepareCapture instructions follow the sync prefix. State instructions follow
-PrepareCapture, and ordinary data instructions follow State. This puts writer
-transitions and playback state changes ahead of the data jobs.
+Playback, PrepareCapture, Append, and State require managed sync and a current
+stamp on their loop record. PrepareCapture precedes operations that use its
+sequence and MIDI input observation for this quantum. State and Output retain
+their ordering on the shared MIDI packet stream.
 
 ## Node-state operands {.unnumbered}
 

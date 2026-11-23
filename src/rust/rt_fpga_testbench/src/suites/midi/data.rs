@@ -24,6 +24,21 @@ pub mod pipeline;
 #[path = "../../../../rt_fpga_compiler/tests/support/programs.rs"]
 mod programs;
 
+fn assert_scheduled_jobs(mut actual: Vec<serde_json::Value>, expected: &[Job]) {
+    let mut expected: Vec<_> = expected
+        .iter()
+        .map(|job| serde_json::to_value(job).unwrap())
+        .collect();
+    // Compare every descriptor while keeping the observable MIDI packet jobs in sequence.
+    let key = |job: &serde_json::Value| match job["kind"].as_str() {
+        Some("midi_restore_state" | "midi_cleanup_state" | "midi_output") => None,
+        _ => Some(job.to_string()),
+    };
+    actual.sort_by_cached_key(key);
+    expected.sort_by_cached_key(key);
+    assert_eq!(actual, expected);
+}
+
 pub fn logical(q: u32, mixed: bool) -> rt_fpga_compiler::LogicalStateProgram {
     let mut p = programs::mono_loops(q, 2);
     if !mixed {

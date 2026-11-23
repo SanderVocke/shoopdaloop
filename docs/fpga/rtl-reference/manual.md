@@ -41,9 +41,9 @@ to follow.
 1. The host, audio bank controller, or testbench supplies input and requests
    processing for the next quantum. In the mixed core, the wrapper validates
    the staged MIDI batch before starting SP.
-2. SP updates loop state at the quantum boundary. It queues MIDI writer
-   transitions before the regular work pass, then writes the data jobs
-   into an on-chip FIFO. When SP queues an audio playback job, wires named
+2. SP updates loop state at the quantum boundary and queues data jobs in an
+   on-chip FIFO as its instructions run. MIDI writer transitions precede jobs
+   that use their sequence. When SP queues an audio playback job, wires named
    `read_intent_valid` and `read_intent_data` also expose a one-clock copy
    of that descriptor. The audio store can use this hint to start fetching
    samples before JP reaches the job.
@@ -70,11 +70,11 @@ Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc
 
 # State processor
 
-The RTL compiler emits a sync prefix, MIDI setup instructions, and the work
-section in that order. The sync prefix executes one `ProcessLoop` per loop.
-The setup section emits writer transitions and playback-state restore or
-cleanup as needed. The work section emits the regular data jobs. The state
-processor advances through these sections once per quantum.
+The RTL compiler emits one `ProcessLoop` per loop in source-before-dependent
+order. It schedules work among those instructions according to its loop and
+resource dependencies. The schedule preserves ordering on shared views, ramps,
+histories, MIDI sequences, scratch buffers and the MIDI packet stream. The state
+processor reads the instruction stream once per quantum.
 
 With `DDR_PROGRAM=1`, the instruction regions occupy a 64-byte-aligned range
 after the audio media arena. Each instruction uses a 16-byte DDR record with
@@ -89,7 +89,7 @@ BRAM supplies the three words of each instruction. Fetch waits for a complete
 instruction, and a DDR read fault terminates the state-processor run. Every run
 starts with an empty FIFO and its selected program region.
 
-![Figure 2. One engine runs the sync, setup, and data sections. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
+![Figure 2. One engine runs sync, setup, and data instructions. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
 
 ## What lives on the FPGA
 
@@ -113,7 +113,7 @@ to find sample and metadata pages in DDR. A MIDI sequence ID selects
 a view handle in the data-job unit. SP supplies the playback interval,
 recording position and writer transitions. The data-job unit keeps the
 view handles and event cursors and accesses its own DDR arena. In a
-standalone fixture without a sync prefix, the work pass can read explicit
+standalone fixture without managed sync, the work instructions can read explicit
 loop records supplied by the testbench on the `loop_read_*` ports.
 
 ## When a loop can change mode
@@ -156,9 +156,10 @@ these writes to the **same loop record**:
    position by Q and write it to word 2. For recording, grow the capture length
    in word 4 by Q. Word 3 is the content length used for playback. It can be
    shared by both passes because the advancement step leaves it intact.
-3. **Read the saved render values to build jobs.** After the sync pass, the
-   work instructions read the mode, begin-capture flag, render position and
-   content length from the record and check its boundary stamp. SP then
+3. **Read the saved render values to build jobs.** Work instructions read a
+   loop's mode, begin-capture flag, render position and content length after
+   its `ProcessLoop`. They check the boundary stamp against the run's latched
+   frame. SP then
    writes the required operands into the job FIFO. For example, ReadView
    carries a view ID, chunk position and length. First capture can emit
    BeginCapture ahead of Capture.
@@ -224,8 +225,8 @@ Sources. [SP RTL](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/
 
 # Job processor
 
-`audio_pipeline` runs SP first, then JP. Each JP job finishes before JP
-accepts the next one. The compiler uses numbered **scratch buffers**, which
+`audio_pipeline` starts JP when the first job reaches the FIFO. Each JP job
+finishes before JP accepts the next one. The compiler uses numbered **scratch buffers**, which
 are regions of on-chip sample RAM. For example, Input writes buffer 0, Gain
 reads buffer 0 and writes buffer 1, then Output reads buffer 1. The dependency
 is a concrete RAM read of the samples written by the earlier job. JP checks
@@ -398,11 +399,12 @@ playback meaning in either mode.
    16-byte aligned after the declared MIDI arena, inside the AXI window.
    Sort the array by offset, keep offsets below Q, and preserve it until
    completion.
-2. **Settle loop timing and queue writer transitions.** SP runs its sync
-   prefix, then executes the explicit MIDI setup instructions. Capture setup
-   queues FinishCapture or BeginCapture as needed. MIDI State instructions
-   queue Restore or Cleanup ahead of the ordinary data jobs. The writer-open
-   bit in SP loop RAM records the intended writer lifecycle.
+2. **Settle loop timing and queue writer transitions.** After its loop's
+   `ProcessLoop`, capture setup can queue FinishCapture or BeginCapture.
+   MIDI input observation waits for capture preparations so new takes can
+   snapshot the input state at the start of the quantum. Restore and Cleanup
+   keep their order in the output packet stream. The writer-open bit in SP
+   loop RAM records the intended writer lifecycle.
 3. **Queue and execute the data jobs.** SP walks the regular work pass in
    program order. JP dispatches each descriptor as it becomes available and waits for
    its result. On playback, SP supplies the loop-relative starting
@@ -494,7 +496,8 @@ Malformed staged input reports an error before SP advances and can be
 corrected and retried. A memory fault during validation, a failed job,
 or a retirement failure latches a fault in the connected pipeline.
 The caller must discard the failed quantum's audio buffers. The wrapper
-holds off future runs until reset. Storage exhaustion can leave an
+holds off future runs until reset. Early recording writes and accepted MIDI
+packets can take effect before a later sync fault. Storage exhaustion can leave an
 incomplete recording prefix, and an incomplete view cannot be published
 as a successful take. Use `midi_error_code` for the MIDI cause alongside
 the shared `error_code` and `error_stage`.

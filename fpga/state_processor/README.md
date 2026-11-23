@@ -40,9 +40,9 @@ The FIFO count includes the prefetched output head.
 ## Integrated loop instructions
 
 Opcode `0x0c` is `ProcessLoop`: arg0 is the loop slot and arg1/arg2 are its
-generation halves; the remaining bits are zero. `run_instruction_count` counts
-the combined sync/audio program. `run_sync_count` is the length of its prefix;
-every prefix instruction must be `ProcessLoop`, and it is forbidden afterward.
+generation halves; the remaining bits optionally encode the inline sync source.
+`run_instruction_count` counts the entire program. `run_sync_count` counts the
+`ProcessLoop` instructions, which can be interleaved with work instructions.
 The compiler supplies canonical source-before-dependent order. Per-loop frame
 stamps reject duplicate visits, unprocessed sources and stale render state.
 Generation and capacity checks precede RAM addressing. Self-sync is handled
@@ -57,9 +57,10 @@ matching the Rust reference's primitive-loop profile and outcome semantics.
 
 Before advancing, the instruction saves render position and first-capture
 status. Content length is shared with the render view because advancement does
-not change it. The audio section consumes that snapshot; next-boundary position/capture
-length have already advanced. `sync_frame` advances after the final prefix
-instruction, before audio execution. No SP operation runs after JP. Managed
+not change it. Work instructions consume that loop's snapshot while its
+next-boundary position and capture length are already available.
+`sync_frame` advances after the last `ProcessLoop`. Render reads validate
+against the latched start frame for the entire run. Managed
 execution failures latch until reset; computed-ahead state is not rolled back.
 Reset clears control/frame state but retains RAM; reload loop records before
 resuming managed execution. Supported sync quantum sizes are 1/16/32/64/128.

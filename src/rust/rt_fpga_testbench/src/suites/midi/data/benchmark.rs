@@ -1,7 +1,7 @@
 //! Full-session playback timing with an independent Rust/output oracle.
 mod workload;
 use self::workload::*;
-use super::packed;
+use super::{assert_scheduled_jobs, packed};
 use crate::{
     Result,
     bits::Bits,
@@ -540,15 +540,7 @@ fn run_case(
             std::mem::take(&mut output.borrow_mut().0),
             reference.emitted
         );
-        assert_eq!(
-            driver.audio.consumed(),
-            reference
-                .pipeline
-                .emitted_jobs()
-                .iter()
-                .map(|j| serde_json::to_value(j).unwrap())
-                .collect::<Vec<_>>()
-        );
+        assert_scheduled_jobs(driver.audio.consumed(), reference.pipeline.emitted_jobs());
         assert_eq!(
             sim.model.get("sync_frame"),
             reference.pipeline.state().frame()

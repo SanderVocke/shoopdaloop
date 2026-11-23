@@ -69,7 +69,7 @@ fn midi_target_lowers_data_jobs_and_rejects_legacy_phases_and_wide_read_operands
             .iter()
             .map(|b| b.get(0, 8))
             .collect::<Vec<_>>(),
-        vec![12, 12, 20, 14, 16, 15, 18]
+        vec![12, 20, 14, 16, 15, 18, 12]
     );
     let smaller = RtlTarget::new([6, 16, 1, 128, 512, 2, 2], 16, &[0, 1]);
     assert!(matches!(

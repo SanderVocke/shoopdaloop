@@ -1,6 +1,6 @@
 //! Compiled SP/common-JP integration checks.
 use super::super::Memory;
-use super::{Oracle, Sink, logical, write_events};
+use super::{Oracle, Sink, assert_scheduled_jobs, logical, write_events};
 use crate::{
     Result,
     drivers::{
@@ -288,13 +288,7 @@ impl<'a> Driver<'a> {
             self.sim.model.get("midi_error_code")
         );
         let clocks = self.sim.cycles - start;
-        assert_eq!(
-            self.audio.consumed(),
-            expected
-                .iter()
-                .map(|j| serde_json::to_value(j).unwrap())
-                .collect::<Vec<_>>()
-        );
+        assert_scheduled_jobs(self.audio.consumed(), &expected);
         assert_eq!(self.sink.borrow().events, self.reference.emitted);
         assert_eq!(
             self.sim.model.get("sync_frame"),

@@ -110,11 +110,11 @@ fn resolution(result: &Resolution) -> Bits {
         .set(192, 64, frame);
     b
 }
-fn run_rtl(d: &mut State, s: &mut Sim<'_>, prefix: usize) -> u64 {
+fn run_rtl(d: &mut State, s: &mut Sim<'_>, sync_count: usize) -> u64 {
     s.model.set("job_ready", 0);
     let accepted = s.cycles;
-    let mut after = d.start(s, &[("run_sync_count", prefix as u64)]);
-    for _ in 0..1000 * (prefix + 1) + 500 {
+    let mut after = d.start(s, &[("run_sync_count", sync_count as u64)]);
+    for _ in 0..1000 * (sync_count + 1) + 500 {
         if after.get("done") != 0 {
             d.run_cycles = s.cycles - accepted;
             let code = after.get("error_code");
@@ -489,7 +489,7 @@ fn integrated_sp_keeps_wide_ram_counters_and_checks_overflow() {
 }
 
 #[shoop_test]
-fn integrated_sp_checks_sync_prefix_order_generations_bounds_and_latched_faults() {
+fn integrated_sp_checks_sync_order_counts_generations_bounds_and_latched_faults() {
     let mut design = suites::state::design([64, 16, 32]);
     design.parameters.insert("LOOP_DEPTH".into(), "160".into());
     let compiled = design
@@ -498,17 +498,19 @@ fn integrated_sp_checks_sync_prefix_order_generations_bounds_and_latched_faults(
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10000, 0)]);
     let mut driver = State::new(&mut sim, [64, 16, 32], 44);
     let loop_op = |slot, generation| json!({"kind":"process_loop","loop_id":{"slot":slot,"generation":generation}});
-    for (instructions, prefix, error) in [
-        (vec![loop_op(1, 7), loop_op(0, 7)], 2, 2),
-        (vec![loop_op(0, 7), loop_op(0, 7)], 2, 2),
-        (vec![loop_op(0, 8)], 1, 2),
-        (vec![loop_op(160, 7)], 1, 2),
+    for (instructions, sync_count, error, frame) in [
+        (vec![loop_op(1, 7), loop_op(0, 7)], 2, 2, 0),
+        (vec![loop_op(0, 7), loop_op(0, 7)], 2, 2, 0),
+        (vec![loop_op(0, 8)], 1, 2, 0),
+        (vec![loop_op(160, 7)], 1, 2, 0),
         (
             vec![json!({"kind":"process_silence","destination":0})],
             1,
             3,
+            0,
         ),
-        (vec![loop_op(0, 7)], 2, 3),
+        (vec![loop_op(0, 7)], 2, 3, 0),
+        (vec![loop_op(0, 7), loop_op(1, 7)], 1, 3, 16),
     ] {
         let specs = vec![spec(0, 32, None, false), spec(1, 32, Some(0), false)];
         let plan = TransitionPlan::compile(
@@ -542,15 +544,86 @@ fn integrated_sp_checks_sync_prefix_order_generations_bounds_and_latched_faults(
             .image
             .configure(&mut sim, false, 160 * 16, None, true);
         sim.model.set("cfg_loop", 0);
-        assert_eq!(run_rtl(&mut driver, &mut sim, prefix), error);
+        assert_eq!(run_rtl(&mut driver, &mut sim, sync_count), error);
         assert_eq!(
             sim.model.get("run_ready"),
             0,
             "managed execution failure must latch"
         );
-        assert_eq!(sim.model.get("sync_frame"), 0);
+        assert_eq!(sim.model.get("sync_frame"), frame);
         assert!(driver.drain(&mut sim).is_empty());
     }
+}
+
+#[shoop_test]
+fn compiled_playback_queues_before_a_later_sync_and_rejects_a_stale_render_stamp() {
+    use rt_fpga_compiler::StateProgramTarget;
+    use rt_fpga_testbench::target::RtlTarget;
+
+    let depths = [64, 16, 32];
+    let mut design = suites::state::design(depths);
+    design.parameters.insert("LOOP_DEPTH".into(), "160".into());
+    let model = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/sync"))
+        .unwrap();
+    let mut sim = Sim::new(model.session(None).unwrap(), &[("clk", 10000, 0)]);
+    let mut driver = State::new(&mut sim, depths, 44);
+    let mut logical = programs::mono_loops(16, 2);
+    for row in &mut logical.loops {
+        row.length = 64;
+    }
+    let mut program = RtlTarget::new([64, 16, 32, 32, 16, 2, 2], 2, &[10, 20])
+        .build(&logical)
+        .unwrap();
+    for row in &mut program.loops {
+        row.words[0] |= 1 << 33; // Playing.
+    }
+    driver.reset(&mut sim);
+    driver.image.load_compiled(&mut sim, &program);
+    sim.model.set("sync_event_ready", 1);
+    let sync_b = program
+        .instructions
+        .iter()
+        .position(|word| word.get(0, 8) == 12 && word.get(8, 16) == 1)
+        .unwrap() as u64;
+    for frame in [0, 16] {
+        let mut snapshot = driver.start(&mut sim, &[]);
+        let mut saw_early_playback = false;
+        for _ in 0..1000 {
+            if snapshot.get("done") != 0 {
+                break;
+            }
+            if !saw_early_playback && snapshot.get("instruction_pc") == sync_b {
+                assert_eq!(snapshot.get("queued_jobs"), 4);
+                assert_eq!(sim.model.get("sync_frame"), frame);
+                saw_early_playback = true;
+            }
+            snapshot = driver.tick(&mut sim).1;
+        }
+        assert!(saw_early_playback);
+        assert_eq!(snapshot.get("done"), 1);
+        assert_eq!(snapshot.get("error_code"), 0);
+        assert_eq!(sim.model.get("sync_frame"), frame + 16);
+        let jobs = driver.drain(&mut sim);
+        assert_eq!(jobs.len(), 7);
+        assert_eq!(
+            jobs[1],
+            json!({"kind":"read_view","view":10,"position_chunks":frame,"length_chunks":64,"destination":1})
+        );
+        assert_eq!(
+            jobs[4],
+            json!({"kind":"read_view","view":20,"position_chunks":frame,"length_chunks":64,"destination":3})
+        );
+    }
+    driver
+        .image
+        .configure(&mut sim, false, 1, Some(&program.instructions[2]), false);
+    driver
+        .image
+        .configure(&mut sim, false, 2, Some(&program.instructions[1]), false);
+    assert_eq!(run_rtl(&mut driver, &mut sim, program.sync_count), 2);
+    assert_eq!(sim.model.get("sync_frame"), 32);
+    assert_eq!(sim.model.get("run_ready"), 0);
 }
 
 struct ScratchMemory;

@@ -329,12 +329,7 @@ pub fn compiled_pipeline(width: u64, delay: u64) -> Result<()> {
             audio.execute_with_limit(&mut sim, &[vec![1 << 22; 32]], true, 5_000_000),
             (2, 0)
         );
-        assert_eq!(
-            audio.consumed(),
-            jobs.iter()
-                .map(|j| serde_json::to_value(j).unwrap())
-                .collect::<Vec<_>>()
-        );
+        assert_scheduled_jobs(audio.consumed(), &jobs);
         assert_eq!(sink.borrow().events, oracle.emitted);
         assert_eq!(
             audio.read_samples(&mut sim).1,
