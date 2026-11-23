@@ -501,3 +501,19 @@ slices, 21 more FFs, 86 more control sets and 175 more F7/F8 muxes. Setup/hold
 slack is -3.939/+0.030 ns; setup still fails. The extra mux/packing and cold
 traffic costs outweigh the small LUT gain. C4 remains selected; no physical
 repeat is needed for this unselected tradeoff.
+
+The iterative metadata node/capacity unit (`0e624700`) passes all 11 affected
+regressions, both-width boundary/deep controls and all 1,282 public-store rows.
+All 33 short mixed callback rows match C4 exactly, including clocks and traffic.
+The deep 77,828-write setup grows from 1.810 to 3.523 million clocks on AXI64;
+the 207 requests after setup add only 46 clocks. Public-store operations add
+14,074 clocks in total. No public capacity, precision or ownership change.
+
+Its first route uses **35,207 LUTs, 28,847 FFs, 11,772 slices, 78 BRAM tiles,
+four DSPs and 3,094 carries**: 92 fewer LUTs, 106 fewer slices, 41 fewer FFs and
+111 fewer carries than C4, at a cost of 108 more physical control sets. Setup
+slack improves from -3.668 to **-0.130 ns**, with +0.006 ns hold; setup still
+fails. The node-count critical path is removed; the next limiter is MIDI
+job_reg[68] to store_arg0_reg[3]/CE. A clean source-through-route repeat and
+1,024-quantum callback run are in progress before selection. See
+`s4-iterative-capacity-100-*` and its retained unit/regression archives.

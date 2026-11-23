@@ -1332,7 +1332,23 @@
         "control_sets": 8
       },
       "regression_summary": "s4-iterative-capacity-regressions-summary.json",
-      "repeat_build": "work/area-experiments/s4-iterative-capacity-repeat-route100"
+      "repeat_build": "work/area-experiments/s4-iterative-capacity-repeat-route100",
+      "routed_summary": "s4-iterative-capacity-100-summary.json",
+      "routed_deltas_vs_c4": {
+        "lut": -92,
+        "logic_lut": -92,
+        "memory_lut": 0,
+        "ff": -41,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -111,
+        "muxf7": 43,
+        "muxf8": -9,
+        "slices": -106,
+        "control_sets": 108
+      },
+      "timing_met": false,
+      "decision": "First route promising: -92LUT/-106slices/-41FF/-111carry,unchangedBRAM78/DSP4,+108physicalcontrolsets;WNS-0.130nsversusC4-3.668ns. NewcriticalMIDIjob_reg[68]->store_arg0_reg[3]/CE. Await clean physical repeat and extended boundary run before promotion; growthsetup cost retained."
     }
   ],
   "provisioning": {
