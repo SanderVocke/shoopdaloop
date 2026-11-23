@@ -11,11 +11,11 @@ least-significant byte first.
 
 ## Instruction word {.unnumbered}
 
-An SP instruction is 96 bits. SP selects its program pass by the instruction
-index and `run_sync_count`. The sync prefix contains `ProcessLoop` and
-`ProcessCompositeChild` instructions and their schedule rows. `run_sync_count`
-and the full instruction count both include the schedule rows. The work pass
-uses the other opcodes.
+An SP instruction is 96 bits. Its opcode selects the operation.
+`run_sync_count` counts the loop visits, including `ProcessLoop` and
+`ProcessCompositeChild`. The full instruction count also includes inline
+schedule rows. A work instruction can use a loop once its visit stamps it
+for the current quantum.
 
 | Bits | Field | Width |
 | ---------------------- | ---------------------------------------------------------- | -------------------: |
@@ -50,12 +50,14 @@ generation.
 | `0x0d` | ProcessHistorySmoothing | Loop slot | Control addr | Source | Destination | History index |
 | `0x0e` | MIDI Input | Input port | Destination list | — | — | — |
 | `0x0f` | MIDI Playback | Loop slot | Gen lo | Gen hi | Sequence and cursor | Channel mask |
-| `0x10` | MIDI Capture | Loop slot | Gen lo | Gen hi | Sequence | Source list |
+| `0x10` | MIDI Append | Loop slot | Gen lo | Gen hi | Sequence | Source list |
 | `0x11` | MIDI Merge | Left list | Right list | Destination list | — | — |
 | `0x12` | MIDI Output | Source list | Output port | — | — | — |
 | `0x13` | MIDI State | Owner slot | Gen lo | Gen hi | Sequence/input | Output mask/channel bits |
-| `0x14` | ProcessCompositeChild | Child slot | Gen lo | Gen hi | Inline source slot or `0xffff` | Number of following schedule rows |
-| `0x15` | ProcessInputMonitor | Recorder slot or `0xffff` | Gen lo | Gen hi | Ramp addr | — |
+| `0x14` | MIDI PrepareCapture | Loop slot | Gen lo | Gen hi | Sequence | — |
+| `0x15` | MIDI MergeOutput | Output port | Packed lists | Packed lists | Packed lists | Packed lists |
+| `0x16` | ProcessCompositeChild | Child slot | Gen lo | Gen hi | Inline source slot or `0xffff` | Number of following schedule rows |
+| `0x17` | ProcessInputMonitor | Recorder slot or `0xffff` | Gen lo | Gen hi | Ramp addr | — |
 
 Other opcode values cause `INVALID_PROGRAM` (`0x03`). Additional operand
 interpretation follows.
@@ -67,7 +69,7 @@ interpretation follows.
   no descriptor. Enabled raw capture emits Capture.
 - **LogicalPlayback and LogicalCapture.** SP obtains the mode and render
   position from the stamped loop record, or from the explicit record port in
-  a fixture with no sync prefix. SP converts the frame position and length
+  a fixture with `run_sync_count=0`. SP converts the frame position and length
   to chunks for audio playback. Playback emits Silence when the loop is
   inactive or at the held endpoint. The first quantum of a logical capture
   emits BeginCapture followed by Capture.
@@ -136,8 +138,8 @@ ID at 63:56 and an 8-bit cursor ID at 71:64. A4 is the 16-bit channel
 mask at 87:72. Bits 95:88 carry the 8-bit destination list ID. Use zero
 in bits 95:88 for the other opcodes except State. State has its own complete
 96-bit layout in Appendix E, with channel-mask bits extending through 95:88.
-In particular, capture has a u16
-sequence ID and a u16 source list ID. The playback sequence, cursor and
+PrepareCapture and Append use a u16 sequence ID. Append also uses a u16
+source list ID. The playback sequence, cursor and
 destination encodings limit each ID to 0–255. Instance capacities can
 be smaller.
 
@@ -145,16 +147,21 @@ be smaller.
 | -------------------------------- | ------------------------------------------------------------------- |
 | MIDI Input | Input for the selected port and destination list |
 | MIDI Playback | Read while playing inside content length, otherwise Empty. Sets restart for a pulse, a seek/reposition flag or position zero. |
-| MIDI Capture | FinishCapture for an open writer leaving recording mode or being replaced by a new take. BeginCapture for recording without an open writer. Append while recording, with start equal to captured frames minus Q. |
+| MIDI PrepareCapture | FinishCapture for an open writer leaving recording mode or being replaced by a new take. BeginCapture for recording without an open writer. |
+| MIDI Append | Append while recording, with start equal to captured frames minus Q. |
 | MIDI Merge | Merge the two source lists into the destination |
 | MIDI Output | Output the supplied source list on the selected port |
-| MIDI State | In the prepass, Restore when active playback starts/restarts/seeks, or Cleanup when previously active playback ends. Skip in the regular data pass. Requires matching prepared bindings and state-capable JP data jobs. |
+| MIDI MergeOutput | Merge two to eight ready lists directly into an output port |
+| MIDI State | Restore when active playback starts, restarts, or seeks. Cleanup when previously active playback ends. Requires matching prepared bindings and state-capable JP data jobs. |
 
-Playback, Capture and State require the managed sync prefix. SP emits
-FinishCapture and BeginCapture in the capture prepass so that every
-Read sees the correct completed view. Append is emitted in the
-ordinary data pass. State instructions follow all Capture instructions, so
-writer transitions precede state jobs and both precede ordinary events.
+Playback, PrepareCapture, Append, and State require managed sync and a current
+stamp on their loop record. PrepareCapture precedes operations that use its
+sequence and MIDI input observation for this quantum. State and Output retain
+their ordering on the shared MIDI packet stream.
+
+MergeOutput packs eight u8 list IDs in bits 87:24, in left-to-right merge order.
+Bits 95:88 give the number of list IDs used. Each source list is sorted by the
+same event key as a two-input merge.
 
 ## Node-state operands {.unnumbered}
 
@@ -261,6 +268,7 @@ buffer IDs must be valid and ready in every mode.
 | `0x27` | Output | Source list | Output port | — | — | — |
 | `0x28` | Restore state | Sequence | — | Target loop position | Owner | — |
 | `0x29` | Cleanup state | Sequence | — | — | Owner | — |
+| `0x2a` | MergeOutput | Output port | Source count | Eight packed u8 list IDs | — | — |
 
 All MIDI timing operands are in frames. Read and Append carry Q as
 a 32-bit frame count. The upper half of Append P1 is zero. Merge's
@@ -511,13 +519,12 @@ This instruction uses all 96 bits; it is not the ordinary five-u16 encoding.
 | 79:72 | Output-port mask, u8; bit 0 selects output 0 |
 | 95:80 | MIDI-channel mask, u16; bit 0 selects MIDI channel 1 |
 
-Place all Capture instructions before all State instructions. The loader
+Place all PrepareCapture instructions before all State instructions. The loader
 installs the same binding through command 21. SP validates the owner against
 loop RAM and uses the sequence and loop's render state for job emission; it does
 not install the input/output/channel binding from this instruction each run.
-A State instruction can emit at most one Restore or Cleanup job in its prepass
-visit. The regular data pass skips it. Include this possible job in the compiled
-FIFO budget. Loop word 0 bit 59 remembers prior MIDI playback activity; preserve
+A State instruction can emit at most one Restore or Cleanup job per quantum.
+Loop word 0 bit 59 remembers prior MIDI playback activity. Preserve
 it alongside bits 57 and 58 when updating loop plans.
 
 ## State control commands {.unnumbered}

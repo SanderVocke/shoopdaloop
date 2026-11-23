@@ -40,6 +40,8 @@ pub struct Measurement {
     pub reclaimed: u64,
     pub reads: u64,
     pub writes: u64,
+    pub instruction_reads: u64,
+    pub instruction_writes: u64,
     pub state_cycles: u64,
     pub job_cycles: u64,
     pub queue_peak: u64,

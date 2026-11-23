@@ -56,7 +56,11 @@ pub enum Instruction {
         channels: u16,
         destination: u8,
     },
-    MidiCapture {
+    MidiPrepareCapture {
+        loop_id: Identity,
+        sequence: u16,
+    },
+    MidiAppend {
         loop_id: Identity,
         sequence: u16,
         source: u16,
@@ -68,6 +72,11 @@ pub enum Instruction {
     },
     MidiOutput {
         source: u16,
+        port: u16,
+    },
+    MidiMergeOutput {
+        sources: [u8; 8],
+        count: u8,
         port: u16,
     },
     ProcessHistorySmoothing {
@@ -138,7 +147,16 @@ pub fn value_words(value: Value) -> [u32; 5] {
 pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
     let (opcode, args) = match value {
         Instruction::MidiInput { port, destination } => (14, vec![port, destination]),
-        Instruction::MidiCapture {
+        Instruction::MidiPrepareCapture { loop_id, sequence } => (
+            20,
+            vec![
+                u16::try_from(loop_id.slot)?,
+                loop_id.generation as u16,
+                (loop_id.generation >> 16) as u16,
+                sequence,
+            ],
+        ),
+        Instruction::MidiAppend {
             loop_id,
             sequence,
             source,
@@ -158,6 +176,26 @@ pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
             destination,
         } => (17, vec![left, right, destination]),
         Instruction::MidiOutput { source, port } => (18, vec![source, port]),
+        Instruction::MidiMergeOutput {
+            sources,
+            count,
+            port,
+        } => {
+            if !(2..=8).contains(&count) {
+                return Err("invalid MIDI output fan-in".into());
+            }
+            let packed = 21u128
+                | (u128::from(port) << 8)
+                | (u128::from(u64::from_le_bytes(sources)) << 24)
+                | (u128::from(count) << 88);
+            return Ok([
+                packed as u32,
+                (packed >> 32) as u32,
+                (packed >> 64) as u32,
+                0,
+                0,
+            ]);
+        }
         Instruction::MidiState {
             loop_id,
             sequence,
@@ -231,7 +269,7 @@ pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
                 (u16::MAX, 0)
             };
             (
-                0x15,
+                0x17,
                 vec![slot, generation as u16, (generation >> 16) as u16, ramp],
             )
         }

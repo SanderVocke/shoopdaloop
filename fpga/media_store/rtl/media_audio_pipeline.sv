@@ -3,8 +3,11 @@
 module media_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
     parameter integer ENABLE_MIDI = 0,
+    parameter integer SPLIT_MIDI_JOBS = 0,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
+    parameter integer DDR_PROGRAM = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
@@ -45,7 +48,7 @@ module media_audio_pipeline #(
     input wire switch_valid, output wire switch_ready,
     input wire [63:0] switch_expected, switch_revision,
     input wire switch_region,
-    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_jobs, switch_buffers,
+    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_buffers,
     input wire [43:0] switch_future,
     output wire switch_response_valid, input wire switch_response_ready,
     output wire switch_response_error,
@@ -56,7 +59,7 @@ module media_audio_pipeline #(
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
-    input wire [31:0] run_chunk_frames, input wire [31:0] run_job_budget,
+    input wire [31:0] run_chunk_frames,
     input wire [31:0] run_buffers, input wire [31:0] run_inputs, input wire [31:0] run_outputs,
     input wire job_enable, output wire busy, output wire done,
     output wire [7:0] error_code, output wire [1:0] error_stage,
@@ -100,7 +103,16 @@ module media_audio_pipeline #(
     input wire memory_meta_read_valid, output wire memory_meta_read_ready,
     input wire memory_meta_response_valid, output wire memory_meta_response_ready,
     input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
-    output wire memory_fault
+    output wire memory_fault,
+    output wire memory_program_valid, input wire memory_program_ready,
+    output wire memory_program_write,
+    output wire [15:0] memory_program_address, output wire [31:0] memory_program_count,
+    output wire [31:0] memory_program_write_data,
+    output wire memory_program_write_valid, input wire memory_program_write_ready,
+    input wire memory_program_read_valid, output wire memory_program_read_ready,
+    input wire [31:0] memory_program_read_data,
+    input wire memory_program_response_valid, output wire memory_program_response_ready,
+    input wire memory_program_response_error
 );
     wire pipeline_busy, pipeline_ready, state_cfg_ready, sample_cfg_ready;
     wire pipeline_done;
@@ -154,9 +166,10 @@ module media_audio_pipeline #(
     assign sync_event_valid = unused_sync_event;
     assign sync_event_data = unused_sync_data;
     audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .LIVE_LOADING(LIVE_LOADING), .PROGRAM_REGIONS(PROGRAM_REGIONS),
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .READ_HINT_DEPTH(READ_HINT_DEPTH),
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .DDR_PROGRAM(DDR_PROGRAM), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .READ_HINT_DEPTH(READ_HINT_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
-        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1), .ENABLE_MIDI(ENABLE_MIDI)
+        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1), .ENABLE_MIDI(ENABLE_MIDI),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS), .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH)
     ) pipeline (
         .midi_job_valid(midi_job_valid), .midi_job_ready(midi_job_ready), .midi_job_data(midi_job_data),
         .midi_job_done(midi_job_done), .midi_job_error(midi_job_error), .midi_error_code(midi_error_code),
@@ -165,13 +178,13 @@ module media_audio_pipeline #(
         .clk(clk), .reset(reset), .run_valid(run_valid && internal_ready && !store_cmd_valid && (LIVE_LOADING != 0 || !store_cfg_valid)), .run_ready(pipeline_ready),
         .switch_valid(switch_valid), .switch_ready(switch_ready), .switch_expected(switch_expected), .switch_revision(switch_revision),
         .switch_region(switch_region), .switch_instructions(switch_instructions), .switch_sync_count(switch_sync_count),
-        .switch_states(switch_states), .switch_jobs(switch_jobs), .switch_buffers(switch_buffers),
+        .switch_states(switch_states), .switch_buffers(switch_buffers),
         .switch_future(switch_future),
         .switch_response_valid(switch_response_valid), .switch_response_ready(switch_response_ready),
         .switch_response_error(switch_response_error), .switch_first_frame(switch_first_frame), .active_revision(active_revision),
         .handoff_request(handoff_request), .handoff_complete(fence_issued && internal_done && store_error_code == 0),
         .run_instruction_count(run_instruction_count), .run_sync_count(run_sync_count), .run_program_region(run_program_region), .run_state_count(run_state_count),
-        .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
+        .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_buffers(run_buffers),
         .capture_credits(capture_credits),
         .run_inputs(run_inputs), .run_outputs(run_outputs), .job_enable(job_enable),
         .busy(pipeline_busy), .done(pipeline_done), .error_code(error_code), .error_stage(error_stage),
@@ -195,7 +208,21 @@ module media_audio_pipeline #(
         .media_write_valid(job_write_valid), .media_write_ready(job_write_ready), .media_write_data(job_write_data),
         .media_read_valid(job_read_valid), .media_read_ready(job_read_ready), .media_read_data(store_sample),
         .media_hint_valid(hint_valid), .media_hint_ready(hint_ready), .media_hint_view(hint_view),
-        .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
+        .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count),
+        .memory_program_valid(memory_program_valid),
+        .memory_program_ready(memory_program_ready),
+        .memory_program_write(memory_program_write),
+        .memory_program_address(memory_program_address),
+        .memory_program_count(memory_program_count),
+        .memory_program_write_data(memory_program_write_data),
+        .memory_program_write_valid(memory_program_write_valid),
+        .memory_program_write_ready(memory_program_write_ready),
+        .memory_program_read_valid(memory_program_read_valid),
+        .memory_program_read_ready(memory_program_read_ready),
+        .memory_program_read_data(memory_program_read_data),
+        .memory_program_response_valid(memory_program_response_valid),
+        .memory_program_response_ready(memory_program_response_ready),
+        .memory_program_response_error(memory_program_response_error)
     );
 
     media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .CAPTURE_FRAMES(MAX_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (

@@ -46,7 +46,15 @@ def generate():
             text += "    "+prefix+port+";\n"
         text += "    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;\n"
         text += "    wire [31:0] physical_base = PHYSICAL_BASE;\n"
-        text += f"    {name} #(\n        "+",\n        ".join(f".{p}({p})" for p in param_names)+") core (.*);\n"
+        core_ports = ".*"
+        if name == 'media_audio_pipeline':
+            core_ports += ", " + ", ".join(
+                f".{n}(media_{n})" for p, n in private if n.startswith('memory_meta_'))
+            for p, n in private:
+                if n.startswith('memory_meta_'):
+                    prefix = re.sub(r"(?:input|output)\s+(?:wire|reg)", "wire", p)
+                    text += "    "+prefix+"media_"+n+";\n"
+        text += f"    {name} #(\n        "+",\n        ".join(f".{p}({p})" for p in param_names)+f") core ({core_ports});\n"
         if name == 'chunk_memory':
             text += """    generate if (BURST_MEMORY != 0) begin : bursts
         chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.MAX_WORDS(32'(CHUNK_FRAMES))) memory_endpoint (.arena_base(memory_arena_base),.*);
@@ -54,16 +62,47 @@ def generate():
         wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
         assign memory_write_ready = 0;
         assign memory_read_valid = 0;
-        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),
+            .memory_record(1'b0), .memory_write_record(128'b0), .memory_read_record(), .*);
     end endgenerate
 endmodule
 """
         else:
             text += "    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;\n"
-            text += "    initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,\"DDR arena exceeds AXI address range\");\n"
+            bytes_used = "STORAGE_WORDS*4"
             if name == 'media_audio_pipeline':
-                text += "    initial if (STORAGE_WORDS*4 > PHYSICAL_BYTES_LIMIT) $fatal(1,\"DDR arena exceeds reserved memory\");\n"
-            text += "    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);\nendmodule\n"
+                text += """    localparam [63:0] PROGRAM_OFFSET = ((STORAGE_WORDS*4+63)/64)*64;
+    localparam [63:0] TOTAL_BYTES = DDR_PROGRAM != 0
+        ? PROGRAM_OFFSET + 64'(PROGRAM_REGIONS)*64'(PROGRAM_DEPTH)*16
+        : STORAGE_WORDS*4;
+    initial if (TOTAL_BYTES > PHYSICAL_BYTES_LIMIT) $fatal(1,"DDR arena exceeds reserved memory");
+    initial if (DDR_PROGRAM != 0 && BURST_MEMORY == 0) $fatal(1,"DDR program requires burst memory");
+"""
+                bytes_used = "TOTAL_BYTES"
+                meta_ports = [(p, n) for p, n in private if n.startswith('memory_meta_')]
+                text += "    generate if (DDR_PROGRAM != 0) begin : ddr_program\n"
+                text += "        program_axi_mux program_bus (\n            .clk(clk), .reset(reset),\n"
+                connections = []
+                for _, n in meta_ports:
+                    port = n.removeprefix('memory_meta_')
+                    media = f"media_{n}"
+                    program = f"memory_program_{port}"
+                    if port == 'address':
+                        program = "memory_arena_base + PROGRAM_OFFSET + {44'b0,memory_program_address,4'b0}"
+                    connections.append(f"            .media_{port}({media}), .program_{port}({program}), .memory_{port}({n})")
+                text += ",\n".join(connections) + "\n        );\n"
+                text += "    end else begin : local_program\n"
+                for p, n in meta_ports:
+                    dst, src = (n, f"media_{n}") if p.startswith("output") else (f"media_{n}", n)
+                    text += f"        assign {dst} = {src};\n"
+                for p, n in private:
+                    if n.startswith('memory_program_') and p.startswith("input"):
+                        text += f"        assign {n} = 0;\n"
+                unused = ",".join(n for p, n in private if n.startswith('memory_program_') and p.startswith("output"))
+                text += "        wire unused_program = &{1'b0," + unused + "};\n"
+                text += "    end endgenerate\n"
+            text += f"    initial if ({{32'b0,PHYSICAL_BASE}}+{bytes_used} > 64'h100000000) $fatal(1,\"DDR arena exceeds AXI address range\");\n"
+            text += f"    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes({bytes_used}),.sample_bytes(arena_bytes),.*);\nendmodule\n"
         result[HERE/"rtl"/f"{name}_axi.sv"] = text
     return result
 

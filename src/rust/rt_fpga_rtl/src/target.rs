@@ -1,10 +1,12 @@
 //! Lower logical programs to packed RTL instructions and configuration RAM images.
 use crate::{bits::Bits, component};
-use alloc::{vec, vec::Vec};
+use alloc::{collections::BTreeMap, vec, vec::Vec};
 use rt_fpga_compiler::{
     CompileError, Identity, InitialValue, LogicalStateProgram, Operation, ProgramLimits, Resource,
     Resources, StateProgramTarget,
 };
+#[path = "target_midi.rs"]
+mod midi;
 
 pub(crate) const COMPOSITE_LOOP: u64 = 1 << 45;
 
@@ -96,6 +98,7 @@ pub struct CompiledProgram {
     pub bindings: Vec<Binding>,
     pub quantum: u32,
     pub chunk_frames: u32,
+    /// Number of loop visits in the stream, excluding inline schedule rows.
     pub sync_count: usize,
     pub jobs_per_quantum: u32,
     pub resources: Resources,
@@ -109,13 +112,221 @@ fn id(value: Identity) -> component::Identity {
 fn operand(value: u32) -> Result<u16, CompileError> {
     u16::try_from(value).map_err(|_| CompileError::InvalidProgram)
 }
+fn encode(instruction: component::Instruction) -> Result<Bits, CompileError> {
+    component::instruction_words(instruction)
+        .map(|words| Bits::from(words).resized(96))
+        .map_err(|_| CompileError::InvalidProgram)
+}
+
+fn append_work(instructions: &mut Vec<Bits>, work: Vec<Bits>, interleave: bool) {
+    let is_midi = |word: &Bits| matches!(word.0[0] & 0xff, 0x0e..=0x15);
+    if !interleave || !work.iter().any(is_midi) || work.iter().all(is_midi) {
+        instructions.extend(work);
+        return;
+    }
+    let (midi, audio): (Vec<_>, Vec<_>) = work.into_iter().partition(is_midi);
+    let mut midi = midi.into_iter();
+    for job in audio {
+        instructions.push(job);
+        instructions.extend(midi.next());
+    }
+    instructions.extend(midi);
+}
+
+#[derive(Clone, Copy, Default)]
+struct Access {
+    read_slot: usize,
+    write_slot: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Dependency {
+    AudioScratch(u16),
+    AudioView(u64),
+    Ramp(u16),
+    History(u16),
+    AudioOutput(u16),
+    MidiList(u16),
+    MidiSequence(u16),
+    MidiInputPort(u16),
+    MidiPackets,
+}
+
+struct WorkSchedule {
+    sync_slot_by_loop: Vec<usize>,
+    scratch: Vec<Access>,
+    other: BTreeMap<Dependency, Access>,
+    midi_prepare_slot: usize,
+}
+
+impl WorkSchedule {
+    fn access(&mut self, dependency: Dependency) -> &mut Access {
+        match dependency {
+            Dependency::AudioScratch(id) => &mut self.scratch[usize::from(id)],
+            other => self.other.entry(other).or_default(),
+        }
+    }
+
+    fn slot(&mut self, instruction: component::Instruction, state: &[Bits]) -> usize {
+        use Dependency::*;
+        use component::Instruction::*;
+        if let MidiMergeOutput { sources, count, .. } = instruction {
+            let reads = sources.map(|source| Some(MidiList(u16::from(source))));
+            return self.reserve_slot(0, &reads[..usize::from(count)], &[Some(MidiPackets)]);
+        }
+        let synced = |id: component::Identity| self.sync_slot_by_loop[id.slot as usize];
+        let media_view = |address: u16| AudioView(state[usize::from(address)].get(0, 64));
+        let (slot, reads, writes) = match instruction {
+            ProcessInput { destination, .. } | ProcessSilence { destination } => {
+                (0, [None, None], [Some(AudioScratch(destination)), None])
+            }
+            ProcessLogicalPlayback {
+                loop_id,
+                view,
+                destination,
+            } => (
+                synced(loop_id),
+                [Some(media_view(view)), None],
+                [Some(AudioScratch(destination)), None],
+            ),
+            ProcessMix {
+                left,
+                right,
+                destination,
+            } => (
+                0,
+                [Some(AudioScratch(left)), Some(AudioScratch(right))],
+                [Some(AudioScratch(destination)), None],
+            ),
+            ProcessGain {
+                ramp,
+                source,
+                destination,
+            } => (
+                0,
+                [Some(AudioScratch(source)), None],
+                [Some(AudioScratch(destination)), Some(Ramp(ramp))],
+            ),
+            ProcessInputMonitor { ramp, recorder } => (
+                recorder.map_or(0, synced),
+                [Some(Ramp(ramp)), None],
+                [Some(Ramp(ramp)), None],
+            ),
+            ProcessHistorySmoothing {
+                loop_id,
+                history,
+                source,
+                destination,
+                ..
+            } => (
+                synced(loop_id),
+                [Some(AudioScratch(source)), None],
+                [Some(AudioScratch(destination)), Some(History(history))],
+            ),
+            ProcessLogicalCapture {
+                loop_id,
+                view,
+                source,
+            } => (
+                synced(loop_id),
+                [Some(AudioScratch(source)), None],
+                [Some(media_view(view)), None],
+            ),
+            ProcessOutput { source, port } => (
+                0,
+                [Some(AudioScratch(source)), None],
+                [Some(AudioOutput(port)), None],
+            ),
+            MidiPrepareCapture { loop_id, sequence } => (
+                synced(loop_id),
+                // Opening a take refreshes its tracker against the current output state.
+                [Some(MidiPackets), None],
+                [Some(MidiSequence(sequence)), None],
+            ),
+            MidiState {
+                loop_id, sequence, ..
+            } => (
+                synced(loop_id),
+                [Some(MidiSequence(u16::from(sequence))), None],
+                [Some(MidiPackets), None],
+            ),
+            MidiInput { port, destination } => (
+                // A new take snapshots its runtime-bound input before observing this quantum.
+                self.midi_prepare_slot,
+                [None, None],
+                [Some(MidiList(destination)), Some(MidiInputPort(port))],
+            ),
+            MidiPlayback {
+                loop_id,
+                sequence,
+                destination,
+                ..
+            } => (
+                synced(loop_id),
+                [Some(MidiSequence(u16::from(sequence))), None],
+                [Some(MidiList(u16::from(destination))), None],
+            ),
+            MidiAppend {
+                loop_id,
+                sequence,
+                source,
+            } => (
+                synced(loop_id),
+                [Some(MidiList(source)), None],
+                [Some(MidiSequence(sequence)), None],
+            ),
+            MidiMerge {
+                left,
+                right,
+                destination,
+            } => (
+                0,
+                [Some(MidiList(left)), Some(MidiList(right))],
+                [Some(MidiList(destination)), None],
+            ),
+            MidiOutput { source, .. } => {
+                (0, [Some(MidiList(source)), None], [Some(MidiPackets), None])
+            }
+            _ => unreachable!("only instructions lowered from a logical program are scheduled"),
+        };
+        let slot = self.reserve_slot(slot, &reads, &writes);
+        if matches!(instruction, MidiPrepareCapture { .. }) {
+            self.midi_prepare_slot = self.midi_prepare_slot.max(slot);
+        }
+        slot
+    }
+
+    fn reserve_slot(
+        &mut self,
+        mut slot: usize,
+        reads: &[Option<Dependency>],
+        writes: &[Option<Dependency>],
+    ) -> usize {
+        for &resource in reads.iter().flatten() {
+            slot = slot.max(self.access(resource).write_slot);
+        }
+        for &resource in writes.iter().flatten() {
+            let access = self.access(resource);
+            slot = slot.max(access.read_slot).max(access.write_slot);
+        }
+        for &resource in reads.iter().flatten() {
+            let access = self.access(resource);
+            access.read_slot = access.read_slot.max(slot);
+        }
+        for &resource in writes.iter().flatten() {
+            self.access(resource).write_slot = slot;
+        }
+        slot
+    }
+}
+
 impl StateProgramTarget for RtlTarget<'_> {
     type CompiledProgram = CompiledProgram;
     fn limits(&self) -> ProgramLimits {
         ProgramLimits {
             instructions: self.capacities.instructions.min(65535),
             state_values: self.capacities.state_values.min(65535),
-            jobs: self.capacities.jobs.min(65535),
+            jobs: u32::MAX,
             buffers: self.capacities.buffers.min(65535),
             history_slots: self.capacities.history_slots.min(65535),
             input_ports: self.capacities.input_ports.min(65535),
@@ -125,6 +336,25 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
     }
     fn build(&self, logical: &LogicalStateProgram) -> Result<CompiledProgram, CompileError> {
+        self.build_with_midi_merge_output(logical, true)
+    }
+}
+
+impl RtlTarget<'_> {
+    pub fn build_with_midi_merge_output(
+        &self,
+        logical: &LogicalStateProgram,
+        merge_output: bool,
+    ) -> Result<CompiledProgram, CompileError> {
+        self.build_with_midi_options(logical, merge_output, true)
+    }
+
+    pub fn build_with_midi_options(
+        &self,
+        logical: &LogicalStateProgram,
+        merge_output: bool,
+        interleave: bool,
+    ) -> Result<CompiledProgram, CompileError> {
         logical.validate(self.limits())?;
         if usize::from(self.state_base) + logical.initial_state.len()
             > self.limits().state_values as usize
@@ -170,8 +400,24 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
         let capture_views = u16::try_from(recording_views.len())
             .map_err(|_| CompileError::Capacity(Resource::Jobs))?;
-        let mut instructions = Vec::new();
-        for loop_id in &logical.sync_pass {
+        let sync_count = logical.sync_pass.len();
+        let loop_table_size = logical
+            .sync_pass
+            .iter()
+            .map(|id| id.slot as usize + 1)
+            .max()
+            .unwrap_or(0);
+        let mut schedule = WorkSchedule {
+            sync_slot_by_loop: vec![0; loop_table_size],
+            scratch: vec![Access::default(); logical.resources.buffers as usize],
+            other: BTreeMap::new(),
+            midi_prepare_slot: 0,
+        };
+        let mut sync_instructions = Vec::with_capacity(sync_count);
+        let mut work = vec![Vec::new(); sync_count + 1];
+        for (index, loop_id) in logical.sync_pass.iter().enumerate() {
+            schedule.sync_slot_by_loop[loop_id.slot as usize] = index + 1;
+            let mut rows = Vec::new();
             let mut bits = Bits::zero(96);
             bits.set(8, 16, u64::from(operand(loop_id.slot)?)).set(
                 24,
@@ -196,11 +442,11 @@ impl StateProgramTarget for RtlTarget<'_> {
                 let handoff_only = logical
                     .composite_parents(*loop_id)
                     .all(|(_, child)| child.spans.is_empty());
-                bits.set(0, 8, 0x14)
+                bits.set(0, 8, 0x16)
                     .set(56, 16, u64::from(source))
                     .set(72, 16, u64::from(words))
                     .set(88, 1, u64::from(handoff_only));
-                instructions.push(bits);
+                rows.push(bits);
                 for (parent, child) in logical.composite_parents(*loop_id) {
                     let span_count = child.spans.len() as u64;
                     let mut header = Bits::zero(96);
@@ -217,7 +463,7 @@ impl StateProgramTarget for RtlTarget<'_> {
                                 .previous_play_at_wrap
                                 .map_or(0, |playing| 2 + u64::from(playing)),
                         );
-                    instructions.push(header);
+                    rows.push(header);
                     for span in &child.spans {
                         let mut row = Bits::zero(96);
                         row.set(0, 32, u64::from(span.start))
@@ -231,77 +477,103 @@ impl StateProgramTarget for RtlTarget<'_> {
                                     rt_fpga_compiler::SpanMode::Record => 3,
                                 },
                             );
-                        instructions.push(row);
+                        rows.push(row);
                     }
                 }
+                sync_instructions.push(rows);
                 continue;
             }
             bits.set(0, 8, 12)
                 .set(56, 16, u64::from(source))
                 .set(72, 1, 1);
-            instructions.push(bits);
+            rows.push(bits);
+            sync_instructions.push(rows);
         }
-        let sync_count = instructions.len();
+        use rt_fpga_compiler::MidiOperation as M;
+        let fusion = merge_output.then(|| midi::merge_outputs(&logical.work_pass));
+        let byte = |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
         for op in &logical.work_pass {
+            let setup = match *op {
+                Operation::MidiData(M::Capture {
+                    loop_id, sequence, ..
+                }) => component::Instruction::MidiPrepareCapture {
+                    loop_id: id(loop_id),
+                    sequence,
+                },
+                Operation::MidiData(M::State {
+                    loop_id,
+                    sequence,
+                    input,
+                    outputs,
+                    channels,
+                }) => component::Instruction::MidiState {
+                    loop_id: id(loop_id),
+                    sequence: byte(sequence)?,
+                    input: byte(input)?,
+                    outputs,
+                    channels,
+                },
+                _ => continue,
+            };
+            let slot = schedule.slot(setup, &state);
+            work[slot].push(encode(setup)?);
+        }
+        for (index, op) in logical.work_pass.iter().enumerate() {
+            if fusion
+                .as_ref()
+                .is_some_and(|plan| plan[index] == midi::Lowering::Remove)
+            {
+                continue;
+            }
             let instruction = match *op {
                 Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
-                Operation::MidiData(operation) => {
-                    use rt_fpga_compiler::MidiOperation as M;
-                    let byte =
-                        |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
-                    match operation {
-                        M::State {
-                            loop_id,
-                            sequence,
-                            input,
-                            outputs,
-                            channels,
-                        } => component::Instruction::MidiState {
-                            loop_id: id(loop_id),
-                            sequence: byte(sequence)?,
-                            input: byte(input)?,
-                            outputs,
-                            channels,
-                        },
-                        M::Input { port, destination } => {
-                            component::Instruction::MidiInput { port, destination }
-                        }
-                        M::Capture {
-                            loop_id,
-                            sequence,
-                            source,
-                        } => component::Instruction::MidiCapture {
-                            loop_id: id(loop_id),
-                            sequence,
-                            source,
-                        },
-                        M::Playback {
-                            loop_id,
-                            sequence,
-                            cursor,
-                            channels,
-                            destination,
-                        } => component::Instruction::MidiPlayback {
-                            loop_id: id(loop_id),
-                            sequence: byte(sequence)?,
-                            cursor: byte(cursor)?,
-                            channels,
-                            destination: byte(destination)?,
-                        },
-                        M::Merge {
-                            left,
-                            right,
-                            destination,
-                        } => component::Instruction::MidiMerge {
-                            left,
-                            right,
-                            destination,
-                        },
-                        M::Output { source, port } => {
-                            component::Instruction::MidiOutput { source, port }
-                        }
+                Operation::MidiData(operation) => match operation {
+                    M::State { .. } => continue,
+                    M::Input { port, destination } => {
+                        component::Instruction::MidiInput { port, destination }
                     }
-                }
+                    M::Capture {
+                        loop_id,
+                        sequence,
+                        source,
+                    } => component::Instruction::MidiAppend {
+                        loop_id: id(loop_id),
+                        sequence,
+                        source,
+                    },
+                    M::Playback {
+                        loop_id,
+                        sequence,
+                        cursor,
+                        channels,
+                        destination,
+                    } => component::Instruction::MidiPlayback {
+                        loop_id: id(loop_id),
+                        sequence: byte(sequence)?,
+                        cursor: byte(cursor)?,
+                        channels,
+                        destination: byte(destination)?,
+                    },
+                    M::Merge {
+                        left,
+                        right,
+                        destination,
+                    } => component::Instruction::MidiMerge {
+                        left,
+                        right,
+                        destination,
+                    },
+                    M::Output { source, port } => match fusion.as_ref().map(|plan| plan[index]) {
+                        Some(midi::Lowering::Output { sources, count }) => {
+                            component::Instruction::MidiMergeOutput {
+                                sources,
+                                count,
+                                port,
+                            }
+                        }
+                        _ => component::Instruction::MidiOutput { source, port },
+                    },
+                },
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,
                 },
@@ -377,13 +649,18 @@ impl StateProgramTarget for RtlTarget<'_> {
                     port: operand(port)?,
                 },
             };
-            instructions.push(
-                Bits::from(
-                    component::instruction_words(instruction)
-                        .map_err(|_| CompileError::InvalidProgram)?,
-                )
-                .resized(96),
-            );
+            let slot = schedule.slot(instruction, &state);
+            work[slot].push(encode(instruction)?);
+        }
+        let mut work = work.into_iter();
+        let mut instructions = Vec::with_capacity(sync_count + logical.work_pass.len());
+        append_work(&mut instructions, work.next().unwrap(), interleave);
+        for (sync, work) in sync_instructions.into_iter().zip(work) {
+            instructions.extend(sync);
+            append_work(&mut instructions, work, interleave);
+        }
+        if instructions.len() > self.limits().instructions as usize {
+            return Err(CompileError::Capacity(Resource::Instructions));
         }
         let loops = logical
             .loops

@@ -11,7 +11,7 @@ pub fn design(depths: [u64; 3]) -> Design {
     let root = crate::root();
     Design::new(
         "state_processor",
-        "sp_ram sp_job_fifo sp_engine state_processor"
+        "sp_ram sp_job_fifo sp_program_prefetch sp_engine state_processor"
             .split_whitespace()
             .map(|n| root.join(format!("fpga/state_processor/rtl/{n}.sv")))
             .collect(),
@@ -230,17 +230,6 @@ fn instruction_vectors(d: &mut State, s: &mut Sim<'_>) {
         0,
         Some(after),
         None,
-        32,
-    );
-    vector(
-        d,
-        s,
-        gain,
-        vec![ramp(100, 0)],
-        vec![],
-        1,
-        None,
-        Some(d.depths[2] + 1),
         32,
     );
     // Logical loop reads use an independently delayed record slave.

@@ -99,7 +99,7 @@ if {$native_pcm} {
 }
 if {$geometry eq "looping"} {
     # Match the production image packer and leave space for media metadata in HP0 DDR.
-    set_property -dict [list CONFIG.PROGRAM_DEPTH 1024 CONFIG.STATE_DEPTH 512 CONFIG.JOB_DEPTH 1024 \
+    set_property -dict [list CONFIG.PROGRAM_DEPTH 1024 CONFIG.DDR_PROGRAM 1 CONFIG.STATE_DEPTH 512 CONFIG.JOB_DEPTH 1024 \
         CONFIG.BUFFERS 512 CONFIG.VIEWS 512 CONFIG.CHUNK_FRAMES 32 CONFIG.BLOCK_CHUNKS 32 \
         CONFIG.SLOTS [expr {31*1024*1024/32}]] $core
 }

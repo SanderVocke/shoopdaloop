@@ -47,7 +47,9 @@ def prepare(output, revision, mhz, profile, stage='route', overrides=None, worki
     if set(overrides)-declared:
         raise ValueError(f'Unknown top parameters: {sorted(set(overrides)-declared)}')
     parameters.update(overrides)
-    for used, capacity in [('compiled_instructions', 'PROGRAM_DEPTH'), ('jobs_per_quantum', 'JOB_DEPTH'),
+    if working_tree and 'DDR_PROGRAM' in declared:
+        parameters.setdefault('DDR_PROGRAM', 1)
+    for used, capacity in [('compiled_instructions', 'PROGRAM_DEPTH'),
                            ('audio_buffers', 'BUFFERS'), ('state_values', 'STATE_DEPTH')]:
         if config[used] > parameters[capacity]:
             raise ValueError(f'{used} exceeds {capacity}')

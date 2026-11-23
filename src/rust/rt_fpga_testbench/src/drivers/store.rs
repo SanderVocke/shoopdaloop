@@ -81,6 +81,15 @@ impl Store {
     pub fn port(&self, name: &str) -> String {
         format!("{}{name}", self.prefix)
     }
+    pub fn reserve_ddr_program(&self, depth: usize, regions: usize) {
+        let words = self.geometry.words_with_program(depth, regions);
+        let mut memory = self.memory.borrow_mut();
+        let crate::memory::Backend::Axi(bus) = &mut memory.backend else {
+            panic!("DDR program requires an AXI memory model");
+        };
+        bus.words.resize(words, 0);
+        memory.words = words;
+    }
     pub fn set(&self, s: &mut Sim<'_>, values: &[(&str, u64)]) {
         for &(name, v) in values {
             s.model.set(&self.port(name), v);
@@ -149,7 +158,15 @@ impl Store {
         });
         assert_eq!(self.get(s, "busy"), 0);
         if !self.loaded {
-            Memory::fill(&self.memory, s, 0xa5a5a5a5);
+            let media_words = self.geometry.words();
+            if self.memory.borrow().words == media_words {
+                Memory::fill(&self.memory, s, 0xa5a5a5a5);
+            } else {
+                let crate::memory::Backend::Axi(bus) = &mut self.memory.borrow_mut().backend else {
+                    panic!("Separate program memory requires an AXI memory model");
+                };
+                bus.words[..media_words].fill(0xa5a5a5a5);
+            }
             self.loaded = true;
         }
     }

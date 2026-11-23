@@ -1,46 +1,11 @@
-use rt_fpga_testbench::timing::{dram::Snapshot, Timing, Token};
-use std::{cell::RefCell, rc::Rc};
-
-pub struct Port {
-    pub controller: Rc<RefCell<Box<dyn Timing>>>,
-    pub advances_clock: bool,
-}
-impl Timing for Port {
-    fn native_bytes(&self) -> u64 {
-        self.controller.borrow().native_bytes()
-    }
-    fn advance(&mut self) {
-        if self.advances_clock {
-            self.controller.borrow_mut().advance();
-        }
-    }
-    fn submit(&mut self, address: u64, write: bool) -> Option<Token> {
-        self.controller.borrow_mut().submit(address, write)
-    }
-    fn ready(&self, token: Token) -> bool {
-        self.controller.borrow().ready(token)
-    }
-    fn reset(&mut self) {
-        if self.advances_clock {
-            self.controller.borrow_mut().reset();
-        }
-    }
-    fn report(&mut self, finalize: bool) -> serde_json::Value {
-        self.controller.borrow_mut().report(finalize)
-    }
-    fn bus_snapshot(&self) -> Option<Snapshot> {
-        self.controller.borrow().bus_snapshot()
-    }
-    fn bus_utilization(&self, start: Snapshot, end: Snapshot) -> Option<serde_json::Value> {
-        self.controller.borrow().bus_utilization(start, end)
-    }
-}
+pub use rt_fpga_testbench::timing::SharedPort as Port;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rt_fpga_testbench::timing::Fixed;
+    use rt_fpga_testbench::timing::{Fixed, Timing};
     use shoop_wasm_test_support::shoop_test;
+    use std::{cell::RefCell, rc::Rc};
 
     #[shoop_test(no_wasm = "native RTL timing model")]
     fn ideal_service_is_ready_without_advancing_either_axi_port() {

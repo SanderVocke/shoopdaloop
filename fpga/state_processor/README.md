@@ -40,9 +40,10 @@ The FIFO count includes the prefetched output head.
 ## Integrated loop instructions
 
 Opcode `0x0c` is `ProcessLoop`: arg0 is the loop slot and arg1/arg2 are its
-generation halves; the remaining bits are zero. `run_instruction_count` counts
-the combined sync/audio program. `run_sync_count` is the length of its prefix.
-Every prefix instruction processes a loop. Loop instructions are forbidden afterward.
+generation halves; the remaining bits optionally encode the inline sync source.
+`run_instruction_count` counts every program row. `run_sync_count` counts
+`ProcessLoop` and `ProcessCompositeChild` visits. Work instructions can run
+between loop visits.
 The compiler supplies canonical source-before-dependent order. Per-loop frame
 stamps reject duplicate visits, unprocessed sources and stale render state.
 Generation and capacity checks precede RAM addressing. Self-sync is handled
@@ -57,9 +58,10 @@ matching the Rust reference's primitive-loop profile and outcome semantics.
 
 Before advancing, the instruction saves render position and first-capture
 status. Content length is shared with the render view because advancement does
-not change it. The audio section consumes that snapshot; next-boundary position/capture
-length have already advanced. `sync_frame` advances after the final prefix
-instruction, before audio execution. No SP operation runs after JP. Managed
+not change it. Work instructions consume that loop's snapshot while its
+next-boundary position and capture length are already available.
+`sync_frame` advances after the last `ProcessLoop`. Render reads validate
+against the latched start frame for the entire run. Managed
 execution failures latch until reset; computed-ahead state is not rolled back.
 Reset clears control/frame state but retains RAM; reload loop records before
 resuming managed execution. Supported sync quantum sizes are 1/16/32/64/128.
@@ -142,7 +144,7 @@ all ones when the previous render was stopped. Word 6 holds the unit in frames.
 Word 1 bits 42–45 hold repeat wait, authored capture ownership, composite-child
 timing and the composite timing-slot marker.
 
-`ProcessCompositeChild` (opcode `0x14`) uses the usual child slot and generation.
+`ProcessCompositeChild` (opcode `0x16`) uses the usual child slot and generation.
 Bits [71:56] name its sync source, with `0xffff` for no source. Bits [87:72]
 give the number of following data rows. Each parent starts with a header row
 containing its slot [15:0], generation [47:16], span count with low bits
@@ -151,7 +153,7 @@ when authored recording is present. The span rows follow that header within
 the bounds of the instruction's row count. Each 96-bit span row contains the
 inclusive start frame [31:0], exclusive end frame [63:32], and mode [65:64]
 (1 Play, 2 Stop, 3 Record). The positions are relative to the parent's pass.
-Every row counts toward program and sync prefix lengths. Normal instruction
+Schedule rows count toward the program length. The child visit counts once toward `run_sync_count`. Normal instruction
 fetch skips the data rows.
 
 The compiler puts parents in priority order and visits each parent before its
@@ -197,16 +199,14 @@ The configuration port is an idle-only request interface:
   configuration response is pending.
 
 A quantum starts when `run_valid && run_ready`. This latches
-`run_instruction_count`, `run_state_count`, `run_quantum`, and `run_chunk_frames` and checks
-`run_job_budget` against the available FIFO capacity. These inputs are unsigned
+`run_instruction_count`, `run_state_count`, `run_quantum`, and `run_chunk_frames`. These inputs are unsigned
 32-bit values. `run_state_count` is the logical length of the state vector, which
 may be smaller than the physical RAM. Only the first `run_instruction_count`
 program entries execute. Counts exceeding physical capacities are rejected.
 
-Admission first requires an empty FIFO and at least `run_job_budget` free entries,
-matching Rust queue-capacity admission. Use the compiled `Program::jobs_per_quantum` as the
-budget. A budget understated by a hand-written program can also cause a queue-full
-error during execution. Such a failure retains earlier jobs and state writes.
+Admission requires an empty FIFO. A full FIFO during execution stalls the
+engine in streaming mode (`STREAM_JOBS=1`). The standalone mode reports a
+queue-full error and retains earlier jobs and state writes.
 The quantum must be positive and an integral number of chunks. The RTL chunk
 size is a positive power of two. Media position/length words are chunk indices
 and counts. Arithmetic ramp counters retain samples. Shared loop records still
@@ -232,8 +232,9 @@ identifies the current/failing instruction and equals the instruction count afte
 successful execution. On an admission rejection it is zero.
 
 Jobs transfer when `job_valid && job_ready`. The descriptor remains stable while
-valid and stalled. FIFO draining is blocked while busy, so the external consumer
-sees only a completed or failed run's job prefix. After completion, drain the
+valid and stalled. Streaming allows the consumer to drain the FIFO while the
+engine is busy. In standalone mode, the consumer sees the queued jobs after
+the run completes. After completion, drain the
 FIFO before starting the next run. `queued_jobs` reports its current occupancy.
 `done` means job generation and state updates have completed; it does not mean
 the job processor has executed the jobs. FIFO head prefetch can add latency before
@@ -331,7 +332,7 @@ these requests only in its settled phase. The
 engine checks presence and generation, then reads the view operand when needed.
 Playback uses the same `plays()` predicate as Rust, including silence at a held
 repeat endpoint. Capture emits only in recording mode. On a new take it first emits BeginCapture,
-then Capture; include the extra preparation job in the static queue budget.
+then Capture.
 In explicit-record mode SP does not write this port or advance the loop clock. A standalone shared-memory client
 must supply responses; backpressure pauses the engine.
 

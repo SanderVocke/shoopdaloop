@@ -33,7 +33,7 @@ mode. Debug monitoring and failed-queue draining remain available.
 - `rtl/job_processor.sv`: serial job execution, buffer readiness, sample work.
 - `rtl/jp_sample_ram.sv`: synchronous 32-bit RAM requested as block RAM.
 - `rtl/jp_divider.sv`: shared unsigned 64/32 restoring divider, 64 iterations.
-- `rtl/audio_pipeline.sv`: state execution followed by job execution.
+- `rtl/audio_pipeline.sv`: state and job execution coordinated through a FIFO.
 - `simulate.py`: alias for the Rust/Marlin `audio` regression suite. Shared drivers
   and arithmetic/protocol checks live in `src/rust/rt_fpga_testbench`.
 - `check.sh`: lint and generic/ECP5 synthesis for standalone and combined tops.
@@ -170,14 +170,19 @@ can be outstanding; configuration has priority over a simultaneous run request.
 The combined top retains the original state `cfg_*` port and names sample
 configuration `audio_cfg_*`. Both block while the pipeline is busy. Its run
 command supplies state metadata plus logical buffer and I/O counts. Load inputs
-before each quantum. `state_done` means jobs are queued; overall `done` means
-sample execution finished. Command metadata is latched at acceptance.
+before each quantum. Command metadata is latched at acceptance.
+`JOB_FIFO_DEPTH` defaults to the smaller of `JOB_DEPTH` and 512. Job execution
+can start as soon as the first job is visible. A full FIFO
+stalls state execution until a slot opens. `state_done` marks the end of
+production. Successful overall `done` requires both engines to finish and
+the FIFO to empty.
 
 `buffer_ready` exposes readiness. Host scratch readback is physically allowed
 while idle, but only ready buffers have defined architectural samples.
 `monitor_valid/ready/data` observe actual FIFO transfers. After failure,
 `drain_valid`/`drain_ready` allow inspection of remaining jobs via `monitor_data`.
-Successful runs leave the FIFO empty.
+In concurrent runs, jobs already accepted by the job processor may have
+effects even if the state processor later reports an error.
 
 ### Errors and partial effects
 

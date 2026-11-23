@@ -76,7 +76,6 @@ module host_dispatch #(
     output wire [15:0] switch_instructions,
     output wire [15:0] switch_sync_count,
     output wire [15:0] switch_states,
-    output wire [15:0] switch_jobs,
     output wire [15:0] switch_buffers,
     output wire [43:0] switch_future,
     input wire switch_response_valid,
@@ -125,7 +124,7 @@ module host_dispatch #(
         || ({request[223:208],request[191:176]} == 0 && request[140:129] != 0);
     wire request_extra = |request[HOST_PAYLOAD_WORDS*32-1:320];
     wire executing = phase != IDLE && phase != RESPOND;
-    wire unused_argument_bits = &{1'b0,args[319:304],args[287:272],args[255:240]};
+    wire unused_argument_bits = &{1'b0,args[319:304],args[287:240]};
 
     wire control_expired = control_held && control_cycles >= CONTROL_CYCLES-1;
     wire device_fault = memory_fault || audio_fault || event_overflow || control_expired || host_abort;
@@ -158,7 +157,6 @@ module host_dispatch #(
     assign switch_instructions = args[160 +: 16];
     assign switch_sync_count = args[192 +: 16];
     assign switch_states = args[224 +: 16];
-    assign switch_jobs = args[256 +: 16];
     assign switch_buffers = args[288 +: 16];
     assign switch_future = {args[223:208],args[191:176],args[140:129]};
     assign switch_response_ready = phase == SWITCH_WAIT;

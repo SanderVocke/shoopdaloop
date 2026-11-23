@@ -26,6 +26,50 @@ use shoop_wasm_test_support::shoop_test;
 use std::{cell::RefCell, rc::Rc};
 
 const CAP: [u64; 7] = [64, 32, 64, 16, 16, 1, 2];
+
+#[shoop_test]
+fn ddr_instruction_fault_discards_the_partial_prefetch_and_next_run_recovers() {
+    use rt_fpga_testbench::{
+        drivers::store::{Geometry, Store},
+        memory::Mode,
+    };
+    let geometry = Geometry::new([8, 128, 16], 1);
+    let design = suites::pipeline::design(CAP, &geometry, 64, Mode::Fixed, 1)
+        .parameters(&[("DDR_PROGRAM", 1)]);
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/program-fetch-fault"))
+        .unwrap();
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10000, 0)]);
+    let mut audio = Audio::new(&mut sim, CAP, 219);
+    audio.reset(&mut sim);
+    let mut store = Store::new(&mut sim, geometry, Mode::Fixed, 223, "store_").unwrap();
+    store.reserve_ddr_program(CAP[0] as usize, 1);
+    store.reset(&mut sim);
+    sim.model.set("maintenance_enable", 0);
+    audio.program.load(
+        &mut sim,
+        &json!({
+            "program": {
+                "instructions": [
+                    {"kind": "process_silence", "destination": 0},
+                    {"kind": "process_output", "source": 0, "port": 0}
+                ],
+                "quantum": 16, "chunk_frames": 16, "jobs_per_quantum": 2
+            },
+            "initial_state": {"memory": []},
+            "queue_capacity": CAP[2]
+        }),
+    );
+    audio.buffers = 1;
+    audio.outputs = 1;
+    audio.frames = 16;
+    store.memory.borrow_mut().control.fail_next = true;
+    assert_eq!(audio.execute(&mut sim, &[], false), (1, 4));
+    assert!(audio.consumed().is_empty());
+    assert_eq!(audio.execute(&mut sim, &[], false), (2, 0));
+    assert_eq!(audio.consumed().len(), 2);
+}
+
 fn parameters(d: &mut Audio, image: &ProgramImage) {
     let c = &image.compiled;
     d.frames = u64::from(c.quantum);
@@ -153,6 +197,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     target.state_base = 3;
     let mut limits = target.limits();
     limits.state_values -= 3;
+    limits.jobs = CAP[2] as u32;
     let mut allocator = Allocator::new(limits);
     let logical = programs::sync_smoothing(16);
     let a = allocator.stage(&logical).unwrap();
@@ -425,9 +470,16 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
         drivers::store::{Geometry, Store},
         memory::Mode,
     };
-    for mode in [Mode::Instant, Mode::Fixed] {
+    for (mode, width, ddr_program) in [
+        (Mode::Instant, 64, false),
+        (Mode::Fixed, 64, true),
+        (Mode::Fixed, 32, true),
+    ] {
         let geometry = Geometry::new([8, 128, 16], 1);
-        let mut design = suites::pipeline::design(CAP, &geometry, 64, mode, 1);
+        let mut design = suites::pipeline::design(CAP, &geometry, width, mode, 1);
+        design
+            .parameters
+            .insert("DDR_PROGRAM".into(), u8::from(ddr_program).to_string());
         design.parameters.insert("LIVE_LOADING".into(), "1".into());
         design
             .parameters
@@ -439,6 +491,9 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
         let mut d = Audio::loading(&mut s, CAP, 733);
         d.reset(&mut s);
         let mut store = Store::new(&mut s, geometry, mode, 991, "store_").unwrap();
+        if ddr_program {
+            store.reserve_ddr_program(CAP[0] as usize, 2);
+        }
         store.load(&mut s,&json!({"chunk_frames":16,"chunk_limit":128,"block_chunks":1,"samples":[],"free_chunks":[],
             "views":[{"chunks":[],"frames":0}]}));
         let mut logical = compile(
@@ -466,6 +521,7 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
         target.state_base = 3;
         let mut limits = target.limits();
         limits.state_values -= 3;
+        limits.jobs = CAP[2] as u32;
         let mut allocator = Allocator::new(limits);
         let a = allocator.stage(&logical).unwrap();
         let mut rust = RustTarget::new(&[0]);
@@ -605,6 +661,7 @@ fn looping_workloads_with_thirty_two_frame_chunks_and_dram_timing() {
     const CAPACITY: [u64; 7] = [1024, 512, 1024, Q as u64, 512, 1, 2];
     let geometry = Geometry::new([512, 8192, Q as u64], 32);
     let mut design = suites::pipeline::design(CAPACITY, &geometry, 64, Mode::Dramsim3, 1);
+    design.parameters.insert("DDR_PROGRAM".into(), "1".into());
     design.parameters.insert("LIVE_LOADING".into(), "1".into());
     design
         .parameters
@@ -620,6 +677,7 @@ fn looping_workloads_with_thirty_two_frame_chunks_and_dram_timing() {
         sim.model.set("sync_event_ready", 1);
         let mut store =
             Store::new(&mut sim, geometry.clone(), Mode::Dramsim3, 991, "store_").unwrap();
+        store.reserve_ddr_program(CAPACITY[0] as usize, 2);
         store.load(&mut sim, &json!({"chunk_frames":Q,"chunk_limit":8192,"block_chunks":32,"samples":[],"free_chunks":[],
             "views":vec![json!({"chunks":[], "frames":0}); geometry.views as usize]}));
         let graph = mono::session(
@@ -637,7 +695,8 @@ fn looping_workloads_with_thirty_two_frame_chunks_and_dram_timing() {
                 })
                 .collect::<Vec<_>>(),
         );
-        let limits = RtlTarget::new(CAPACITY, 64, &[]).limits();
+        let mut limits = RtlTarget::new(CAPACITY, 64, &[]).limits();
+        limits.jobs = CAPACITY[2] as u32;
         let logical = compile_with_chunk_frames(
             &graph,
             CompileContext {

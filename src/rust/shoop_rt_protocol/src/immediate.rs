@@ -13,7 +13,6 @@ pub struct SwitchProgram {
     pub instructions: u16,
     pub sync_count: u16,
     pub states: u16,
-    pub jobs: u16,
     pub buffers: u16,
 }
 
@@ -398,7 +397,7 @@ impl CommandRecord {
                 (s.revision >> 32) as u32,
                 u32::from(s.region) | (u32::from(s.instructions) << 16),
                 u32::from(s.sync_count) | (u32::from(s.states) << 16),
-                u32::from(s.jobs) | (u32::from(s.buffers) << 16),
+                u32::from(s.buffers) << 16,
                 0,
                 0,
             ],
@@ -543,7 +542,6 @@ impl CommandRecord {
                 instructions: (self.word(3) >> 16) as u16,
                 sync_count: self.word(4) as u16,
                 states: (self.word(4) >> 16) as u16,
-                jobs: self.word(5) as u16,
                 buffers: (self.word(5) >> 16) as u16,
             }),
             0 => LoopGain(id, f32::from_bits(value)),
@@ -681,7 +679,6 @@ impl Command {
                     && s.region <= 1
                     && s.sync_count <= s.instructions
                     && s.instructions != 0
-                    && s.jobs != 0
             }
             Self::BeginGraph { quantum, loops } => {
                 matches!(quantum, 1 | 16 | 32 | 64 | 128) && loops != 0

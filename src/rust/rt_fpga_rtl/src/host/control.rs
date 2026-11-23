@@ -36,7 +36,6 @@ pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
         instructions: program.instructions.len() as u16,
         sync_count: program.sync_count as u16,
         states: program.state.len() as u16,
-        jobs: program.jobs_per_quantum as u16,
         buffers: program.resources.buffers as u16,
     }
 }

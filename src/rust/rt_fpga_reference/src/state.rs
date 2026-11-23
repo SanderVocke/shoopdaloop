@@ -2,7 +2,7 @@
 
 use crate::{
     fixed::{Fixed, Ramp},
-    jobs::{BufferId, CaptureWrite, Job, JobQueue},
+    jobs::{BufferId, CaptureWrite, Job, JobQueue, JobQueues},
     records::{Identity, Mode, SettledRecords},
     storage::ViewId,
     Error,
@@ -227,6 +227,33 @@ pub enum Instruction {
         #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
     },
+}
+
+enum JobSink<'a> {
+    Single(&'a mut JobQueue),
+    Split(&'a mut JobQueues, Option<&'a mut Vec<Job>>),
+}
+
+impl JobSink<'_> {
+    fn can_emit(&self, budget: usize) -> bool {
+        match self {
+            Self::Single(queue) => queue.is_empty() && queue.remaining() >= budget,
+            Self::Split(queues, _) => queues.is_empty() && queues.audio.remaining() >= budget,
+        }
+    }
+
+    fn push(&mut self, job: Job) -> Result<(), Error> {
+        match self {
+            Self::Single(queue) => queue.push(job),
+            Self::Split(queues, trace) => {
+                queues.push(job)?;
+                if let Some(trace) = trace {
+                    trace.push(job);
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 pub struct StateProcessor {
@@ -681,7 +708,7 @@ impl StateProcessor {
         queue: &mut JobQueue,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
-        self.run_with_preparation(program, queue, |work| {
+        self.run_inner(program, JobSink::Single(queue), None, &mut |work| {
             without_capture_preparation(work, &mut sink)
         })
     }
@@ -692,22 +719,23 @@ impl StateProcessor {
         loops: SettledRecords<'_>,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
-        self.run_inner(program, queue, Some(loops), &mut |work| {
+        self.run_inner(program, JobSink::Single(queue), Some(loops), &mut |work| {
             without_capture_preparation(work, &mut sink)
         })
     }
-    pub(crate) fn run_with_preparation(
+    pub(crate) fn run_split(
         &mut self,
         program: &Program,
-        queue: &mut JobQueue,
+        queues: &mut JobQueues,
+        trace: Option<&mut Vec<Job>>,
         mut prepare: impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        self.run_inner(program, queue, None, &mut prepare)
+        self.run_inner(program, JobSink::Split(queues, trace), None, &mut prepare)
     }
     fn run_inner(
         &mut self,
         program: &Program,
-        queue: &mut JobQueue,
+        queue: JobSink<'_>,
         loops: Option<SettledRecords<'_>>,
         prepare: &mut impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
@@ -723,12 +751,12 @@ impl StateProcessor {
     fn run_program(
         &mut self,
         program: &Program,
-        queue: &mut JobQueue,
+        mut queue: JobSink<'_>,
         loops: Option<SettledRecords<'_>>,
         prepare: &mut impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         program.check_job_budget()?;
-        if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
+        if !queue.can_emit(program.jobs_per_quantum) {
             return Err(Error::QueueFull);
         }
         if !program.chunk_frames.is_power_of_two()

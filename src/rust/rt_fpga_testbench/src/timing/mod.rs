@@ -1,7 +1,7 @@
 //! Functional storage is separate from native DRAM admission and service timing.
 pub mod dram;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Token {
@@ -22,6 +22,43 @@ pub trait Timing {
         None
     }
 }
+
+pub struct SharedPort {
+    pub controller: Rc<RefCell<Box<dyn Timing>>>,
+    pub advances_clock: bool,
+}
+
+impl Timing for SharedPort {
+    fn native_bytes(&self) -> u64 {
+        self.controller.borrow().native_bytes()
+    }
+    fn advance(&mut self) {
+        if self.advances_clock {
+            self.controller.borrow_mut().advance();
+        }
+    }
+    fn submit(&mut self, address: u64, write: bool) -> Option<Token> {
+        self.controller.borrow_mut().submit(address, write)
+    }
+    fn ready(&self, token: Token) -> bool {
+        self.controller.borrow().ready(token)
+    }
+    fn reset(&mut self) {
+        if self.advances_clock {
+            self.controller.borrow_mut().reset();
+        }
+    }
+    fn report(&mut self, finalize: bool) -> Value {
+        self.controller.borrow_mut().report(finalize)
+    }
+    fn bus_snapshot(&self) -> Option<dram::Snapshot> {
+        self.controller.borrow().bus_snapshot()
+    }
+    fn bus_utilization(&self, start: dram::Snapshot, end: dram::Snapshot) -> Option<Value> {
+        self.controller.borrow().bus_utilization(start, end)
+    }
+}
+
 pub struct Fixed {
     cycle: u64,
     delay: u64,

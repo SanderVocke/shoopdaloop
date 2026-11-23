@@ -2,6 +2,13 @@
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn axi_midi_event_records_burst_preserving_word_order_and_page_bounds() {
+    for width in [32, 64] {
+        rt_fpga_testbench::suites::axi::record_adapter(width).unwrap();
+    }
+}
+
+#[shoop_test]
 fn axi_endpoints_word_and_chunk_transfers_preserve_bounds_strobes_and_retirement() {
     for mode in [
         rt_fpga_testbench::memory::Mode::Instant,

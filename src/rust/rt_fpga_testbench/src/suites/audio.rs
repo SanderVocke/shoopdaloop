@@ -325,11 +325,10 @@ fn sample_protocol(d: &mut Audio, s: &mut Sim<'_>) {
         ("audio_cfg_write_data", 123),
         ("run_valid", 1),
     ]);
-    let queued = s.model.get("queued_jobs");
     for _ in 0..2 * n + 20 {
         let (before, after) = d.tick(s);
         assert_eq!(before.get("monitor_ready"), 0);
-        assert_eq!(after.get("queued_jobs"), queued);
+        assert!(after.get("queued_jobs") >= before.get("queued_jobs"));
     }
     s.model.set_all(&[
         ("cfg_valid", 0),

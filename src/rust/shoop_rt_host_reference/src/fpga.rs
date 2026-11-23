@@ -53,7 +53,10 @@ pub fn image_channel(limits: ProgramLimits, chunk_frames: u32) -> (Images, Image
 
 impl ProgramLoader for Images {
     fn limits(&self) -> ProgramLimits {
-        self.limits
+        ProgramLimits {
+            jobs: u32::MAX,
+            ..self.limits
+        }
     }
 
     fn chunk_frames(&self) -> u32 {

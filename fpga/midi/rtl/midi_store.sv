@@ -1,7 +1,8 @@
 module midi_store #(
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
     parameter integer VIEWS=512, RETIREMENTS=256,
-    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
+    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1,
+    parameter integer RECORD_BURSTS=0
 ) (
     input wire clk, input wire reset, input wire [63:0] arena_base,
     output wire [63:0] arena_bytes,
@@ -21,8 +22,10 @@ module midi_store #(
     output wire [31:0] free_view_slots, output wire [31:0] free_retirement_slots,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output reg [63:0] memory_address, output reg [31:0] memory_write_data,
+    output reg memory_record, output wire [127:0] memory_write_record,
     input wire memory_response_valid, output wire memory_response_ready,
-    input wire memory_response_error, input wire [31:0] memory_read_data
+    input wire memory_response_error, input wire [31:0] memory_read_data,
+    input wire [127:0] memory_read_record
 );
     `include "midi_functions.svh"
     initial begin
@@ -108,7 +111,8 @@ module midi_store #(
         DISCARD_TABLE_NEXT=69,
         DISCARD_FINISH=70,
         RESPONSE=71, BATCH_START=72, BATCH_FETCH=73, BATCH_OFFSET=74, BATCH_PACKET=75,
-        BATCH_NEXT=76, BATCH_FINISH=77, ADDRESS_INDEX=78, ADDRESS_OFFSET=79, ADDRESS_FINAL=80;
+        BATCH_NEXT=76, BATCH_FINISH=77, ADDRESS_INDEX=78, ADDRESS_OFFSET=79, ADDRESS_FINAL=80,
+        RECORD_BURST_DONE=81;
     reg [15:0] phase, return_phase, after_load, after_save, after_record, after_block;
     reg [3:0] op;
     reg descriptor_valid;
@@ -150,6 +154,8 @@ module midi_store #(
     assign free_view_slots=32'(VIEWS)-used_views;
     assign free_retirement_slots=32'(RETIREMENTS)-queue_count;
     reg [31:0] record_index, record_word, payload [0:3];
+    assign memory_write_record={payload[3],payload[2],payload[1],payload[0]};
+    wire [31:0] batch_packet=RECORD_BURSTS!=0 ? memory_read_record[127:96] : data_word;
     reg [63:0] record_address, record_frame;
     reg [31:0] low, high, middle, range_first, range_count, first_table, table_count, table_cursor;
     reg [31:0] removed_blocks, discard_count, released_refs;
@@ -192,6 +198,7 @@ module midi_store #(
         begin
             address_region<=region;address_index<=index;address_field<=field;
             address_writing<=writing;address_saving<=saving;memory_address<=base;
+            memory_record<=0;
             if(writing) memory_write_data<=value;
             return_phase<=next;phase<=ADDRESS_INDEX;
         end
@@ -231,7 +238,7 @@ module midi_store #(
             append_ordinal<=0;append_block<=0;batch_has_last<=0;append_block_valid<=0;
             record_block_valid<=0;record_block_ordinal<=0;record_block_id<=0;response_error<=0;response_handle<=0;
             response_frame<=0;response_order<=0;response_packet<=0;response_length<=0;response_work<=0;
-            memory_address<=0;memory_write_data<=0;free_count<=0;queue_head<=0;queue_tail<=0;queue_count<=0;
+            memory_address<=0;memory_write_data<=0;memory_record<=0;free_count<=0;queue_head<=0;queue_tail<=0;queue_count<=0;
             op<=0;view_handle<=0;arg0<=0;arg1<=0;packet<=0;length<=0;
             cursor<=0;scan<=0;data_word<=0;view_slot<=0;source_slot<=0;candidate<=0;generation<=0;
             refs<=0;record_index<=0;record_word<=0;record_address<=0;record_frame<=0;
@@ -376,8 +383,10 @@ module midi_store #(
                 payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[10];payload[3]<={6'b0,length,packet};
                 record_word<=0;prepare_record(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)),APPEND_PAYLOAD);
             end
-            APPEND_PAYLOAD: write_region(ADDRESS_WORD,record_word,0,record_address,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
-            APPEND_PAYLOAD_NEXT: if(record_word==3) begin
+            APPEND_PAYLOAD: if(RECORD_BURSTS!=0) begin
+                memory_address<=record_address;memory_record<=1;return_phase<=APPEND_PAYLOAD_NEXT;phase<=WRITE_REQ;
+            end else write_region(ADDRESS_WORD,record_word,0,record_address,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
+            APPEND_PAYLOAD_NEXT: if(RECORD_BURSTS!=0 || record_word==3) begin
                     desc[5]<=desc[5]+1;desc[10]<=desc[10]+1;
                     if(op==15) begin batch_has_last<=1;batch_last_frame<=arg0;phase<=BATCH_NEXT;end
                     else save_view(RESPONSE);
@@ -392,7 +401,14 @@ module midi_store #(
                 record_block_valid<=1;record_block_ordinal<=position/32'(BLOCK_EVENTS);record_block_id<=data_word;
                 record_word<=0;prepare_record(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)),RECORD_PAYLOAD);
             end
-            RECORD_PAYLOAD: read_region(ADDRESS_WORD,record_word,0,record_address,RECORD_PAYLOAD_NEXT);
+            RECORD_PAYLOAD: if(RECORD_BURSTS!=0) begin
+                memory_address<=record_address;memory_record<=1;return_phase<=RECORD_BURST_DONE;phase<=READ_REQ;
+            end else read_region(ADDRESS_WORD,record_word,0,record_address,RECORD_PAYLOAD_NEXT);
+            RECORD_BURST_DONE: begin
+                record_frame<=memory_read_record[63:0];response_frame<=memory_read_record[63:0]-{desc[7],desc[6]};
+                response_order<=memory_read_record[95:64];response_packet<=memory_read_record[119:96];
+                response_length<=memory_read_record[121:120];phase<=after_record;
+            end
             RECORD_PAYLOAD_NEXT: begin
                 payload[record_word[1:0]]<=data_word;
                 if(record_word==3) begin
@@ -471,11 +487,15 @@ module midi_store #(
                 else begin batch_position<=arg0;batch_index<=0;batch_has_last<=0;append_block_valid<=0;phase<=BATCH_FETCH;end
             end
             BATCH_FETCH: if(batch_index==batch_count) phase<=BATCH_FINISH;
-                else read_region(ADDRESS_BATCH,batch_index,0,batch_source,BATCH_OFFSET);
-            BATCH_OFFSET: begin batch_offset<=data_word;read_region(ADDRESS_BATCH,batch_index,3,batch_source,BATCH_PACKET);end
+                else begin
+                    read_region(ADDRESS_BATCH,batch_index,0,batch_source,BATCH_OFFSET);
+                    if(RECORD_BURSTS!=0) memory_record<=1;
+                end
+            BATCH_OFFSET: if(RECORD_BURSTS!=0) begin batch_offset<=memory_read_record[31:0];phase<=BATCH_PACKET;end
+                else begin batch_offset<=data_word;read_region(ADDRESS_BATCH,batch_index,3,batch_source,BATCH_PACKET);end
             BATCH_PACKET: begin
-                if({32'b0,batch_offset}>=arg1-batch_position || batch_position+{32'b0,batch_offset}<batch_position || data_word[31:26]!=0) fail(1);
-                else begin arg0<=batch_position+{32'b0,batch_offset};packet<=data_word[23:0];length<=data_word[25:24];phase<=APPEND;end
+                if({32'b0,batch_offset}>=arg1-batch_position || batch_position+{32'b0,batch_offset}<batch_position || batch_packet[31:26]!=0) fail(1);
+                else begin arg0<=batch_position+{32'b0,batch_offset};packet<=batch_packet[23:0];length<=batch_packet[25:24];phase<=APPEND;end
             end
             BATCH_NEXT: begin batch_index<=batch_index+1;phase<=BATCH_FETCH;end
             BATCH_FINISH: begin desc[8]<=arg1[31:0];desc[9]<=arg1[63:32];save_view(RESPONSE);end

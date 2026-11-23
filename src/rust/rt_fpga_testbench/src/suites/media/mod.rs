@@ -38,7 +38,7 @@ pub fn design(g: &Geometry, width: u64, mode: Mode) -> Design {
     let top = if mode == Mode::Legacy {
         "media_store"
     } else {
-        sources.extend("axi_master axi_burst_mux shared_axi chunk_dma word_dma word_axi chunk_axi media_store_axi".split_whitespace().map(|n| root.join(format!("fpga/axi_memory/rtl/{n}.sv"))));
+        sources.extend("axi_master axi_burst_mux program_axi_mux shared_axi chunk_dma word_dma word_axi chunk_axi media_store_axi".split_whitespace().map(|n| root.join(format!("fpga/axi_memory/rtl/{n}.sv"))));
         parameters.extend([("AXI_DATA_WIDTH", width), ("PHYSICAL_BASE", 0x01000000)]);
         "media_store_axi"
     };

@@ -6,7 +6,8 @@ module midi_data_jobs_axi #(
     parameter integer BUFFERS=256, CURSORS=128, SCRATCH_EVENTS=131072,
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
     parameter integer VIEWS=512, RETIREMENTS=256, MAINTENANCE=64,
-    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
+    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1,
+    parameter integer RECORD_BURSTS=1
 ,
     parameter integer DATA_WIDTH=64
 ) (
@@ -96,10 +97,13 @@ module midi_data_jobs_axi #(
     wire memory_write;
     wire [63:0] memory_address;
     wire [31:0] memory_write_data;
+    wire memory_record;
+    wire [127:0] memory_write_record;
     wire memory_response_valid;
     wire memory_response_ready;
     wire memory_response_error;
     wire [31:0] memory_read_data;
+    wire [127:0] memory_read_record;
     midi_data_jobs #(
         .STATE_SUPPORTED(STATE_SUPPORTED),
         .LOOPS(LOOPS),
@@ -114,9 +118,10 @@ module midi_data_jobs_axi #(
         .VIEWS(VIEWS),
         .RETIREMENTS(RETIREMENTS),
         .MAINTENANCE(MAINTENANCE),
-        .TABLE_ENTRIES(TABLE_ENTRIES)
+        .TABLE_ENTRIES(TABLE_ENTRIES),
+        .RECORD_BURSTS(RECORD_BURSTS)
     ) core (.*);
-    word_axi #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(1)) memory (
+    word_axi #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(1),.RECORD_BURSTS(RECORD_BURSTS)) memory (
         .clk(clk),
         .reset(reset),
         .arena_base(arena_base),
@@ -127,10 +132,13 @@ module midi_data_jobs_axi #(
         .memory_write(memory_write),
         .memory_address(memory_address),
         .memory_write_data(memory_write_data),
+        .memory_record(memory_record),
+        .memory_write_record(memory_write_record),
         .memory_response_valid(memory_response_valid),
         .memory_response_ready(memory_response_ready),
         .memory_response_error(memory_response_error),
         .memory_read_data(memory_read_data),
+        .memory_read_record(memory_read_record),
         .m_axi_awid(m_axi_awid),
         .m_axi_awaddr(m_axi_awaddr),
         .m_axi_awlen(m_axi_awlen),

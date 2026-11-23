@@ -149,7 +149,17 @@ pub(crate) fn add_program_usage(
             reserved.loops as u64,
             limits.loop_slots,
         ),
-        program_row("Job slots", current.jobs, next.jobs, limits.jobs),
+        if limits.jobs == u32::MAX {
+            Some(MemoryResource {
+                name: Name::new("Jobs per quantum").expect("inline resource name"),
+                unit: MemoryUnit::Entries,
+                used: current.jobs.into(),
+                reserved: next.jobs.saturating_sub(current.jobs).into(),
+                capacity: None,
+            })
+        } else {
+            program_row("Job slots", current.jobs, next.jobs, limits.jobs)
+        },
         program_row(
             "Audio buffers",
             current.buffers,

@@ -25,7 +25,7 @@ def generate():
         "arena_base": "{32'b0, ARENA_BASE}",
         "maintenance_enable": "1'b1", "maintenance_tick": "1'b0",
         "run_program_region": "1'b0", "run_sync_count": "32'b0", "run_instruction_count": "32'b0",
-        "run_state_count": "32'b0", "run_job_budget": "32'b0", "run_buffers": "32'b0",
+        "run_state_count": "32'b0", "run_buffers": "32'b0",
         "job_enable": "1'b1", "drain_ready": "1'b0",
         "loop_read_ready": "1'b0", "loop_response_valid": "1'b0", "loop_response_error": "1'b0",
         "loop_response_data": "164'b0",
@@ -99,7 +99,7 @@ def generate():
     text += '        if (QUANTUM > MAX_FRAMES || QUANTUM < 1) $fatal(1,"invalid host quantum");\n'
     text += "    end\n"
     text += "    host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES),\n"
-    text += "        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),\n"
+    text += "        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH > 512 ? 512 : JOB_DEPTH),\n"
     text += "        .BUFFERS(BUFFERS), .VIEWS(VIEWS), .MEDIA_BLOCKS(SLOTS/BLOCK_CHUNKS),\n"
     text += "        .CHUNK_FRAMES(CHUNK_FRAMES), .BLOCK_CHUNKS(BLOCK_CHUNKS), .QUANTUM(QUANTUM)) mmio (.*);\n"
     text += "    host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),\n"

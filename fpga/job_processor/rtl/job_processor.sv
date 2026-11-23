@@ -12,7 +12,8 @@ module job_processor #(
     parameter integer BUFFER_BITS = (BUFFERS > 1) ? $clog2(BUFFERS) : 1,
     parameter integer SCRATCH_BITS = (BUFFERS * MAX_FRAMES > 1) ? $clog2(BUFFERS * MAX_FRAMES) : 1,
     parameter integer INPUT_BITS = (INPUT_PORTS * MAX_FRAMES > 1) ? $clog2(INPUT_PORTS * MAX_FRAMES) : 1,
-    parameter integer OUTPUT_BITS = (OUTPUT_PORTS * MAX_FRAMES > 1) ? $clog2(OUTPUT_PORTS * MAX_FRAMES) : 1
+    parameter integer OUTPUT_BITS = (OUTPUT_PORTS * MAX_FRAMES > 1) ? $clog2(OUTPUT_PORTS * MAX_FRAMES) : 1,
+    parameter integer STREAM_JOBS = 0
 ) (
     output wire midi_job_valid, input wire midi_job_ready,
     output wire [255:0] midi_job_data,
@@ -34,6 +35,7 @@ module job_processor #(
     input wire [31:0] run_inputs,
     input wire [31:0] run_outputs,
     input wire [31:0] run_jobs,
+    input wire job_stream_done,
     output reg busy,
     output reg done,
     output reg [7:0] error_code,
@@ -235,7 +237,8 @@ module job_processor #(
     end
     assign cfg_ready = !busy && !cfg_pending && !run_valid && !reset;
     assign run_ready = !busy && !cfg_pending && !reset;
-    assign job_ready = (phase == FETCH) && jobs_pending && job_enable && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
+    wire more_jobs = STREAM_JOBS != 0 ? !job_stream_done : jobs_pending;
+    assign job_ready = (phase == FETCH) && more_jobs && job_enable && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_response_error = cfg_error;
     assign cfg_read_data = (cfg_error || cfg_was_write) ? 32'b0
@@ -444,7 +447,7 @@ module job_processor #(
                         frame <= frame + 1;
                 end
                 FETCH: begin
-                    if (!jobs_pending) begin
+                    if (!more_jobs) begin
                         done <= 1; busy <= 0;
                         phase <= IDLE;
                     end else if (job_valid && job_ready) begin
@@ -471,7 +474,8 @@ module job_processor #(
                     case (opcode)
                         `SHOOP_SP_MIDI_INPUT, `SHOOP_SP_MIDI_EMPTY, `SHOOP_SP_MIDI_READ,
                         `SHOOP_SP_MIDI_BEGIN_CAPTURE, `SHOOP_SP_MIDI_APPEND, `SHOOP_SP_MIDI_FINISH_CAPTURE,
-                        `SHOOP_SP_MIDI_MERGE, `SHOOP_SP_MIDI_OUTPUT, `SHOOP_SP_MIDI_RESTORE, `SHOOP_SP_MIDI_CLEANUP:
+                        `SHOOP_SP_MIDI_MERGE, `SHOOP_SP_MIDI_OUTPUT, `SHOOP_SP_MIDI_MERGE_OUTPUT,
+                        `SHOOP_SP_MIDI_RESTORE, `SHOOP_SP_MIDI_CLEANUP:
                             if(ENABLE_MIDI != 0) phase<=MIDI_COMMAND;
                             else begin error_code<=UNSUPPORTED;done<=1;busy<=0;phase<=IDLE;end
                         `SHOOP_SP_JOB_INPUT: begin

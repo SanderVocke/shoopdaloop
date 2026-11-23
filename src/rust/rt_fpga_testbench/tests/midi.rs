@@ -130,11 +130,38 @@ fn midi_data_jobs_shared_ranges_survive_retakes_and_stale_handles_are_rejected()
 }
 
 #[shoop_test]
-fn compiled_midi_sp_and_shared_jp_match_rust_with_audio_and_dense_events() {
-    use rt_fpga_testbench::suites::midi::data::pipeline;
-    let compiled = pipeline::compile(32).unwrap();
+fn compiled_midi_matches_rust_with_audio_and_backpressure_from_a_small_fifo() {
+    use rt_fpga_testbench::{
+        clock::Edges,
+        model::{Model, Probe},
+        sim::Agent,
+        suites::midi::data::pipeline,
+    };
+    use std::{cell::Cell, rc::Rc};
+    const VALID: &str = "audio.core.pipeline.state_engine.engine_job_valid";
+    const READY: &str = "audio.core.pipeline.state_engine.engine_job_ready";
+    struct Stall(Rc<Cell<bool>>);
+    impl Agent for Stall {
+        fn sample(&mut self, model: &Model<'_>, edges: Edges) {
+            if edges.rises(0) && model.get(VALID) != 0 && model.get(READY) == 0 {
+                self.0.set(true);
+            }
+        }
+    }
+    let mut design = pipeline::design(32);
+    design
+        .parameters
+        .insert("MIDI_JOB_FIFO_DEPTH".into(), "2".into());
+    design
+        .probes
+        .extend([Probe::observe(VALID), Probe::observe(READY)]);
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/midi-data-pipeline"))
+        .unwrap();
     for mixed in [false, true] {
         let mut d = pipeline::Driver::new(&compiled, 32, mixed).unwrap();
+        let stall = Rc::new(Cell::new(false));
+        d.sim.agent(Stall(stall.clone()));
         for slot in 0..2 {
             d.command(slot, Operation::Record);
         }
@@ -160,6 +187,10 @@ fn compiled_midi_sp_and_shared_jp_match_rust_with_audio_and_dense_events() {
             );
         }
         d.quantum(&[]);
+        assert!(
+            stall.get(),
+            "MIDI FIFO never backpressured the state processor"
+        );
         d.quantum(&[]);
         d.quantum(&[]);
         d.command(
@@ -387,7 +418,7 @@ fn compiled_midi_rejects_bad_input_before_sp_and_keeps_shared_contents_on_retake
     assert_eq!(d.sink.borrow().events[0].message, note);
 }
 #[shoop_test]
-fn compiled_midi_output_refusal_stops_the_shared_jp_and_latches_the_fault() {
+fn compiled_midi_output_refusal_faults_the_quantum_and_prevents_readmission() {
     use rt_fpga_testbench::suites::midi::data::pipeline;
     let compiled = pipeline::compile(32).unwrap();
     let mut d = pipeline::Driver::new(&compiled, 32, false).unwrap();

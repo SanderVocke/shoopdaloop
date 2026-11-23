@@ -95,6 +95,7 @@ module shared_axi #(parameter integer DATA_WIDTH = 32, parameter integer BURST_M
         assign memory_write_ready = 0;
         assign memory_read_valid = 0;
         word_dma #(.DATA_WIDTH(DATA_WIDTH)) transfer (
+            .memory_record(1'b0), .memory_write_record(128'b0), .memory_read_record(),
             .clk(clk),
             .reset(reset),
             .arena_base(arena_base),
@@ -172,6 +173,7 @@ module shared_axi #(parameter integer DATA_WIDTH = 32, parameter integer BURST_M
         assign memory_meta_write_ready = 0;
         assign memory_meta_read_valid = 0;
         word_dma #(.DATA_WIDTH(DATA_WIDTH)) transfer (
+            .memory_record(1'b0), .memory_write_record(128'b0), .memory_read_record(),
             .clk(clk),
             .reset(reset),
             .arena_base(arena_base),

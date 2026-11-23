@@ -2,8 +2,11 @@
 `include "state_processor_defs.svh"
 module midi_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer SPLIT_MIDI_JOBS = 1,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
+    parameter integer DDR_PROGRAM = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32,
     parameter integer STATE_DEPTH = 16,
@@ -46,7 +49,8 @@ module midi_audio_pipeline #(
     parameter integer MIDI_MAX_EVENTS = 8192,
     parameter integer MIDI_VIEWS = 512,
     parameter integer MIDI_RETIREMENTS = 256,
-    parameter integer MIDI_MAINTENANCE = 64
+    parameter integer MIDI_MAINTENANCE = 64,
+    parameter integer MIDI_RECORD_BURSTS = 0
 ) (
     output wire [3:0] midi_error_code,
     output wire sample_input_read,
@@ -83,7 +87,6 @@ module midi_audio_pipeline #(
     input wire [15:0] switch_instructions,
     input wire [15:0] switch_sync_count,
     input wire [15:0] switch_states,
-    input wire [15:0] switch_jobs,
     input wire [15:0] switch_buffers,
     input wire [43:0] switch_future,
     output wire switch_response_valid,
@@ -101,7 +104,6 @@ module midi_audio_pipeline #(
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
-    input wire [31:0] run_job_budget,
     input wire [31:0] run_buffers,
     input wire [31:0] run_inputs,
     input wire [31:0] run_outputs,
@@ -239,10 +241,13 @@ module midi_audio_pipeline #(
     output wire midi_memory_write,
     output wire [63:0] midi_memory_address,
     output wire [31:0] midi_memory_write_data,
+    output wire midi_memory_record,
+    output wire [127:0] midi_memory_write_record,
     input wire midi_memory_response_valid,
     output wire midi_memory_response_ready,
     input wire midi_memory_response_error,
-    input wire [31:0] midi_memory_read_data
+    input wire [31:0] midi_memory_read_data,
+    input wire [127:0] midi_memory_read_record
 );
     localparam [2:0] IDLE=0, PREPARE=1, START=2, RUN=3, FINISH=4;
     reg [2:0] phase;
@@ -266,7 +271,6 @@ module midi_audio_pipeline #(
     reg [31:0] saved_run_state_count;
     reg [31:0] saved_run_quantum;
     reg [31:0] saved_run_chunk_frames;
-    reg [31:0] saved_run_job_budget;
     reg [31:0] saved_run_buffers;
     reg [31:0] saved_run_inputs;
     reg [31:0] saved_run_outputs;
@@ -314,7 +318,6 @@ module midi_audio_pipeline #(
         saved_run_state_count<=run_state_count;
         saved_run_quantum<=run_quantum;
         saved_run_chunk_frames<=run_chunk_frames;
-        saved_run_job_budget<=run_job_budget;
         saved_run_buffers<=run_buffers;
         saved_run_inputs<=run_inputs;
         saved_run_outputs<=run_outputs;
@@ -326,8 +329,11 @@ module midi_audio_pipeline #(
     assign store_cfg_ready=gated_store_cfg_ready && phase==IDLE;
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS),
+        .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
+        .DDR_PROGRAM(DDR_PROGRAM),
         .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
@@ -400,7 +406,6 @@ module midi_audio_pipeline #(
         .switch_instructions(switch_instructions),
         .switch_sync_count(switch_sync_count),
         .switch_states(switch_states),
-        .switch_jobs(switch_jobs),
         .switch_buffers(switch_buffers),
         .switch_future(switch_future),
         .switch_response_valid(switch_response_valid),
@@ -418,7 +423,6 @@ module midi_audio_pipeline #(
         .run_state_count(saved_run_state_count),
         .run_quantum(saved_run_quantum),
         .run_chunk_frames(saved_run_chunk_frames),
-        .run_job_budget(saved_run_job_budget),
         .run_buffers(saved_run_buffers),
         .run_inputs(saved_run_inputs),
         .run_outputs(saved_run_outputs),
@@ -536,7 +540,8 @@ module midi_audio_pipeline #(
         .MAX_EVENTS(MIDI_MAX_EVENTS),
         .VIEWS(MIDI_VIEWS),
         .RETIREMENTS(MIDI_RETIREMENTS),
-        .MAINTENANCE(MIDI_MAINTENANCE)
+        .MAINTENANCE(MIDI_MAINTENANCE),
+        .RECORD_BURSTS(MIDI_RECORD_BURSTS)
     ) midi (
         .clk(clk),
         .reset(reset),
@@ -591,9 +596,12 @@ module midi_audio_pipeline #(
         .memory_write(midi_memory_write),
         .memory_address(midi_memory_address),
         .memory_write_data(midi_memory_write_data),
+        .memory_record(midi_memory_record),
+        .memory_write_record(midi_memory_write_record),
         .memory_response_valid(midi_memory_response_valid),
         .memory_response_ready(midi_memory_response_ready),
         .memory_response_error(midi_memory_response_error),
-        .memory_read_data(midi_memory_read_data)
+        .memory_read_data(midi_memory_read_data),
+        .memory_read_record(midi_memory_read_record)
     );
 endmodule

@@ -51,6 +51,9 @@ impl Geometry {
             + self.table_pages as usize * 16
             + self.retired_tables as usize * 16
     }
+    pub fn words_with_program(&self, depth: usize, regions: usize) -> usize {
+        self.words().next_multiple_of(16) + 4 * depth * regions
+    }
     pub fn parameters(&self) -> Vec<(&'static str, u64)> {
         vec![
             ("VIEWS", self.views),
@@ -78,7 +81,7 @@ pub fn design(g: &Geometry, limits: rt_fpga_compiler::ProgramLimits) -> Design {
     for (directory, names) in [
         (
             "state_processor",
-            "sp_ram sp_job_fifo sp_engine state_processor",
+            "sp_ram sp_job_fifo sp_program_prefetch sp_engine state_processor",
         ),
         (
             "job_processor",
@@ -91,7 +94,7 @@ pub fn design(g: &Geometry, limits: rt_fpga_compiler::ProgramLimits) -> Design {
         ),
         (
             "axi_memory",
-            "axi_master axi_burst_mux shared_axi chunk_dma word_dma word_axi chunk_axi media_store_axi media_audio_pipeline_axi",
+            "axi_master axi_burst_mux program_axi_mux shared_axi chunk_dma word_dma word_axi chunk_axi media_store_axi media_audio_pipeline_axi",
         ),
     ] {
         sources.extend(
@@ -111,12 +114,16 @@ pub fn design(g: &Geometry, limits: rt_fpga_compiler::ProgramLimits) -> Design {
         ("OUTPUT_PORTS", limits.output_ports.into()),
         ("LIVE_LOADING", 1),
         ("PROGRAM_REGIONS", 2),
+        ("DDR_PROGRAM", 1),
         ("AXI_DATA_WIDTH", 64),
         ("PHYSICAL_BASE", 0x01000000),
     ]);
     Design::new("media_audio_pipeline_axi", sources)
         .parameters(&parameters)
-        .memory(g.words(), 0x01000000)
+        .memory(
+            g.words_with_program(limits.instructions as usize, 2),
+            0x01000000,
+        )
         .probes(
             [
                 "core.unused_sync_event",

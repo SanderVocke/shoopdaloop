@@ -4,8 +4,11 @@
 module media_audio_pipeline_axi #(
     parameter integer EXTERNAL_IO = 0,
     parameter integer ENABLE_MIDI = 0,
+    parameter integer SPLIT_MIDI_JOBS = 0,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
+    parameter integer DDR_PROGRAM = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
@@ -65,7 +68,6 @@ module media_audio_pipeline_axi #(
     input wire [15:0] switch_instructions,
     input wire [15:0] switch_sync_count,
     input wire [15:0] switch_states,
-    input wire [15:0] switch_jobs,
     input wire [15:0] switch_buffers,
     input wire [43:0] switch_future,
     output wire switch_response_valid,
@@ -83,7 +85,6 @@ module media_audio_pipeline_axi #(
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
-    input wire [31:0] run_job_budget,
     input wire [31:0] run_buffers,
     input wire [31:0] run_inputs,
     input wire [31:0] run_outputs,
@@ -217,13 +218,44 @@ module media_audio_pipeline_axi #(
     wire memory_meta_response_ready;
     wire memory_meta_response_error;
     wire [31:0] memory_meta_read_data;
+    wire memory_program_valid;
+    wire memory_program_ready;
+    wire memory_program_write;
+    wire [15:0] memory_program_address;
+    wire [31:0] memory_program_count;
+    wire [31:0] memory_program_write_data;
+    wire memory_program_write_valid;
+    wire memory_program_write_ready;
+    wire memory_program_read_valid;
+    wire memory_program_read_ready;
+    wire [31:0] memory_program_read_data;
+    wire memory_program_response_valid;
+    wire memory_program_response_ready;
+    wire memory_program_response_error;
     wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     wire [31:0] physical_base = PHYSICAL_BASE;
+    wire media_memory_meta_valid;
+    wire media_memory_meta_ready;
+    wire media_memory_meta_write;
+    wire [63:0] media_memory_meta_address;
+    wire [31:0] media_memory_meta_write_data;
+    wire [31:0] media_memory_meta_count;
+    wire media_memory_meta_write_valid;
+    wire media_memory_meta_write_ready;
+    wire media_memory_meta_read_valid;
+    wire media_memory_meta_read_ready;
+    wire media_memory_meta_response_valid;
+    wire media_memory_meta_response_ready;
+    wire media_memory_meta_response_error;
+    wire [31:0] media_memory_meta_read_data;
     media_audio_pipeline #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .ENABLE_MIDI(ENABLE_MIDI),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS),
+        .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
+        .DDR_PROGRAM(DDR_PROGRAM),
         .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
@@ -250,9 +282,55 @@ module media_audio_pipeline_axi #(
         .STACK_LINES(STACK_LINES),
         .READ_BUFFERS(READ_BUFFERS),
         .WRITE_BUFFERS(WRITE_BUFFERS),
-        .BURST_MEMORY(BURST_MEMORY)) core (.*);
+        .BURST_MEMORY(BURST_MEMORY)) core (.*, .memory_meta_valid(media_memory_meta_valid), .memory_meta_ready(media_memory_meta_ready), .memory_meta_write(media_memory_meta_write), .memory_meta_address(media_memory_meta_address), .memory_meta_write_data(media_memory_meta_write_data), .memory_meta_count(media_memory_meta_count), .memory_meta_write_valid(media_memory_meta_write_valid), .memory_meta_write_ready(media_memory_meta_write_ready), .memory_meta_read_valid(media_memory_meta_read_valid), .memory_meta_read_ready(media_memory_meta_read_ready), .memory_meta_response_valid(media_memory_meta_response_valid), .memory_meta_response_ready(media_memory_meta_response_ready), .memory_meta_response_error(media_memory_meta_response_error), .memory_meta_read_data(media_memory_meta_read_data));
     localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;
-    initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
-    initial if (STORAGE_WORDS*4 > PHYSICAL_BYTES_LIMIT) $fatal(1,"DDR arena exceeds reserved memory");
-    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);
+    localparam [63:0] PROGRAM_OFFSET = ((STORAGE_WORDS*4+63)/64)*64;
+    localparam [63:0] TOTAL_BYTES = DDR_PROGRAM != 0
+        ? PROGRAM_OFFSET + 64'(PROGRAM_REGIONS)*64'(PROGRAM_DEPTH)*16
+        : STORAGE_WORDS*4;
+    initial if (TOTAL_BYTES > PHYSICAL_BYTES_LIMIT) $fatal(1,"DDR arena exceeds reserved memory");
+    initial if (DDR_PROGRAM != 0 && BURST_MEMORY == 0) $fatal(1,"DDR program requires burst memory");
+    generate if (DDR_PROGRAM != 0) begin : ddr_program
+        program_axi_mux program_bus (
+            .clk(clk), .reset(reset),
+            .media_valid(media_memory_meta_valid), .program_valid(memory_program_valid), .memory_valid(memory_meta_valid),
+            .media_ready(media_memory_meta_ready), .program_ready(memory_program_ready), .memory_ready(memory_meta_ready),
+            .media_write(media_memory_meta_write), .program_write(memory_program_write), .memory_write(memory_meta_write),
+            .media_address(media_memory_meta_address), .program_address(memory_arena_base + PROGRAM_OFFSET + {44'b0,memory_program_address,4'b0}), .memory_address(memory_meta_address),
+            .media_write_data(media_memory_meta_write_data), .program_write_data(memory_program_write_data), .memory_write_data(memory_meta_write_data),
+            .media_count(media_memory_meta_count), .program_count(memory_program_count), .memory_count(memory_meta_count),
+            .media_write_valid(media_memory_meta_write_valid), .program_write_valid(memory_program_write_valid), .memory_write_valid(memory_meta_write_valid),
+            .media_write_ready(media_memory_meta_write_ready), .program_write_ready(memory_program_write_ready), .memory_write_ready(memory_meta_write_ready),
+            .media_read_valid(media_memory_meta_read_valid), .program_read_valid(memory_program_read_valid), .memory_read_valid(memory_meta_read_valid),
+            .media_read_ready(media_memory_meta_read_ready), .program_read_ready(memory_program_read_ready), .memory_read_ready(memory_meta_read_ready),
+            .media_response_valid(media_memory_meta_response_valid), .program_response_valid(memory_program_response_valid), .memory_response_valid(memory_meta_response_valid),
+            .media_response_ready(media_memory_meta_response_ready), .program_response_ready(memory_program_response_ready), .memory_response_ready(memory_meta_response_ready),
+            .media_response_error(media_memory_meta_response_error), .program_response_error(memory_program_response_error), .memory_response_error(memory_meta_response_error),
+            .media_read_data(media_memory_meta_read_data), .program_read_data(memory_program_read_data), .memory_read_data(memory_meta_read_data)
+        );
+    end else begin : local_program
+        assign memory_meta_valid = media_memory_meta_valid;
+        assign media_memory_meta_ready = memory_meta_ready;
+        assign memory_meta_write = media_memory_meta_write;
+        assign memory_meta_address = media_memory_meta_address;
+        assign memory_meta_write_data = media_memory_meta_write_data;
+        assign memory_meta_count = media_memory_meta_count;
+        assign memory_meta_write_valid = media_memory_meta_write_valid;
+        assign media_memory_meta_write_ready = memory_meta_write_ready;
+        assign media_memory_meta_read_valid = memory_meta_read_valid;
+        assign memory_meta_read_ready = media_memory_meta_read_ready;
+        assign media_memory_meta_response_valid = memory_meta_response_valid;
+        assign memory_meta_response_ready = media_memory_meta_response_ready;
+        assign media_memory_meta_response_error = memory_meta_response_error;
+        assign media_memory_meta_read_data = memory_meta_read_data;
+        assign memory_program_ready = 0;
+        assign memory_program_write_ready = 0;
+        assign memory_program_read_valid = 0;
+        assign memory_program_read_data = 0;
+        assign memory_program_response_valid = 0;
+        assign memory_program_response_error = 0;
+        wire unused_program = &{1'b0,memory_program_valid,memory_program_write,memory_program_address,memory_program_count,memory_program_write_data,memory_program_write_valid,memory_program_read_ready,memory_program_response_ready};
+    end endgenerate
+    initial if ({32'b0,PHYSICAL_BASE}+TOTAL_BYTES > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
+    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(TOTAL_BYTES),.sample_bytes(arena_bytes),.*);
 endmodule

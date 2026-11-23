@@ -14,14 +14,14 @@
   <rect x="23" y="20" width="914" height="116" rx="10" fill="#eef4f7" stroke="#bacbd4" stroke-width="1"/>
   <text x="38" y="45" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#395568">SHARED SP AND JP</text>
   <rect x="43" y="58" width="251" height="58" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
-  <text x="55" y="81" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">1  ·  SP sync prefix</text>
+  <text x="55" y="81" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">1  ·  Loop visit</text>
   <text x="55" y="102" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Settle mode and position</text>
   <rect x="351" y="58" width="251" height="58" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
-  <text x="363" y="81" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">2  ·  SP capture prepass</text>
+  <text x="363" y="81" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">2  ·  MIDI setup</text>
   <text x="363" y="102" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Writer + state transitions</text>
   <rect x="661" y="58" width="251" height="58" rx="7" fill="#eaf1fb" stroke="#456a9f" stroke-width="1"/>
-  <text x="673" y="81" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">3  ·  SP data pass</text>
-  <text x="673" y="102" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Queue data jobs, then JP runs</text>
+  <text x="673" y="81" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1b3244">3  ·  MIDI data jobs</text>
+  <text x="673" y="102" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#1b3244">Queue packets and media work</text>
   <path d="M 294,87 L 351,87" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
   <path d="M 602,87 L 661,87" fill="none" stroke="#4b626f" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arrow)"/>
   </g>

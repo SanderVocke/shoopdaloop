@@ -522,7 +522,6 @@ impl Owner<'_> {
                         ("switch_instructions", u64::from(d.instructions)),
                         ("switch_sync_count", u64::from(d.sync_count)),
                         ("switch_states", u64::from(d.states)),
-                        ("switch_jobs", u64::from(d.jobs)),
                         ("switch_buffers", u64::from(d.buffers)),
                         (
                             "switch_future",
@@ -812,7 +811,6 @@ impl Owner<'_> {
             ("run_state_count", u64::from(program_limits().state_values)),
             ("run_quantum", u64::from(self.quantum)),
             ("run_chunk_frames", u64::from(self.chunk_frames)),
-            ("run_job_budget", u64::from(program_limits().jobs)),
             ("run_buffers", u64::from(program_limits().buffers)),
             ("run_inputs", 1),
             ("run_outputs", 2),

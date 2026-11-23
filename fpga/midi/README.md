@@ -4,7 +4,7 @@ The RTL implements the Rust FPGA reference: record MIDI messages,
 play and repeat them, seek, route ports, merge streams, and share stored content.
 Raw event mode replays messages unchanged. Optional expression support
 (`MIDI_STATE_SUPPORTED=1`) adds view snapshots, output state, difference maps,
-and ordered restoration through explicit shared-JP data jobs. See the
+and ordered restoration through explicit MIDI jobs. See the
 [state contract](../../docs/fpga/midi-expression-state.md).
 The [expression hardware report](../../docs/fpga/midi-expression-hardware.md)
 describes the serialized DDR path, BRAM metadata and measured resource tradeoffs.
@@ -12,10 +12,10 @@ describes the serialized DDR path, BRAM metadata and measured resource tradeoffs
 ```mermaid
 flowchart LR
     P[Compiled program] --> SP[Existing SP: loop modes and time]
-    SP --> Q[One audio and MIDI queue]
-    Q --> JP[Existing shared JP]
-    JP --> A[Audio datapath and caches]
-    JP --> M[MIDI data-job controller]
+    SP --> AQ[Audio FIFO]
+    SP --> MQ[MIDI FIFO]
+    AQ --> A[Audio job processor and caches]
+    MQ --> M[MIDI job processor]
     M <--> D[(DDR: event blocks, views, scratch lists)]
     M <--> B[Small BRAM tables: sequences, lists, cursors]
     M --> O[Timestamped MIDI output]
@@ -25,8 +25,9 @@ flowchart LR
 
 SP performs the same sync pass as audio. It emits concrete MIDI jobs: input,
 empty list, read a view interval, begin/append/finish recording, sorted merge, and
-output. The existing JP consumes those jobs alongside audio jobs. There is no
-MIDI instruction interpreter, instruction ROM, phase program, or second scheduler.
+output. The compiler interleaves ready audio and MIDI jobs at each sync slot and
+preserves the order within each domain. SP routes jobs directly to their FIFOs
+by opcode. Each engine drains its own FIFO while SP continues emitting jobs.
 
 A short SP pass queues recording transitions before the normal data pass. A take
 can therefore finish before its first playback read, regardless of capture's
@@ -76,11 +77,22 @@ message array per loop. Power-of-two block sizes make address arithmetic cheaper
 
 ## Boundaries and error handling
 
-`midi_audio_pipeline` connects SP, the mixed queue, JP, audio memory services, and
-MIDI data jobs. `midi_audio_pipeline_axi` adds the MIDI word-to-AXI adapter;
+`midi_audio_pipeline` connects SP, both job queues and execution engines, and
+audio memory services. The audio FIFO retains its existing sizing, capped at 512
+entries. The MIDI FIFO defaults to 128 entries. The connected top waits for both
+engines before starting MIDI cleanup. The Rust reference drains the queues
+sequentially, audio first. `midi_audio_pipeline_axi` adds the MIDI AXI adapter.
 `midi_data_jobs_axi` is an isolated functional-unit test boundary. Both 32-bit and
-64-bit MIDI AXI are supported. Audio keeps its existing caches; MIDI has no general
-DDR cache or speculative block-payload prefetch.
+64-bit MIDI AXI are supported. The AXI tops enable 16-byte event bursts,
+including transfers for playback, scratch lists, and recording. The adapter
+uses word transfers for metadata and for records that cross an AXI page or
+lack the required wide-beat alignment.
+
+The RTL compiler can fuse a terminal merge tree of up to eight source lists
+into a MergeOutput instruction. The output engine keeps one record per active
+list, picks the earliest record, sends it, and refills that list. Equal keys
+preserve left-to-right order. Shared intermediate lists and larger trees
+remain available through the binary Merge job.
 
 Input validation runs before SP starts. Bad input timestamps/order can be
 corrected and retried without advancing musical time. Valid input has no message
@@ -89,7 +101,8 @@ already admitted control command completes atomically before another quantum.
 Formatting and bulk preparation belong outside active rendering.
 
 Output uses ready/valid backpressure and holds packet fields stable while stalled.
-A refused packet faults the shared JP, as do job/storage failures. Already accepted
+A refused packet faults the quantum, as do job/storage failures. New jobs stop
+issuing and the pipeline waits for work already in flight. Already accepted
 packets cannot be undone. Memory errors invalidate the MIDI image. The connected
 pipeline latches execution faults and stops admitting quanta until reset; a failed
 quantum's audio buffers must be discarded by its caller. No cleanup/recovery MIDI
@@ -116,6 +129,22 @@ The [current implementation report](../../docs/fpga/midi-data-jobs.md) includes
 the Rust comparisons and Vivado 2021.1 utilization/timing at 100 and 150 MHz.
 The [64-loop playback measurements](../../docs/fpga/midi-data-jobs-benchmarks.md)
 compare audio plus MIDI, audio only, and MIDI only with ideal and delayed DDR.
+
+The `tracks` benchmark plays eight loops on each of eight MIDI outputs with a
+stereo mix, staggered MIDI, bursts on two tracks, and start, stop, and recording
+callbacks. Toggle `--merge-output` and `--record-bursts` independently to isolate
+the MIDI data-path optimizations. Use `--split-midi-jobs` and `--interleave-jobs`
+to compare job execution and scheduling. Pass `--shared-ddr <directory>` to
+run both AXI ports through the same DRAMsim3 controller. The JSON includes
+per-callback cycles, AXI transactions, engine overlap, and queue occupancy.
+
+```sh
+printf '{"JOB_DEPTH":"512"}\n' > /tmp/midi-track-parameters.json
+cargo run --locked --release -p rt_fpga_testbench --features sim \
+  --example midi_data_quantum_64 -- --profile tracks --scenario mixed \
+  --frames 2048 --quanta 32 --ddr-delay 7 --parameters /tmp/midi-track-parameters.json \
+  --split-midi-jobs on --interleave-jobs on --output /tmp/midi-tracks.json
+```
 
 ## Generation and verification
 

@@ -115,7 +115,6 @@ pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
         instructions: count(image.compiled.instructions.len()),
         sync_count: count(image.compiled.sync_count),
         states: count(image.compiled.state.len()),
-        jobs: count(image.compiled.jobs_per_quantum as usize),
         buffers: count(image.compiled.resources.buffers as usize),
     }
 }
@@ -181,7 +180,6 @@ impl Commands {
             ("switch_instructions", u64::from(d.instructions)),
             ("switch_sync_count", u64::from(d.sync_count)),
             ("switch_states", u64::from(d.states)),
-            ("switch_jobs", u64::from(d.jobs)),
             ("switch_buffers", u64::from(d.buffers)),
         ]);
         self.pending = Some(header);

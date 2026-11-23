@@ -17,7 +17,7 @@ which processes samples and packets using the on-chip audio buffers and
 media services. The host, device controller, or testbench supplies input,
 configuration, and the signal to start each quantum.
 
-![Figure 1. The SP keeps its program and loop state on the FPGA. Audio and MIDI reach external DDR through separate hardware services.](figures/system.svg)
+![Figure 1. SP keeps loop state on the FPGA. Its program can be in local RAM or DDR. Audio and MIDI reach DDR through separate hardware services.](figures/system.svg)
 
 ## Where to read the RTL
 
@@ -42,13 +42,13 @@ to follow.
 1. The host, audio bank controller, or testbench supplies input and requests
    processing for the next quantum. In the mixed core, the wrapper validates
    the staged MIDI batch before starting SP.
-2. SP updates loop state at the quantum boundary. It queues MIDI writer
-   transitions before the regular work pass, then writes the data jobs
-   into an on-chip FIFO. When SP queues an audio playback job, wires named
+2. SP updates loop state at the quantum boundary and queues data jobs in an
+   on-chip FIFO as its instructions run. MIDI writer transitions precede jobs
+   that use their sequence. When SP queues an audio playback job, wires named
    `read_intent_valid` and `read_intent_data` also expose a one-clock copy
    of that descriptor. The audio store can use this hint to start fetching
    samples before JP reaches the job.
-3. After SP finishes, JP reads and executes the jobs in FIFO order. A job
+3. JP reads and executes jobs in FIFO order as SP produces them. A job
    such as Gain reads samples from an on-chip scratch buffer written by an
    earlier job, then writes its result for a subsequent job such as Output.
    Audio media jobs and MIDI jobs can also wait for memory or I/O.
@@ -71,39 +71,50 @@ Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc
 
 # State processor
 
-The program has a sync prefix and a work section. The prefix visits each loop
-once, using `ProcessLoop` for an ordinary visit and `ProcessCompositeChild`
-for a loop driven by a composite. After the prefix, a capture prepass
-scans the work section for MIDI Capture and State instructions and queues
-writer transitions and optional state restore/cleanup jobs. SP then walks the
-work section again to build the audio and MIDI data jobs. All three scans use the same `sp_engine` hardware, including
-its instruction controller, working registers and 65-bit adder.
+The RTL compiler emits one visit per loop in source-before-dependent order.
+A visit uses `ProcessLoop` or, for a composite's child, `ProcessCompositeChild`
+with the child's schedule rows. The compiler places work between the visits
+according to its dependencies on loop state, ramps, histories, media and
+scratch buffers. The state processor reads the stream once per quantum.
 
-![Figure 2. One engine runs the sync prefix, capture prepass and data pass. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
+With `DDR_PROGRAM=1`, the instruction regions occupy a 64-byte-aligned range
+after the audio media arena. Each instruction uses a 16-byte DDR record with
+three little-endian instruction words and one padding word. The existing
+program configuration port reads and writes these records and replies after the
+memory transaction completes. Live uploads continue to target the inactive region.
+
+The prefetcher reserves room in a 64-instruction FIFO before requesting up to
+four records. It shares the existing burst DMA with media metadata and
+alternates between pending requests at transaction boundaries. A single 32-bit
+BRAM supplies the three words of each instruction. Fetch waits for a complete
+instruction, and a DDR read fault terminates the state-processor run. Every run
+starts with an empty FIFO and its selected program region.
+
+![Figure 2. One engine runs sync, setup, and data instructions. The loop record keeps the render position for this quantum and the position for the next one in separate words.](figures/state.svg)
 
 ## What lives on the FPGA
 
-The program, node-state and loop RAMs in Figure 2 are **all on-chip
-synchronous memories**. The job FIFO also uses on-chip RAM and a registered
-head. These RTL arrays can infer FPGA block RAM (BRAM). The synthesis result
+The node-state and loop RAMs are on-chip synchronous memories. The program
+uses local RAM or DDR with an on-chip prefetch FIFO. The job FIFO uses
+on-chip RAM and a registered head. These RTL arrays can infer FPGA block RAM (BRAM). The synthesis result
 depends on the target and memory geometry. Consult the post-synthesis
 utilization for the target profile to see the BRAM mapping.
 
 | Storage | What it holds |
 | --- | --- |
-| Program RAM | 96-bit instructions and composite schedule rows. Live loading can provide a second program region. |
+| Program storage | 96-bit instructions and composite schedule rows in local RAM or DDR. Live loading can provide a second program region. |
 | Node-state RAM | 129-bit entries for values such as view IDs, enables and gain ramps. |
 | Loop RAM | Sixteen 64-bit words per loop. They hold loop identity, mode, positions, capture length, revisions and two plan slots. |
 | Job FIFO | 256-bit job descriptors for the current run. |
 | Engine registers | Working operands while the engine processes one instruction or loop. The sync event shares a descriptor register with job emission. |
 
-SP has **no DDR master or DDR-backed state RAM**. A view ID stored in SP
+SP keeps its state on-chip and reaches DDR through the shared burst DMA. A view ID stored in SP
 identifies audio content. The audio store, reached through JP, uses that ID
 to find sample and metadata pages in DDR. A MIDI sequence ID selects
 a view handle in the data-job unit. SP supplies the playback interval,
 recording position and writer transitions. The data-job unit keeps the
 view handles and event cursors and accesses its own DDR arena. In a
-standalone fixture without a sync prefix, the work pass can read explicit
+standalone fixture without managed sync, the work instructions can read explicit
 loop records supplied by the testbench on the `loop_read_*` ports.
 
 ## When a loop can change mode
@@ -147,11 +158,11 @@ at frame 64, so Drums records frames 0–63. At frame 64, the Play span begins
 and Drums plays the new take during frames 64–127. The two spans make up the
 schedule for Drums.
 
-![Arrangement’s two spans for Drums, shown on the timeline and in program RAM. At frame 64 the schedule tells Drums to switch from Record to Play.](figures/composite-spans.svg)
+![Arrangement’s two spans for Drums, shown on the timeline and in program storage. At frame 64 the schedule tells Drums to switch from Record to Play.](figures/composite-spans.svg)
 
 ### How the schedule is stored
 
-A **schedule row** is one 96-bit word in the same on-chip program RAM that
+A **schedule row** is one 96-bit word in the same program region that
 holds the SP instructions. The compiler puts the rows for Drums immediately
 after the `ProcessCompositeChild` instruction that visits Drums. The
 instruction says three rows follow. The first is a **parent header** that
@@ -163,7 +174,7 @@ its spans. Appendix A gives the exact bit layout.
 For example, if one parent schedules a single Play span for each of 64 child
 loops, each child needs one header row and one span row. That is 128 schedule
 rows in addition to the instructions that visit the loops. These rows share
-the existing program RAM budget in each program region.
+the existing program row budget in each program region.
 
 ### How the state processor picks an action
 
@@ -219,7 +230,7 @@ recording can start. See the admission rule under
   the full pass each fit in a 32-bit frame count. A loop can sync to itself.
   Parent and sync links between different loops must be free of cycles.
 - **Capacity.** A child can have several parents, with several spans from
-  each. Every header and span uses a row of program RAM. The total must fit
+  each. Every header and span uses a program row. The total must fit
   alongside the program instructions in the same region.
 - **Host controls.** The prepared Rust and Marlin hosts accept composite graph
   images, Play and Seek by iteration, and start and stop commands. A mode change
@@ -296,9 +307,10 @@ these writes to the **same loop record**:
    position by Q and write it to word 2. For recording, grow the capture length
    in word 4 by Q. Word 3 is the content length used for playback. It can be
    shared by both passes because the advancement step leaves it intact.
-3. **Read the saved render values to build jobs.** After the sync pass, the
-   work instructions read the mode, begin-capture flag, render position and
-   content length from the record and check its boundary stamp. SP then
+3. **Read the saved render values to build jobs.** Work instructions read a
+   loop's mode, begin-capture flag, render position and content length after
+   its `ProcessLoop`. They check the boundary stamp against the run's latched
+   frame. SP then
    writes the required operands into the job FIFO. For example, ReadView
    carries a view ID, chunk position and length. First capture can emit
    BeginCapture ahead of Capture.
@@ -339,31 +351,24 @@ A gain instruction emits an immutable ramp snapshot and advances the
 persistent counter once per quantum. Audio playback jobs encode position and
 length in chunks. MIDI jobs address ports, sequences, cursor slots and
 event lists. Read also carries the loop identity to validate cursor reuse.
-The capture prepass uses the writer-open flag in loop RAM. Jobs stay in
-the FIFO until SP finishes.
-
-The compiler supplies the **maximum number of job descriptors one run can
-enqueue** as `run_job_budget` or, with live loading, in the switch descriptor.
-The budget is measured in FIFO entries. For example, a budget of 20 needs
-room for 20 descriptors even if a particular loop mode produces only 12.
-A single instruction can emit more than one job. For example, a MIDI retake
-can emit FinishCapture, BeginCapture and Append. Since JP starts only after SP finishes, the FIFO must
-hold the whole list at once. The bound says nothing about execution time
-or how many clock cycles those jobs take.
+The MIDI writer setup instruction uses the writer-open flag in loop RAM.
+A retake can emit FinishCapture and BeginCapture in the setup section,
+followed by Append in the data section.
 
 `run_valid && run_ready` starts admission checks for geometry, instruction
-and state counts, an empty FIFO and enough FIFO slots for the budget. SP
-reports a queue-full error when it cannot fit the declared budget.
-A fault can leave earlier state writes and a partial queue. A caller using
-the standalone core can inspect and drain that queue. The combined controller skips the normal JP pass on
-SP failure. Reset invalidates execution and FIFO state while retaining RAM
-payloads. Reload required records before resuming managed execution.
+and state counts, and an empty FIFO. In the combined pipeline, a full FIFO
+stalls SP until JP consumes a job. JP waits through empty gaps until SP finishes.
+A fault can leave earlier state writes, effects from jobs already accepted by JP,
+and queued jobs that the caller can inspect and drain. The standalone SP reports
+an error if the FIFO fills during job generation. Reset invalidates execution
+and FIFO state while retaining RAM payloads. Reload required records before
+resuming managed execution.
 
 | Port family | Use |
 | --- | --- |
 | `cfg_*` | Read/write program or persistent state, with `cfg_loop` selecting loop RAM. Observe the response beat. Live loading permits writes to the inactive instruction region under its dedicated rules. |
 | `run_*`, `done`, `error_code`, `instruction_pc` | Admit a run and identify success or the failing instruction. |
-| `job_*`, `queued_jobs` | Drain the FIFO after the run. SP holds the descriptor stable under backpressure. |
+| `job_*`, `queued_jobs` | Drain the FIFO while SP runs in streaming mode, or after completion in standalone mode. The descriptor stays stable under backpressure. |
 | `read_intent_*` | Advisory pulse on playback enqueue, with no ready input. |
 | `sync_event_*` | Ready/valid events, held until accepted. |
 
@@ -371,8 +376,8 @@ Sources. [SP RTL](https://github.com/SanderVocke/shoopdaloop/blob/cc410f27/fpga/
 
 # Job processor
 
-`audio_pipeline` runs SP first, then JP. Each JP job finishes before JP
-accepts the next one. The compiler uses numbered **scratch buffers**, which
+`audio_pipeline` starts JP when the first job reaches the FIFO. Each JP job
+finishes before JP accepts the next one. The compiler uses numbered **scratch buffers**, which
 are regions of on-chip sample RAM. For example, Input writes buffer 0, Gain
 reads buffer 0 and writes buffer 1, then Output reads buffer 1. The dependency
 is a concrete RAM read of the samples written by the earlier job. JP checks
@@ -554,15 +559,14 @@ playback meaning in either mode.
    16-byte aligned after the declared MIDI arena, inside the AXI window.
    Sort the array by offset, keep offsets below Q, and preserve it until
    completion.
-2. **Settle loop timing and queue writer transitions.** SP runs its sync
-   prefix. It then scans the work program for MIDI Capture and State instructions
-   and queues FinishCapture or BeginCapture as needed. With prepared state
-   bindings, the prepass also visits MIDI State instructions and queues Restore
-   or Cleanup ahead of the ordinary data jobs. The writer-open
-   bit in SP loop RAM records the intended writer lifecycle. This pass
-   completes before any regular data job is queued.
+2. **Settle loop timing and queue writer transitions.** After its loop's
+   `ProcessLoop`, capture setup can queue FinishCapture or BeginCapture.
+   MIDI input observation waits for capture preparations so new takes can
+   snapshot the input state at the start of the quantum. Restore and Cleanup
+   keep their order in the output packet stream. The writer-open bit in SP
+   loop RAM records the intended writer lifecycle.
 3. **Queue and execute the data jobs.** SP walks the regular work pass in
-   program order. JP then dispatches each queued descriptor and waits for
+   program order. JP dispatches each descriptor as it becomes available and waits for
    its result. On playback, SP supplies the loop-relative starting
    position, Q, a channel mask and a restart flag. The MIDI unit resolves
    the sequence's view and moves the messages in that interval. It gets
@@ -583,7 +587,7 @@ playback meaning in either mode.
 | MIDI Output | One ready scratch list | Packet handshakes for the selected output port; optional accepted-output tracking |
 | MIDI Restore / Cleanup | Prepared binding, current output state, snapshot/differences or owned activity | Ordered correction packets and updated tracking state; requires the state extension |
 
-## Variable event counts and the job budget
+## Variable event counts and job descriptors
 
 An audio quantum fixes a sample count. A MIDI quantum fixes a time
 window. It can carry zero messages or many messages at the same offset.
@@ -591,12 +595,10 @@ The input count is supplied with the run as a 32-bit record count. The
 RTL checks input shape and memory access. The size of a storage block
 places no per-quantum event limit on the run.
 
-The compiler reserves one job for each MIDI Input, Playback, Merge, or
-Output instruction, and up to three for each MIDI Capture instruction.
-Three slots cover a retake that finishes an old writer, begins a new
-one and appends a list. Reserve one additional job per MIDI State instruction
-for its possible Restore or Cleanup. This sizing depends on the graph. A burst makes
-the jobs run longer without adding FIFO descriptors. The RTL component
+MIDI Input, Playback, Merge, and Output each produce one job. MIDI Capture can
+produce up to three jobs when a retake finishes an old writer, begins a new one,
+and appends a list. MIDI State can produce a Restore or Cleanup job. An event
+burst makes the jobs run longer without adding FIFO descriptors. The RTL component
 tests record and play 3,000 messages at one sample offset and separately
 merge 1,200 messages. At the default block geometry, 3,000 stored events
 take twelve blocks. Deadline measurements use their stated graph, memory
@@ -654,7 +656,8 @@ Malformed staged input reports an error before SP advances and can be
 corrected and retried. A memory fault during validation, a failed job,
 or a retirement failure latches a fault in the connected pipeline.
 The caller must discard the failed quantum's audio buffers. The wrapper
-holds off future runs until reset. Storage exhaustion can leave an
+holds off future runs until reset. Early recording writes and accepted MIDI
+packets can take effect before a later sync fault. Storage exhaustion can leave an
 incomplete recording prefix, and an incomplete view cannot be published
 as a successful take. Use `midi_error_code` for the MIDI cause alongside
 the shared `error_code` and `error_stage`.
@@ -707,7 +710,7 @@ compiled MIDI State instructions supply those choices.
 
 A binding identifies the loop slot and generation, sequence, direct input,
 output-port mask and MIDI-channel mask. The compiler puts MIDI State
-instructions after all Capture instructions. The loader installs matching
+instructions after all writer setup instructions. The loader installs matching
 bindings with command 21 before rendering. SP uses loop RAM to decide when to
 queue Restore or Cleanup; `midi_expression_state` performs the data work under
 the same JP used for audio. It adds no separate instruction processor or MIDI
