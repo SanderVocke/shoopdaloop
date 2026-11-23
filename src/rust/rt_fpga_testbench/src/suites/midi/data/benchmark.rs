@@ -12,9 +12,8 @@ use crate::{
     sim::{Agent, Sim},
     timing::Fixed,
 };
-use rt_fpga_compiler::StateProgramTarget;
 use rt_fpga_reference::{
-    midi::{Message, OutputEvent},
+    midi::{InputEvent, Message, OutputEvent},
     transitions::{LoopKind, LoopSpec},
 };
 use serde_json::{Value, json};
@@ -179,7 +178,7 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Shared, reference: &Reference) {
                 }
             }
         }
-        let records = records(slot, reference.frames);
+        let records = reference.records(slot);
         for (ordinal, chunk) in records.chunks(limits.block_events as usize).enumerate() {
             let first = chunk[0];
             control(
@@ -299,7 +298,30 @@ pub fn run_parameters(
     parameters: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
     run_case(
-        audio, midi, loops, frames, quanta, delay, state, false, parameters,
+        audio, midi, loops, frames, quanta, delay, state, false, false, true, parameters,
+    )
+}
+pub fn tracks(
+    audio: bool,
+    frames: usize,
+    quanta: usize,
+    delay: u64,
+    merge_output: bool,
+    parameters: &std::collections::BTreeMap<String, String>,
+) -> Result<Value> {
+    assert!(quanta >= 8);
+    run_case(
+        audio,
+        true,
+        64,
+        frames,
+        quanta,
+        delay,
+        false,
+        false,
+        true,
+        merge_output,
+        parameters,
     )
 }
 pub fn musical(delay: u64) -> Result<Value> {
@@ -311,6 +333,8 @@ pub fn musical(delay: u64) -> Result<Value> {
         16,
         delay,
         true,
+        true,
+        false,
         true,
         &Default::default(),
     )
@@ -324,6 +348,8 @@ fn run_case(
     delay: u64,
     state: bool,
     musical: bool,
+    tracks: bool,
+    merge_output: bool,
     parameters: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
     assert!(quanta > 0 && (quanta + 17) * QUANTUM <= frames);
@@ -367,6 +393,7 @@ fn run_case(
         ("MIDI_VIEWS", 256),
         ("MIDI_RETIREMENTS", 128),
         ("MIDI_MAINTENANCE", 64),
+        ("MIDI_RECORD_BURSTS", 1),
         ("MIDI_AXI_DATA_WIDTH", 64),
         ("READ_HINT_DEPTH", 256),
     ] {
@@ -432,22 +459,24 @@ fn run_case(
     if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
         memory.timing = Box::new(Fixed::new(delay));
     }
-    let mut reference = Reference::prepare(audio, midi, loops, frames, state);
+    let mut reference = Reference::prepare_profile(audio, midi, loops, frames, state, tracks);
     if musical {
         reference.musical_fixture();
     }
     let views: Vec<_> = (0..if audio { loops * 2 } else { 0 })
         .map(|i| i as u64)
         .collect();
-    let image = crate::target::RtlTarget::new(cap, 256, &views).build(&reference.logical)?;
+    let image = crate::target::RtlTarget::new(cap, 256, &views)
+        .build_with_midi_merge_output(&reference.logical, merge_output)?;
     driver.audio.load_compiled(&mut sim, &image);
+    let event_address = (size - 32768 + 271) & !15;
     sim.model.set_all(&[
         ("run_quantum", QUANTUM as u64),
         ("sync_event_ready", 1),
         ("midi_arena_base", 0),
         ("midi_memory_arena_bytes", size as u64),
         ("midi_event_count", 0),
-        ("midi_event_address", ((size - 32768 + 271) & !15) as u64),
+        ("midi_event_address", event_address as u64),
         ("midi_publication_commit", 1),
     ]);
     load_audio(&mut driver, &mut sim, &reference);
@@ -468,7 +497,16 @@ fn run_case(
     reference.play();
     rows(&mut driver, &mut sim, &reference, false);
     let mut measurements = Vec::new();
-    for tick in 0..quanta + 17 + if musical { 7 } else { 0 } {
+    let steady_end = quanta + 17;
+    for tick in 0..steady_end
+        + if musical {
+            7
+        } else if tracks {
+            3
+        } else {
+            0
+        }
+    {
         use rt_fpga_reference::transitions::Operation;
         let label = if musical && tick >= quanta + 17 {
             match tick - (quanta + 17) {
@@ -504,6 +542,26 @@ fn run_case(
                 }
                 _ => "quiet_after_stop",
             }
+        } else if tracks && tick == 20 {
+            reference.command_slots(0..8, Operation::Stop);
+            "stop_eight"
+        } else if tracks && tick == 22 {
+            reference.command_slots(
+                0..8,
+                Operation::Play {
+                    position: (tick * QUANTUM) as u64,
+                    retrigger: true,
+                },
+            );
+            "start_eight"
+        } else if tracks && tick == steady_end {
+            reference.command(Operation::Record);
+            "record_start"
+        } else if tracks && tick == steady_end + 1 {
+            "record_eight_events"
+        } else if tracks && tick == steady_end + 2 {
+            reference.command(Operation::Stop);
+            "record_stop"
         } else if tick == 0 {
             "playback_start"
         } else if tick < 17 {
@@ -511,11 +569,42 @@ fn run_case(
         } else {
             "steady"
         };
-        if musical && tick >= quanta + 17 {
+        if (musical && tick >= steady_end)
+            || (tracks
+                && matches!(
+                    label,
+                    "stop_eight" | "start_eight" | "record_start" | "record_stop"
+                ))
+        {
             rows(&mut driver, &mut sim, &reference, false);
         }
-        reference.callback();
-        if !musical {
+        let mut input = Vec::new();
+        if tracks && (steady_end..steady_end + 2).contains(&tick) {
+            let mut memory = midi_memory.borrow_mut();
+            let Backend::Axi(bus) = &mut memory.backend else {
+                unreachable!()
+            };
+            for i in 0..8 {
+                let event = InputEvent {
+                    input: 0,
+                    offset: (i * 4) as u32,
+                    message: Message::parse(&[0xb0, 7, 30 + i as u8]).unwrap(),
+                };
+                let start = event_address / 4 + 4 * i;
+                bus.words[start..start + 4].copy_from_slice(&[
+                    u32::from(event.input),
+                    event.offset,
+                    packed(event.message),
+                    0,
+                ]);
+                input.push(event);
+            }
+        }
+        sim.model.set("midi_event_count", input.len() as u64);
+        reference.callback_with_input(&input);
+        if tracks {
+            reference.validate_track_playback();
+        } else if !musical {
             reference.validate();
         }
         driver.audio.clear_jobs();
@@ -586,7 +675,7 @@ fn run_case(
         measurements.push(json!({
             "kind":label,
             "position":reference.position(), "cycles":cycles, "us_at_100mhz":cycles as f64/100.0,
-            "midi_packets":reference.emitted.len(), "jobs":driver.audio.consumed().len(),
+            "midi_input_packets":input.len(), "midi_packets":reference.emitted.len(), "jobs":driver.audio.consumed().len(),
             "state_work":reference.midi.expression.as_ref().map(|s|json!({"tracker_visits":s.work.tracker_visits,"compared_fields":s.work.compared_fields,"restored_messages":s.work.restored_messages,"prefix_events":s.work.prefix_events})),
             "audio_axi_reads_writes_native_reads_writes":audio_traffic,
             "audio_metadata_table_reference_stack_hits_misses_fills_writebacks":cache_delta,
@@ -597,7 +686,7 @@ fn run_case(
     Ok(json!({
         "scenario":if audio && midi {"stereo_and_midi"} else if audio {"audio_only"} else {"midi_only"},
         "loops":loops, "sample_rate":SAMPLE_RATE, "quantum_frames":QUANTUM, "chunk_frames":QUANTUM,
-        "sequence_frames":frames, "midi_events_per_loop":if midi {records(0,frames).len()} else {0},
+        "sequence_frames":frames, "midi_events_per_loop":(!tracks).then(|| if midi {records(0,frames).len()} else {0}),
         "ddr_added_delay_clocks":delay,
         "rtl_parameters":model_parameters,
         "simulation_optimization":3, "waveform_instrumentation":false,
@@ -605,8 +694,8 @@ fn run_case(
         "scope":"same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
         "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
         "compiled_instructions":image.instructions.len(), "maximum_jobs":image.jobs_per_quantum,
-        "validation":if musical {"every SP job, MIDI message, sync frame and loop position/length matches Rust; note/pedal meaning checked by independent receiver fixtures"} else {"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked"},
-        "musical_fixture":musical,"midi_state_hardware":true, "midi_state_tracking":state&&midi, "measurements":measurements,
+        "validation":if musical {"every SP job, MIDI message, sync frame and loop position/length matches Rust; note/pedal meaning checked by independent receiver fixtures"} else if tracks {"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; playback MIDI independently checked against fixture records"} else {"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked"},
+        "musical_fixture":musical,"tracks_fixture":tracks,"merge_output":merge_output,"midi_state_hardware":true, "midi_state_tracking":state&&midi, "measurements":measurements,
     }))
 }
 

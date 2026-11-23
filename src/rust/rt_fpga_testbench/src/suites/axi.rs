@@ -36,6 +36,42 @@ pub fn run(width: u64, mode: Mode) -> Result<()> {
     println!("axi/{width}/{mode:?}: 5 regression groups passed");
     Ok(())
 }
+
+pub fn record_adapter(width: u64) -> Result<()> {
+    let mut design = ep::design("word_axi", width, Mode::Fixed);
+    design
+        .parameters
+        .insert("REGISTER_REQUEST".into(), "1".into());
+    design.parameters.insert("RECORD_BURSTS".into(), "1".into());
+    let compiled = design.build(&crate::root().join("work/marlin-suite/axi"))?;
+    let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    let mut driver = Endpoint::new(&mut sim, Mode::Fixed, true, false)?;
+    driver.reset(&mut sim);
+    let payload = crate::bits::Bits::from([0x12345678u32, 0x90abcdef, 0x76543210, 0xfedcba09]);
+    sim.model.set("memory_record", 1);
+    sim.model.set_bits("memory_write_record", &payload);
+    for (offset, requests) in [
+        (0, 1),
+        (4, if width == 64 { 4 } else { 1 }),
+        (4080, 1),
+        (4092, 4),
+    ] {
+        let before = driver.memory.borrow().requests();
+        driver.word_access(&mut sim, offset, Some(0), false);
+        driver.word_access(&mut sim, offset, None, false);
+        assert_eq!(sim.model.bits("memory_read_record"), payload);
+        assert_eq!(driver.memory.borrow().requests() - before, requests * 2);
+    }
+    let before = driver.memory.borrow().requests();
+    driver.word_access(&mut sim, (WORDS as i64) * 4 - 4, Some(0), true);
+    assert_eq!(driver.memory.borrow().requests(), before);
+    driver.word_access(&mut sim, 0, Some(0), false);
+    driver.memory.borrow_mut().control.fail_next = true;
+    driver.word_access(&mut sim, 0, None, true);
+    driver.word_access(&mut sim, 0, None, false);
+    assert_eq!(sim.model.bits("memory_read_record"), payload);
+    Ok(())
+}
 fn words_and_bursts(d: &mut Endpoint, s: &mut Sim<'_>) {
     d.reset(s);
     let width = d.memory.borrow().width;

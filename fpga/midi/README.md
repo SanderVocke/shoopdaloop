@@ -77,10 +77,18 @@ message array per loop. Power-of-two block sizes make address arithmetic cheaper
 ## Boundaries and error handling
 
 `midi_audio_pipeline` connects SP, the mixed queue, JP, audio memory services, and
-MIDI data jobs. `midi_audio_pipeline_axi` adds the MIDI word-to-AXI adapter;
+MIDI data jobs. `midi_audio_pipeline_axi` adds the MIDI AXI adapter.
 `midi_data_jobs_axi` is an isolated functional-unit test boundary. Both 32-bit and
-64-bit MIDI AXI are supported. Audio keeps its existing caches; MIDI has no general
-DDR cache or speculative block-payload prefetch.
+64-bit MIDI AXI are supported. The AXI tops enable 16-byte event bursts,
+including transfers for playback, scratch lists, and recording. The adapter
+uses word transfers for metadata and for records that cross an AXI page or
+lack the required wide-beat alignment.
+
+The RTL compiler can fuse a terminal merge tree of up to eight source lists
+into a MergeOutput instruction. The output engine keeps one record per active
+list, picks the earliest record, sends it, and refills that list. Equal keys
+preserve left-to-right order. Shared intermediate lists and larger trees
+remain available through the binary Merge job.
 
 Input validation runs before SP starts. Bad input timestamps/order can be
 corrected and retried without advancing musical time. Valid input has no message
@@ -116,6 +124,19 @@ The [current implementation report](../../docs/fpga/midi-data-jobs.md) includes
 the Rust comparisons and Vivado 2021.1 utilization/timing at 100 and 150 MHz.
 The [64-loop playback measurements](../../docs/fpga/midi-data-jobs-benchmarks.md)
 compare audio plus MIDI, audio only, and MIDI only with ideal and delayed DDR.
+
+The `tracks` benchmark plays eight loops on each of eight MIDI outputs with a
+stereo mix, staggered MIDI, bursts on two tracks, and start, stop, and recording
+callbacks. Toggle `--merge-output` and `--record-bursts` independently to isolate
+the two optimizations. The JSON includes per-callback cycles and AXI transactions.
+
+```sh
+printf '{"JOB_DEPTH":"512"}\n' > /tmp/midi-track-parameters.json
+cargo run --locked --release -p rt_fpga_testbench --features sim \
+  --example midi_data_quantum_64 -- --profile tracks --scenario mixed \
+  --frames 2048 --quanta 32 --ddr-delay 7 --parameters /tmp/midi-track-parameters.json \
+  --merge-output on --record-bursts on --output /tmp/midi-tracks.json
+```
 
 ## Generation and verification
 

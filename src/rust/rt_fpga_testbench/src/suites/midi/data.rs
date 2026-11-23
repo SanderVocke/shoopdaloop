@@ -25,13 +25,78 @@ pub mod pipeline;
 mod programs;
 
 fn assert_scheduled_jobs(mut actual: Vec<serde_json::Value>, expected: &[Job]) {
+    fn expand_merge(
+        jobs: &[Job],
+        source: rt_fpga_reference::midi::BufferId,
+        before: usize,
+        leaves: &mut Vec<u16>,
+        removed: &mut [bool],
+    ) {
+        let uses: usize =
+            jobs.iter()
+                .map(|job| match *job {
+                    Job::MidiMerge { left, right, .. } => {
+                        usize::from(left == source) + usize::from(right == source)
+                    }
+                    Job::MidiAppend { source: input, .. }
+                    | Job::MidiOutput { source: input, .. } => usize::from(input == source),
+                    _ => 0,
+                })
+                .sum();
+        if uses != 1 {
+            leaves.push(source.0);
+            return;
+        }
+        if let Some((index, Job::MidiMerge { left, right, .. })) =
+            jobs[..before].iter().enumerate().rev().find(|(_, job)|
+                matches!(job, Job::MidiMerge { destination, .. } if *destination == source))
+        {
+            removed[index] = true;
+            expand_merge(jobs, *left, index, leaves, removed);
+            expand_merge(jobs, *right, index, leaves, removed);
+        } else {
+            leaves.push(source.0);
+        }
+    }
+    let mut removed = vec![false; expected.len()];
+    let mut outputs = expected
+        .iter()
+        .enumerate()
+        .filter_map(|(index, job)| match *job {
+            Job::MidiOutput { source, port } => Some((index, source, port)),
+            _ => None,
+        });
+    let mut fused = std::collections::BTreeMap::new();
+    for job in actual.iter().filter(|job| {
+        matches!(
+            job["kind"].as_str(),
+            Some("midi_output" | "midi_merge_output")
+        )
+    }) {
+        let (index, source, port) = outputs.next().expect("extra MIDI output job");
+        if job["kind"] == "midi_merge_output" {
+            let mut leaves = Vec::new();
+            expand_merge(expected, source, index, &mut leaves, &mut removed);
+            let output =
+                serde_json::json!({"kind":"midi_merge_output","sources":leaves,"port":port});
+            fused.insert(index, output);
+        }
+    }
     let mut expected: Vec<_> = expected
         .iter()
-        .map(|job| serde_json::to_value(job).unwrap())
+        .enumerate()
+        .filter(|(index, _)| !removed[*index])
+        .map(|(index, job)| {
+            fused
+                .remove(&index)
+                .unwrap_or_else(|| serde_json::to_value(job).unwrap())
+        })
         .collect();
     // Compare every descriptor while keeping the observable MIDI packet jobs in sequence.
     let key = |job: &serde_json::Value| match job["kind"].as_str() {
-        Some("midi_restore_state" | "midi_cleanup_state" | "midi_output") => None,
+        Some("midi_restore_state" | "midi_cleanup_state" | "midi_output" | "midi_merge_output") => {
+            None
+        }
         _ => Some(job.to_string()),
     };
     actual.sort_by_cached_key(key);

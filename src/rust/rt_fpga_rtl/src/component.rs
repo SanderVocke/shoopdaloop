@@ -74,6 +74,11 @@ pub enum Instruction {
         source: u16,
         port: u16,
     },
+    MidiMergeOutput {
+        sources: [u8; 8],
+        count: u8,
+        port: u16,
+    },
     ProcessHistorySmoothing {
         loop_id: Identity,
         control: u16,
@@ -167,6 +172,26 @@ pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
             destination,
         } => (17, vec![left, right, destination]),
         Instruction::MidiOutput { source, port } => (18, vec![source, port]),
+        Instruction::MidiMergeOutput {
+            sources,
+            count,
+            port,
+        } => {
+            if !(2..=8).contains(&count) {
+                return Err("invalid MIDI output fan-in".into());
+            }
+            let packed = 21u128
+                | (u128::from(port) << 8)
+                | (u128::from(u64::from_le_bytes(sources)) << 24)
+                | (u128::from(count) << 88);
+            return Ok([
+                packed as u32,
+                (packed >> 32) as u32,
+                (packed >> 64) as u32,
+                0,
+                0,
+            ]);
+        }
         Instruction::MidiState {
             loop_id,
             sequence,

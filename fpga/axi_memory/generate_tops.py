@@ -62,7 +62,8 @@ def generate():
         wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
         assign memory_write_ready = 0;
         assign memory_read_valid = 0;
-        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),
+            .memory_record(1'b0), .memory_write_record(128'b0), .memory_read_record(), .*);
     end endgenerate
 endmodule
 """

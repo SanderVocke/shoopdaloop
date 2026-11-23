@@ -60,6 +60,10 @@ pub fn job(bits: &Bits) -> Value {
     let p1 = bits.get(128, 64);
     let p2 = bits.get(192, 64);
     assert_eq!(bits.get(40, 24), 0, "nonzero reserved job bits");
+    if kind == 0x2a {
+        assert!((2..=8).contains(&b));
+        return json!({"kind":"midi_merge_output","sources": &p0.to_le_bytes()[..b as usize],"port":a});
+    }
     if (0x20..=0x29).contains(&kind) {
         let owner = json!({"slot":p2 as u32,"generation":p2>>32});
         return match kind {

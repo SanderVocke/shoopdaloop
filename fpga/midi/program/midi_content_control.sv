@@ -1,7 +1,8 @@
 module midi_content_control #(
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
     parameter integer VIEWS=512, RETIREMENTS=256,
-    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
+    parameter integer TABLE_ENTRIES=(MAX_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1,
+    parameter integer RECORD_BURSTS=0
 ) (
     input wire clk, input wire reset, input wire [63:0] arena_base,
     output wire [63:0] arena_bytes,
@@ -21,8 +22,10 @@ module midi_content_control #(
     output wire [31:0] free_view_slots, output wire [31:0] free_retirement_slots,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output reg [63:0] memory_address, output reg [31:0] memory_write_data,
+    output reg memory_record, output wire [127:0] memory_write_record,
     input wire memory_response_valid, output wire memory_response_ready,
-    input wire memory_response_error, input wire [31:0] memory_read_data
+    input wire memory_response_error, input wire [31:0] memory_read_data,
+    input wire [127:0] memory_read_record
 );
     `include "midi_functions.svh"
     initial begin
@@ -108,7 +111,8 @@ module midi_content_control #(
         DISCARD_TABLE_NEXT=69,
         DISCARD_FINISH=70,
         RESPONSE=71, BATCH_START=72, BATCH_FETCH=73, BATCH_OFFSET=74, BATCH_PACKET=75,
-        BATCH_NEXT=76, BATCH_FINISH=77;
+        BATCH_NEXT=76, BATCH_FINISH=77, ADDRESS_INDEX=78, ADDRESS_OFFSET=79, ADDRESS_FINAL=80,
+        RECORD_BURST_DONE=81;
     reg [15:0] phase, return_phase, after_load, after_save, after_record, after_block;
     reg [3:0] op;
     reg descriptor_valid;
@@ -120,17 +124,38 @@ module midi_content_control #(
     reg [63:0] view_handle, arg0, arg1;
     reg [23:0] packet;
     reg [1:0] length;
-    reg [31:0] desc [0:15];
+    reg [31:0] desc [0:12];
+    (* ram_style = "distributed" *) reg [31:0] descriptor_cold [0:3];
+    reg [31:0] descriptor_cold_data;
+    reg [2:0] descriptor_cold_valid;
+    wire descriptor_is_cold = cursor[3:0]==10 || cursor[3:0]==11 || cursor[3:0]==14;
+    wire [1:0] descriptor_cold_write_index = cursor[3:0]==10 ? 0 : cursor[3:0]==11 ? 1 : 2;
+    wire [1:0] descriptor_cold_read_index = cursor[3:0]==9 ? 0 : cursor[3:0]==10 ? 1 : 2;
+    wire [1:0] descriptor_cold_address = phase==LOADED_VIEW
+        ? descriptor_cold_write_index : descriptor_cold_read_index;
+    wire [3:0] descriptor_hot_index = cursor[3:0]<10 ? cursor[3:0]
+        : cursor[3:0]==12 ? 10 : cursor[3:0]==13 ? 11 : 12;
+    wire [31:0] descriptor_word = descriptor_is_cold
+        ? (descriptor_cold_valid[descriptor_cold_write_index] ? descriptor_cold_data : 32'b0)
+        : desc[descriptor_hot_index];
+    always @(posedge clk) begin
+        if (!reset && phase==LOADED_VIEW && descriptor_is_cold)
+            descriptor_cold[descriptor_cold_address] <= data_word;
+        if (phase==SAVED_VIEW && (cursor==9 || cursor==10 || cursor==13))
+            descriptor_cold_data <= descriptor_cold[descriptor_cold_address];
+    end
     reg [31:0] view_slot, source_slot, candidate, generation, refs;
     reg [31:0] cursor, scan, data_word, block_id, free_count, queue_head, queue_tail, queue_count;
     reg [31:0] used_views;
     assign response_blocks=desc[3];
-    assign response_owner=desc[15];
+    assign response_owner=desc[12];
     assign response_references=desc[1];
     assign free_block_slots=free_count;
     assign free_view_slots=32'(VIEWS)-used_views;
     assign free_retirement_slots=32'(RETIREMENTS)-queue_count;
     reg [31:0] record_index, record_word, payload [0:3];
+    assign memory_write_record={payload[3],payload[2],payload[1],payload[0]};
+    wire [31:0] batch_packet=RECORD_BURSTS!=0 ? memory_read_record[127:96] : data_word;
     reg [63:0] record_address, record_frame;
     reg [31:0] low, high, middle, range_first, range_count, first_table, table_count, table_cursor;
     reg [31:0] removed_blocks, discard_count, released_refs;
@@ -145,19 +170,49 @@ module midi_content_control #(
     localparam integer VIEW_BITS = VIEWS > 1 ? $clog2(VIEWS) : 1;
     localparam integer TABLE_BITS = TABLE_ENTRIES > 1 ? $clog2(TABLE_ENTRIES) : 1;
     initial if(RETIRE_BASE+64'(RETIREMENTS)*8>64'h100000000) $fatal(1,"MIDI storage offsets exceed 32 bits");
-    function automatic [63:0] view_address(input [31:0] slot, input integer field);
-        reg [31:0] offset;
-        begin offset=32'(VIEW_BITS'(slot))*64+32'(field[3:0])*4;view_address=arena_base+{32'b0,offset};end
-    endfunction
-    function automatic [63:0] table_address(input [31:0] slot, input [31:0] ordinal);
-        reg [31:0] offset;
-        begin offset=32'(TABLE_BASE)+(32'(VIEW_BITS'(slot))*32'(TABLE_ENTRIES)+32'(TABLE_BITS'(ordinal)))*4;table_address=arena_base+{32'b0,offset};end
-    endfunction
-    task automatic read_word(input [63:0] address, input [15:0] next);
-        begin memory_address<=address;return_phase<=next;phase<=READ_REQ;end
+    localparam [2:0] ADDRESS_VIEW=0, ADDRESS_TABLE=1, ADDRESS_REF=2, ADDRESS_FREE=3,
+        ADDRESS_EVENT=4, ADDRESS_RETIRE=5, ADDRESS_WORD=6, ADDRESS_BATCH=7;
+    reg [2:0] address_region;
+    reg [31:0] address_index, address_field;
+    localparam [63:0] ADDRESS_MAX_A = TABLE_BASE > REF_BASE ? TABLE_BASE : REF_BASE;
+    localparam [63:0] ADDRESS_MAX_B = FREE_BASE > EVENT_BASE ? FREE_BASE : EVENT_BASE;
+    localparam [63:0] ADDRESS_MAX_C = ADDRESS_MAX_A > ADDRESS_MAX_B ? ADDRESS_MAX_A : ADDRESS_MAX_B;
+    localparam [63:0] ADDRESS_MAX_BASE = ADDRESS_MAX_C > RETIRE_BASE ? ADDRESS_MAX_C : RETIRE_BASE;
+    localparam [64:0] ADDRESS_MAX_OFFSET = {1'b0,ADDRESS_MAX_BASE}+65'hfffffffff;
+    localparam integer ADDRESS_BITS = ADDRESS_MAX_OFFSET[64] ? 64 : $clog2(ADDRESS_MAX_OFFSET+1'b1);
+    reg [ADDRESS_BITS-1:0] address_offset;
+    reg address_writing, address_saving;
+    wire [31:0] address_table_product = 32'(VIEW_BITS'(address_index))*32'(TABLE_ENTRIES);
+    wire [31:0] address_view_offset = (32'(VIEW_BITS'(address_index)) << 6)
+        | (32'(address_field[3:0]) << 2);
+    wire [63:0] address_region_base = address_region == ADDRESS_TABLE ? TABLE_BASE
+        : address_region == ADDRESS_REF ? REF_BASE : address_region == ADDRESS_FREE ? FREE_BASE
+        : address_region == ADDRESS_EVENT ? EVENT_BASE : address_region == ADDRESS_RETIRE ? RETIRE_BASE : 64'b0;
+    wire [63:0] address_operand_a = phase == ADDRESS_INDEX ? {32'b0,address_table_product}
+        : phase == ADDRESS_OFFSET ? 64'(address_offset) : memory_address;
+    wire [63:0] address_operand_b = phase == ADDRESS_INDEX ? {32'b0,32'(TABLE_BITS'(address_field))}
+        : phase == ADDRESS_OFFSET ? address_region_base : 64'(address_offset);
+    wire [63:0] address_sum = address_operand_a+address_operand_b;
+    task automatic request_region(input [2:0] region, input [31:0] index, field,
+        input [63:0] base, input writing, saving, input [31:0] value, input [15:0] next);
+        begin
+            address_region<=region;address_index<=index;address_field<=field;
+            address_writing<=writing;address_saving<=saving;memory_address<=base;
+            memory_record<=0;
+            if(writing) memory_write_data<=value;
+            return_phase<=next;phase<=ADDRESS_INDEX;
+        end
     endtask
-    task automatic write_word(input [63:0] address, input [31:0] value, input [15:0] next);
-        begin memory_address<=address;memory_write_data<=value;return_phase<=next;phase<=WRITE_REQ;end
+    task automatic read_region(input [2:0] region, input [31:0] index, field,
+        input [63:0] base, input [15:0] next);
+        begin request_region(region,index,field,base,0,0,0,next);end
+    endtask
+    task automatic write_region(input [2:0] region, input [31:0] index, field,
+        input [63:0] base, input [31:0] value, input [15:0] next);
+        begin request_region(region,index,field,base,1,0,value,next);end
+    endtask
+    task automatic prepare_record(input [31:0] index, input [15:0] next);
+        begin request_region(ADDRESS_EVENT,index,0,arena_base,0,1,0,next);end
     endtask
     task automatic fail(input [3:0] error_code);
         begin response_error<=error_code;phase<=RESPONSE;descriptor_valid<=0;end
@@ -175,12 +230,15 @@ module midi_content_control #(
         reg [63:0] origin, frames;
         reg [31:0] position;
         if (reset) begin
+            address_region<=0;address_index<=0;address_field<=0;address_offset<=0;
+            address_writing<=0;address_saving<=0;
+            descriptor_cold_valid<=0;
             phase<=IDLE;formatted<=0;used_views<=0;descriptor_valid<=0;descriptor_handle<=0;
             batch_source<=0;batch_position<=0;batch_last_frame<=0;batch_count<=0;batch_index<=0;batch_offset<=0;
             append_ordinal<=0;append_block<=0;batch_has_last<=0;append_block_valid<=0;
             record_block_valid<=0;record_block_ordinal<=0;record_block_id<=0;response_error<=0;response_handle<=0;
             response_frame<=0;response_order<=0;response_packet<=0;response_length<=0;response_work<=0;
-            memory_address<=0;memory_write_data<=0;free_count<=0;queue_head<=0;queue_tail<=0;queue_count<=0;
+            memory_address<=0;memory_write_data<=0;memory_record<=0;free_count<=0;queue_head<=0;queue_tail<=0;queue_count<=0;
             op<=0;view_handle<=0;arg0<=0;arg1<=0;packet<=0;length<=0;
             cursor<=0;scan<=0;data_word<=0;view_slot<=0;source_slot<=0;candidate<=0;generation<=0;
             refs<=0;record_index<=0;record_word<=0;record_address<=0;record_frame<=0;
@@ -194,6 +252,28 @@ module midi_content_control #(
                 batch_source<=command_source;batch_count<=command_count;
                 arg0<=command_arg0;arg1<=command_arg1;packet<=command_packet;length<=command_length;
                 response_error<=0;response_length<=0;response_work<=0;phase<=DISPATCH;
+            end
+            ADDRESS_INDEX: begin
+                case(address_region)
+                    ADDRESS_VIEW: address_offset<=ADDRESS_BITS'(address_view_offset);
+                    ADDRESS_TABLE: address_offset<=ADDRESS_BITS'({address_sum[31:0],2'b0});
+                    ADDRESS_REF,ADDRESS_FREE,ADDRESS_WORD: address_offset<=ADDRESS_BITS'({address_index,2'b0});
+                    ADDRESS_EVENT: address_offset<=ADDRESS_BITS'({address_index,4'b0});
+                    ADDRESS_RETIRE: address_offset<=ADDRESS_BITS'({address_index,address_field[0],2'b0});
+                    ADDRESS_BATCH: address_offset<=ADDRESS_BITS'({address_index,address_field[1:0],2'b0});
+                    default: address_offset<=0;
+                endcase
+                phase<=ADDRESS_OFFSET;
+            end
+            ADDRESS_OFFSET: begin
+                address_offset<=address_region==ADDRESS_VIEW || address_region==ADDRESS_TABLE
+                    ? ADDRESS_BITS'(address_sum[31:0]) : ADDRESS_BITS'(address_sum);
+                phase<=ADDRESS_FINAL;
+            end
+            ADDRESS_FINAL: begin
+                memory_address<=address_sum;
+                if(address_saving) begin record_address<=address_sum;phase<=return_phase;end
+                else phase<=address_writing ? WRITE_REQ : READ_REQ;
             end
             READ_REQ: if(memory_ready) phase<=READ_WAIT;
             READ_WAIT: if(memory_response_valid) begin
@@ -215,19 +295,19 @@ module midi_content_control #(
                 else begin view_slot<=view_handle[31:0];if(descriptor_valid && descriptor_handle==view_handle) phase<=CHECK_VIEW;else load_view(CHECK_VIEW);end
             end
             FORMAT: begin
-                if(scan<32'(VIEWS)*16) write_word(arena_base+64'(scan)*4,0,FORMAT_NEXT);
+                if(scan<32'(VIEWS)*16) write_region(ADDRESS_WORD,scan,0,arena_base,0,FORMAT_NEXT);
                 else if(scan<32'(VIEWS)*16+32'(BLOCKS)*2) begin
                     position=scan-32'(VIEWS)*16;
-                    write_word(arena_base+REF_BASE+64'(position)*4,
-                        position<32'(BLOCKS) ? 0 : 32'(BLOCKS)*2-position-1,FORMAT_NEXT);
+                    write_region(ADDRESS_REF,position,0,arena_base,position<32'(BLOCKS) ? 0 : 32'(BLOCKS)*2-position-1,FORMAT_NEXT);
                 end else begin
                     formatted<=1;used_views<=0;free_count<=32'(BLOCKS);queue_head<=0;queue_tail<=0;queue_count<=0;phase<=RESPONSE;
                 end
             end
             FORMAT_NEXT: begin scan<=scan+1;phase<=FORMAT;end
-            LOAD_VIEW: read_word(view_address(view_slot,integer'(cursor)),LOADED_VIEW);
+            LOAD_VIEW: read_region(ADDRESS_VIEW,view_slot,cursor,arena_base,LOADED_VIEW);
             LOADED_VIEW: begin
-                desc[cursor[3:0]]<=data_word;
+                if (descriptor_is_cold) descriptor_cold_valid[descriptor_cold_write_index]<=1;
+                else desc[descriptor_hot_index]<=data_word;
                 if(cursor==15) begin phase<=after_load;descriptor_valid<=1;descriptor_handle<=view_handle;end
                 else begin cursor<=cursor+1;phase<=LOAD_VIEW;end
             end
@@ -246,11 +326,11 @@ module midi_content_control #(
                     default: fail(4);
                 endcase
             end
-            SAVE_VIEW: write_word(view_address(view_slot,integer'(cursor)),desc[cursor[3:0]],SAVED_VIEW);
+            SAVE_VIEW: write_region(ADDRESS_VIEW,view_slot,cursor,arena_base,descriptor_word,SAVED_VIEW);
             SAVED_VIEW: if(cursor==15) phase<=after_save;else begin cursor<=cursor+1;phase<=SAVE_VIEW;end
-            VIEW_ALLOC: if(candidate>=VIEWS) fail(3);else read_word(view_address(candidate,0),VIEW_ALLOC_GEN);
-            VIEW_ALLOC_GEN: begin generation<=data_word;read_word(view_address(candidate,1),VIEW_ALLOC_REFS);end
-            VIEW_ALLOC_REFS: begin refs<=data_word;read_word(view_address(candidate,2),VIEW_ALLOC_STATUS);end
+            VIEW_ALLOC: if(candidate>=VIEWS) fail(3);else read_region(ADDRESS_VIEW,candidate,0,arena_base,VIEW_ALLOC_GEN);
+            VIEW_ALLOC_GEN: begin generation<=data_word;read_region(ADDRESS_VIEW,candidate,1,arena_base,VIEW_ALLOC_REFS);end
+            VIEW_ALLOC_REFS: begin refs<=data_word;read_region(ADDRESS_VIEW,candidate,2,arena_base,VIEW_ALLOC_STATUS);end
             VIEW_ALLOC_STATUS: if(refs!=0 || data_word==4) begin candidate<=candidate+1;phase<=VIEW_ALLOC;end
                 else if(generation==32'hffffffff) fail(6);
                 else begin
@@ -267,8 +347,8 @@ module midi_content_control #(
                     origin=op==7 ? {desc[7],desc[6]}+arg0 : 0;
                     desc[6]<=origin[31:0];desc[7]<=origin[63:32];
                     frames=op==7 ? arg1-arg0 : 0;
-                    desc[8]<=frames[31:0];desc[9]<=frames[63:32];desc[10]<=0;desc[11]<=0;
-                    desc[12]<=0;desc[13]<=op==4 && arg0!=0 ? arg0[31:0] : 32'(MAX_EVENTS);desc[14]<=0;desc[15]<=0;
+                    desc[8]<=frames[31:0];desc[9]<=frames[63:32];descriptor_cold_valid<=0;
+                    desc[10]<=0;desc[11]<=op==4 && arg0!=0 ? arg0[31:0] : 32'(MAX_EVENTS);desc[12]<=0;
                     phase<=VIEW_READY;
                 end
             end
@@ -276,8 +356,8 @@ module midi_content_control #(
             APPEND: begin
                 if(desc[2]!=1 || desc[1]!=1) fail(4);
                 else if(packet_error(packet,length)!=0) fail({1'b0,packet_error(packet,length)});
-                else if(desc[12]==32'hffffffff) fail(6);
-                else if(desc[5]>=desc[13]) begin desc[2]<=3;response_error<=3;save_view(RESPONSE);end
+                else if(desc[10]==32'hffffffff) fail(6);
+                else if(desc[5]>=desc[11]) begin desc[2]<=3;response_error<=3;save_view(RESPONSE);end
                 else if(arg0<{desc[9],desc[8]} || arg0+{desc[7],desc[6]}<arg0) fail(1);
                 else if(op==15 && batch_has_last) begin if(arg0<batch_last_frame) fail(1);else phase<=APPEND_PREPARE;end
                 else if(desc[5]!=0) read_record(desc[5]-1,APPEND_LAST);
@@ -290,38 +370,45 @@ module midi_content_control #(
                     if(free_count==0 || desc[3]>=32'(TABLE_ENTRIES)) begin
                         desc[2]<=3;response_error<=3;save_view(RESPONSE);
                     end
-                    else read_word(arena_base+FREE_BASE+64'(32'(free_count-1))*4,APPEND_BLOCK);
+                    else read_region(ADDRESS_FREE,32'(free_count-1),0,arena_base,APPEND_BLOCK);
                 end else if(op==15 && append_block_valid && append_ordinal==position/32'(BLOCK_EVENTS)) begin data_word<=append_block;phase<=APPEND_BLOCK_ID;end
-                else read_word(table_address(view_slot,position/32'(BLOCK_EVENTS)),APPEND_BLOCK_ID);
+                else read_region(ADDRESS_TABLE,view_slot,position/32'(BLOCK_EVENTS),arena_base,APPEND_BLOCK_ID);
             end
-            APPEND_BLOCK: begin block_id<=data_word;write_word(arena_base+REF_BASE+64'(data_word)*4,1,APPEND_BLOCK_REF);end
-            APPEND_BLOCK_REF: write_word(table_address(view_slot,desc[3]),block_id,APPEND_TABLE);
+            APPEND_BLOCK: begin block_id<=data_word;write_region(ADDRESS_REF,data_word,0,arena_base,1,APPEND_BLOCK_REF);end
+            APPEND_BLOCK_REF: write_region(ADDRESS_TABLE,view_slot,desc[3],arena_base,block_id,APPEND_TABLE);
             APPEND_TABLE: begin free_count<=free_count-1;desc[3]<=desc[3]+1;phase<=APPEND_BLOCK_ID;data_word<=block_id;end
             APPEND_BLOCK_ID: begin
                 position=desc[4]+desc[5];origin={desc[7],desc[6]}+arg0;
                 append_block_valid<=1;append_ordinal<=position/32'(BLOCK_EVENTS);append_block<=data_word;
-                record_address<=arena_base+EVENT_BASE+64'(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)))*16;
-                payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[12];payload[3]<={6'b0,length,packet};
-                record_word<=0;phase<=APPEND_PAYLOAD;
+                payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[10];payload[3]<={6'b0,length,packet};
+                record_word<=0;prepare_record(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)),APPEND_PAYLOAD);
             end
-            APPEND_PAYLOAD: write_word(record_address+64'(record_word)*4,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
-            APPEND_PAYLOAD_NEXT: if(record_word==3) begin
-                    desc[5]<=desc[5]+1;desc[12]<=desc[12]+1;
+            APPEND_PAYLOAD: if(RECORD_BURSTS!=0) begin
+                memory_address<=record_address;memory_record<=1;return_phase<=APPEND_PAYLOAD_NEXT;phase<=WRITE_REQ;
+            end else write_region(ADDRESS_WORD,record_word,0,record_address,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
+            APPEND_PAYLOAD_NEXT: if(RECORD_BURSTS!=0 || record_word==3) begin
+                    desc[5]<=desc[5]+1;desc[10]<=desc[10]+1;
                     if(op==15) begin batch_has_last<=1;batch_last_frame<=arg0;phase<=BATCH_NEXT;end
                     else save_view(RESPONSE);
                 end else begin record_word<=record_word+1;phase<=APPEND_PAYLOAD;end
             RECORD: begin
                 position=desc[4]+record_index;
                 if(record_block_valid && record_block_ordinal==position/32'(BLOCK_EVENTS)) begin data_word<=record_block_id;phase<=RECORD_BLOCK;end
-                else read_word(table_address(view_slot,position/32'(BLOCK_EVENTS)),RECORD_BLOCK);
+                else read_region(ADDRESS_TABLE,view_slot,position/32'(BLOCK_EVENTS),arena_base,RECORD_BLOCK);
             end
             RECORD_BLOCK: begin
                 position=desc[4]+record_index;
                 record_block_valid<=1;record_block_ordinal<=position/32'(BLOCK_EVENTS);record_block_id<=data_word;
-                record_address<=arena_base+EVENT_BASE+64'(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)))*16;
-                record_word<=0;phase<=RECORD_PAYLOAD;
+                record_word<=0;prepare_record(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)),RECORD_PAYLOAD);
             end
-            RECORD_PAYLOAD: read_word(record_address+64'(record_word)*4,RECORD_PAYLOAD_NEXT);
+            RECORD_PAYLOAD: if(RECORD_BURSTS!=0) begin
+                memory_address<=record_address;memory_record<=1;return_phase<=RECORD_BURST_DONE;phase<=READ_REQ;
+            end else read_region(ADDRESS_WORD,record_word,0,record_address,RECORD_PAYLOAD_NEXT);
+            RECORD_BURST_DONE: begin
+                record_frame<=memory_read_record[63:0];response_frame<=memory_read_record[63:0]-{desc[7],desc[6]};
+                response_order<=memory_read_record[95:64];response_packet<=memory_read_record[119:96];
+                response_length<=memory_read_record[121:120];phase<=after_record;
+            end
             RECORD_PAYLOAD_NEXT: begin
                 payload[record_word[1:0]]<=data_word;
                 if(record_word==3) begin
@@ -339,8 +426,8 @@ module midi_content_control #(
             RELEASE: if(desc[1]==1 && queue_count>=32'(RETIREMENTS)) fail(3);
                 else begin desc[1]<=desc[1]-1;if(desc[1]==1) desc[2]<=4;save_view(RELEASE_REF);end
             RELEASE_REF: if(desc[1]!=0) phase<=RESPONSE;
-                else write_word(arena_base+RETIRE_BASE+64'(queue_tail)*8,view_slot,RELEASE_QUEUE);
-            RELEASE_QUEUE: write_word(arena_base+RETIRE_BASE+64'(queue_tail)*8+4,desc[0],RELEASE_QUEUE_GEN);
+                else write_region(ADDRESS_RETIRE,queue_tail,0,arena_base,view_slot,RELEASE_QUEUE);
+            RELEASE_QUEUE: write_region(ADDRESS_RETIRE,queue_tail,1,arena_base,desc[0],RELEASE_QUEUE_GEN);
             RELEASE_QUEUE_GEN: begin queue_tail<=(queue_tail+1)%32'(RETIREMENTS);queue_count<=queue_count+1;phase<=RESPONSE;end
             RANGE: if(desc[2]==3 || arg0>arg1 || arg1>{desc[9],desc[8]} || arg0+{desc[7],desc[6]}<arg0) fail(1);
                 else begin source_slot<=view_slot;low<=0;high<=desc[5];search_frame<=arg0;searching_end<=0;phase<=SEARCH;end
@@ -357,24 +444,24 @@ module midi_content_control #(
                     candidate<=0;phase<=VIEW_ALLOC;
                 end
             RANGE_TABLE: if(table_cursor==table_count) save_view(RESPONSE);
-                else read_word(table_address(source_slot,first_table+table_cursor),RANGE_TABLE_ID);
-            RANGE_TABLE_ID: begin block_id<=data_word;read_word(arena_base+REF_BASE+64'(data_word)*4,RANGE_REF);end
+                else read_region(ADDRESS_TABLE,source_slot,first_table+table_cursor,arena_base,RANGE_TABLE_ID);
+            RANGE_TABLE_ID: begin block_id<=data_word;read_region(ADDRESS_REF,data_word,0,arena_base,RANGE_REF);end
             RANGE_REF: if(data_word==32'hffffffff) begin formatted<=0;fail(7);end
-                else write_word(arena_base+REF_BASE+64'(block_id)*4,data_word+1,RANGE_REF_WRITE);
-            RANGE_REF_WRITE: write_word(table_address(view_slot,table_cursor),block_id,RANGE_TABLE_NEXT);
+                else write_region(ADDRESS_REF,block_id,0,arena_base,data_word+1,RANGE_REF_WRITE);
+            RANGE_REF_WRITE: write_region(ADDRESS_TABLE,view_slot,table_cursor,arena_base,block_id,RANGE_TABLE_NEXT);
             RANGE_TABLE_NEXT: begin table_cursor<=table_cursor+1;phase<=RANGE_TABLE;end
             MAINTAIN: if(queue_count==0 || response_work>=arg0[31:0]) phase<=RESPONSE;
-                else read_word(arena_base+RETIRE_BASE+64'(queue_head)*8,MAINTAIN_SLOT);
-            MAINTAIN_SLOT: begin view_slot<=data_word;read_word(arena_base+RETIRE_BASE+64'(queue_head)*8+4,MAINTAIN_GEN);end
+                else read_region(ADDRESS_RETIRE,queue_head,0,arena_base,MAINTAIN_SLOT);
+            MAINTAIN_SLOT: begin view_slot<=data_word;read_region(ADDRESS_RETIRE,queue_head,1,arena_base,MAINTAIN_GEN);end
             MAINTAIN_GEN: begin view_handle<={data_word,view_slot};load_view(MAINTAIN_LOADED);end
             MAINTAIN_LOADED: if(desc[0]!=view_handle[63:32] || desc[2]!=4 || desc[1]!=0) begin formatted<=0;fail(7);end
-                else if(desc[3]!=0) read_word(table_address(view_slot,desc[3]-1),MAINTAIN_BLOCK_ID);
+                else if(desc[3]!=0) read_region(ADDRESS_TABLE,view_slot,desc[3]-1,arena_base,MAINTAIN_BLOCK_ID);
                 else phase<=MAINTAIN_FINAL;
             MAINTAIN_BLOCK_ID: begin block_id<=data_word;after_block<=MAINTAIN_UPDATE;phase<=BLOCK_RELEASE;end
-            BLOCK_RELEASE: read_word(arena_base+REF_BASE+64'(block_id)*4,BLOCK_RELEASE_READ);
+            BLOCK_RELEASE: read_region(ADDRESS_REF,block_id,0,arena_base,BLOCK_RELEASE_READ);
             BLOCK_RELEASE_READ: if(data_word==0) begin formatted<=0;fail(7);end
-                else begin released_refs<=data_word-1;write_word(arena_base+REF_BASE+64'(block_id)*4,data_word-1,BLOCK_RELEASE_WRITE);end
-            BLOCK_RELEASE_WRITE: if(released_refs==0) write_word(arena_base+FREE_BASE+64'(free_count)*4,block_id,BLOCK_FREE);
+                else begin released_refs<=data_word-1;write_region(ADDRESS_REF,block_id,0,arena_base,data_word-1,BLOCK_RELEASE_WRITE);end
+            BLOCK_RELEASE_WRITE: if(released_refs==0) write_region(ADDRESS_FREE,free_count,0,arena_base,block_id,BLOCK_FREE);
                 else phase<=after_block;
             BLOCK_FREE: begin free_count<=free_count+1;phase<=after_block;end
             MAINTAIN_UPDATE: begin desc[3]<=desc[3]-1;save_view(MAINTAIN_NEXT);end
@@ -384,12 +471,12 @@ module midi_content_control #(
             DISCARD: if(desc[2]!=1 || desc[1]!=1 || arg0>{32'b0,desc[5]}) fail(4);
                 else begin record_block_valid<=0;discard_count<=arg0[31:0];removed_blocks<=(desc[4]+arg0[31:0])/32'(BLOCK_EVENTS);table_cursor<=0;phase<=DISCARD_BLOCK;end
             DISCARD_BLOCK: if(table_cursor==removed_blocks) begin table_cursor<=0;phase<=DISCARD_TABLE;end
-                else read_word(table_address(view_slot,table_cursor),DISCARD_ID);
+                else read_region(ADDRESS_TABLE,view_slot,table_cursor,arena_base,DISCARD_ID);
             DISCARD_ID: begin block_id<=data_word;after_block<=DISCARD_RELEASED;phase<=BLOCK_RELEASE;end
             DISCARD_RELEASED: begin table_cursor<=table_cursor+1;phase<=DISCARD_BLOCK;end
             DISCARD_TABLE: if(table_cursor==desc[3]-removed_blocks) phase<=DISCARD_FINISH;
-                else read_word(table_address(view_slot,table_cursor+removed_blocks),DISCARD_TABLE_WRITE);
-            DISCARD_TABLE_WRITE: write_word(table_address(view_slot,table_cursor),data_word,DISCARD_TABLE_NEXT);
+                else read_region(ADDRESS_TABLE,view_slot,table_cursor+removed_blocks,arena_base,DISCARD_TABLE_WRITE);
+            DISCARD_TABLE_WRITE: write_region(ADDRESS_TABLE,view_slot,table_cursor,arena_base,data_word,DISCARD_TABLE_NEXT);
             DISCARD_TABLE_NEXT: begin table_cursor<=table_cursor+1;phase<=DISCARD_TABLE;end
             DISCARD_FINISH: begin
                 desc[3]<=desc[3]-removed_blocks;desc[4]<=(desc[4]+discard_count)%32'(BLOCK_EVENTS);desc[5]<=desc[5]-discard_count;save_view(RESPONSE);
@@ -400,11 +487,15 @@ module midi_content_control #(
                 else begin batch_position<=arg0;batch_index<=0;batch_has_last<=0;append_block_valid<=0;phase<=BATCH_FETCH;end
             end
             BATCH_FETCH: if(batch_index==batch_count) phase<=BATCH_FINISH;
-                else read_word(batch_source+64'(batch_index)*16,BATCH_OFFSET);
-            BATCH_OFFSET: begin batch_offset<=data_word;read_word(batch_source+64'(batch_index)*16+12,BATCH_PACKET);end
+                else begin
+                    read_region(ADDRESS_BATCH,batch_index,0,batch_source,BATCH_OFFSET);
+                    if(RECORD_BURSTS!=0) memory_record<=1;
+                end
+            BATCH_OFFSET: if(RECORD_BURSTS!=0) begin batch_offset<=memory_read_record[31:0];phase<=BATCH_PACKET;end
+                else begin batch_offset<=data_word;read_region(ADDRESS_BATCH,batch_index,3,batch_source,BATCH_PACKET);end
             BATCH_PACKET: begin
-                if({32'b0,batch_offset}>=arg1-batch_position || batch_position+{32'b0,batch_offset}<batch_position || data_word[31:26]!=0) fail(1);
-                else begin arg0<=batch_position+{32'b0,batch_offset};packet<=data_word[23:0];length<=data_word[25:24];phase<=APPEND;end
+                if({32'b0,batch_offset}>=arg1-batch_position || batch_position+{32'b0,batch_offset}<batch_position || batch_packet[31:26]!=0) fail(1);
+                else begin arg0<=batch_position+{32'b0,batch_offset};packet<=batch_packet[23:0];length<=batch_packet[25:24];phase<=APPEND;end
             end
             BATCH_NEXT: begin batch_index<=batch_index+1;phase<=BATCH_FETCH;end
             BATCH_FINISH: begin desc[8]<=arg1[31:0];desc[9]<=arg1[63:32];save_view(RESPONSE);end

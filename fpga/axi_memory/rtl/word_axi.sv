@@ -1,14 +1,17 @@
 module word_axi #(
     parameter integer DATA_WIDTH = 32,
-    parameter integer REGISTER_REQUEST = 0
+    parameter integer REGISTER_REQUEST = 0,
+    parameter integer RECORD_BURSTS = 0
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base, input wire [63:0] arena_bytes,
     input wire [31:0] physical_base,
     input wire memory_valid, output wire memory_ready, input wire memory_write,
     input wire [63:0] memory_address, input wire [31:0] memory_write_data,
+    input wire memory_record, input wire [127:0] memory_write_record,
     output wire memory_response_valid, input wire memory_response_ready,
     output reg memory_response_error, output reg [31:0] memory_read_data,
+    output wire [127:0] memory_read_record,
     output wire m_axi_awid, output wire [31:0] m_axi_awaddr,
     output wire [3:0] m_axi_awlen, output wire [2:0] m_axi_awsize,
     output wire [1:0] m_axi_awburst, output wire m_axi_awvalid, input wire m_axi_awready,
@@ -41,6 +44,6 @@ module word_axi #(
     wire completion_valid;
     wire completion_ready;
     wire completion_error;
-    word_dma #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(REGISTER_REQUEST)) transfer (.*);
+    word_dma #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(REGISTER_REQUEST),.RECORD_BURSTS(RECORD_BURSTS)) transfer (.*);
     axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.*);
 endmodule

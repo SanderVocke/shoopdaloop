@@ -48,6 +48,7 @@ parameter integer EXTERNAL_IO = 0,
     parameter integer MIDI_VIEWS = 512,
     parameter integer MIDI_RETIREMENTS = 256,
     parameter integer MIDI_MAINTENANCE = 64,
+    parameter integer MIDI_RECORD_BURSTS = 1,
     parameter integer MIDI_AXI_DATA_WIDTH = 64,
     parameter [31:0] MIDI_PHYSICAL_BASE = 32'h30000000,
     parameter [63:0] MIDI_PHYSICAL_BYTES_LIMIT = 64'd67108864
@@ -272,10 +273,13 @@ parameter integer EXTERNAL_IO = 0,
     wire midi_memory_write;
     wire [63:0] midi_memory_address;
     wire [31:0] midi_memory_write_data;
+    wire midi_memory_record;
+    wire [127:0] midi_memory_write_record;
     wire midi_memory_response_valid;
     wire midi_memory_response_ready;
     wire midi_memory_response_error;
     wire [31:0] midi_memory_read_data;
+    wire [127:0] midi_memory_read_record;
     midi_audio_pipeline #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .LIVE_LOADING(LIVE_LOADING),
@@ -323,10 +327,11 @@ parameter integer EXTERNAL_IO = 0,
         .MIDI_MAX_EVENTS(MIDI_MAX_EVENTS),
         .MIDI_VIEWS(MIDI_VIEWS),
         .MIDI_RETIREMENTS(MIDI_RETIREMENTS),
-        .MIDI_MAINTENANCE(MIDI_MAINTENANCE)
+        .MIDI_MAINTENANCE(MIDI_MAINTENANCE),
+        .MIDI_RECORD_BURSTS(MIDI_RECORD_BURSTS)
     ) core (.*);
     wire [63:0] checked_bytes = midi_memory_arena_bytes<=MIDI_PHYSICAL_BYTES_LIMIT ? midi_memory_arena_bytes : 0;
-    word_axi #(.DATA_WIDTH(MIDI_AXI_DATA_WIDTH),.REGISTER_REQUEST(1)) midi_memory (
+    word_axi #(.DATA_WIDTH(MIDI_AXI_DATA_WIDTH),.REGISTER_REQUEST(1),.RECORD_BURSTS(MIDI_RECORD_BURSTS)) midi_memory (
         .clk(clk),
         .reset(reset),
         .arena_base(midi_arena_base),
@@ -337,10 +342,13 @@ parameter integer EXTERNAL_IO = 0,
         .memory_write(midi_memory_write),
         .memory_address(midi_memory_address),
         .memory_write_data(midi_memory_write_data),
+        .memory_record(midi_memory_record),
+        .memory_write_record(midi_memory_write_record),
         .memory_response_valid(midi_memory_response_valid),
         .memory_response_ready(midi_memory_response_ready),
         .memory_response_error(midi_memory_response_error),
         .memory_read_data(midi_memory_read_data),
+        .memory_read_record(midi_memory_read_record),
         .m_axi_awid(midi_m_axi_awid),
         .m_axi_awaddr(midi_m_axi_awaddr),
         .m_axi_awlen(midi_m_axi_awlen),

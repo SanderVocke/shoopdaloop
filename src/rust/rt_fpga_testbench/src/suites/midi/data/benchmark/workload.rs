@@ -43,6 +43,27 @@ pub fn records(slot: usize, frames: usize) -> Vec<Record> {
         })
         .collect()
 }
+
+fn track_records(slot: usize, frames: usize) -> Vec<Record> {
+    let mut records = records(slot, frames);
+    for (burst, first) in (8 * QUANTUM..frames).step_by(16 * QUANTUM).enumerate() {
+        if slot / 8 == burst % 8 || slot / 8 == (burst + 1) % 8 {
+            for offset in [3, 11, 19, 27] {
+                records.push(Record {
+                    frame: (first + offset) as u64,
+                    order: 0,
+                    message: Message::parse(&[0xb0 | (slot % 8) as u8, 11, 40 + offset as u8])
+                        .unwrap(),
+                });
+            }
+        }
+    }
+    records.sort_by_key(|record| record.frame);
+    for (order, record) in records.iter_mut().enumerate() {
+        record.order = order as u32;
+    }
+    records
+}
 pub fn limits() -> StoreLimits {
     StoreLimits {
         block_events: 256,
@@ -179,10 +200,21 @@ pub struct Reference {
     pub frames: usize,
     pub has_midi: bool,
     pub state_enabled: bool,
+    tracks: bool,
     inputs: Vec<Vec<Fixed>>,
 }
 impl Reference {
     pub fn prepare(audio: bool, midi: bool, loops: usize, frames: usize, state: bool) -> Self {
+        Self::prepare_profile(audio, midi, loops, frames, state, false)
+    }
+    pub fn prepare_profile(
+        audio: bool,
+        midi: bool,
+        loops: usize,
+        frames: usize,
+        state: bool,
+        tracks: bool,
+    ) -> Self {
         assert!((1..=64).contains(&loops) && (audio || midi));
         assert!(frames >= EVENT_PERIOD && frames % QUANTUM == 0);
         let mut logical = logical(audio, midi, loops, frames);
@@ -269,7 +301,12 @@ impl Reference {
                         .seed_snapshot(view, &initial, 1 << (slot % 8))
                         .unwrap();
                 }
-                for r in records(slot, frames) {
+                let events = if tracks {
+                    track_records(slot, frames)
+                } else {
+                    records(slot, frames)
+                };
+                for r in events {
                     memory.store.append(view, r.frame, r.message).unwrap();
                 }
                 memory.store.finish(view, frames as u64).unwrap();
@@ -289,9 +326,17 @@ impl Reference {
             frames,
             has_midi: midi,
             state_enabled: state && midi,
+            tracks,
             emitted: Vec::with_capacity(8192),
             outputs: vec![vec![Fixed::ZERO; QUANTUM]; if audio { 2 } else { 0 }],
             inputs: vec![vec![Fixed::ZERO; QUANTUM]; if audio { 2 } else { 0 }],
+        }
+    }
+    pub fn records(&self, slot: usize) -> Vec<Record> {
+        if self.tracks {
+            track_records(slot, self.frames)
+        } else {
+            records(slot, self.frames)
         }
     }
     pub fn musical_fixture(&mut self) {
@@ -338,21 +383,26 @@ impl Reference {
             .unwrap();
     }
     pub fn command(&mut self, operation: Operation) {
-        self.pipeline
-            .write_plans(
-                id(0),
-                [
-                    Some(PlannedTransition {
-                        sequence: self.pipeline.state().frame() + 100,
-                        effective: self.pipeline.state().frame(),
-                        on_pulse: false,
-                        remaining_ticks: 0,
-                        operation,
-                    }),
-                    None,
-                ],
-            )
-            .unwrap();
+        self.command_slots(0..1, operation);
+    }
+    pub fn command_slots(&mut self, slots: core::ops::Range<usize>, operation: Operation) {
+        for slot in slots {
+            self.pipeline
+                .write_plans(
+                    id(slot),
+                    [
+                        Some(PlannedTransition {
+                            sequence: self.pipeline.state().frame() + 100,
+                            effective: self.pipeline.state().frame(),
+                            on_pulse: false,
+                            remaining_ticks: 0,
+                            operation,
+                        }),
+                        None,
+                    ],
+                )
+                .unwrap();
+        }
     }
     pub fn play(&mut self) {
         for slot in 0..self.loops {
@@ -377,6 +427,9 @@ impl Reference {
         }
     }
     pub fn callback(&mut self) {
+        self.callback_with_input(&[]);
+    }
+    pub fn callback_with_input(&mut self, midi_input: &[rt_fpga_reference::midi::InputEvent]) {
         self.emitted.clear();
         let input_refs = match self.inputs.as_slice() {
             [l, r] => [l.as_slice(), r.as_slice()],
@@ -397,7 +450,7 @@ impl Reference {
                 &mut output_refs[..audio_ports],
                 QUANTUM,
                 &mut self.midi,
-                &[],
+                midi_input,
                 &mut |event| {
                     self.emitted.push(event);
                     Ok(())
@@ -444,5 +497,26 @@ impl Reference {
                 assert_eq!(*value, Fixed::from_f32(expected));
             }
         }
+    }
+
+    pub fn validate_track_playback(&self) {
+        let mut events = Vec::new();
+        for slot in 0..self.loops {
+            let render = self.pipeline.state().loop_state(id(slot)).unwrap().render;
+            if render.mode != rt_fpga_reference::records::Mode::Playing {
+                continue;
+            }
+            for record in self.records(slot) {
+                if (render.position..render.position + QUANTUM as u64).contains(&record.frame) {
+                    events.push(OutputEvent {
+                        destination: (slot / 8) as u16,
+                        offset: (record.frame - render.position) as u32,
+                        message: record.message,
+                    });
+                }
+            }
+        }
+        events.sort_by_key(|event| (event.destination, event.offset));
+        assert_eq!(self.emitted, events);
     }
 }

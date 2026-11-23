@@ -127,7 +127,9 @@ fn midi_jobs_interleave_with_sync_and_keep_snapshot_list_and_packet_dependencies
         ])
         .unwrap();
     let target = RtlTarget::new([64, 16, 32, 32, 16, 2, 3], 3, &[0, 1, 2]);
-    let compiled = target.build(&program).unwrap();
+    let compiled = target
+        .build_with_midi_merge_output(&program, false)
+        .unwrap();
     let instructions: Vec<_> = compiled
         .instructions
         .iter()
@@ -150,4 +152,21 @@ fn midi_jobs_interleave_with_sync_and_keep_snapshot_list_and_packet_dependencies
             (12, 2), // Sync C
         ]
     );
+    let fused = target.build(&program).unwrap();
+    assert_eq!(fused.instructions.len(), compiled.instructions.len() - 1);
+    let output = fused
+        .instructions
+        .iter()
+        .find(|word| word.get(0, 8) == 21)
+        .unwrap();
+    assert_eq!(output.get(8, 16), 0);
+    assert_eq!(output.get(24, 16), 0x0201);
+    assert_eq!(output.get(88, 8), 2);
+
+    let mut shared = program;
+    shared = shared
+        .with_midi_data(&[M::Output { source: 3, port: 2 }])
+        .unwrap();
+    let shared = target.build(&shared).unwrap();
+    assert!(shared.instructions.iter().all(|word| word.get(0, 8) != 21));
 }

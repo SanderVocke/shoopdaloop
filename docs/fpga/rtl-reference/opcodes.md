@@ -53,6 +53,7 @@ generation.
 | `0x12` | MIDI Output | Source list | Output port | — | — | — |
 | `0x13` | MIDI State | Owner slot | Gen lo | Gen hi | Sequence/input | Output mask/channel bits |
 | `0x14` | MIDI PrepareCapture | Loop slot | Gen lo | Gen hi | Sequence | — |
+| `0x15` | MIDI MergeOutput | Output port | Packed lists | Packed lists | Packed lists | Packed lists |
 
 Other opcode values cause `INVALID_PROGRAM` (`0x03`). Additional operand
 interpretation follows.
@@ -105,12 +106,17 @@ be smaller.
 | MIDI Append | Append while recording, with start equal to captured frames minus Q. |
 | MIDI Merge | Merge the two source lists into the destination |
 | MIDI Output | Output the supplied source list on the selected port |
+| MIDI MergeOutput | Merge two to eight ready lists directly into an output port |
 | MIDI State | Restore when active playback starts, restarts, or seeks. Cleanup when previously active playback ends. Requires matching prepared bindings and state-capable JP data jobs. |
 
 Playback, PrepareCapture, Append, and State require managed sync and a current
 stamp on their loop record. PrepareCapture precedes operations that use its
 sequence and MIDI input observation for this quantum. State and Output retain
 their ordering on the shared MIDI packet stream.
+
+MergeOutput packs eight u8 list IDs in bits 87:24, in left-to-right merge order.
+Bits 95:88 give the number of list IDs used. Each source list is sorted by the
+same event key as a two-input merge.
 
 ## Node-state operands {.unnumbered}
 
@@ -217,6 +223,7 @@ buffer IDs must be valid and ready in every mode.
 | `0x27` | Output | Source list | Output port | — | — | — |
 | `0x28` | Restore state | Sequence | — | Target loop position | Owner | — |
 | `0x29` | Cleanup state | Sequence | — | — | Owner | — |
+| `0x2a` | MergeOutput | Output port | Source count | Eight packed u8 list IDs | — | — |
 
 All MIDI timing operands are in frames. Read and Append carry Q as
 a 32-bit frame count. The upper half of Append P1 is zero. Merge's

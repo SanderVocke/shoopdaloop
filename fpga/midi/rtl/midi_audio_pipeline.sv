@@ -47,7 +47,8 @@ module midi_audio_pipeline #(
     parameter integer MIDI_MAX_EVENTS = 8192,
     parameter integer MIDI_VIEWS = 512,
     parameter integer MIDI_RETIREMENTS = 256,
-    parameter integer MIDI_MAINTENANCE = 64
+    parameter integer MIDI_MAINTENANCE = 64,
+    parameter integer MIDI_RECORD_BURSTS = 0
 ) (
     output wire [3:0] midi_error_code,
     output wire sample_input_read,
@@ -237,10 +238,13 @@ module midi_audio_pipeline #(
     output wire midi_memory_write,
     output wire [63:0] midi_memory_address,
     output wire [31:0] midi_memory_write_data,
+    output wire midi_memory_record,
+    output wire [127:0] midi_memory_write_record,
     input wire midi_memory_response_valid,
     output wire midi_memory_response_ready,
     input wire midi_memory_response_error,
-    input wire [31:0] midi_memory_read_data
+    input wire [31:0] midi_memory_read_data,
+    input wire [127:0] midi_memory_read_record
 );
     localparam [2:0] IDLE=0, PREPARE=1, START=2, RUN=3, FINISH=4;
     reg [2:0] phase;
@@ -530,7 +534,8 @@ module midi_audio_pipeline #(
         .MAX_EVENTS(MIDI_MAX_EVENTS),
         .VIEWS(MIDI_VIEWS),
         .RETIREMENTS(MIDI_RETIREMENTS),
-        .MAINTENANCE(MIDI_MAINTENANCE)
+        .MAINTENANCE(MIDI_MAINTENANCE),
+        .RECORD_BURSTS(MIDI_RECORD_BURSTS)
     ) midi (
         .clk(clk),
         .reset(reset),
@@ -585,9 +590,12 @@ module midi_audio_pipeline #(
         .memory_write(midi_memory_write),
         .memory_address(midi_memory_address),
         .memory_write_data(midi_memory_write_data),
+        .memory_record(midi_memory_record),
+        .memory_write_record(midi_memory_write_record),
         .memory_response_valid(midi_memory_response_valid),
         .memory_response_ready(midi_memory_response_ready),
         .memory_response_error(midi_memory_response_error),
-        .memory_read_data(midi_memory_read_data)
+        .memory_read_data(midi_memory_read_data),
+        .memory_read_record(midi_memory_read_record)
     );
 endmodule

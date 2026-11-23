@@ -20,6 +20,7 @@ operand A, 39:24 operand B, 63:40 reserved zero, and 127:64/191:128/255:192 the
 | 0x25 | Finish capture | sequence | 0 | 0 | 0 | 0 |
 | 0x26 | Merge | left list | right list | destination list | 0 | 0 |
 | 0x27 | Output | source list | output port | 0 | 0 | 0 |
+| 0x2a | MergeOutput | output port | source count | packed u8 source lists | 0 | 0 |
 
 Read P1 contains frame count in bits 31:0, cursor in 39:32, channel mask in 55:40,
 and restart in bit 56. The upper seven bits are zero. P2 contains owner slot in
@@ -35,6 +36,12 @@ The 96-bit SP instructions are:
 | 0x10 | MIDI capture | loop slot u16, generation u32, sequence u16, source u16 |
 | 0x11 | MIDI merge | left u16, right u16, destination u16 |
 | 0x12 | MIDI output | source u16, port u16 |
+| 0x15 | MIDI merge output | port u16, eight source u8 IDs, source count u8 |
+
+MergeOutput takes two to eight sorted lists. List IDs are packed from the least
+significant byte in left-to-right merge order, with unused bytes set to zero.
+It emits packets with the same ordering as the binary merge tree and allocates
+no intermediate scratch records.
 
 Playback uses all 96 bits. Other unused instruction bits are zero. Playback's
 sequence/cursor/destination IDs are limited to 0–255 by this encoding; this does
@@ -75,8 +82,10 @@ buffers; its caller must not publish those buffers as successful audio output.
 
 AXI addresses are translated from logical `arena_base` through the configured
 physical base/window. The transport supports 32/64-bit data, word write strobes,
-backpressure, and error responses. The audio and MIDI AXI masters have separate
-public ports, as before; system-level DDR arbitration is external.
+backpressure, and error responses. A 16-byte MIDI record uses one incrementing
+burst where alignment and AXI's 4 KiB page boundary permit. Metadata and records
+that require a split use word transfers. The audio and MIDI AXI masters have
+separate public ports. System-level DDR arbitration is external.
 
 ## DDR layout and small BRAM tables
 

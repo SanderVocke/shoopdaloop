@@ -5,6 +5,8 @@ use rt_fpga_compiler::{
     CompileError, Identity, InitialValue, LogicalStateProgram, Operation, ProgramLimits, Resource,
     Resources, StateProgramTarget,
 };
+#[path = "target_midi.rs"]
+mod midi;
 
 pub struct RtlTarget<'a> {
     pub capacities: ProgramLimits,
@@ -151,9 +153,13 @@ impl WorkSchedule {
     fn slot(&mut self, instruction: component::Instruction, state: &[Bits]) -> usize {
         use Dependency::*;
         use component::Instruction::*;
+        if let MidiMergeOutput { sources, count, .. } = instruction {
+            let reads = sources.map(|source| Some(MidiList(u16::from(source))));
+            return self.reserve_slot(0, &reads[..usize::from(count)], &[Some(MidiPackets)]);
+        }
         let synced = |id: component::Identity| self.sync_slot_by_loop[id.slot as usize];
         let media_view = |address: u16| AudioView(state[usize::from(address)].get(0, 64));
-        let (mut slot, reads, writes) = match instruction {
+        let (slot, reads, writes) = match instruction {
             ProcessInput { destination, .. } | ProcessSilence { destination } => {
                 (0, [None, None], [Some(AudioScratch(destination)), None])
             }
@@ -261,22 +267,32 @@ impl WorkSchedule {
             }
             _ => unreachable!("only instructions lowered from a logical program are scheduled"),
         };
-        for resource in reads.into_iter().flatten() {
+        let slot = self.reserve_slot(slot, &reads, &writes);
+        if matches!(instruction, MidiPrepareCapture { .. }) {
+            self.midi_prepare_slot = self.midi_prepare_slot.max(slot);
+        }
+        slot
+    }
+
+    fn reserve_slot(
+        &mut self,
+        mut slot: usize,
+        reads: &[Option<Dependency>],
+        writes: &[Option<Dependency>],
+    ) -> usize {
+        for &resource in reads.iter().flatten() {
             slot = slot.max(self.access(resource).write_slot);
         }
-        for resource in writes.into_iter().flatten() {
+        for &resource in writes.iter().flatten() {
             let access = self.access(resource);
             slot = slot.max(access.read_slot).max(access.write_slot);
         }
-        for resource in reads.into_iter().flatten() {
+        for &resource in reads.iter().flatten() {
             let access = self.access(resource);
             access.read_slot = access.read_slot.max(slot);
         }
-        for resource in writes.into_iter().flatten() {
+        for &resource in writes.iter().flatten() {
             self.access(resource).write_slot = slot;
-        }
-        if matches!(instruction, MidiPrepareCapture { .. }) {
-            self.midi_prepare_slot = self.midi_prepare_slot.max(slot);
         }
         slot
     }
@@ -298,6 +314,16 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
     }
     fn build(&self, logical: &LogicalStateProgram) -> Result<CompiledProgram, CompileError> {
+        self.build_with_midi_merge_output(logical, true)
+    }
+}
+
+impl RtlTarget<'_> {
+    pub fn build_with_midi_merge_output(
+        &self,
+        logical: &LogicalStateProgram,
+        merge_output: bool,
+    ) -> Result<CompiledProgram, CompileError> {
         logical.validate(self.limits())?;
         if usize::from(self.state_base) + logical.initial_state.len()
             > self.limits().state_values as usize
@@ -365,6 +391,7 @@ impl StateProgramTarget for RtlTarget<'_> {
             sync_instructions.push(bits);
         }
         use rt_fpga_compiler::MidiOperation as M;
+        let fusion = merge_output.then(|| midi::merge_outputs(&logical.work_pass));
         let byte = |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
         for op in &logical.work_pass {
             let setup = match *op {
@@ -392,7 +419,13 @@ impl StateProgramTarget for RtlTarget<'_> {
             let slot = schedule.slot(setup, &state);
             work[slot].push(encode(setup)?);
         }
-        for op in &logical.work_pass {
+        for (index, op) in logical.work_pass.iter().enumerate() {
+            if fusion
+                .as_ref()
+                .is_some_and(|plan| plan[index] == midi::Lowering::Remove)
+            {
+                continue;
+            }
             let instruction = match *op {
                 Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
                 Operation::MidiData(operation) => match operation {
@@ -431,9 +464,16 @@ impl StateProgramTarget for RtlTarget<'_> {
                         right,
                         destination,
                     },
-                    M::Output { source, port } => {
-                        component::Instruction::MidiOutput { source, port }
-                    }
+                    M::Output { source, port } => match fusion.as_ref().map(|plan| plan[index]) {
+                        Some(midi::Lowering::Output { sources, count }) => {
+                            component::Instruction::MidiMergeOutput {
+                                sources,
+                                count,
+                                port,
+                            }
+                        }
+                        _ => component::Instruction::MidiOutput { source, port },
+                    },
                 },
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,

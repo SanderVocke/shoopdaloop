@@ -367,6 +367,10 @@ module sp_engine #(
                         `SHOOP_SP_MIDI_OUTPUT_INSTRUCTION: begin
                             job_data<=pack_job(`SHOOP_SP_MIDI_OUTPUT,arg0,arg1,0,0,0); phase<=EMIT;
                         end
+                        `SHOOP_SP_MIDI_MERGE_OUTPUT_INSTRUCTION: begin
+                            job_data<=pack_job(`SHOOP_SP_MIDI_MERGE_OUTPUT,arg0,{8'b0,instruction_reserved},{arg4,arg3,arg2,arg1},0,0);
+                            phase<=EMIT;
+                        end
                         `SHOOP_SP_MIDI_PLAYBACK_INSTRUCTION, `SHOOP_SP_MIDI_CAPTURE_INSTRUCTION,
                         `SHOOP_SP_MIDI_PREPARE_CAPTURE, `SHOOP_SP_MIDI_STATE_INSTRUCTION: begin
                             if (!run_has_sync) finish_error(`SHOOP_SP_INVALID_PROGRAM);

@@ -474,7 +474,8 @@ module job_processor #(
                     case (opcode)
                         `SHOOP_SP_MIDI_INPUT, `SHOOP_SP_MIDI_EMPTY, `SHOOP_SP_MIDI_READ,
                         `SHOOP_SP_MIDI_BEGIN_CAPTURE, `SHOOP_SP_MIDI_APPEND, `SHOOP_SP_MIDI_FINISH_CAPTURE,
-                        `SHOOP_SP_MIDI_MERGE, `SHOOP_SP_MIDI_OUTPUT, `SHOOP_SP_MIDI_RESTORE, `SHOOP_SP_MIDI_CLEANUP:
+                        `SHOOP_SP_MIDI_MERGE, `SHOOP_SP_MIDI_OUTPUT, `SHOOP_SP_MIDI_MERGE_OUTPUT,
+                        `SHOOP_SP_MIDI_RESTORE, `SHOOP_SP_MIDI_CLEANUP:
                             if(ENABLE_MIDI != 0) phase<=MIDI_COMMAND;
                             else begin error_code<=UNSUPPORTED;done<=1;busy<=0;phase<=IDLE;end
                         `SHOOP_SP_JOB_INPUT: begin
