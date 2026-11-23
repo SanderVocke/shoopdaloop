@@ -1301,33 +1301,82 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             }
         }
 
-        // This period exceeds Carla Native's maximum block. The target engine
-        // cannot prepare a Carla bank, so the prior format and projects must return.
+        // Large driver callbacks are partitioned into supported Carla blocks.
         let switch = request_driver(&mut fixture, 16_384);
         let outcome = fixture.outcome(switch);
-        assert!(matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
         fixture.until_with_timeout(shoop_host::launch::NATIVE_READINESS_TIMEOUT, |client| {
             let switch = &client.snapshot().unwrap().audio_drivers.switch;
-            assert_ne!(switch.status, AudioDriverSwitchStatus::Fatal, "{switch:?}");
-            switch.status == AudioDriverSwitchStatus::Failed
+            assert!(
+                !matches!(
+                    switch.status,
+                    AudioDriverSwitchStatus::Fatal | AudioDriverSwitchStatus::Failed
+                ),
+                "{switch:?}"
+            );
+            switch.status == AudioDriverSwitchStatus::Completed
         });
         let snapshot = fixture.client.snapshot().unwrap();
         assert_eq!(
             snapshot.audio_drivers.switch.status,
-            AudioDriverSwitchStatus::Failed
+            AudioDriverSwitchStatus::Completed
         );
-        assert!(
-            snapshot
-                .audio_drivers
-                .switch
-                .message
-                .contains("prior driver and session were restored"),
-            "{:?}",
-            snapshot.audio_drivers.switch
+        let active = snapshot.audio_drivers.active.as_ref().unwrap();
+        assert_eq!((active.sample_rate, active.buffer_size), (96_000, 16_384));
+        let processor = snapshot
+            .track_processors
+            .iter()
+            .find(|processor| processor.id.as_str() == id)
+            .unwrap();
+        assert_eq!(
+            processor.resources.as_ref().unwrap().buffering_frames,
+            3 * 8192
         );
-        let restored = snapshot.audio_drivers.active.as_ref().unwrap();
-        assert_eq!((restored.sample_rate, restored.buffer_size), (96_000, 512));
         play(&mut fixture);
+        let after = load(archive(fixture.capture(4)), 96_000);
+        let image::Manifest::Session(after_session) = &after.manifest else {
+            panic!("session manifest after large-period switch")
+        };
+        let after_track = after_session
+            .tracks
+            .iter()
+            .find(|entry| entry.name == "Archived Wide Track")
+            .unwrap();
+        let after_take = &after_track.loops[0];
+        assert_eq!(after_take.frames, saved_take.frames);
+        assert_eq!(after_take.audio.len(), saved_take.audio.len());
+        for (before_channel, after_channel) in saved_take.audio.iter().zip(&after_take.audio) {
+            assert_eq!(before_channel.mode, after_channel.mode);
+            let (image::Payload::Audio(before), image::Payload::Audio(after)) = (
+                &saved.payloads[before_channel.object.unwrap() as usize - 1],
+                &after.payloads[after_channel.object.unwrap() as usize - 1],
+            ) else {
+                panic!("audio media across large-period switch")
+            };
+            assert_eq!(before, after);
+        }
+        let image::Payload::Midi(after_events) =
+            &after.payloads[after_take.midi[0].channel.object.unwrap() as usize - 1]
+        else {
+            panic!("MIDI media after large-period switch")
+        };
+        assert_eq!(after_events.len(), events.len());
+        for (before, after) in events.iter().zip(after_events.iter()) {
+            assert_eq!(before.frame, after.frame);
+            assert_eq!(before.data, after.data);
+        }
+        assert!(after_take.recorded_processor_checkpoint.is_some());
+        assert!(after_track.processor_checkpoint.is_some());
+        assert!(after_session
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Archived Patchbay")
+            .unwrap()
+            .fx
+            .as_ref()
+            .unwrap()
+            .processor_checkpoint
+            .is_some());
         fixture.shutdown();
     }
 }

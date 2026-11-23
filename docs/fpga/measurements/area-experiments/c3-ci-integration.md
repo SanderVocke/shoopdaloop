@@ -61,3 +61,14 @@ silence checks and two session replacement roundtrips remain. All four cases
 pass with the verified real runtime in 58.98 seconds. Formatting, test policy
 and the warning-denying companion build pass; see `c5-ci-carla-wide-on-demand-*`.
 The driver-period expectation and fresh full integration CI remain pending.
+
+The driver-period fixture now checks the supported 96 kHz / 16,384-frame
+transition. The provider caps each Carla batch at 8,192 frames and advertises
+24,576 frames of buffering. Both hosting modes retain their original playback
+tolerance, and an additional fresh archive verifies every stored audio sample,
+MIDI frame/byte and processor checkpoint. The unchanged test deadlines pass in
+a quiet run (104.52 seconds). One earlier run exceeded cleanup while FPGA
+compilation overlapped; its failure is retained alongside the pass. Formatting,
+test policy and warning-denying host-library build pass. A broader binary build
+exhausted disk; its logs and cache recovery remain recorded. See
+`c6-ci-carla-driver-period-*`. Full selected-head integration CI is still pending.

@@ -1,0 +1,18 @@
+{
+  "archive": "c6-ci-carla-driver-period-raw.tar.gz",
+  "archive_sha256": "ea30450f106921e1f07d1bd4bbf5382548e097a4f994c1d745a17496db3bee42",
+  "members_sha256": {
+    "logs/integration-c5-driver-period-original.log": "8e9382adc56983f88139f7dd5003e05421aa53019b81a7b4cc3e384b0bc4231d",
+    "logs/integration-c5-driver-period-original-quiet.log": "f77549ecf3128aae89efbfaf4c041dc29318a13783137878a90324e3ce28ddd9",
+    "logs/integration-c6-driver-period-supported.log": "fcccd377edf012ecf3ae2ac23c6fb3855cf630229b4a7331248549c702d3f248",
+    "logs/integration-c6-driver-period-supported-2.log": "4396f91e6bb945f8d91b9346d3d9f375a8668c89310420c1e19f3935a412022c",
+    "logs/integration-c6-driver-period-supported-quiet.log": "4ba222cbed144ebe9ed1a24160d6a8df86515fb6a25cde30d3999d67b8fa2cca",
+    "logs/integration-c6-driver-period-build.log": "2decf0c3eb998b7974fe47989164af31c0137a543dab27fcc2b7013f7dddcf99",
+    "logs/integration-c6-driver-period-build-2.log": "0006949add0e0116dbf84ce8280f588d146ff190e2626bf5506bea2e12c3f7c0",
+    "logs/integration-c6-driver-period-build-lib.log": "9507670583a77a013d1cd2eb91c6d0091dfa61ff57d221a9aef62db47d0a9c5c",
+    "source/src/rust/shoop_host/tests/jack.rs": "73caf98f1334490ab127acb2ce3c71e5854236993bf5b692555381fca478a6f4",
+    "source/src/rust/shoop_host/tests/support/shutdown.rs": "5881906f589196a5406c2ad4788b7a2c00f90b76e90ca5ff61bf5b6baa7e61d2",
+    "source/src/rust/shoop_rt_host_native/src/remote_carla.rs": "8871300434c53a8f7b1351b5b8cb7c77c65711b17443be201c98bc6e37571338",
+    "replay/archive-driver-period.py": "8a830648880855f3a215d1c96b78526ebd33055e5666c3ab50d7db5fcf74a8d5"
+  }
+}

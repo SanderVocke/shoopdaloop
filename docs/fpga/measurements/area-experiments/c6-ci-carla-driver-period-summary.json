@@ -1,0 +1,29 @@
+{
+  "scope": "New-base native integration only; no FPGA HDL/source change",
+  "integration_parent": "84b3f4cf385cc72b785b8de049b45c50ed9d2ad1",
+  "runtime": "Verified pinned430-fileCarla artifact14773879496; SHOOP_REQUIRE_CARLA_TESTS=1; identity in c4-ci-carla-on-demand",
+  "contract": "Native Carla provider partitions large driver periods into blocks capped at8192. Driver96kHz/16384frames is supported; expected buffering24576frames.",
+  "checks": [
+    "Both InProcess/Socket and Subprocess/SharedMemory with actual16-channel track/bus Carla XML and48k-to96k retiming",
+    "Preserve original playback amplitude tolerance0.02dB; verify final supported period confirms/completes without fatal/failed switch",
+    "Additional fresh capture uses uniqueTransferId4. All32stored audio channels match exactly, including frames2048, MIDIframes/bytes and three processor checkpoints",
+    "Keep original readiness timeout and cleanup deadline unchanged"
+  ],
+  "result": "1passed;7filtered;104.52sec, required actual runtime; no skip",
+  "earlier_attempts": [
+    "Original quiet test reproduces same obsolete Refused expectation asCI: actualConfirmed",
+    "First edit reused transfer3; identity guard rejected, corrected to4",
+    "Next run passed new media assertions but exceeded unchanged cleanup deadline while FPGA compilation overlapped; exact code quiet retry passed. Contention remains a qualification limitation, not proof of universal cleanup bound."
+  ],
+  "validation": [
+    "cargo fmt --all",
+    "check_shoop_test_usage.py passed",
+    "RUSTFLAGS=-Dwarnings cargo build --locked -p shoop_host --lib passed",
+    "Full binary build ran out of disk/linkerBusError. Logs retained; caches reclaimed. Full workspace/CI qualification remains Stage11."
+  ],
+  "retention": "c6-ci-carla-driver-period-retention.json",
+  "pending": [
+    "Full selected/integration-headCI qualification",
+    "Broader driver failure/rollback behavior remains covered separately; this now-supported request no longer claims to exercise rollback"
+  ]
+}
