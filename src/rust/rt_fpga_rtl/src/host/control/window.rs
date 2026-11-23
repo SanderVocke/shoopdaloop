@@ -91,7 +91,11 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
             return Ok(Code::CannotApply);
         };
         let status = super::composite_cut_status(cut, &words, |id| {
-            self.read_loop_words::<4>(id).map(|(_, row)| row)
+            let latch = self.capture_loop(id)?;
+            let words = self.read_latched_words::<4>(latch, 0)?;
+            super::restart_clock_state(id, self.frame, words, |offset| {
+                self.read_latched_words::<2>(latch, offset)
+            })
         })?;
         if status != Code::Applied || (words[0] >> 33) & 3 != 1 {
             return Ok(status);
@@ -207,36 +211,39 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
     }
 
     fn read_loop(&mut self, id: Identity) -> Result<(u32, Option<[u64; 16]>), Error<B::Error>> {
-        self.read_loop_words(id)
+        let latch = self.capture_loop(id)?;
+        let row = self.read_latched_words::<16>(latch, 0)?;
+        let current = row[0] & 1 != 0 && (row[0] >> 1) as u32 == id.generation;
+        Ok((id.slot * 16, current.then_some(row)))
     }
 
-    fn read_loop_words<const N: usize>(
-        &mut self,
-        id: Identity,
-    ) -> Result<(u32, Option<[u64; N]>), Error<B::Error>> {
-        let Some(base) = id.slot.checked_mul(16).filter(|&base| base <= 65520) else {
+    fn capture_loop(&mut self, id: Identity) -> Result<u32, Error<B::Error>> {
+        if id.slot > 4095 {
             return Err(Error::InvalidRequest);
-        };
+        }
         let snapshot = self.send(Request::capture_loop(id.slot))?;
         if join(snapshot[1], snapshot[2]) != self.frame
             || join(snapshot[3], snapshot[4]) != self.revision
         {
             return Err(Error::UnexpectedResponse);
         }
+        Ok(snapshot[0])
+    }
+
+    fn read_latched_words<const N: usize>(
+        &mut self,
+        latch: u32,
+        offset: u32,
+    ) -> Result<[u64; N], Error<B::Error>> {
         let mut row = [0; N];
         for (index, words) in row.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
-            let address = (index * (HOST_PAYLOAD_WORDS / 2)) as u32;
-            let data = self.send(Request::read_snapshot(
-                snapshot[0],
-                address,
-                words.len() as u32,
-            ))?;
+            let address = offset + (index * (HOST_PAYLOAD_WORDS / 2)) as u32;
+            let data = self.send(Request::read_snapshot(latch, address, words.len() as u32))?;
             for (word, parts) in words.iter_mut().zip(data.chunks_exact(2)) {
                 *word = join(parts[0], parts[1]);
             }
         }
-        let current = row[0] & 1 != 0 && (row[0] >> 1) as u32 == id.generation;
-        Ok((base, current.then_some(row)))
+        Ok(row)
     }
 
     fn update_loop(

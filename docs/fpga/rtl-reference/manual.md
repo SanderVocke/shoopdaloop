@@ -247,6 +247,7 @@ recording can start. See the admission rule under
   one another. The chain keeps the same links and schedules during the edit,
   and its loops run free of composite parent actions. A primitive can pass
   along a source pulse. A composite clock supplies its own repeat pulse.
+  A clock command that could act at the boundary makes the edit wait.
   A timing change needs one free loop record while the new program is staged.
   An independent one-pass composite can finish its current run. When both
   one-pass plans end with the same child modes and use the same sync source,

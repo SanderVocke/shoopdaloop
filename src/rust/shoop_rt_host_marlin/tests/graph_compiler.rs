@@ -735,6 +735,26 @@ fn edit_at_clock_restart<E: Endpoint>(
     }
     assert_eq!(step(&mut renderer), [0., 0.]);
 
+    if matches!(clock, Clock::RelayedComposite) {
+        let later_stop = Command::Transition(
+            104,
+            TransitionPlan {
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Stopped,
+                    skip: 1,
+                }),
+                ..Default::default()
+            },
+        );
+        client
+            .immediate(Batch::new(1, 1, &[later_stop]).unwrap())
+            .unwrap();
+        assert_eq!(
+            wait_response(&mut client, &mut renderer).records()[0].code(),
+            Code::Scheduled
+        );
+    }
+
     let edit = graph.loops[parent_index].composite.as_mut().unwrap();
     edit.version = 2;
     edit.iterations = iterations;

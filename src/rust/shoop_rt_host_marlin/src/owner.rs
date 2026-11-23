@@ -272,13 +272,18 @@ impl Owner<'_> {
         Ok(())
     }
     fn loop_words(&mut self, id: Identity) -> Result<[u64; 16]> {
-        self.read_loop_words(id)
+        self.read_loop_words(id, 0)
     }
-    fn read_loop_words<const N: usize>(&mut self, id: Identity) -> Result<[u64; N]> {
+    fn read_loop_words<const N: usize>(&mut self, id: Identity, offset: u32) -> Result<[u64; N]> {
         let mut words = [0; N];
         for (i, w) in words.iter_mut().enumerate() {
             *w = self
-                .access("cfg", 2, u64::from(id.slot) * 16 + i as u64, None)?
+                .access(
+                    "cfg",
+                    2,
+                    u64::from(id.slot) * 16 + u64::from(offset) + i as u64,
+                    None,
+                )?
                 .get(0, 64);
         }
         Ok(words)
@@ -579,7 +584,10 @@ impl Owner<'_> {
 
     fn composite_cut_status(&mut self, cut: &CompositeCut, words: &[u64; 16]) -> Result<Code> {
         rt_fpga_rtl::host::control::composite_cut_status(cut, words, |id| {
-            self.read_loop_words::<4>(id).map(Some)
+            let words = self.read_loop_words::<4>(id, 0)?;
+            rt_fpga_rtl::host::control::restart_clock_state(id, self.frame, words, |offset| {
+                self.read_loop_words::<2>(id, offset)
+            })
         })
     }
 

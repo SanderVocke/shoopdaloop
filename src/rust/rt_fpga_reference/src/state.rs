@@ -389,10 +389,12 @@ impl StateProcessor {
                 slot: source.slot,
                 generation: source.generation,
             };
-            let clock = loops
-                .slot(id)
-                .ok()
-                .filter(|clock| clock.planned.iter().all(Option::is_none));
+            let clock = loops.slot(id).ok().filter(|clock| {
+                !clock.planned.iter().flatten().any(|plan| {
+                    (clock.mode_plan || plan.effective <= loops.frame)
+                        && (!plan.on_pulse || plan.remaining_ticks == 0)
+                })
+            });
             Ok::<_, core::convert::Infallible>(clock.map(|clock| {
                 let kind = loops
                     .plan

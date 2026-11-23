@@ -120,7 +120,7 @@ pub fn composite_telemetry(
 pub fn composite_cut_status<E>(
     cut: &CompositeCut,
     words: &[u64; 16],
-    mut read_clock: impl FnMut(Identity) -> Result<Option<[u64; 4]>, E>,
+    read_clock: impl FnMut(Identity) -> Result<Option<ClockState>, E>,
 ) -> Result<Code, E> {
     if !loop_identity_valid(cut.old_slot, words) || (cut.require_empty && words[3] != 0) {
         return Ok(Code::CannotApply);
@@ -133,11 +133,7 @@ pub fn composite_cut_status<E>(
             Code::CannotApply
         });
     }
-    let restart_ready = cut.restart_ready(state.repeat_sync, state.at_end(), |id| {
-        Ok(read_clock(id)?
-            .filter(|words| cut_loop_valid(id, words))
-            .map(clock_state))
-    })?;
+    let restart_ready = cut.restart_ready(state.repeat_sync, state.at_end(), read_clock)?;
     let waited = words[1] & (1 << 42) != 0;
     Ok(match (words[0] >> 33) & 3 {
         0 => Code::Applied,
@@ -147,9 +143,27 @@ pub fn composite_cut_status<E>(
     })
 }
 
-fn clock_state(words: [u64; 4]) -> ClockState {
+pub fn restart_clock_state<E>(
+    id: Identity,
+    frame: u64,
+    words: [u64; 4],
+    mut read_plan_timing: impl FnMut(u32) -> Result<[u64; 2], E>,
+) -> Result<Option<ClockState>, E> {
+    if !loop_identity_valid(id, &words) || (words[0] >> 33) & 3 == 3 {
+        return Ok(None);
+    }
+    for index in 0..2 {
+        let flags = (words[1] >> (32 + 5 * index)) & 31;
+        if flags & 1 == 0 {
+            continue;
+        }
+        let [effective, ticks] = read_plan_timing(10 + 3 * index)?;
+        if effective <= frame && (flags & 2 == 0 || ticks == 0) {
+            return Ok(None);
+        }
+    }
     let playing = (words[0] >> 33) & 3 == 1;
-    ClockState {
+    Ok(Some(ClockState {
         kind: (words[1] & COMPOSITE_LOOP != 0).then(|| {
             if words[0] & (1 << 62) == 0 {
                 CompositeKind::Regular
@@ -160,7 +174,7 @@ fn clock_state(words: [u64; 4]) -> ClockState {
         playing,
         at_end: playing && words[3] != 0 && words[2] == words[3],
         repeat_sync: words[0] & (1 << 35) != 0,
-    }
+    }))
 }
 
 pub fn prepare_composite_restart(
