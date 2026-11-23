@@ -645,6 +645,7 @@ enum NestedBoundary {
     Finished,
     CompatibleFinish,
     ParentReentry,
+    ReentryWithNewEnding,
     Wrapped,
     RemovedBranch { direct_play: bool },
 }
@@ -688,13 +689,18 @@ fn edit_nested_child<E: Endpoint>(
         boundary,
         NestedBoundary::CompatibleFinish | NestedBoundary::ParentReentry
     );
-    let kind = if same_ending || matches!(boundary, NestedBoundary::Finished) {
+    let kind = if same_ending
+        || matches!(
+            boundary,
+            NestedBoundary::Finished | NestedBoundary::ReentryWithNewEnding
+        ) {
         CompositeKind::Explicit
     } else {
         CompositeKind::Regular
     };
     let removed_branch = matches!(boundary, NestedBoundary::RemovedBranch { .. });
-    let old_target = if removed_branch { 123 } else { 100 };
+    let nested_ending = removed_branch || matches!(boundary, NestedBoundary::ReentryWithNewEnding);
+    let old_target = if nested_ending { 123 } else { 100 };
     child.composite = Some(program(
         kind,
         child_length,
@@ -703,7 +709,10 @@ fn edit_nested_child<E: Endpoint>(
     let mut parent = child.clone();
     parent.id = id(121);
     let wraps = matches!(boundary, NestedBoundary::Wrapped) || removed_branch;
-    let reenters = matches!(boundary, NestedBoundary::ParentReentry);
+    let reenters = matches!(
+        boundary,
+        NestedBoundary::ParentReentry | NestedBoundary::ReentryWithNewEnding
+    );
     let parent_length = if reenters { 24 } else { 96 };
     let occurrence_end = if wraps || reenters { parent_length } else { 32 };
     parent.composite = Some(program(
@@ -719,7 +728,7 @@ fn edit_nested_child<E: Endpoint>(
         grandparent.composite = Some(program(CompositeKind::Regular, 48, vec![span(121, 48, 0)]));
         graph.loops.push(grandparent);
     }
-    if removed_branch {
+    if nested_ending {
         let mut branch = graph.loops[child_index].clone();
         branch.id = id(123);
         branch.sync_source = Some(id(120));
@@ -788,16 +797,17 @@ fn edit_nested_child<E: Endpoint>(
         if wraps { 16 } else { 40 },
         0,
     );
-    if same_ending {
+    if same_ending || reenters {
         revised_span.start = 4;
         revised_span.occurrence_start = 4;
     }
     revised.spans = vec![revised_span].into();
     let switch_at = match boundary {
         NestedBoundary::Released => 33,
-        NestedBoundary::Finished => 25,
-        NestedBoundary::CompatibleFinish
+        NestedBoundary::Finished
+        | NestedBoundary::CompatibleFinish
         | NestedBoundary::ParentReentry
+        | NestedBoundary::ReentryWithNewEnding
         | NestedBoundary::Wrapped
         | NestedBoundary::RemovedBranch { .. } => 24,
     };
@@ -819,7 +829,13 @@ fn edit_nested_child<E: Endpoint>(
     if reenters {
         assert_eq!(renderer.next_frame().0, started + 25 * quantum);
         for tick in 0..48 {
-            let sample = if (4..40).contains(&tick) { 0.375 } else { 0.25 };
+            let sample = if !(4..40).contains(&tick) {
+                0.25
+            } else if same_ending {
+                0.375
+            } else {
+                0.3125
+            };
             assert_eq!(step(&mut renderer), [sample, sample], "child tick {tick}");
         }
         return;
@@ -856,6 +872,7 @@ fn a_nested_edit_can_wait_for_its_own_boundary_under_a_playing_parent() {
         NestedBoundary::Finished,
         NestedBoundary::CompatibleFinish,
         NestedBoundary::ParentReentry,
+        NestedBoundary::ReentryWithNewEnding,
         NestedBoundary::Wrapped,
         NestedBoundary::RemovedBranch { direct_play: false },
         NestedBoundary::RemovedBranch { direct_play: true },

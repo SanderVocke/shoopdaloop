@@ -721,7 +721,7 @@ impl Allocator {
                         .loops
                         .iter()
                         .any(|l| l.id == row.logical && l.sync_source == row.sync_source);
-                    let changed_ending = before.zip(after).filter(|(before, after)| {
+                    let changed_ending = before.zip(after).is_some_and(|(before, after)| {
                         !before.ending_children().eq(after.ending_children())
                     });
                     let compatible_restart = changed_composites.contains(&row.logical)
@@ -731,16 +731,41 @@ impl Allocator {
                         && before.zip(after).is_some_and(|(before, after)| {
                             !before.explicit && !after.explicit && after.length != 0
                         });
-                    let reconcile_ending = compatible_restart
-                        && changed_ending.is_some_and(|(before, _)| {
-                            keep_wrap_ending(
+                    let wait_for_finish = if independent {
+                        changed_composites.contains(&row.logical)
+                            && before.is_some_and(|schedule| schedule.explicit)
+                            && after.is_some()
+                    } else {
+                        single_edit == Some(row.logical)
+                    };
+                    let finishing = before.zip(after).filter(|(before, after)| {
+                        wait_for_finish
+                            && same_source
+                            && before.explicit
+                            && after.explicit
+                            && after.length != 0
+                    });
+                    let same_finish = finishing.is_some_and(|(before, after)| {
+                        before.ending_modes().eq(after.ending_modes())
+                    });
+                    let reconcile_finish = !same_finish
+                        && finishing.is_some_and(|(before, _)| {
+                            // The existing handoff row can describe an ending Play.
+                            before
+                                .ending_modes()
+                                .all(|(_, mode)| mode == SpanMode::Play)
+                        });
+                    let reconcile_ending = before.is_some_and(|before| {
+                        ((compatible_restart && changed_ending) || reconcile_finish)
+                            && keep_wrap_ending(
                                 program,
                                 &mut previous_wrap_children,
                                 before,
                                 self.limits.instructions,
                             )
-                        });
-                    let require_repeat_wait = changed_ending.is_some() && !reconcile_ending;
+                    });
+                    let finish_at_boundary = same_finish || (reconcile_finish && reconcile_ending);
+                    let require_repeat_wait = changed_ending && !reconcile_ending;
                     // The old pass releases its children during a hold, even
                     // when there is no room for a handoff-only row.
                     let allow_restart = compatible_restart
@@ -751,21 +776,6 @@ impl Allocator {
                                         program.loops.iter().any(|child| child.id == old.id)
                                     })
                                 })));
-                    let wait_for_finish = if independent {
-                        changed_composites.contains(&row.logical)
-                            && before.is_some_and(|schedule| schedule.explicit)
-                            && after.is_some()
-                    } else {
-                        single_edit == Some(row.logical)
-                    };
-                    let finish_at_boundary = wait_for_finish
-                        && same_source
-                        && before.zip(after).is_some_and(|(before, after)| {
-                            before.explicit
-                                && after.explicit
-                                && after.length != 0
-                                && before.ending_modes().eq(after.ending_modes())
-                        });
                     let future_before = single_future
                         .filter(|(id, _)| *id == row.logical)
                         .map(|(_, frame)| frame)

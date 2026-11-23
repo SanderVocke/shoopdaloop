@@ -425,10 +425,8 @@ impl LoopMemory {
         slot.pulse_masked = false;
         slot.protected = None;
         slot.composite_previous = slot.render.plays().then_some(slot.render.position);
-        slot.composite_handoff = program_changed
-            && clock.is_some_and(|clock| !clock.explicit)
-            && slot.state.at_end()
-            && !slot.composite_wait;
+        slot.composite_handoff =
+            program_changed && clock.is_some() && slot.state.at_end() && !slot.composite_wait;
         slot.composite_snapshot = None;
         slot.composite_wrap = false;
         if !self.slot(id)?.mode_plan {

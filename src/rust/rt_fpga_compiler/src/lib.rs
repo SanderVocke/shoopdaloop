@@ -581,7 +581,6 @@ impl LogicalStateProgram {
                 if !local_children.insert(child.id)
                     || !self.sync_pass[parent_position + 1..].contains(&child.id)
                     || (child.spans.is_empty() && child.previous_play_at_wrap != Some(true))
-                    || (schedule.explicit && child.previous_play_at_wrap.is_some())
                 {
                     return Err(InvalidProgram);
                 }

@@ -253,19 +253,20 @@ recording can start. See the admission rule under
   one extra program row so SP can stop it. When that child is a composite,
   its schedule also releases its own children. A direct play command for
   the removed branch can keep it running at the switch. If the row cannot fit,
-  a wait for a
-  sync clock can give the old schedule time to release its children. The
+  waiting for a sync clock can give the old schedule time to release its children. The
   clock can be a primitive, a composite, or a chain of loops that sync to
   one another. The chain keeps the same links and schedules during the edit,
   and its loops run free of composite parent actions. A primitive can pass
   along a source pulse. A composite clock supplies its own repeat pulse.
   A clock command that could act at the boundary makes the edit wait.
   A timing change needs one free loop record while the new program is staged.
-  An independent one-pass composite can finish its current run. When both
-  one-pass plans end with the same child modes and use the same sync source,
-  the edit can take effect as the old run ends. If the iteration and pass
-  lengths also stay the same, the new plan keeps pending transport commands.
-  Other one-pass edits can take effect one quantum after the old run stops.
+  For a one-pass composite that keeps its sync source, an edit can take effect
+  as the old run ends. When both plans end with the same child modes, the
+  switch needs no extra rows. If the old ending only plays children, the same
+  additional rows can release children that the new plan drops.
+  An independent one-pass edit also keeps pending transport commands when it
+  preserves the iteration and pass lengths. Other one-pass edits can take
+  effect one quantum after the old run stops.
   Playback controls still run while an edit waits. If a scheduled stop is
   pending, it takes effect first and the edit can apply once the loop stops.
   Cancelling an edit that still waits leaves the active version in place. If
@@ -906,7 +907,7 @@ results. HP0 carries audio storage traffic to the reserved DDR aperture.
 The compiled-audio bring-up can use a deterministic source or the external
 I²S adapter, based on the build profile.
 
-| Mailbox concern | Version 6 register anchors |
+| Mailbox concern | Version 8 register anchors |
 | --- | --- |
 | Discover the image | `ID` 0x000, `VERSION` 0x004, `STATUS` 0x008, `EPOCH` 0x00c, geometry at 0x010–0x03c |
 | Submit command | `REQUEST_EPOCH` 0x040, `REQUEST_OP` 0x044, payload from 0x048, `REQUEST_PUSH` 0x078 |

@@ -398,6 +398,70 @@ fn composite_layout(
     assert_eq!(removed.loops[child].mode, BackendLoopMode::Stopped);
     assert!(removed.loops[child].length > 0);
     assert_eq!(removed.loops[&clear].mode, BackendLoopMode::Recording);
+
+    backend
+        .transition_loop(clear, BackendLoopMode::Stopped, None)
+        .unwrap();
+    wait(&mut backend, &|s| {
+        s.loops[&clear].mode == BackendLoopMode::Stopped && s.loops[&clear].length > 0
+    });
+    let nested = backend.create_composite_loop().unwrap();
+    wait(&mut backend, &|s| s.composites.contains_key(&nested));
+    let mut one_pass = capture;
+    one_pass.spans[0].mode = BackendLoopMode::Playing;
+    let nested_version = backend
+        .configure_prepared_composite_loop(nested, &one_pass)
+        .unwrap();
+    wait(&mut backend, &|s| {
+        s.composites[&nested].active_plan_version == nested_version
+    });
+    let outer = backend.create_composite_loop().unwrap();
+    wait(&mut backend, &|s| s.composites.contains_key(&outer));
+    let outer_version = backend
+        .configure_prepared_composite_loop(
+            outer,
+            &BackendPreparedCompositePlan {
+                kind: BackendCompositeKind::Regular,
+                iterations: 128,
+                spans: vec![BackendCompositeSpan {
+                    target: BackendCompositeTarget::Composite(nested),
+                    end: 128,
+                    ..one_pass.spans[0].clone()
+                }],
+                ..one_pass.clone()
+            },
+        )
+        .unwrap();
+    wait(&mut backend, &|s| {
+        s.composites[&outer].active_plan_version == outer_version
+    });
+    backend
+        .transition_composite_loop(outer, BackendLoopMode::Playing, None, None)
+        .unwrap();
+    wait(&mut backend, &|s| {
+        s.composites[&outer].mode == BackendLoopMode::Playing
+            && s.composites[&nested].mode == BackendLoopMode::Playing
+            && s.loops[child].mode == BackendLoopMode::Playing
+    });
+
+    one_pass.spans[0].target = BackendCompositeTarget::Loop(clear);
+    let nested_version = backend
+        .configure_prepared_composite_loop(nested, &one_pass)
+        .unwrap();
+    let switched = wait(&mut backend, &|s| {
+        s.composites[&nested].active_plan_version == nested_version
+    });
+    assert_eq!(
+        switched.composites[&outer].active_plan_version,
+        outer_version
+    );
+    assert_eq!(switched.composites[&outer].mode, BackendLoopMode::Playing);
+    assert_eq!(switched.composites[&nested].mode, BackendLoopMode::Stopped);
+    assert_eq!(switched.loops[child].mode, BackendLoopMode::Stopped);
+    wait(&mut backend, &|s| {
+        s.composites[&nested].mode == BackendLoopMode::Playing
+            && s.loops[&clear].mode == BackendLoopMode::Playing
+    });
 }
 
 #[shoop_test]

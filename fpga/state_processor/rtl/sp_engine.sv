@@ -665,8 +665,7 @@ module sp_engine #(
                 COMPOSITE_PREVIOUS: begin
                     capture_frames<=word_value;
                     // A composite's previous frame fits in 32 bits.
-                    if (run_program_changed && !flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT]
-                        && position==length && length!=0 && !control[`SHOOP_SP_L_COMPOSITE_WAIT])
+                    if (run_program_changed && position==length && length!=0 && !control[`SHOOP_SP_L_COMPOSITE_WAIT])
                         capture_frames[32]<=1;
                     phase<=SYNC_SOURCE_BEGIN;
                 end

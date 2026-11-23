@@ -223,8 +223,19 @@ fn staging_requires_explicit_state_ownership_without_inference() {
 }
 
 #[shoop_test]
-fn a_dropped_child_at_wrap_uses_one_optional_instruction_row() {
+fn dropping_a_child_at_the_end_of_a_pass_uses_one_optional_instruction_row() {
+    use rt_fpga_compiler::shoop_graph::CompositeKind;
+
+    for kind in [CompositeKind::Regular, CompositeKind::Explicit] {
+        check_ending_row_budget(kind);
+    }
+}
+
+fn check_ending_row_budget(kind: rt_fpga_compiler::shoop_graph::CompositeKind) {
+    use rt_fpga_compiler::shoop_graph::CompositeKind;
+
     let mut graph = composite::arbitration_graph();
+    graph.loops[1].composite.as_mut().unwrap().kind = kind;
     let context = CompileContext {
         quantum: 16,
         limits: ProgramLimits {
@@ -260,8 +271,16 @@ fn a_dropped_child_at_wrap_uses_one_optional_instruction_row() {
         allocator.publish(first.revision).unwrap();
         allocator.complete(first.revision).unwrap();
         let next = allocator.stage(&after).unwrap();
-        assert_eq!(next.composite_cuts()[0].allow_restart, extra == 1);
-        assert_eq!(next.composite_cuts()[0].reconcile_ending, extra == 1);
+        let cut = &next.composite_cuts()[0];
+        assert_eq!(
+            cut.allow_restart,
+            extra == 1 && kind == CompositeKind::Regular
+        );
+        assert_eq!(
+            cut.finish_at_boundary,
+            extra == 1 && kind == CompositeKind::Explicit
+        );
+        assert_eq!(cut.reconcile_ending, extra == 1);
         let bound = next.relocate(&after).unwrap();
         bound.validate(capacity).unwrap();
         let child = next.loop_id(dropped).unwrap();
