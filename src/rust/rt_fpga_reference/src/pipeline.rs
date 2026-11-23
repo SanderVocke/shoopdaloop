@@ -87,6 +87,7 @@ impl Pipeline {
             || image.layout.revision <= self.revision
             || (self.revision != 0 && image.layout.region == self.region)
             || self.fault.is_some()
+            || self.state.composite_wrap_pending()
             || !self.queue.is_empty()
             || image.compiled.program.quantum != self.program.quantum
             || image.compiled.program.chunk_frames != self.program.chunk_frames

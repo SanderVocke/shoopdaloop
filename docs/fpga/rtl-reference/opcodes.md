@@ -106,7 +106,8 @@ and a processed stamp for the same boundary.
 | Parent header | 53:48 | Low six bits of the span row count for this parent |
 | Parent header | 69:54 | Image-wide compiled audio writer count when authored recording is present, otherwise zero |
 | Parent header | 79:70 | High ten bits of the span row count |
-| Parent header | 95:80 | Reserved |
+| Parent header | 81:80 | Previous mode at an uninterrupted live wrap (0 use spans, 2 no active span, 3 Play) |
+| Parent header | 95:82 | Reserved |
 | Span | 31:0 | Inclusive start frame relative to the parent's pass |
 | Span | 63:32 | Exclusive end frame relative to the parent's pass |
 | Span | 65:64 | Mode (1 Play, 2 Stop, 3 Record) |
@@ -114,7 +115,10 @@ and a processed stamp for the same boundary.
 
 Each header covers at least one span, and its block must fit within the rows
 declared by the instruction. All headers and spans count against the existing
-program region capacity.
+program region capacity. In the first quantum after a region change, SP marks
+the previous position of a composite that reached its end without a repeat
+hold. For a marked parent, the header can supply the old mode for that one
+comparison against the new schedule.
 
 ## MIDI instruction operands {.unnumbered}
 
@@ -166,7 +170,7 @@ this RAM with `cfg_loop=1` and uses the low 64 bits of the data bus.
 | --------------- | ------------------------------------------------------------------------------------- |
 | 0 | Valid [0], generation [32:1], mode [34:33], repeat [35], source valid [36], source slot [52:37], pulse [53], first capture [54], processed stamp valid [55], newer plan index [56], MIDI writer-open [57], MIDI seek/reposition [58], prior MIDI playback activity [59], composite snapshot [60], composite snapshot restart [61], explicit composite [62], composite wrap [63]. |
 | 1 | Source generation [31:0], plan 0 flags [36:32], plan 1 flags [41:37], composite repeat wait [42], authored capture ownership [43], composite child [44], composite timing slot [45]. |
-| 2, 3, 4 | Next position, content length, captured frames, respectively. For a composite timing slot word 3 is pass length and word 4 is the previous render position, or all ones when the previous render was stopped. |
+| 2, 3, 4 | Next position, content length, captured frames, respectively. For a composite timing slot word 3 is pass length and word 4 is the previous render position, or all ones when the previous render was stopped. Value 1 in bits 33:32 of word 4 marks a previous position at a live wrap. |
 | 5, 6, 7 | Cycle count, content revision, revision watermark, respectively. For a composite timing slot word 5 counts completed passes and word 6 is the unit length in frames. |
 | 8, 9 | Render position and processed quantum frame, respectively. |
 | 10–12 | Plan 0 effective frame, remaining pulse skips and requested position. |

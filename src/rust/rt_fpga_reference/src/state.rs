@@ -327,7 +327,13 @@ impl StateProcessor {
             }
         }
         core::mem::swap(&mut loops.plan, &mut image.compiled.plan);
+        loops.program_changed = image.layout.reconciles_composite_wrap();
         Ok(())
+    }
+    pub(crate) fn composite_wrap_pending(&self) -> bool {
+        self.loops
+            .as_ref()
+            .is_some_and(|loops| loops.program_changed)
     }
     pub fn new(memory: Vec<Value>) -> Self {
         Self {

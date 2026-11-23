@@ -188,7 +188,7 @@ impl StateProgramTarget for RtlTarget<'_> {
             let words = u16::try_from(
                 logical
                     .composite_parents(*loop_id)
-                    .map(|(_, spans)| 1 + spans.len())
+                    .map(|(_, child)| 1 + child.spans.len())
                     .sum::<usize>(),
             )
             .map_err(|_| CompileError::Capacity(Resource::Instructions))?;
@@ -197,17 +197,24 @@ impl StateProgramTarget for RtlTarget<'_> {
                     .set(56, 16, u64::from(source))
                     .set(72, 16, u64::from(words));
                 instructions.push(bits);
-                for (parent, spans) in logical.composite_parents(*loop_id) {
-                    let span_count = spans.len() as u64;
+                for (parent, child) in logical.composite_parents(*loop_id) {
+                    let span_count = child.spans.len() as u64;
                     let mut header = Bits::zero(96);
                     header
                         .set(0, 16, u64::from(operand(parent.id.slot)?))
                         .set(16, 32, u64::from(parent.id.generation))
                         .set(48, 6, span_count & 63)
                         .set(54, 16, u64::from(capture_views))
-                        .set(70, 10, span_count >> 6);
+                        .set(70, 10, span_count >> 6)
+                        .set(
+                            80,
+                            2,
+                            child
+                                .previous_play_at_wrap
+                                .map_or(0, |playing| 2 + u64::from(playing)),
+                        );
                     instructions.push(header);
-                    for span in spans {
+                    for span in &child.spans {
                         let mut row = Bits::zero(96);
                         row.set(0, 32, u64::from(span.start))
                             .set(32, 32, u64::from(span.end))

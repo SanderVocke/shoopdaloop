@@ -854,6 +854,103 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
     }
 }
 
+fn edit_at_continuous_wrap<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, length: u64) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(2);
+    let mut parent = graph.loops[0].clone();
+    parent.id = id(120);
+    parent.strip = None;
+    let span = |target, start, end, ordinal| CompositeSpan {
+        target: id(target),
+        start,
+        end,
+        occurrence_start: start,
+        ordinal,
+        mode: LoopMode::Playing,
+    };
+    let old_length = 64;
+    parent.composite = Some(CompositeView {
+        kind: CompositeKind::Regular,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: old_length,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![span(100, 0, old_length, 0), span(101, 0, 2, 1)].into(),
+    });
+    graph.loops.push(parent);
+    upload(&mut client, &mut renderer, &graph, 0);
+    let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
+    for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
+        let children = [transition(100, mode), transition(101, mode)];
+        client
+            .immediate(Batch::new(1, 1, &children).unwrap())
+            .unwrap();
+        response(&mut client, &mut renderer);
+        for _ in 0..8 {
+            assert_eq!(step(&mut renderer), [0., 0.]);
+        }
+    }
+    client
+        .immediate(Batch::new(1, 1, &[transition(120, TransitionMode::Playing)]).unwrap())
+        .unwrap();
+    let started = response(&mut client, &mut renderer);
+    for _ in 0..4 {
+        step(&mut renderer);
+    }
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+
+    let edited = graph.loops[2].composite.as_mut().unwrap();
+    edited.version = 2;
+    edited.iterations = length;
+    edited.spans = vec![span(100, 4, 6, 0), span(101, 0, length, 1)].into();
+    let switched = upload(&mut client, &mut renderer, &graph, 1);
+    assert_eq!(switched, started + old_length * Q as u64);
+    let first_sample = switched + Q as u64;
+    assert_eq!(renderer.next_frame().0, first_sample);
+    for iteration in 0..8 {
+        let sample = if (4..6).contains(&iteration) {
+            0.1875
+        } else {
+            0.0625
+        };
+        assert_eq!(
+            step(&mut renderer),
+            [sample, sample],
+            "iteration {iteration}"
+        );
+    }
+
+    client
+        .immediate(Batch::new(2, 2, &[transition(100, TransitionMode::Playing)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    let next_wrap = first_sample + length * Q as u64;
+    while renderer.next_frame().0 <= next_wrap {
+        assert_eq!(step(&mut renderer), [0.1875, 0.1875]);
+    }
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn continuous_wrap_edits_replace_the_old_ending_once() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    for length in [24, 64] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        edit_at_continuous_wrap(rust.endpoint, rust.renderer, length);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        edit_at_continuous_wrap(rtl.endpoint, rtl.renderer, length);
+    }
+}
+
 #[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
 fn prepared_conversion_fences_an_old_generation_and_preserves_its_take() {
     let driver = DriverStatus {

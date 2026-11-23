@@ -515,7 +515,7 @@ fn composite_image_switch_waits_for_a_compatible_restart() {
     plan.spans.to_mut()[0].end = 3;
     let future = rt_fpga_compiler::compile_composites(&graph, context, 16).unwrap();
     let mut candidate = image(&mut allocator, &future, &[]);
-    assert!(!candidate.layout.composite_cuts()[0].allow_restart);
+    assert!(candidate.layout.composite_cuts()[0].allow_restart);
     assert_eq!(candidate.layout.composite_cuts()[0].future_before, Some(32));
     assert_eq!(
         pipeline.state().loop_state(parent).unwrap().state.position,

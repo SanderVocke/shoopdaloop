@@ -163,6 +163,7 @@ module state_processor #(
         .PROGRAM_ADDR_BITS(PROGRAM_ADDR_BITS), .STATE_ADDR_BITS(STATE_ADDR_BITS)
     ) engine (
         .clk(clk), .reset(reset), .start(start),
+        .program_changed(PROGRAM_REGIONS == 2 && run_program_region != program_region),
         .instruction_count(run_instruction_count), .sync_count(run_sync_count), .state_count(run_state_count),
         .quantum(run_quantum), .chunk_frames(run_chunk_frames), .job_budget(run_job_budget), .capture_credits(capture_credits),
         .queued_jobs(queued_jobs), .queue_remaining(queue_remaining),

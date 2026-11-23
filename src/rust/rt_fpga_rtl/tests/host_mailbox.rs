@@ -683,7 +683,7 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
             spans: vec![CompositeSpan {
                 target: identity,
                 start: 0,
-                end: iterations,
+                end: 2,
                 occurrence_start: 0,
                 ordinal: 0,
                 mode: LoopMode::Playing,
@@ -722,6 +722,22 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
                 send(session.client(), Request::run_quantum());
             }
         } else {
+            let layout = allocator.stage(&program).unwrap();
+            assert!(layout.composite_cuts().is_empty());
+            let media = layout.media_views(&program);
+            let image = RtlTarget {
+                capacities: limits,
+                media_views: &media,
+                state_base: 0,
+            }
+            .build_image(&program, layout)
+            .unwrap();
+            let replacement = stage(&mut session, Upload::new(image, limits.instructions));
+            allocator.publish(5).unwrap();
+            assert!(matches!(
+                session.activate(replacement, timeout()),
+                Err(Error::Rejected(RESULT_REJECTED))
+            ));
             send(session.client(), Request::run_quantum());
             let capture = send(session.client(), Request::capture_loop(parent.slot));
             let state = send(session.client(), Request::read_snapshot(capture[0], 0, 4));
@@ -733,6 +749,10 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
             );
             let passes = send(session.client(), Request::read_snapshot(capture[0], 5, 1));
             assert_eq!(passes[..2], [2, 0]);
+            let (active, retired) = session.activate(replacement, timeout()).unwrap();
+            assert_eq!(active.frame, 11 * quantum);
+            assert_eq!(retired.unwrap().image.layout.revision, 4);
+            allocator.complete(5).unwrap();
         }
     }
 
@@ -752,8 +772,8 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
     .build_image(&program, layout)
     .unwrap();
     let requested = stage(&mut session, Upload::new(image, limits.instructions));
-    allocator.publish(5).unwrap();
-    let mut window = ControlWindow::begin(session.client(), 4, timeout()).unwrap();
+    allocator.publish(6).unwrap();
+    let mut window = ControlWindow::begin(session.client(), 5, timeout()).unwrap();
     assert_eq!(
         window.prepare_composite_retirement(departing),
         Ok(Code::Scheduled)
@@ -768,9 +788,9 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
         active,
         ActiveProgram {
             frame: 12 * quantum,
-            revision: 5
+            revision: 6
         }
     );
-    assert_eq!(retired.unwrap().image.layout.revision, 4);
-    allocator.complete(5).unwrap();
+    assert_eq!(retired.unwrap().image.layout.revision, 5);
+    allocator.complete(6).unwrap();
 }

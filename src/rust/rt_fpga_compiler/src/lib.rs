@@ -39,6 +39,9 @@ pub struct FrameSpan {
 pub struct CompositeChild {
     pub id: Identity,
     pub spans: Vec<FrameSpan>,
+    /// Previous ownership at the boundary where this image first takes over.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_play_at_wrap: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -353,13 +356,13 @@ impl LogicalStateProgram {
     pub fn composite_parents(
         &self,
         id: Identity,
-    ) -> impl Iterator<Item = (&CompositeSchedule, &[FrameSpan])> {
+    ) -> impl Iterator<Item = (&CompositeSchedule, &CompositeChild)> {
         self.composites.iter().filter_map(move |parent| {
             parent
                 .children
                 .iter()
                 .find(|child| child.id == id)
-                .map(|child| (parent, child.spans.as_slice()))
+                .map(|child| (parent, child))
         })
     }
 
@@ -375,6 +378,14 @@ impl LogicalStateProgram {
             .composites
             .windows(2)
             .any(|pair| (!pair[0].explicit, pair[0].id) >= (!pair[1].explicit, pair[1].id))
+        {
+            return Err(CompileError::InvalidProgram);
+        }
+        if self
+            .composites
+            .iter()
+            .flat_map(|schedule| &schedule.children)
+            .any(|child| child.previous_play_at_wrap.is_some())
         {
             return Err(CompileError::InvalidProgram);
         }
@@ -566,6 +577,7 @@ impl LogicalStateProgram {
                 if !local_children.insert(child.id)
                     || !self.sync_pass[parent_position + 1..].contains(&child.id)
                     || child.spans.is_empty()
+                    || (schedule.explicit && child.previous_play_at_wrap.is_some())
                 {
                     return Err(InvalidProgram);
                 }

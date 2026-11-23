@@ -13,6 +13,7 @@ module sp_engine #(
     input  wire                                clk,
     input  wire                                reset,
     input  wire                                start,
+    input  wire                                program_changed,
     input  wire [31:0]                         instruction_count,
     input wire [31:0] sync_count,
     input  wire [31:0]                         state_count,
@@ -94,6 +95,7 @@ module sp_engine #(
     reg [31:0] run_quantum;
     reg [31:0] run_sync_count;
     reg run_has_sync, instruction_is_sync, last_sync_instruction, last_instruction;
+    reg run_program_changed;
     reg begin_capture;
     reg [1:0] playback_flags;
     reg [255:0] capture_job;
@@ -107,6 +109,7 @@ module sp_engine #(
     reg [PC_BITS-1:0] parent_end_pc;
     reg [15:0] parent_slot;
     reg parent_snapshot, parent_restart, parent_wrap, parent_playing;
+    reg [1:0] parent_previous_play;
     reg [31:0] parent_position, parent_previous, desired_start;
     reg [1:0] previous_mode, desired_mode;
     reg [15:0] run_capture_credits;
@@ -298,7 +301,7 @@ module sp_engine #(
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
             pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
             changed<=0; applied_pulse<=0; sync_fault<=0; sync_frame<=0; midi_prepass<=0; midi_restart<=0; emit_return<=NEXT;
-            run_quantum <= 0; begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
+            run_quantum <= 0; run_program_changed<=0; begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
             opcode <= 0;
             arg0 <= 0;
             arg1 <= 0;
@@ -307,7 +310,7 @@ module sp_engine #(
             arg4 <= 0;
             span_pc<=0; parent_end_pc<=0; parent_slot<=0;
             parent_position<=0; parent_previous<=0; desired_start<=0;
-            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0;
+            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0; parent_previous_play<=0;
             previous_mode<=0; desired_mode<=0; inherited<=0; composite_position_checked<=0;
             run_capture_credits<=0; capture_permitted<=0;
             dividend<=0; divisor<=0; remainder<=0; division_bits<=0; division_return<=IDLE;
@@ -332,6 +335,7 @@ module sp_engine #(
             case (phase)
                 IDLE: if (start) begin
                     busy <= 1;
+                    run_program_changed <= program_changed;
                     pc <= 0; chunk_shift <= shift_for(chunk_frames);
                     error_code <= `SHOOP_SP_OK;
                     queue_bad <= (queued_jobs != 0) || (queue_remaining < job_budget);
@@ -658,6 +662,10 @@ module sp_engine #(
                 end
                 COMPOSITE_PREVIOUS: begin
                     capture_frames<=word_value;
+                    // A composite's previous frame fits in 32 bits.
+                    if (run_program_changed && !flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT]
+                        && position==length && length!=0 && !control[`SHOOP_SP_L_COMPOSITE_WAIT])
+                        capture_frames[32]<=1;
                     phase<=SYNC_SOURCE_BEGIN;
                 end
                 SYNC_SOURCE_BEGIN: begin
@@ -806,10 +814,11 @@ module sp_engine #(
                 end
                 COMPOSITE_TABLE_READ: phase<=span_pc==parent_end_pc ? COMPOSITE_TABLE : COMPOSITE_SPAN;
                 COMPOSITE_TABLE: begin
-                    if (program_read_data[95:80]!=0 || parent_span_count==0
+                    if (program_read_data[95:82]!=0 || program_read_data[81:80]==2'b01 || parent_span_count==0
                         || next_parent_pc>next_pc || {16'b0,program_read_data[15:0]}>=32'(LOOP_DEPTH)) sync_fail();
                     else begin
                         parent_slot<=program_read_data[15:0];
+                        parent_previous_play<=program_read_data[81:80];
                         capture_permitted<=program_read_data[69:54]!=0 && program_read_data[69:54]<=run_capture_credits;
                         parent_end_pc<=PC_BITS'(next_parent_pc);
                         span_pc<=span_pc+1'b1;
@@ -838,6 +847,10 @@ module sp_engine #(
                 COMPOSITE_PARENT_PREVIOUS: begin
                     parent_previous<=word_value[31:0];
                     previous_mode<=0; desired_mode<=0; desired_start<=0;
+                    if (word_value[33:32]==2'b01 && parent_previous_play[1]) begin
+                        parent_previous<=32'hffffffff;
+                        previous_mode<={1'b0,parent_previous_play[0]};
+                    end
                     if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);
                     else begin
                         parent_position<=32'hffffffff;

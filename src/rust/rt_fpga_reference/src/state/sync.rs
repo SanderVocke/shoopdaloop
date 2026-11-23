@@ -62,6 +62,8 @@ pub struct LoopSlot {
     #[cfg_attr(feature = "serde", serde(default))]
     composite_wrap: bool,
     #[cfg_attr(feature = "serde", serde(default))]
+    composite_handoff: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) composite_wait: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) authored_recording: bool,
@@ -85,6 +87,7 @@ impl LoopSlot {
             composite_previous: None,
             composite_snapshot: None,
             composite_wrap: false,
+            composite_handoff: false,
             composite_wait: false,
             authored_recording: false,
             mode_plan,
@@ -106,6 +109,7 @@ pub struct Resolution {
 
 pub(crate) struct LoopMemory {
     pub plan: TransitionPlan,
+    pub(crate) program_changed: bool,
     pub slots: Vec<Option<LoopSlot>>,
     pub frame: u64,
     pub events: Vec<Event>,
@@ -140,6 +144,7 @@ impl LoopMemory {
         Self {
             projected_pulses,
             plan,
+            program_changed: false,
             slots,
             frame: 0,
             events,
@@ -186,29 +191,30 @@ impl LoopMemory {
         quantum: u32,
         prepare_captures: impl FnOnce(&Self) -> Result<(), crate::Error>,
     ) -> Result<(), crate::Error> {
-        if !self.plan.authored_recording {
-            return self
-                .run(instructions, quantum, false)
-                .map_err(crate::Error::Transition);
-        }
-        let frame = self.frame;
-        self.capture_checkpoint.copy_from_slice(&self.slots);
-        self.run(instructions, quantum, true)
-            .map_err(crate::Error::Transition)?;
-        if let Err(error) = prepare_captures(self) {
-            self.slots.copy_from_slice(&self.capture_checkpoint);
-            self.frame = frame;
-            match error {
-                crate::Error::MemoryFull
-                | crate::Error::InvalidView
-                | crate::Error::InvalidState => {
-                    self.run(instructions, quantum, false)
-                        .map_err(crate::Error::Transition)?;
-                    self.capture_refusals = self.capture_refusals.saturating_add(1);
+        if self.plan.authored_recording {
+            let frame = self.frame;
+            self.capture_checkpoint.copy_from_slice(&self.slots);
+            self.run(instructions, quantum, true)
+                .map_err(crate::Error::Transition)?;
+            if let Err(error) = prepare_captures(self) {
+                self.slots.copy_from_slice(&self.capture_checkpoint);
+                self.frame = frame;
+                match error {
+                    crate::Error::MemoryFull
+                    | crate::Error::InvalidView
+                    | crate::Error::InvalidState => {
+                        self.run(instructions, quantum, false)
+                            .map_err(crate::Error::Transition)?;
+                        self.capture_refusals = self.capture_refusals.saturating_add(1);
+                    }
+                    error => return Err(error),
                 }
-                error => return Err(error),
             }
+        } else {
+            self.run(instructions, quantum, false)
+                .map_err(crate::Error::Transition)?;
         }
+        self.program_changed = false;
         Ok(())
     }
     fn run(
@@ -410,13 +416,19 @@ impl LoopMemory {
         quantum: u32,
         allow_authored_recording: bool,
     ) -> Result<(), TransitionError> {
-        let composite = self.composite_clock(id).is_some();
+        let clock = self.composite_clock(id);
+        let composite = clock.is_some();
+        let program_changed = self.program_changed;
         let slot = self.slot_mut(id)?;
         slot.pulse_this_quantum = false;
         slot.pulse_pending = false;
         slot.pulse_masked = false;
         slot.protected = None;
         slot.composite_previous = slot.render.plays().then_some(slot.render.position);
+        slot.composite_handoff = program_changed
+            && clock.is_some_and(|clock| !clock.explicit)
+            && slot.state.at_end()
+            && !slot.composite_wait;
         slot.composite_snapshot = None;
         slot.composite_wrap = false;
         if !self.slot(id)?.mode_plan {
@@ -523,7 +535,16 @@ impl LoopMemory {
                     .get(index)
                     .filter(|span| u64::from(span.start) <= position)
             };
-            let prior = parent.composite_previous.and_then(span_at);
+            let prior = match binding
+                .previous_play_at_wrap
+                .filter(|_| parent.composite_handoff)
+            {
+                Some(playing) => playing.then_some(SpanMode::Play),
+                None => parent
+                    .composite_previous
+                    .and_then(span_at)
+                    .map(|span| span.mode),
+            };
             let desired = parent
                 .render
                 .plays()
@@ -533,7 +554,7 @@ impl LoopMemory {
             let needs_entry = clock.is_some_and(|c| {
                 slot.state.mode != Mode::Playing || (c.explicit && slot.state.at_end())
             });
-            if prior.map(|span| span.mode) == desired.map(|span| span.mode)
+            if prior == desired.map(|span| span.mode)
                 && !(desired.is_some()
                     && (parent.composite_snapshot.is_some() || (wrap && needs_entry)))
             {

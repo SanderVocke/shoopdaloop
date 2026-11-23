@@ -234,6 +234,9 @@ impl Processor {
 }
 impl Engine {
     pub(super) fn waits_for_composite_cut(&mut self, image: &PreparedProgram) -> bool {
+        if self.pipeline.state().composite_wrap_pending() {
+            return true;
+        }
         if let Some(slot) = image.image.layout.retiring_composite() {
             let id = LoopId {
                 slot: slot.slot,

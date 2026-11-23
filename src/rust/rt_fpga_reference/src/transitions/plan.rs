@@ -73,6 +73,8 @@ pub(crate) struct CompositeClock {
 pub(crate) struct ParentSpans {
     pub parent: LoopId,
     pub spans: Vec<rt_fpga_compiler::FrameSpan>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_play_at_wrap: Option<bool>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

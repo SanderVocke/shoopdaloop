@@ -184,6 +184,8 @@ pub struct Layout {
     #[cfg_attr(feature = "serde", serde(default))]
     composite_cuts: Vec<CompositeCut>,
     #[cfg_attr(feature = "serde", serde(default))]
+    previous_wrap_children: Vec<(Identity, Vec<Identity>)>,
+    #[cfg_attr(feature = "serde", serde(default))]
     retiring_composite: Option<Identity>,
 }
 
@@ -261,6 +263,9 @@ impl Layout {
     }
     pub fn composite_cuts(&self) -> &[CompositeCut] {
         &self.composite_cuts
+    }
+    pub fn reconciles_composite_wrap(&self) -> bool {
+        !self.previous_wrap_children.is_empty()
     }
     pub fn retiring_composite(&self) -> Option<Identity> {
         self.retiring_composite
@@ -345,8 +350,15 @@ impl Layout {
             *l = id(*l)?;
         }
         for schedule in &mut bound.composites {
+            let previous_ending = self
+                .previous_wrap_children
+                .iter()
+                .find(|(parent, _)| *parent == schedule.id);
             schedule.id = id(schedule.id)?;
             for child in &mut schedule.children {
+                if let Some((_, ending)) = previous_ending {
+                    child.previous_play_at_wrap = Some(ending.contains(&child.id));
+                }
                 child.id = id(child.id)?;
             }
         }
@@ -442,6 +454,7 @@ impl Allocator {
         let mut changed_composites = BTreeSet::new();
         let mut replaced_slots = BTreeSet::new();
         let mut composite_cuts = Vec::new();
+        let mut previous_wrap_children = Vec::new();
         if let Some(old) = old {
             for schedule in &old.composites {
                 if !program.composites.contains(schedule) {
@@ -536,9 +549,15 @@ impl Allocator {
                         .loops
                         .iter()
                         .any(|l| l.id == row.logical && l.sync_source == row.sync_source);
-                    let require_repeat_wait = before.zip(after).is_some_and(|(before, after)| {
+                    let changed_ending = before.zip(after).filter(|(before, after)| {
                         !before.ending_children().eq(after.ending_children())
                     });
+                    let carry_ending = changed_ending.filter(|(before, after)| {
+                        before
+                            .ending_children()
+                            .all(|id| after.children.iter().any(|child| child.id == id))
+                    });
+                    let require_repeat_wait = changed_ending.is_some() && carry_ending.is_none();
                     // A held pass has already released its children. A plan edit can
                     // drop their spans while the graph keeps their state and media.
                     let allow_restart = changed_composites.contains(&row.logical)
@@ -555,6 +574,12 @@ impl Allocator {
                                             program.loops.iter().any(|child| child.id == old.id)
                                         })))
                         });
+                    if allow_restart {
+                        if let Some((before, _)) = carry_ending {
+                            previous_wrap_children
+                                .push((row.logical, before.ending_children().collect()));
+                        }
+                    }
                     let wait_for_finish = changed_composites.contains(&row.logical)
                         && independent
                         && before.is_some_and(|schedule| schedule.explicit)
@@ -742,6 +767,7 @@ impl Allocator {
             chunk_frames: program.chunk_frames,
             composites: program.composites.clone(),
             composite_cuts,
+            previous_wrap_children,
             retiring_composite,
         };
         layout.relocate(program)?.validate(self.limits)?;

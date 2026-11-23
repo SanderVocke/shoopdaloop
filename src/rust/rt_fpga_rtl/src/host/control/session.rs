@@ -39,6 +39,7 @@ pub struct ProgramSession<B> {
     staged: Option<Upload>,
     uploaded: bool,
     failed: bool,
+    composite_wrap_frame: Option<u64>,
 }
 
 impl<B: RegisterBus> ProgramSession<B> {
@@ -49,6 +50,7 @@ impl<B: RegisterBus> ProgramSession<B> {
             staged: None,
             uploaded: false,
             failed: false,
+            composite_wrap_frame: None,
         }
     }
 
@@ -62,6 +64,10 @@ impl<B: RegisterBus> ProgramSession<B> {
 
     pub fn staged(&self) -> Option<&ProgramImage> {
         self.staged.as_ref().map(|upload| &upload.image)
+    }
+
+    pub fn composite_wrap_frame(&self) -> Option<u64> {
+        self.composite_wrap_frame
     }
 
     pub fn active_and_client(&mut self) -> (Option<&ProgramImage>, &mut Client<B>) {
@@ -141,10 +147,13 @@ impl<B: RegisterBus> ProgramSession<B> {
             return Err(Error::InvalidRequest);
         };
         let layout = &staged.image.layout;
-        if !layout.composite_cuts().is_empty() {
+        if !layout.composite_cuts().is_empty() || self.composite_wrap_frame.is_some() {
             let mut window =
                 super::ControlWindow::begin(&mut self.client, layout.expected, &mut time_left)?;
             let result = (|| {
+                if self.composite_wrap_frame == Some(window.frame()) {
+                    return Ok(None);
+                }
                 for &cut in layout.composite_cuts() {
                     if window.prepare_composite_cut(cut, staged.image.compiled.quantum)?
                         != shoop_rt_protocol::immediate::Code::Applied
@@ -189,6 +198,11 @@ impl<B: RegisterBus> ProgramSession<B> {
             return Err(Error::UnexpectedResponse);
         }
         let staged = self.staged.take().unwrap();
+        self.composite_wrap_frame = staged
+            .image
+            .layout
+            .reconciles_composite_wrap()
+            .then_some(fence.selected.frame);
         self.uploaded = false;
         Ok((fence.selected, self.active.replace(staged)))
     }

@@ -467,6 +467,7 @@ where
                 .extend_from_slice(staged.layout.changed_sources());
         }
 
+        let composite_wrap_frame = self.session.composite_wrap_frame();
         let (active, staged, client) = self.session.programs_and_client();
         let mut window =
             device_result(ControlWindow::begin(client, revision, &mut *within_budget))?;
@@ -476,6 +477,11 @@ where
             return Ok(Some((frame, Code::DeadlineMissed)));
         }
         if switching.is_some() {
+            if composite_wrap_frame == Some(frame) {
+                device_result(window.release())?;
+                self.retry_switch_after = Some(frame);
+                return Ok(None);
+            }
             let layout = &staged.unwrap().layout;
             let cuts = layout.composite_cuts();
             let mut status = Code::Applied;
