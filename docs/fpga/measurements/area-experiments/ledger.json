@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 4,
-  "status": "Stages0\u20133 complete; C3selected/CIrerunning. Stage4sharedMIDIstoreaddress datapath7d2d7cd7 infunctional/cycle/physicalmeasurement.",
+  "status": "Stages0\u20133 complete; selectedstructuralC3 remains. Stage4MIDIstoreaddress7d has23testpasses,exactfullphysicalrepeat and40musicalrows; extended1024steadycomparisonstillrunning beforedefault/tradeoffdecision. OtherStage4siblings andStages5\u201311 notexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1317,7 +1317,8 @@
         "Hosted track processors",
         "Docs",
         "CodeQL"
-      ]
+      ],
+      "native_verification": "Complete nativeMarlin job137392124794 passed on testedmerge1ba135dd; reference/integration/dependencyisolation also passed. Standaloneunusedbit gate failed; focusedstrictsynthesisfixpass archivedonarea/base-integration."
     }
   },
   "selected_control": {
@@ -1337,6 +1338,6 @@
       "control_sets": -894
     },
     "hints": "original early+late",
-    "short_connected": "All33rows exactC2; ordinarymedian52994/max53617,cold88446. C3extendedrun notyetmeasured."
+    "short_connected": "All33ordinaryrows exactC2; shortmedian52994/max53617,cold88446. Extended1041rows alsoexactC2,1024steady median52994/max59446; see c3-extended-100-summary.json."
   }
 }
