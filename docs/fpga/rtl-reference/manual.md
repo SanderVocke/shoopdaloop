@@ -234,7 +234,10 @@ recording can start. See the admission rule under
   future changes, such as adding another child later in the current pass.
   A parent can keep playing while an edit changes a later part of a nested
   composite. The nested composite keeps its timing, sync source, and links
-  to other composites.
+  to other composites for that early handoff. An edit to a single nested
+  composite can also wait until the child stops, either by finishing its own
+  run or when its parent releases it. Unchanged parents keep playing and use
+  the new plan the next time they start the child.
   An independent repeating composite can pick up an edit at its next restart,
   including changes to the length of an iteration or the whole pass. Both plans
   use the same sync source. At an uninterrupted restart, SP compares what was

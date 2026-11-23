@@ -630,14 +630,13 @@ impl Allocator {
                     changed_composites.insert(schedule.id);
                 }
             }
-            // With a single compatible edit, ancestor schedules retain the same
-            // bindings and the edited child can validate its own playhead.
-            let nested_future = if changed_composites.len() == 1 {
-                let id = *changed_composites.first().unwrap();
-                old.nested_future_cut(program, id).map(|frame| (id, frame))
-            } else {
-                None
-            };
+            let single_edit = changed_composites.first().copied().filter(|id| {
+                changed_composites.len() == 1
+                    && old.composite_schedule(*id).is_some()
+                    && program.composites.iter().any(|schedule| schedule.id == *id)
+            });
+            let nested_future = single_edit
+                .and_then(|id| old.nested_future_cut(program, id).map(|frame| (id, frame)));
             // A primitive-to-composite conversion gives the public slot a new
             // generation. Fence the departing primitive before its take can be
             // retired, just as for a conversion that keeps the logical ID.
@@ -658,10 +657,11 @@ impl Allocator {
             loop {
                 let count = stopped.len();
                 for schedule in &old.composites {
-                    if schedule.children.iter().any(|child| {
-                        stopped.contains(&child.id)
-                            && nested_future.is_none_or(|(id, _)| id != child.id)
-                    }) {
+                    if schedule
+                        .children
+                        .iter()
+                        .any(|child| stopped.contains(&child.id) && single_edit != Some(child.id))
+                    {
                         stopped.insert(schedule.id);
                     }
                 }
@@ -724,11 +724,15 @@ impl Allocator {
                                         program.loops.iter().any(|child| child.id == old.id)
                                     })
                                 })));
-                    let wait_for_finish = changed_composites.contains(&row.logical)
-                        && independent
-                        && before.is_some_and(|schedule| schedule.explicit)
-                        && after.is_some();
+                    let wait_for_finish = if independent {
+                        changed_composites.contains(&row.logical)
+                            && before.is_some_and(|schedule| schedule.explicit)
+                            && after.is_some()
+                    } else {
+                        single_edit == Some(row.logical)
+                    };
                     let finish_at_boundary = wait_for_finish
+                        && independent
                         && same_source
                         && before.zip(after).is_some_and(|(before, after)| {
                             after.explicit

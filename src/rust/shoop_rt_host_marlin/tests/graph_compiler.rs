@@ -599,6 +599,108 @@ enum Ending {
     ReplaceFirst,
 }
 
+fn edit_released_nested_child<E: Endpoint>(
+    endpoint: E,
+    mut renderer: impl Renderer,
+    explicit: bool,
+) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    let span = |child, end, ordinal| CompositeSpan {
+        target: id(child),
+        start: 0,
+        end,
+        occurrence_start: 0,
+        ordinal,
+        mode: LoopMode::Playing,
+    };
+    let quantum = Q as u64;
+    let child_length = if explicit { 24 } else { 64 };
+    let program = |kind, iterations, spans: Vec<_>| CompositeView {
+        kind,
+        version: 1,
+        unit_frames: quantum,
+        iterations,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: spans.into(),
+    };
+    let mut child = graph.loops[0].clone();
+    child.id = id(120);
+    child.strip = None;
+    let kind = if explicit {
+        CompositeKind::Explicit
+    } else {
+        CompositeKind::Regular
+    };
+    child.composite = Some(program(
+        kind,
+        child_length,
+        vec![span(100, child_length, 0)],
+    ));
+    let mut parent = child.clone();
+    parent.id = id(121);
+    parent.composite = Some(program(
+        CompositeKind::Regular,
+        96,
+        vec![span(120, 32, 0), span(102, 96, 1)],
+    ));
+    let child_index = graph.loops.len();
+    graph.loops.extend([child, parent]);
+    upload(&mut client, &mut renderer, &graph, 0);
+    let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
+    for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
+        let tracks = [100, 101, 102].map(|slot| transition(slot, mode));
+        client
+            .immediate(Batch::new(1, 1, &tracks).unwrap())
+            .unwrap();
+        response(&mut client, &mut renderer);
+        step(&mut renderer);
+    }
+    client
+        .immediate(Batch::new(1, 1, &[transition(121, TransitionMode::Playing)]).unwrap())
+        .unwrap();
+    let started = response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.375, 0.375]);
+
+    let revised = graph.loops[child_index].composite.as_mut().unwrap();
+    revised.version += 1;
+    revised.iterations = 40;
+    revised.spans = vec![span(101, 40, 0)].into();
+    let stopped = if explicit { 24 } else { 32 };
+    assert_eq!(
+        upload(&mut client, &mut renderer, &graph, 1),
+        started + (stopped + 1) * quantum
+    );
+    let parent_wrap = started + 97 * quantum;
+    assert!(renderer.next_frame().0 < parent_wrap);
+    while renderer.next_frame().0 < parent_wrap {
+        assert_eq!(step(&mut renderer), [0.25, 0.25]);
+    }
+    for _ in 0..8 {
+        assert_eq!(step(&mut renderer), [0.3125, 0.3125]);
+    }
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn a_released_nested_composite_can_change_under_a_playing_parent() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    for explicit in [false, true] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        edit_released_nested_child(rust.endpoint, rust.renderer, explicit);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        edit_released_nested_child(rtl.endpoint, rtl.renderer, explicit);
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Clock {
     Primitive,
