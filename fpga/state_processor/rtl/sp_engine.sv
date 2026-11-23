@@ -120,7 +120,8 @@ module sp_engine #(
     wire [1:0] span_mode = program_read_data[65:64];
     wire previous_match = parent_previous >= span_start && parent_previous < span_end;
     wire desired_match = parent_position >= span_start && parent_position < span_end;
-    wire [31:0] next_parent_pc = 32'(span_pc) + 1'b1 + {26'b0,program_read_data[53:48]};
+    wire [15:0] parent_span_count = {program_read_data[79:70], program_read_data[53:48]};
+    wire [31:0] next_parent_pc = 32'(span_pc) + 1'b1 + {16'b0,parent_span_count};
     reg [15:0] operand_address;
     reg midi_prepass, midi_restart;
     phase_t emit_return;
@@ -403,9 +404,7 @@ module sp_engine #(
                             else phase<=SYNC_BEGIN;
                         end
                         `SHOOP_SP_PROCESS_COMPOSITE_CHILD: begin
-                            if (instruction_reserved!=0 || arg4<2
-                                || arg4>16'(`SHOOP_SP_MAX_CHILD_PARENTS*(1+`SHOOP_SP_MAX_CHILD_SPANS))
-                                || next_pc>run_sync_count) begin
+                            if (instruction_reserved!=0 || arg4<2 || next_pc>run_sync_count) begin
                                 finish_error(`SHOOP_SP_INVALID_PROGRAM);
                             end else begin
                                 last_sync_instruction<=next_pc==run_sync_count;
@@ -636,7 +635,7 @@ module sp_engine #(
                     endcase
                     if (loop_word==CAP) begin
                         source_valid<=selected_source_valid; source_slot<=selected_source_slot;
-                        source_self<=selected_source_valid && selected_source_slot==target;
+                        source_self<=selected_source_valid ? selected_source_slot==target : (is_composite || composite_child);
                         loop_read(target,PF,SYNC_CHECK);
                     end
                     else begin loop_word<=loop_word+1'b1; loop_read(target,loop_word+1'b1,SYNC_LOAD); end
@@ -807,8 +806,7 @@ module sp_engine #(
                 end
                 COMPOSITE_TABLE_READ: phase<=span_pc==parent_end_pc ? COMPOSITE_TABLE : COMPOSITE_SPAN;
                 COMPOSITE_TABLE: begin
-                    if (program_read_data[95:70]!=0 || program_read_data[53:48]==0
-                        || program_read_data[53:48]>6'(`SHOOP_SP_MAX_CHILD_SPANS)
+                    if (program_read_data[95:80]!=0 || parent_span_count==0
                         || next_parent_pc>next_pc || {16'b0,program_read_data[15:0]}>=32'(LOOP_DEPTH)) sync_fail();
                     else begin
                         parent_slot<=program_read_data[15:0];

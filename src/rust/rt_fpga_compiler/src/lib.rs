@@ -18,9 +18,6 @@ pub struct Loop {
     pub repeat_sync: bool,
 }
 
-pub const MAX_CHILD_SPANS: usize = 32;
-pub const MAX_CHILD_PARENTS: usize = 8;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SpanMode {
@@ -536,7 +533,6 @@ impl LogicalStateProgram {
             }
         }
         let mut parents = alloc::collections::BTreeSet::new();
-        let mut children = alloc::collections::BTreeMap::new();
         let mut authors = alloc::collections::BTreeSet::new();
         for schedule in &self.composites {
             let (index, parent) = self
@@ -551,11 +547,13 @@ impl LogicalStateProgram {
                 .position(|&id| id == parent.id)
                 .ok_or(InvalidProgram)?;
             if !parents.insert(parent.id)
+                || schedule.version == 0
                 || parent.length != u64::from(schedule.length)
                 || schedule.unit_frames == 0
                 || schedule.unit_frames % self.quantum != 0
                 || parent.length % u64::from(schedule.unit_frames) != 0
-                || (parent.length == 0 && (schedule.explicit || !schedule.children.is_empty()))
+                || schedule.children.is_empty() != (parent.length == 0)
+                || (parent.length == 0 && schedule.explicit)
             {
                 return Err(InvalidProgram);
             }
@@ -565,14 +563,6 @@ impl LogicalStateProgram {
             }
             let mut local_children = alloc::collections::BTreeSet::new();
             for child in &schedule.children {
-                if child.spans.len() > MAX_CHILD_SPANS {
-                    return Err(Capacity(Resource::Instructions));
-                }
-                let count = children.entry(child.id).or_insert(0);
-                *count += 1;
-                if *count > MAX_CHILD_PARENTS {
-                    return Err(Capacity(Resource::Instructions));
-                }
                 if !local_children.insert(child.id)
                     || !self.sync_pass[parent_position + 1..].contains(&child.id)
                     || child.spans.is_empty()

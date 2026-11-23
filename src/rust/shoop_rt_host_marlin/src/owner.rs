@@ -8,8 +8,8 @@ use rt_fpga_reference::{
 use rt_fpga_rtl::{
     bits::Bits,
     host::control::{
-        apply_plan, clear_plan, descriptor, gain_value, loop_plan, loop_state, protocol_mode,
-        reference_mode,
+        apply_iteration, apply_plan, clear_plan, descriptor, gain_value, loop_plan, loop_state,
+        protocol_mode, reference_mode, set_repeat_sync,
     },
     host::{Upload, UploadStep},
     pipeline::{design, Geometry},
@@ -289,6 +289,7 @@ impl Owner<'_> {
             Command::Transition(id, _)
             | Command::ClearPlannedTransitions(id, _)
             | Command::LoopGain(id, _) => id,
+            Command::LoopIteration(id, _) | Command::LoopRepeatSync(id, _) => id.0.index,
             _ => return Ok(Code::Unsupported),
         };
         let Some(index) = self.rows.iter().position(|r| r.id.slot == target) else {
@@ -315,24 +316,41 @@ impl Owner<'_> {
             self.store_loop(physical, &words)?;
             return Ok(Code::Applied);
         }
-        let Command::Transition(_, plan) = command else {
-            unreachable!()
-        };
         let state = loop_state(physical, &words, self.rows[index].last_pulse);
-        let image = self.current.as_ref().unwrap();
-        let source = image
-            .layout
-            .loops
-            .iter()
-            .find(|l| l.physical == physical)
-            .and_then(|l| l.sync_source)
-            .map(|logical| image.layout.loop_id(logical))
-            .transpose()?
-            .map(|id| LoopId {
-                slot: id.slot,
-                generation: id.generation,
-            });
-        match apply_plan(&mut words, state, source, self.frame, plan) {
+        let control = match command {
+            Command::LoopIteration(id, request)
+                if id.0.generation == self.rows[index].id.generation =>
+            {
+                apply_iteration(&mut words, state, self.frame, request)
+            }
+            Command::LoopRepeatSync(id, enabled)
+                if id.0.generation == self.rows[index].id.generation =>
+            {
+                set_repeat_sync(&mut words, enabled);
+                Ok(Code::Applied)
+            }
+            Command::LoopIteration(..) | Command::LoopRepeatSync(..) => {
+                Err(Code::TargetUnavailable)
+            }
+            Command::Transition(_, plan) => {
+                let image = self.current.as_ref().unwrap();
+                let source = image
+                    .layout
+                    .loops
+                    .iter()
+                    .find(|l| l.physical == physical)
+                    .and_then(|l| l.sync_source)
+                    .map(|logical| image.layout.loop_id(logical))
+                    .transpose()?
+                    .map(|id| LoopId {
+                        slot: id.slot,
+                        generation: id.generation,
+                    });
+                apply_plan(&mut words, state, source, self.frame, plan)
+            }
+            _ => unreachable!(),
+        };
+        match control {
             Ok(code) => {
                 self.store_loop(physical, &words)?;
                 Ok(code)
@@ -374,6 +392,14 @@ impl Owner<'_> {
         };
         let header = group.header;
         let records = group.commands().copied().collect::<Vec<_>>();
+        if self.retired.is_some()
+            && records
+                .iter()
+                .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
+        {
+            group.leave_unread();
+            return Ok(false);
+        }
         let code = if (header.graph(), header.topology())
             != (
                 self.sim.model.get("active_revision"),
@@ -390,6 +416,11 @@ impl Owner<'_> {
             Code::Applied
         };
         if code != Code::Applied {
+            for record in &records {
+                if let Command::SwitchProgram(next) = record.command() {
+                    self.retire_refused_upload(next);
+                }
+            }
             group.respond(header.complete(self.frame, code), |r| r.complete(code));
             return Ok(true);
         }
@@ -451,6 +482,11 @@ impl Owner<'_> {
             } else {
                 self.execute(record.command())?
             };
+            if code != Code::Applied {
+                if let Command::SwitchProgram(next) = record.command() {
+                    self.retire_refused_upload(next);
+                }
+            }
             complete.push(record.complete(code));
         }
         if switching {
@@ -469,6 +505,16 @@ impl Owner<'_> {
             });
         }
         Ok(true)
+    }
+
+    fn retire_refused_upload(&mut self, requested: SwitchProgram) {
+        if self
+            .upload
+            .as_ref()
+            .is_some_and(|upload| upload.announced && descriptor(&upload.upload.image) == requested)
+        {
+            self.retired = self.upload.take().map(|upload| upload.upload.image);
+        }
     }
 
     fn waits_for_composite_cut(&mut self, switch: SwitchProgram) -> Result<bool> {

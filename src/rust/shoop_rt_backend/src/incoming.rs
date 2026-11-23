@@ -994,11 +994,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         match (purpose, refusal) {
             (Purpose::RepeatSync(id, enabled), None) => {
-                if self
-                    .mirror
-                    .loops
-                    .get(&id)
-                    .is_some_and(|entry| entry.program.is_none())
+                if self.prepared_graph.is_none()
+                    && self
+                        .mirror
+                        .loops
+                        .get(&id)
+                        .is_some_and(|entry| entry.program.is_none())
                 {
                     return;
                 }

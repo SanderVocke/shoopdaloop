@@ -7,7 +7,7 @@ impl Service {
         track: TrackId,
         enabled: bool,
     ) -> Result<(), CommandError> {
-        if self.backend.composite_limits().is_none() {
+        if !self.backend.supports_automatic_monitoring() {
             return Ok(());
         }
         let before = self.backend.mutation_cursor();
@@ -20,7 +20,7 @@ impl Service {
         Ok(())
     }
     pub(super) fn reconcile_monitoring_policy(&mut self) {
-        if self.backend.composite_limits().is_none() || self.engine_closed {
+        if !self.backend.supports_automatic_monitoring() || self.engine_closed {
             return;
         }
         self.automatic_monitoring_intent

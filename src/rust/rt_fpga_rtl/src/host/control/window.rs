@@ -1,9 +1,14 @@
-use super::{apply_plan, clear_plan, gain_value, loop_state, session::FencedSwitch};
+use super::{
+    apply_iteration, apply_plan, clear_plan, gain_value, loop_state, session::FencedSwitch,
+    set_repeat_sync,
+};
 use crate::host::{Client, Error, RegisterBus, Request, registers::*};
 use crate::target::{ConfigurationWrite, Space};
 use rt_fpga_compiler::Identity;
 use rt_fpga_reference::transitions::LoopId;
-use shoop_rt_protocol::immediate::{ClearPlanned, Code, SwitchProgram, TransitionPlan};
+use shoop_rt_protocol::immediate::{
+    ClearPlanned, Code, IterationTransition, SwitchProgram, TransitionPlan,
+};
 
 /// A checked boundary for modifying active state. The PL faults if the owner does not release it.
 pub struct ControlWindow<'a, B, F> {
@@ -95,6 +100,40 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         };
         let mut updated = original;
         clear_plan(&mut updated, mask);
+        self.update_loop(base, original, updated)?;
+        Ok(Code::Applied)
+    }
+
+    pub fn apply_iteration(
+        &mut self,
+        id: Identity,
+        request: IterationTransition,
+    ) -> Result<Code, Error<B::Error>> {
+        let (base, original) = self.read_loop(id)?;
+        let Some(original) = original else {
+            return Ok(Code::TargetUnavailable);
+        };
+        let mut updated = original;
+        let state = loop_state(id, &original, None);
+        let code = match apply_iteration(&mut updated, state, self.frame, request) {
+            Ok(code) => code,
+            Err(code) => return Ok(code),
+        };
+        self.update_loop(base, original, updated)?;
+        Ok(code)
+    }
+
+    pub fn set_repeat_sync(
+        &mut self,
+        id: Identity,
+        enabled: bool,
+    ) -> Result<Code, Error<B::Error>> {
+        let (base, original) = self.read_loop(id)?;
+        let Some(original) = original else {
+            return Ok(Code::TargetUnavailable);
+        };
+        let mut updated = original;
+        set_repeat_sync(&mut updated, enabled);
         self.update_loop(base, original, updated)?;
         Ok(Code::Applied)
     }

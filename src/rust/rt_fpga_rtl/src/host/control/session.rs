@@ -65,7 +65,29 @@ impl<B: RegisterBus> ProgramSession<B> {
     }
 
     pub fn active_and_client(&mut self) -> (Option<&ProgramImage>, &mut Client<B>) {
-        (self.active.as_ref().map(|u| &u.image), &mut self.client)
+        let (active, _, client) = self.programs_and_client();
+        (active, client)
+    }
+
+    pub fn programs_and_client(
+        &mut self,
+    ) -> (Option<&ProgramImage>, Option<&ProgramImage>, &mut Client<B>) {
+        (
+            self.active.as_ref().map(|u| &u.image),
+            self.staged.as_ref().map(|u| &u.image),
+            &mut self.client,
+        )
+    }
+
+    pub fn discard_staged(&mut self, requested: SwitchProgram) -> Option<Upload> {
+        if !self
+            .staged()
+            .is_some_and(|image| descriptor(image) == requested)
+        {
+            return None;
+        }
+        self.uploaded = false;
+        self.staged.take()
     }
 
     pub fn stage(&mut self, upload: Upload) -> Result<(), Upload> {

@@ -327,6 +327,13 @@ where
         }
         group.leave_unread();
         let records = &mut records[..count];
+        if self.retired.is_some()
+            && records
+                .iter()
+                .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
+        {
+            return Ok(false);
+        }
         let revision = self.session.active().map_or(0, |p| p.layout.revision);
         let outcome = if (header.graph(), header.topology()) != (revision, revision) {
             Ok((self.frame, Code::StaleConfiguration))
@@ -339,6 +346,20 @@ where
         } else {
             self.apply(revision, header.deadline(), records, within_budget)
         };
+        if outcome
+            .as_ref()
+            .is_ok_and(|(_, code)| *code != Code::Applied)
+        {
+            for record in records.iter() {
+                if let Command::SwitchProgram(requested) = record.command() {
+                    if let Some(upload) = self.session.discard_staged(requested) {
+                        self.retired = Some(upload.image);
+                        self.ready = None;
+                        self.announced = false;
+                    }
+                }
+            }
+        }
         self.execution.commands.begin_callback();
         let group = self
             .execution
@@ -383,13 +404,21 @@ where
                 .extend_from_slice(staged.layout.changed_sources());
         }
 
-        let (active, client) = self.session.active_and_client();
+        let (active, staged, client) = self.session.programs_and_client();
         let mut window =
             device_result(ControlWindow::begin(client, revision, &mut *within_budget))?;
         let frame = window.frame();
         if deadline.is_some_and(|deadline| frame > deadline) {
             device_result(window.release())?;
             return Ok((frame, Code::DeadlineMissed));
+        }
+        if switching.is_some() {
+            for &cut in staged.unwrap().layout.composite_cuts() {
+                if !device_result(window.composite_cut_ready(cut))? {
+                    device_result(window.release())?;
+                    return Ok((frame, Code::CannotApply));
+                }
+            }
         }
         for record in records {
             let command = record.command();
@@ -416,6 +445,7 @@ where
                     Command::Transition(id, _)
                     | Command::ClearPlannedTransitions(id, _)
                     | Command::LoopGain(id, _) => id,
+                    Command::LoopIteration(id, _) | Command::LoopRepeatSync(id, _) => id.0.index,
                     _ => {
                         *record = record.complete(Code::Unsupported);
                         continue;
@@ -540,6 +570,13 @@ fn edit_loop<B: RegisterBus, F: FnMut() -> bool>(
     command: Command,
 ) -> Result<Code, Error<B::Error>> {
     match command {
+        Command::LoopIteration(id, request) if id.0.generation == row.logical.generation => {
+            window.apply_iteration(row.physical, request)
+        }
+        Command::LoopRepeatSync(id, enabled) if id.0.generation == row.logical.generation => {
+            window.set_repeat_sync(row.physical, enabled)
+        }
+        Command::LoopIteration(..) | Command::LoopRepeatSync(..) => Ok(Code::TargetUnavailable),
         Command::Transition(_, plan) => {
             let source = image
                 .layout

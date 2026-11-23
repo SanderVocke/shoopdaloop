@@ -1520,6 +1520,9 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn supports_automatic_monitoring(&self) -> bool {
+        false
+    }
     fn set_track_automatic_monitoring(
         &mut self,
         _track_id: BackendTrackId,

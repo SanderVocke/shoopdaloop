@@ -334,9 +334,9 @@ pub fn prepare_control(
         shoop_rt_protocol::snapshot::capacity(0, pool.loop_slots as usize, 1).unwrap(),
     )?;
     let limits = Limits {
-        composite_entries: 0,
-        composite_segments: 0,
-        timing_relations: 0,
+        composite_entries: pool.instructions,
+        composite_segments: pool.instructions,
+        timing_relations: pool.instructions,
         content_chunk_bytes: 0,
         strips: 0,
         loops: pool.loop_slots,
@@ -674,6 +674,14 @@ impl<L: ProgramLoader> Endpoint<L> {
                             "incomplete graph image"
                         );
                         let graph = shoop_graph::Graph::decode(&upload.bytes)?;
+                        if graph.loops.iter().any(|entry| {
+                            entry
+                                .composite
+                                .as_ref()
+                                .is_some_and(|plan| plan.sample_rate != self.status.sample_rate)
+                        }) {
+                            anyhow::bail!(GraphRefusal(Code::InvalidValue));
+                        }
                         let logical = compile_composites(
                             &graph,
                             CompileContext {

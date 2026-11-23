@@ -7,8 +7,11 @@ use rt_runtime::{
     host::Renderer,
 };
 use shoop_rt_protocol::{
-    immediate::{Batch, Code, Command, TransitionMode, TransitionPlan},
-    DriverKind, DriverRunState, DriverStatus, EngineMessage,
+    immediate::{
+        Batch, Code, Command, IterationTransition, PlannedTransition, Response, TransitionMode,
+        TransitionPlan,
+    },
+    DriverKind, DriverRunState, DriverStatus, EngineMessage, LoopSlotId, SlotId,
 };
 use shoop_rt_transport::{
     carrier::{Endpoint, InProcess, Outbox},
@@ -38,15 +41,23 @@ fn step(r: &mut impl Renderer) -> [f32; 2] {
     [a[0], b[0]]
 }
 fn response<E: Endpoint>(c: &mut ProtocolClient<InProcess<E>>, r: &mut impl Renderer) -> u64 {
+    let response = wait_response(c, r);
+    assert_eq!(response.header.code(), Code::Applied);
+    for record in response.records() {
+        assert_eq!(record.code(), Code::Applied, "{:?}", record.command());
+    }
+    response.header.frame()
+}
+
+fn wait_response<E: Endpoint>(
+    c: &mut ProtocolClient<InProcess<E>>,
+    r: &mut impl Renderer,
+) -> Response {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         while let Some(m) = c.poll() {
             if let EngineMessage::ImmediateResponse(response) = m {
-                assert_eq!(response.header.code(), Code::Applied);
-                for record in response.records() {
-                    assert_eq!(record.code(), Code::Applied, "{:?}", record.command());
-                }
-                return response.header.frame();
+                return response;
             }
         }
         assert!(Instant::now() < deadline, "graph command stalled");
@@ -208,6 +219,20 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
         .into(),
     });
     graph.loops.push(parent);
+    let mut wrong_rate = graph.clone();
+    wrong_rate.loops[1].composite.as_mut().unwrap().sample_rate = 44_100;
+    for batch in shoop_rt_protocol::graph::upload(&wrong_rate, Q as u32, 0).unwrap() {
+        let last = batch.commands().contains(&Command::ActivateGraph);
+        client.immediate(batch).unwrap();
+        if last {
+            assert_eq!(
+                wait_response(&mut client, &mut renderer).header.code(),
+                Code::InvalidValue
+            );
+        } else {
+            response(&mut client, &mut renderer);
+        }
+    }
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode| {
         Command::Transition(
@@ -253,8 +278,8 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     let plan = graph.loops[1].composite.as_mut().unwrap();
     plan.version = 3;
     let span = &mut plan.spans.to_mut()[0];
-    span.start = 1;
-    span.occurrence_start = 1;
+    span.start = 4;
+    span.occurrence_start = 4;
     let switched = upload(&mut client, &mut renderer, &graph, 2);
     assert!(switched > start);
     assert_eq!((switched - start) % (16 * Q as u64), 0);
@@ -267,20 +292,302 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
             assert_eq!(samples, [0.125, 0.125]);
         }
     }
-    assert_eq!(silent, 1);
+    assert_eq!(silent, 4);
+
+    let iteration = |iteration, seek| {
+        Command::LoopIteration(
+            LoopSlotId(SlotId::new(120, id(120).generation)),
+            IterationTransition {
+                iteration,
+                seek,
+                retrigger: false,
+            },
+        )
+    };
+    for (position, expected) in [(0, [0., 0.]), (4, [0.125, 0.125])] {
+        client
+            .immediate(Batch::new(3, 3, &[iteration(position, true)]).unwrap())
+            .unwrap();
+        response(&mut client, &mut renderer);
+        assert_eq!(step(&mut renderer), expected);
+    }
+    client
+        .immediate(Batch::new(3, 3, &[iteration(16, true)]).unwrap())
+        .unwrap();
+    let rejected = wait_response(&mut client, &mut renderer);
+    assert_eq!(rejected.records()[0].code(), Code::InvalidValue);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+    let Command::LoopIteration(_, request) = iteration(0, true) else {
+        unreachable!();
+    };
+    let stale = Command::LoopIteration(
+        LoopSlotId(SlotId::new(120, id(120).generation + 1)),
+        request,
+    );
+    client
+        .immediate(Batch::new(3, 3, &[stale]).unwrap())
+        .unwrap();
+    let rejected = wait_response(&mut client, &mut renderer);
+    assert_eq!(rejected.records()[0].code(), Code::TargetUnavailable);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
 
     client
         .immediate(Batch::new(3, 3, &[transition(120, TransitionMode::Stopped)]).unwrap())
         .unwrap();
     response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0., 0.]);
-    graph.loops.pop();
-    upload(&mut client, &mut renderer, &graph, 3);
     client
-        .immediate(Batch::new(4, 4, &[transition(100, TransitionMode::Playing)]).unwrap())
+        .immediate(Batch::new(3, 3, &[iteration(6, false)]).unwrap())
         .unwrap();
     response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0.125, 0.125]);
+    let stop_on_wrap = Command::Transition(
+        120,
+        TransitionPlan {
+            now: None,
+            first: Some(PlannedTransition {
+                mode: TransitionMode::Stopped,
+                skip: 0,
+            }),
+            second: None,
+        },
+    );
+    client
+        .immediate(Batch::new(3, 3, &[stop_on_wrap]).unwrap())
+        .unwrap();
+    assert_eq!(
+        wait_response(&mut client, &mut renderer).records()[0].code(),
+        Code::Scheduled
+    );
+    for _ in 0..16 {
+        step(&mut renderer);
+    }
+    for _ in 0..16 {
+        assert_eq!(step(&mut renderer), [0., 0.]);
+    }
+    let mut clock = graph.loops[0].clone();
+    clock.id = id(101);
+    clock.gain = 0.;
+    graph.loops[1].sync_source = Some(clock.id);
+    graph.loops.push(clock);
+    upload(&mut client, &mut renderer, &graph, 3);
+    client
+        .immediate(Batch::new(4, 4, &[transition(101, TransitionMode::Recording)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    for _ in 0..24 {
+        assert_eq!(step(&mut renderer), [0., 0.]);
+    }
+    let repeat = |enabled| {
+        Command::LoopRepeatSync(LoopSlotId(SlotId::new(120, id(120).generation)), enabled)
+    };
+    client
+        .immediate(
+            Batch::new(
+                4,
+                4,
+                &[
+                    transition(101, TransitionMode::Playing),
+                    repeat(true),
+                    iteration(14, false),
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+    step(&mut renderer);
+    for _ in 0..8 {
+        assert_eq!(step(&mut renderer), [0., 0.]);
+    }
+    client
+        .immediate(Batch::new(4, 4, &[repeat(false)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    assert!((0..7).any(|_| step(&mut renderer) == [0.125, 0.125]));
+    client
+        .immediate(
+            Batch::new(
+                4,
+                4,
+                &[
+                    transition(120, TransitionMode::Stopped),
+                    transition(101, TransitionMode::Stopped),
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    response(&mut client, &mut renderer);
+    graph.loops.truncate(1);
+    upload(&mut client, &mut renderer, &graph, 4);
+    client
+        .immediate(Batch::new(5, 5, &[transition(100, TransitionMode::Playing)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+}
+
+fn composite_conversion<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeView};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(2);
+    upload(&mut client, &mut renderer, &graph, 0);
+
+    let convert = |graph: &Graph, index: usize| {
+        let mut candidate = graph.clone();
+        let row = &mut candidate.loops[index];
+        row.id.generation += 1;
+        row.composite = Some(CompositeView {
+            kind: CompositeKind::Regular,
+            version: 1,
+            unit_frames: Q as u64,
+            iterations: 0,
+            sample_rate: 48000,
+            quantum: Q as u32,
+            spans: Vec::new().into(),
+        });
+        candidate
+    };
+    let transition = |mode: TransitionMode| Command::Transition(100, mode.into());
+    let refused = convert(&graph, 0);
+    let batches = shoop_rt_protocol::graph::upload(&refused, Q as u32, 1).unwrap();
+    for batch in &batches[..batches.len() - 1] {
+        client.immediate(*batch).unwrap();
+        response(&mut client, &mut renderer);
+    }
+    // Recording starts after uploading the candidate and before its ownership fence.
+    client
+        .immediate(Batch::new(1, 1, &[transition(TransitionMode::Recording)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    step(&mut renderer);
+    client.immediate(*batches.last().unwrap()).unwrap();
+    assert_eq!(
+        wait_response(&mut client, &mut renderer).header.code(),
+        Code::CannotApply
+    );
+    client
+        .immediate(Batch::new(1, 1, &[transition(TransitionMode::Stopped)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    for batch in batches {
+        let activation = batch.commands().contains(&Command::ActivateGraph);
+        client.immediate(batch).unwrap();
+        if activation {
+            assert_eq!(
+                wait_response(&mut client, &mut renderer).header.code(),
+                Code::CannotApply
+            );
+        } else {
+            response(&mut client, &mut renderer);
+        }
+    }
+    upload(&mut client, &mut renderer, &convert(&graph, 1), 1);
+    client
+        .immediate(Batch::new(4, 4, &[transition(TransitionMode::Playing)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+}
+
+fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(2);
+    let mut parent = graph.loops[0].clone();
+    parent.id = id(120);
+    parent.strip = None;
+    let play = |child, start, ordinal| CompositeSpan {
+        target: id(child),
+        start,
+        end: 128,
+        occurrence_start: start,
+        ordinal,
+        mode: LoopMode::Playing,
+    };
+    parent.composite = Some(CompositeView {
+        kind: CompositeKind::Regular,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: 128,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![play(100, 0, 0)].into(),
+    });
+    graph.loops.push(parent);
+    upload(&mut client, &mut renderer, &graph, 0);
+    let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
+    for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
+        let commands = [transition(100, mode), transition(101, mode)];
+        client
+            .immediate(Batch::new(1, 1, &commands).unwrap())
+            .unwrap();
+        response(&mut client, &mut renderer);
+        step(&mut renderer);
+    }
+    client
+        .immediate(Batch::new(1, 1, &[transition(120, TransitionMode::Playing)]).unwrap())
+        .unwrap();
+    let started = response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+    let program = graph.loops[2].composite.as_mut().unwrap();
+    program.version += 1;
+    program.spans.to_mut().push(play(101, 96, 1));
+    let switched = upload(&mut client, &mut renderer, &graph, 1);
+    assert!(switched < started + 95 * Q as u64);
+    // Both dummy-driver paths deliver the block buffered by the quantum adapter.
+    let audible_start = started + Q as u64;
+    let mut second_child_heard = false;
+    loop {
+        let frame = renderer.next_frame().0;
+        if frame >= audible_start + 128 * Q as u64 {
+            break;
+        }
+        let sample = if frame < audible_start + 96 * Q as u64 {
+            0.125
+        } else {
+            second_child_heard = true;
+            0.1875
+        };
+        assert_eq!(step(&mut renderer), [sample, sample], "frame {frame}");
+    }
+    assert!(second_child_heard);
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    future_composite_child(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    future_composite_child(rtl.endpoint, rtl.renderer);
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn prepared_conversion_fences_an_old_generation_and_preserves_its_take() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    composite_conversion(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    composite_conversion(rtl.endpoint, rtl.renderer);
 }
 
 #[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]

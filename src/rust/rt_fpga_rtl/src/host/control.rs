@@ -8,14 +8,18 @@ use crate::{
 use rt_fpga_compiler::Identity;
 use rt_fpga_reference::{
     fixed::Fixed,
-    state::{ModePlan, ModeStep, apply_mode_command, prepare_mode_now},
+    state::{
+        ModePlan, ModeStep, apply_mode_command, prepare_composite_iteration,
+        prepare_composite_mode_plan,
+    },
     transitions::{LoopId, LoopState, Mode, Operation, TransitionError},
 };
 pub use session::{ActiveProgram, FencedSwitch, ProgramSession};
 use shoop_rt_protocol::{
     LoopMode,
     immediate::{
-        ClearPlanned, Code, PlannedTransition, SwitchProgram, TransitionMode, TransitionPlan,
+        ClearPlanned, Code, IterationTransition, PlannedTransition, SwitchProgram, TransitionMode,
+        TransitionPlan,
     },
 };
 pub use window::ControlWindow;
@@ -137,6 +141,10 @@ pub fn clear_plan(words: &mut [u64; 16], mask: ClearPlanned) {
     }
 }
 
+pub fn set_repeat_sync(words: &mut [u64; 16], enabled: bool) {
+    words[0] = (words[0] & !(1 << 35)) | (u64::from(enabled) << 35);
+}
+
 /// Updates the copied loop record, or returns a refusal before changing it.
 pub fn apply_plan(
     words: &mut [u64; 16],
@@ -156,7 +164,7 @@ pub fn apply_plan(
     let composite = words[1] & COMPOSITE_LOOP != 0;
     let queued = composite || words[1] & (1 << 44) != 0;
     let plans = if queued {
-        prepare_mode_now(state, frame, plan, composite).map(|now| [now, None])
+        prepare_composite_mode_plan(state, source, frame, plan, composite)
     } else {
         apply_mode_command(&mut state, source, frame, plan)
     }
@@ -174,7 +182,48 @@ pub fn apply_plan(
         words[6] = state.content_revision;
         words[7] = state.revision_watermark;
     }
-    words[0] = (words[0] & !(1 << 56)) | (u64::from(plans[1].is_some()) << 56);
+    store_plans(words, plans);
+    Ok(if plans.iter().flatten().any(|plan| plan.on_pulse) {
+        Code::Scheduled
+    } else {
+        Code::Applied
+    })
+}
+
+pub fn apply_iteration(
+    words: &mut [u64; 16],
+    state: LoopState,
+    frame: u64,
+    request: IterationTransition,
+) -> Result<Code, Code> {
+    if words[1] & COMPOSITE_LOOP == 0 {
+        return Err(Code::TargetUnavailable);
+    }
+    let unit = u32::try_from(words[6]).map_err(|_| Code::CannotApply)?;
+    let plan = prepare_composite_iteration(
+        state,
+        unit,
+        frame,
+        request.iteration,
+        request.retrigger,
+        request.seek,
+    )
+    .map_err(|error| match error {
+        TransitionError::InvalidId => Code::TargetUnavailable,
+        TransitionError::InvalidFrame => Code::InvalidValue,
+        _ => Code::CannotApply,
+    })?;
+    store_plans(words, [Some(plan), None]);
+    Ok(Code::Applied)
+}
+
+fn store_plans(
+    words: &mut [u64; 16],
+    plans: [Option<rt_fpga_reference::state::PlannedTransition>; 2],
+) {
+    let newer = plans[1]
+        .is_some_and(|later| plans[0].is_none_or(|earlier| later.sequence >= earlier.sequence));
+    words[0] = (words[0] & !(1 << 56)) | (u64::from(newer) << 56);
     words[1] &= !(0x3ff << 32);
     for (i, pending) in plans.iter().enumerate() {
         if let Some(pending) = pending {
@@ -198,9 +247,4 @@ pub fn apply_plan(
             words[12 + 3 * i] = pos;
         }
     }
-    Ok(if plans.iter().flatten().any(|plan| plan.on_pulse) {
-        Code::Scheduled
-    } else {
-        Code::Applied
-    })
 }

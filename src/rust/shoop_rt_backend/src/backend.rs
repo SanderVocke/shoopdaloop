@@ -349,8 +349,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn mutations_pending_through(&self, sequence: u64) -> bool {
         self.prepared_graph
             .as_ref()
-            .and_then(|g| g.pending)
-            .is_some_and(|p| p <= sequence)
+            .and_then(|g| g.pending.as_ref())
+            .is_some_and(|p| p.sequence() <= sequence)
             || !self.requests.answered_through(sequence)
             || self
                 .composites
@@ -571,9 +571,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.reset_composite(id)
     }
     fn composite_limits(&self) -> Option<shoop_backend::BackendCompositeLimits> {
-        if self.prepared_graph.is_some() {
-            return None;
-        }
         self.composite_limits_core()
     }
     fn convert_empty_loop_to_composite(&mut self, id: BackendLoopId) -> Result<BackendCompositeId> {
@@ -685,12 +682,19 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
 
+    fn supports_automatic_monitoring(&self) -> bool {
+        self.prepared_graph.is_none() && self.composite_limits_core().is_some()
+    }
+
     fn set_track_automatic_monitoring(
         &mut self,
         track_id: BackendTrackId,
         enabled: bool,
     ) -> Result<()> {
         self.ready()?;
+        if !self.supports_automatic_monitoring() {
+            return Err(anyhow!("automatic input monitoring is unavailable"));
+        }
         let strip = self
             .mirror
             .live_track(track_id)

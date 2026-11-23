@@ -103,16 +103,18 @@ and a processed stamp for the same boundary.
 | --- | --- | --- |
 | Parent header | 15:0 | Parent loop slot |
 | Parent header | 47:16 | Parent generation |
-| Parent header | 53:48 | Number of span rows for this parent, 1–32 |
+| Parent header | 53:48 | Low six bits of the span row count for this parent |
 | Parent header | 69:54 | Image-wide compiled audio writer count when authored recording is present, otherwise zero |
-| Parent header | 95:70 | Reserved |
+| Parent header | 79:70 | High ten bits of the span row count |
+| Parent header | 95:80 | Reserved |
 | Span | 31:0 | Inclusive start frame relative to the parent's pass |
 | Span | 63:32 | Exclusive end frame relative to the parent's pass |
 | Span | 65:64 | Mode (1 Play, 2 Stop, 3 Record) |
 | Span | 95:66 | Reserved |
 
-The schedule can hold up to eight parents for one child. All headers and spans
-count against the existing program region capacity.
+Each header covers at least one span, and its block must fit within the rows
+declared by the instruction. All headers and spans count against the existing
+program region capacity.
 
 ## MIDI instruction operands {.unnumbered}
 

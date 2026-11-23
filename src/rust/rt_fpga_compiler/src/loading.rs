@@ -1,6 +1,9 @@
 //! ARM-owned reservations and address binding for two executable regions.
 use crate::*;
-use alloc::{collections::BTreeSet, vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -64,18 +67,27 @@ impl CompositeCut {
 
 impl CompositeSchedule {
     fn future_edit_before(&self, candidate: &Self) -> Option<u32> {
-        if !self
-            .children
-            .iter()
-            .map(|c| c.id)
-            .eq(candidate.children.iter().map(|c| c.id))
+        let mut schedules = BTreeMap::<Identity, [&[FrameSpan]; 2]>::new();
+        for (version, children) in [&self.children, &candidate.children]
+            .into_iter()
+            .enumerate()
         {
-            return None;
+            for child in children {
+                schedules.entry(child.id).or_default()[version] = &child.spans;
+            }
         }
         let mut earliest = self.length;
-        for (before, after) in self.children.iter().zip(&candidate.children) {
-            let mut old = before.spans.iter();
-            let mut new = after.spans.iter();
+        for [before, after] in schedules.into_values() {
+            // Removing the last relationship changes how the child handles
+            // its own pulse plan. A stopped handoff handles that case.
+            // A new recorder can also change the storage credit calculation.
+            if after.is_empty()
+                || (before.is_empty() && after.iter().any(|span| span.mode == SpanMode::Record))
+            {
+                return None;
+            }
+            let mut old = before.iter();
+            let mut new = after.iter();
             loop {
                 let frame = match (old.next(), new.next()) {
                     (Some(a), Some(b)) if a == b => continue,
@@ -352,7 +364,23 @@ impl Allocator {
                     changed_composites.insert(schedule.id);
                 }
             }
+            // A primitive-to-composite conversion gives the public slot a new
+            // generation. Fence the departing primitive before its take can be
+            // retired, just as for a conversion that keeps the logical ID.
+            let converting = old
+                .loops
+                .iter()
+                .filter(|row| {
+                    old.composite_schedule(row.logical).is_none()
+                        && !program.loops.iter().any(|l| l.id == row.logical)
+                        && program
+                            .composites
+                            .iter()
+                            .any(|plan| plan.id.slot == row.logical.slot)
+                })
+                .map(|row| row.logical);
             let mut stopped = changed_composites.clone();
+            stopped.extend(converting);
             loop {
                 let count = stopped.len();
                 for schedule in &old.composites {

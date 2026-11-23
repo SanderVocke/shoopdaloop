@@ -299,18 +299,19 @@ impl LoopMemory {
     /// Apply an immediate mode and replace the two ordered source-pulse steps.
     pub fn write_mode_plan(&mut self, id: LoopId, plan: ModePlan) -> Result<(), TransitionError> {
         let composite = self.composite_clock(id).is_some();
+        let slot = self.slot(id)?;
+        let source = self.plan.specs[id.slot as usize].unwrap().sync_source;
         if composite || !self.composite_parents(id).is_empty() {
-            let planned = prepare_mode_now(self.slot(id)?.state, self.frame, plan, composite)?;
+            let planned =
+                prepare_composite_mode_plan(slot.state, source, self.frame, plan, composite)?;
             let slot = self.slot_mut(id)?;
-            slot.planned = [planned, None];
+            slot.planned = planned;
             slot.mode_plan = false;
             return Ok(());
         }
-        let slot = self.slot(id)?;
         if !slot.mode_plan && slot.planned.iter().any(Option::is_some) {
             return Err(TransitionError::InvalidState);
         }
-        let source = self.plan.specs[id.slot as usize].unwrap().sync_source;
         let frame = self.frame;
         let slot = self.slot_mut(id)?;
         slot.planned = apply_mode_command(&mut slot.state, source, frame, plan)?;
@@ -448,7 +449,9 @@ impl LoopMemory {
             slot.pulse_this_quantum = true;
             slot.state.last_pulse = Some(frame);
             self.event(id, EventKind::Pulse)?;
-            if source == Some(id) {
+            if source == Some(id)
+                || (source.is_none() && (composite || !self.composite_parents(id).is_empty()))
+            {
                 if !self.slot(id)?.mode_plan {
                     self.apply_due(id, false)?;
                 }
@@ -774,16 +777,72 @@ impl LoopMemory {
         Ok(())
     }
 }
-pub fn prepare_mode_now(
+/// Use the ordinary absolute and pulse slots for loops that a composite can drive.
+pub fn prepare_composite_mode_plan(
+    state: LoopState,
+    source: Option<LoopId>,
+    frame: u64,
+    mut plan: ModePlan,
+    composite: bool,
+) -> Result<[Option<PlannedTransition>; 2], TransitionError> {
+    let self_sync = source.is_none_or(|source| source == state.id);
+    if self_sync && state.mode != Mode::Playing && plan.now.is_none() {
+        if plan.steps.iter().all(Option::is_some) {
+            return Err(TransitionError::InvalidState);
+        }
+        plan.now = plan
+            .steps
+            .into_iter()
+            .flatten()
+            .next()
+            .map(|step| step.mode);
+        plan.steps = [None; 2];
+    }
+    let now = prepare_mode_now(state, frame, plan.now, composite)?;
+    let mut result = [None; 2];
+    for (index, step) in plan.steps.into_iter().enumerate() {
+        if let Some(step) = step {
+            if self_sync && state.mode != Mode::Playing && plan.now != Some(Mode::Playing) {
+                return Err(TransitionError::InvalidState);
+            }
+            let operation = match step.mode {
+                Mode::Stopped => Operation::Stop,
+                Mode::Playing => Operation::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+                Mode::Recording if !composite => Operation::Record,
+                Mode::Recording => return Err(TransitionError::InvalidState),
+            };
+            result[index] = Some(PlannedTransition {
+                sequence: index as u64 + 1,
+                operation,
+                on_pulse: true,
+                effective: if self_sync && now.is_some() {
+                    frame.checked_add(1).ok_or(TransitionError::Exhausted)?
+                } else {
+                    frame
+                },
+                remaining_ticks: u64::from(step.skip),
+            });
+        }
+    }
+    if let Some(now) = now {
+        *result
+            .iter_mut()
+            .find(|plan| plan.is_none())
+            .ok_or(TransitionError::InvalidConfig)? = Some(now);
+    }
+    Ok(result)
+}
+
+fn prepare_mode_now(
     mut state: LoopState,
     frame: u64,
-    plan: ModePlan,
+    mode: Option<Mode>,
     composite: bool,
 ) -> Result<Option<PlannedTransition>, TransitionError> {
-    if plan.steps.iter().any(Option::is_some) {
-        return Err(TransitionError::Unsupported);
-    }
-    let operation = match plan.now {
+    let operation = match mode {
         None => return Ok(None),
         Some(Mode::Stopped) => Operation::Stop,
         Some(Mode::Playing) => Operation::Play {
@@ -794,7 +853,7 @@ pub fn prepare_mode_now(
         Some(Mode::Recording) if state.mode == Mode::Recording => return Ok(None),
         Some(Mode::Recording) => Operation::Record,
     };
-    if !(composite && state.content_length == 0 && plan.now == Some(Mode::Playing)) {
+    if !(composite && state.content_length == 0 && mode == Some(Mode::Playing)) {
         apply_operation(&mut state, operation)?;
     }
     Ok(Some(PlannedTransition {
@@ -804,6 +863,48 @@ pub fn prepare_mode_now(
         effective: frame,
         remaining_ticks: 0,
     }))
+}
+
+/// Prepare an iteration-based operation against the active composite's geometry.
+pub fn prepare_composite_iteration(
+    state: LoopState,
+    unit_frames: u32,
+    frame: u64,
+    iteration: u64,
+    retrigger: bool,
+    seek: bool,
+) -> Result<PlannedTransition, TransitionError> {
+    if unit_frames == 0 {
+        return Err(TransitionError::InvalidId);
+    }
+    let position = iteration
+        .checked_mul(u64::from(unit_frames))
+        .ok_or(TransitionError::InvalidFrame)?;
+    let empty_start = !seek && iteration == 0 && state.content_length == 0;
+    if position >= state.content_length && !empty_start {
+        return Err(TransitionError::InvalidFrame);
+    }
+    if seek && state.mode != Mode::Playing {
+        return Err(TransitionError::InvalidState);
+    }
+    let operation = if seek {
+        Operation::Seek {
+            position,
+            retrigger,
+        }
+    } else {
+        Operation::Play {
+            position,
+            retrigger,
+        }
+    };
+    Ok(PlannedTransition {
+        sequence: 0,
+        operation,
+        on_pulse: false,
+        effective: frame,
+        remaining_ticks: 0,
+    })
 }
 
 fn apply_loop_operation(

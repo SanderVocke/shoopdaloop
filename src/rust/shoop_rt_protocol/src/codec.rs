@@ -3070,6 +3070,8 @@ impl Wire for crate::immediate::Command {
         use crate::immediate::Command::*;
         match *self {
             Transition(..)
+            | LoopIteration(..)
+            | LoopRepeatSync(..)
             | Grab(..)
             | GrabGesture(..)
             | BeginGraph { .. }
@@ -3161,7 +3163,7 @@ impl Wire for crate::immediate::Command {
             9 => BusGain(r.u32()?, r.f32()?),
             10 => BusBalance(r.u32()?, r.f32()?),
             11 => BusMute(r.u32()?, r.bool()?),
-            op @ (2 | 13 | 14 | 16 | 17 | 18 | 19 | 20 | 21) => {
+            op @ (2 | 13 | 14 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23) => {
                 let mut bytes = [0; 32];
                 bytes[0] = op;
                 bytes[4..28].copy_from_slice(r.bytes(24)?);

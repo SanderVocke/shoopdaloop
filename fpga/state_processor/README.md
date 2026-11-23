@@ -145,9 +145,10 @@ timing and the composite timing-slot marker.
 `ProcessCompositeChild` (opcode `0x14`) uses the usual child slot and generation.
 Bits [71:56] name its sync source, with `0xffff` for no source. Bits [87:72]
 give the number of following data rows. Each parent starts with a header row
-containing its slot [15:0], generation [47:16], span count [53:48], and
-whole-program audio writer count [69:54] when authored recording is present.
-Up to 32 span rows follow that header. Each 96-bit span row contains the
+containing its slot [15:0], generation [47:16], span count with low bits
+[53:48] and high bits [79:70], and whole-program audio writer count [69:54]
+when authored recording is present. The span rows follow that header within
+the bounds of the instruction's row count. Each 96-bit span row contains the
 inclusive start frame [31:0], exclusive end frame [63:32], and mode [65:64]
 (1 Play, 2 Stop, 3 Record). The positions are relative to the parent's pass.
 Every row counts toward program and sync prefix lengths. Normal instruction

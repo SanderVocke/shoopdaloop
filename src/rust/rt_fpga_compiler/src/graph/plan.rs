@@ -581,9 +581,6 @@ pub(super) fn lower(
                 return Err(unsupported);
             }
             let spans = children.entry(span.target).or_default();
-            if spans.len() == MAX_CHILD_SPANS {
-                return Err(CompileError::Capacity(Resource::Instructions));
-            }
             spans.push(FrameSpan {
                 start: (span.start * program.unit_frames) as u32,
                 end: (span.end * program.unit_frames) as u32,

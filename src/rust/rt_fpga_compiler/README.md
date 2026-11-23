@@ -125,18 +125,20 @@ their own sync source. The compiler checks the combined acyclic action and sync
 graph. Composite slots own timing only.
 
 Both targets charge span rows and parent headers to the instruction budget.
-A target can have up to eight parents and each parent-child relation can have
-up to 32 spans. A composite's duration and unit fit in 32-bit frame counts.
+The program region bounds the total number of parents and spans. A composite's
+duration and unit fit in 32-bit frame counts.
 Capture uses existing primitive views and jobs. Rust preflights the selected
 quantum's writes, while RTL checks conservative capacity for all compiled
 audio capture lanes. Near capacity, RTL can refuse work that would fit the
 actual selected writers.
 
 The prepared graph transport carries the same programs to both hosts. It
-publishes the active version and settled transport state. Low-level plans
-provide frame-addressed seek and scheduling. The hosts' immediate transition
-commands support direct changes on composite timing slots at the processing
-boundary. The UI editing capability remains separate. Authored MIDI capture,
+publishes the active version and settled transport state. Hosts accept Play
+and Seek by iteration and check the requested iteration against the active
+program. Composite mode changes can also wait for sync pulses, and the host
+can toggle whether a repeating composite waits for its sync source. Scheduled
+mode changes share the two existing plan slots with any immediate mode change.
+The UI editing capability remains separate. Authored MIDI capture,
 Replace, dry/wet modes and graphs with inter-loop timing cycles are outside
 the current FPGA profile.
 

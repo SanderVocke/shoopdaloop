@@ -193,6 +193,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             | Record::Telemetry(Telemetry::Loop { loop_id: id, .. }) => {
                 self.mirror.slot_loops.contains_key(id)
             }
+            Record::Telemetry(Telemetry::Composite {
+                loop_id,
+                active_version,
+                ..
+            }) => {
+                self.mirror.slot_loops.contains_key(loop_id)
+                    || self.knows_staged_composite(*loop_id, *active_version)
+            }
             Record::State(StateRecord::StripControl { strip, .. })
             | Record::Telemetry(Telemetry::Strip { strip, .. }) => {
                 self.mirror.strip_tracks.contains_key(strip)

@@ -210,12 +210,27 @@ recording can start. See the admission rule under
 - **Timing.** Each composite unit is a whole number of quanta. The unit and
   the full pass each fit in a 32-bit frame count. A loop can sync to itself.
   Parent and sync links between different loops must be free of cycles.
-- **Capacity.** A child can have up to eight parents. Each parent can schedule
-  up to 32 spans for that child. The whole schedule must fit the program region.
+- **Capacity.** A child can have several parents, with several spans from
+  each. Every header and span uses a row of program RAM. The total must fit
+  alongside the program instructions in the same region.
 - **Host controls.** The prepared Rust and Marlin hosts accept composite graph
-  images and immediate start and stop commands. Low-level plans handle seek
-  and scheduling. The application composite editor and iteration controls are
-  outside this profile.
+  images, Play and Seek by iteration, and start and stop commands. A mode change
+  can wait for a sync pulse. Immediate and delayed changes share the two plan
+  slots in the loop record. Repeat sync can be changed while a program is
+  running.
+- **Application edits.** After the initial layout is installed, the application
+  can create a composite, convert an empty stopped loop, edit its plan, and
+  clear or remove a stopped composite. The host compiles each proposed plan
+  into the unused program region. It reports the new version once the region
+  has taken over and the state snapshot shows that version. If a primitive
+  begins recording before conversion takes over, the handoff refuses the
+  conversion and the primitive keeps its take.
+- **Editing during playback.** The Rust and Marlin hosts can apply compatible
+  future changes, such as adding another child later in the current pass.
+  They can also wait for the restart of an independent repeating loop with
+  compatible timing. Other changes require the affected composite loops to
+  stop. A proposal can be cancelled before the application sends its activation
+  command.
 
 ## How the render state reaches JP
 

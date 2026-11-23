@@ -226,6 +226,15 @@ impl Pipeline {
         self.ready()?;
         self.state.write_mode_plan(id, plan)
     }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn set_repeat_sync(
+        &mut self,
+        id: LoopId,
+        enabled: bool,
+    ) -> Result<(), TransitionError> {
+        self.ready()?;
+        self.state.set_repeat_sync(id, enabled)
+    }
     pub fn clear_mode_plan(&mut self, id: LoopId, mask: u8) -> Result<(), TransitionError> {
         self.ready()?;
         self.state.clear_mode_plan(id, mask)

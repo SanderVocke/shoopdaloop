@@ -241,6 +241,92 @@ fn composite_applies_sixty_four_child_actions_in_one_quantum() {
 }
 
 #[shoop_test]
+fn composite_schedule_uses_program_capacity_for_many_spans_and_parents() {
+    let depths = [128, 16, 16];
+    let target = RtlTarget::new([128, 16, 16, 16, 16, 0, 0], 16, &[]);
+    let spans = (0..70).map(|i| (0, 2 * i, 2 * i + 1)).collect::<Vec<_>>();
+    let mut graph = Graph::default();
+    graph
+        .loops
+        .extend([timing_loop(0, 0, &[]), timing_loop(1, 140, &spans)]);
+    graph
+        .loops
+        .extend((2..=9).map(|slot| timing_loop(slot, 2, &[(0, 0, 1)])));
+    let limits = target.limits();
+    let mut logical = compile_composites(
+        &graph,
+        CompileContext {
+            quantum: 16,
+            limits,
+        },
+        16,
+    )
+    .unwrap();
+    logical.loops[0].length = 16;
+    let rtl = target.build(&logical).unwrap();
+    assert_eq!(rtl.sync_count, 10 + 1 + 70 + 8 * 2);
+    let too_small = rt_fpga_compiler::ProgramLimits {
+        instructions: rtl.instructions.len() as u32 - 1,
+        ..limits
+    };
+    assert_eq!(
+        logical.validate_logical(too_small),
+        Err(CompileError::Capacity(Resource::Instructions))
+    );
+
+    let rust = RustTarget::new(&[]).build(&logical).unwrap();
+    let specs = rust.plan.image().description.loops.clone();
+    let mut sp = StateProcessor::with_loops(rust.plan, rust.memory);
+    let model = suites::state::design(depths)
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/composite-sparse"))
+        .unwrap();
+    let mut sim = Sim::new(model.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    let mut driver = State::new(&mut sim, depths, 636);
+    driver.reset(&mut sim);
+    driver.image.load_compiled(&mut sim, &rtl);
+    sim.model.set("sync_event_ready", 1);
+    let mut jobs = JobQueue::new(rust.resources.queue_capacity as usize);
+    for (tick, (slot, position)) in [(9, 0), (1, 138 * 16)].into_iter().enumerate() {
+        let spec = specs.iter().find(|spec| spec.id.slot == slot).unwrap();
+        let plan = PlannedTransition {
+            effective: tick as u64 * 16,
+            sequence: 1,
+            on_pulse: false,
+            remaining_ticks: 0,
+            operation: Operation::Play {
+                position,
+                retrigger: true,
+            },
+        };
+        sp.write_plans(spec.id, [Some(plan), None]).unwrap();
+        write_plans(
+            &mut driver.image,
+            &mut sim,
+            slot,
+            &image(sp.loop_state(spec.id).unwrap(), spec, None),
+        );
+        sp.run(&rust.program, &mut jobs).unwrap();
+        driver.start(&mut sim, &[]);
+        sim.until(20_000, "large composite schedule", |model| {
+            model.get("done") != 0
+        });
+        assert_eq!(sim.model.get("error_code"), 0);
+        assert_eq!(
+            sim.model.get("instruction_pc"),
+            rtl.instructions.len() as u64
+        );
+        let child = sp.loop_state(specs[0].id).unwrap();
+        assert!(child.render.plays() && child.pulse_this_quantum);
+        let row = read_loop(&mut driver.image, &mut sim, 0);
+        assert_eq!(row.get(33, 2), 1);
+        assert_eq!(row.get(53, 1), 1);
+        assert_eq!(row.get(128, 64), child.state.position);
+        assert_eq!(driver.drain(&mut sim).len(), jobs.iter().count());
+        while jobs.pop().is_some() {}
+    }
+}
+
+#[shoop_test]
 fn bounded_composite_spans_drive_existing_media_jobs_in_rust_and_rtl() {
     const Q: usize = 16;
     const CAPACITY: [u64; 7] = [128, 128, 128, Q as u64, 64, 1, 1];

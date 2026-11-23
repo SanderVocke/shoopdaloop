@@ -4,7 +4,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 use shoop_rt_protocol::{
     codec,
     immediate::{Batch, Code, Command, CommandRecord, Header, Response, TransitionMode, COMMANDS},
-    ClientMessage, EngineMessage, MAX_RECORD_BYTES,
+    ClientMessage, EngineMessage, LoopSlotId, SlotId, MAX_RECORD_BYTES,
 };
 use shoop_wasm_test_support::shoop_test;
 
@@ -38,7 +38,7 @@ fn program_switch_descriptor_and_fenced_result_are_canonical_records() {
 
 #[shoop_test]
 fn prepared_graph_records_roundtrip_and_reject_reserved_bits() {
-    use shoop_rt_protocol::immediate::GraphLoop;
+    use shoop_rt_protocol::immediate::{GraphLoop, IterationTransition};
     let commands = [
         Command::BeginGraph {
             quantum: 32,
@@ -54,6 +54,15 @@ fn prepared_graph_records_roundtrip_and_reject_reserved_bits() {
             repeat_sync: true,
         }),
         Command::ActivateGraph,
+        Command::LoopIteration(
+            LoopSlotId(SlotId::new(9, 4)),
+            IterationTransition {
+                iteration: 0x1234_5678_90ab_cdef,
+                retrigger: true,
+                seek: true,
+            },
+        ),
+        Command::LoopRepeatSync(LoopSlotId(SlotId::new(9, 4)), true),
     ];
     let message = ClientMessage::Immediate(Batch::new(0, 0, &commands).unwrap());
     let mut bytes = [0; MAX_RECORD_BYTES];
@@ -79,6 +88,12 @@ fn prepared_graph_records_roundtrip_and_reject_reserved_bits() {
     assert!(CommandRecord::from_bytes(invalid).is_none());
     let mut invalid = *CommandRecord::new(Command::ActivateGraph).bytes();
     invalid[4] = 1;
+    assert!(CommandRecord::from_bytes(invalid).is_none());
+    let mut invalid = *CommandRecord::new(commands[3]).bytes();
+    invalid[16] |= 4;
+    assert!(CommandRecord::from_bytes(invalid).is_none());
+    let mut invalid = *CommandRecord::new(commands[4]).bytes();
+    invalid[12] = 2;
     assert!(CommandRecord::from_bytes(invalid).is_none());
     assert!(!Command::BeginGraph {
         quantum: 3,

@@ -3,7 +3,7 @@ use crate::{
     fixed::{Fixed, Ramp},
     jobs::{BufferId, JobProcessor, Memory},
     pipeline::{Observer, Pipeline, PipelineError},
-    state::{Address, ModePlan, ModeStep, StateProcessor, Value},
+    state::{prepare_composite_iteration, Address, ModePlan, ModeStep, StateProcessor, Value},
     transitions::{LoopId, Mode, TransitionError},
     Error,
 };
@@ -349,6 +349,18 @@ impl Processor {
                     } else {
                         self.engine.execute(record.command())
                     };
+                    if applied != Code::Applied {
+                        if let Command::SwitchProgram(descriptor) = record.command() {
+                            if self.retired_program.is_none()
+                                && self
+                                    .next_program
+                                    .as_ref()
+                                    .is_some_and(|image| image.descriptor() == descriptor)
+                            {
+                                self.retired_program = self.next_program.take();
+                            }
+                        }
+                    }
                     records[i] = record.complete(applied);
                 }
                 if let Some(retired) = retired {
@@ -460,6 +472,7 @@ impl Engine {
             Command::Transition(id, _)
             | Command::ClearPlannedTransitions(id, _)
             | Command::LoopGain(id, _) => id,
+            Command::LoopIteration(id, _) | Command::LoopRepeatSync(id, _) => id.0.index,
             _ => return Code::Unsupported,
         };
         let Ok(index) = self
@@ -486,6 +499,31 @@ impl Engine {
             Command::ClearPlannedTransitions(_, mask) => {
                 self.pipeline.clear_mode_plan(binding.id, mask as u8)
             }
+            Command::LoopIteration(id, request) => (|| {
+                if id.0.generation != binding.public_id.generation {
+                    return Err(TransitionError::InvalidId);
+                }
+                let sp = self.pipeline.state();
+                let slot = sp.loop_state(binding.id)?;
+                let composite = sp
+                    .composite_status(binding.id)
+                    .ok_or(TransitionError::InvalidId)?;
+                let plan = prepare_composite_iteration(
+                    slot.state,
+                    composite.unit_frames,
+                    sp.frame(),
+                    request.iteration,
+                    request.retrigger,
+                    request.seek,
+                )?;
+                self.pipeline.write_plans(binding.id, [Some(plan), None])
+            })(),
+            Command::LoopRepeatSync(id, enabled)
+                if id.0.generation == binding.public_id.generation =>
+            {
+                self.pipeline.set_repeat_sync(binding.id, enabled)
+            }
+            Command::LoopRepeatSync(..) => Err(TransitionError::InvalidId),
             Command::LoopGain(_, gain) => {
                 let Some(address) = binding.gain else {
                     return Code::Unsupported;
@@ -503,6 +541,10 @@ impl Engine {
             _ => unreachable!(),
         };
         match result {
+            Err(TransitionError::InvalidId) => Code::TargetUnavailable,
+            Err(TransitionError::InvalidFrame) if matches!(command, Command::LoopIteration(..)) => {
+                Code::InvalidValue
+            }
             Ok(())
                 if matches!(command, Command::Transition(..))
                     && self

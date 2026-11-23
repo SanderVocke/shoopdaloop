@@ -13,8 +13,8 @@ use crate::transitions::{
     Event, EventKind, LoopId, LoopState, Operation, TransitionError, TransitionPlan,
 };
 pub use sync::{
-    apply_mode_command, prepare_mode_now, LoopSlot, ModePlan, ModeStep, PlannedTransition,
-    Resolution, SyncInstruction,
+    apply_mode_command, prepare_composite_iteration, prepare_composite_mode_plan, LoopSlot,
+    ModePlan, ModeStep, PlannedTransition, Resolution, SyncInstruction,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -240,6 +240,7 @@ pub(crate) enum PrepareWork<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CompositeStatus {
     pub version: u64,
+    pub unit_frames: u32,
     pub iteration: u64,
     pub passes: u64,
     pub waiting_repeat: bool,
@@ -324,6 +325,7 @@ impl StateProcessor {
         let unit = u64::from(clock.unit_frames);
         Some(CompositeStatus {
             version: clock.version,
+            unit_frames: clock.unit_frames,
             iteration: (slot.render.position / unit)
                 .min((slot.state.content_length / unit).saturating_sub(1)),
             passes: slot.state.cycles,
@@ -450,6 +452,23 @@ impl StateProcessor {
             .as_mut()
             .ok_or(TransitionError::InvalidState)?
             .write_mode_plan(id, plan)
+    }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn set_repeat_sync(
+        &mut self,
+        id: LoopId,
+        enabled: bool,
+    ) -> Result<(), TransitionError> {
+        if self.fault.is_some() {
+            return Err(TransitionError::InvalidState);
+        }
+        self.loops
+            .as_mut()
+            .ok_or(TransitionError::InvalidState)?
+            .slot_mut(id)?
+            .state
+            .repeat_sync = enabled;
+        Ok(())
     }
     pub fn clear_mode_plan(&mut self, id: LoopId, mask: u8) -> Result<(), TransitionError> {
         if self.fault.is_some() {

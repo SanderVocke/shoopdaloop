@@ -178,10 +178,7 @@ impl GraphView for Mirror {
                     gain: l.gain,
                     balance: l.balance,
                     boundary_smoothing_frames: self.loop_smoothing_frames,
-                    sync_source: l
-                        .sync
-                        .map(|s| id(self.loops[&s].slot.0))
-                        .or_else(|| l.program.and_then(|p| p.sync).map(|s| id(s.0))),
+                    sync_source: l.sync.map(|s| id(self.loops[&s].slot.0)),
                     repeat_sync: l.repeat_sync,
                     composite,
                 }
