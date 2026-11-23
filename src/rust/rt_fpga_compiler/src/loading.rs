@@ -93,8 +93,9 @@ impl CompositeCut {
     ) -> bool {
         (length != 0
             && position == length
+            && restart_ready
             && (self.finish_at_boundary
-                || (self.allow_restart && restart_ready && (!self.require_repeat_wait || waited))))
+                || (self.allow_restart && (!self.require_repeat_wait || waited))))
             || (position < length
                 && self
                     .future_before
@@ -120,7 +121,10 @@ impl CompositeCut {
     }
 
     pub fn preserves_transport_at_finish(&self, at_end: bool) -> bool {
-        at_end && self.finish_at_boundary && self.restart_slot.is_none()
+        at_end
+            && self.finish_at_boundary
+            && self.restart_slot.is_none()
+            && self.parent_guards.is_empty()
     }
 
     pub fn reconciles_wrap(&self, position: u64, length: u64, waited: bool) -> bool {
@@ -133,7 +137,7 @@ impl CompositeCut {
         at_end: bool,
         mut read_clock: impl FnMut(Identity) -> Result<Option<ClockState>, E>,
     ) -> Result<bool, E> {
-        if !self.allow_restart || !at_end {
+        if !(self.allow_restart || self.finish_at_boundary) || !at_end {
             return Ok(true);
         }
         for &parent in &self.parent_guards {
@@ -141,7 +145,7 @@ impl CompositeCut {
                 return Ok(false);
             }
         }
-        if !repeat_sync {
+        if !self.allow_restart || !repeat_sync {
             return Ok(true);
         }
         let mut needs_pulse = false;
@@ -748,12 +752,6 @@ impl Allocator {
                                         program.loops.iter().any(|child| child.id == old.id)
                                     })
                                 })));
-                    // A seek on an ancestor can enter the child at a nonzero offset.
-                    let parent_guards = if allow_restart && !independent {
-                        old.composite_ancestors(row.logical)?
-                    } else {
-                        Vec::new()
-                    };
                     let wait_for_finish = if independent {
                         changed_composites.contains(&row.logical)
                             && before.is_some_and(|schedule| schedule.explicit)
@@ -762,13 +760,19 @@ impl Allocator {
                         single_edit == Some(row.logical)
                     };
                     let finish_at_boundary = wait_for_finish
-                        && independent
                         && same_source
                         && before.zip(after).is_some_and(|(before, after)| {
-                            after.explicit
+                            before.explicit
+                                && after.explicit
                                 && after.length != 0
                                 && before.ending_modes().eq(after.ending_modes())
                         });
+                    // A seek on an ancestor can enter the child at a nonzero offset.
+                    let parent_guards = if (allow_restart || finish_at_boundary) && !independent {
+                        old.composite_ancestors(row.logical)?
+                    } else {
+                        Vec::new()
+                    };
                     let future_before = nested_future
                         .filter(|(id, _)| *id == row.logical)
                         .map(|(_, frame)| frame)

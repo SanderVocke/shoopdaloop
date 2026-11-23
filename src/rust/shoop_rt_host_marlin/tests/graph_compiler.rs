@@ -603,6 +603,8 @@ enum Ending {
 enum NestedBoundary {
     Released,
     Finished,
+    CompatibleFinish,
+    ParentReentry,
     Wrapped,
 }
 
@@ -627,7 +629,7 @@ fn edit_nested_child<E: Endpoint>(
     let quantum = Q as u64;
     let child_length = match boundary {
         NestedBoundary::Released => 64,
-        NestedBoundary::Finished | NestedBoundary::Wrapped => 24,
+        _ => 24,
     };
     let program = |kind, iterations, spans: Vec<_>| CompositeView {
         kind,
@@ -641,7 +643,11 @@ fn edit_nested_child<E: Endpoint>(
     let mut child = graph.loops[0].clone();
     child.id = id(120);
     child.strip = None;
-    let kind = if matches!(boundary, NestedBoundary::Finished) {
+    let same_ending = matches!(
+        boundary,
+        NestedBoundary::CompatibleFinish | NestedBoundary::ParentReentry
+    );
+    let kind = if same_ending || matches!(boundary, NestedBoundary::Finished) {
         CompositeKind::Explicit
     } else {
         CompositeKind::Regular
@@ -654,10 +660,13 @@ fn edit_nested_child<E: Endpoint>(
     let mut parent = child.clone();
     parent.id = id(121);
     let wraps = matches!(boundary, NestedBoundary::Wrapped);
+    let reenters = matches!(boundary, NestedBoundary::ParentReentry);
+    let parent_length = if reenters { 24 } else { 96 };
+    let occurrence_end = if wraps || reenters { parent_length } else { 32 };
     parent.composite = Some(program(
         CompositeKind::Regular,
-        96,
-        vec![span(120, if wraps { 96 } else { 32 }, 0), span(102, 96, 1)],
+        parent_length,
+        vec![span(120, occurrence_end, 0), span(102, parent_length, 1)],
     ));
     let child_index = graph.loops.len();
     graph.loops.extend([child, parent]);
@@ -696,11 +705,22 @@ fn edit_nested_child<E: Endpoint>(
     let revised = graph.loops[child_index].composite.as_mut().unwrap();
     revised.version += 1;
     revised.iterations = 40;
-    revised.spans = vec![span(101, if wraps { 16 } else { 40 }, 0)].into();
+    let mut revised_span = span(
+        if same_ending { 100 } else { 101 },
+        if wraps { 16 } else { 40 },
+        0,
+    );
+    if same_ending {
+        revised_span.start = 4;
+        revised_span.occurrence_start = 4;
+    }
+    revised.spans = vec![revised_span].into();
     let switch_at = match boundary {
         NestedBoundary::Released => 33,
         NestedBoundary::Finished => 25,
-        NestedBoundary::Wrapped => 24,
+        NestedBoundary::CompatibleFinish
+        | NestedBoundary::ParentReentry
+        | NestedBoundary::Wrapped => 24,
     };
     assert_eq!(
         upload(&mut client, &mut renderer, &graph, 1),
@@ -715,13 +735,30 @@ fn edit_nested_child<E: Endpoint>(
         }
         return;
     }
+    if reenters {
+        assert_eq!(renderer.next_frame().0, started + 25 * quantum);
+        for tick in 0..48 {
+            let sample = if (4..40).contains(&tick) { 0.375 } else { 0.25 };
+            assert_eq!(step(&mut renderer), [sample, sample], "child tick {tick}");
+        }
+        return;
+    }
     let parent_wrap = started + 97 * quantum;
     assert!(renderer.next_frame().0 < parent_wrap);
     while renderer.next_frame().0 < parent_wrap {
         assert_eq!(step(&mut renderer), [0.25, 0.25]);
     }
-    for _ in 0..8 {
-        assert_eq!(step(&mut renderer), [0.3125, 0.3125]);
+    for tick in 0..8 {
+        let sample = if same_ending {
+            if tick < 4 {
+                0.25
+            } else {
+                0.375
+            }
+        } else {
+            0.3125
+        };
+        assert_eq!(step(&mut renderer), [sample, sample]);
     }
 }
 
@@ -736,6 +773,8 @@ fn a_nested_edit_can_wait_for_its_own_boundary_under_a_playing_parent() {
     for boundary in [
         NestedBoundary::Released,
         NestedBoundary::Finished,
+        NestedBoundary::CompatibleFinish,
+        NestedBoundary::ParentReentry,
         NestedBoundary::Wrapped,
     ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();

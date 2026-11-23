@@ -241,6 +241,8 @@ recording can start. See the admission rule under
   A repeating child can also pick up a compatible edit at its own restart
   while its parents keep playing. An ancestor command that could change the
   child's entry point makes the edit wait for a safe boundary.
+  A compatible one-pass child can take up an edit as it finishes. A parent
+  that starts it again at that same boundary starts the replacement plan.
   An independent repeating composite can pick up an edit at its next restart,
   including changes to the length of an iteration or the whole pass. Both plans
   use the same sync source. At an uninterrupted restart, SP compares what was
