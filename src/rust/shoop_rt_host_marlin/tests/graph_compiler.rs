@@ -45,7 +45,10 @@ fn step_with_input(r: &mut impl Renderer, input: f32) -> [f32; 2] {
     [a[0], b[0]]
 }
 fn response<E: Endpoint>(c: &mut ProtocolClient<InProcess<E>>, r: &mut impl Renderer) -> u64 {
-    let response = wait_response(c, r);
+    applied_frame(wait_response(c, r))
+}
+
+fn applied_frame(response: Response) -> u64 {
     assert_eq!(response.header.code(), Code::Applied);
     for record in response.records() {
         assert_eq!(record.code(), Code::Applied, "{:?}", record.command());
@@ -57,6 +60,14 @@ fn wait_response<E: Endpoint>(
     c: &mut ProtocolClient<InProcess<E>>,
     r: &mut impl Renderer,
 ) -> Response {
+    wait_response_with_audio(c, r, &mut |_, _| {})
+}
+
+fn wait_response_with_audio<E: Endpoint>(
+    c: &mut ProtocolClient<InProcess<E>>,
+    r: &mut impl Renderer,
+    audio: &mut impl FnMut(u64, [f32; 2]),
+) -> Response {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         while let Some(m) = c.poll() {
@@ -65,7 +76,7 @@ fn wait_response<E: Endpoint>(
             }
         }
         assert!(Instant::now() < deadline, "graph command stalled");
-        step(r);
+        audio(r.next_frame().0, step(r));
     }
 }
 fn upload<E: Endpoint>(
@@ -709,7 +720,11 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
     }
 }
 
-fn seek_across_a_pending_nested_edit<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+fn seek_across_a_pending_nested_edit<E: Endpoint>(
+    endpoint: E,
+    mut renderer: impl Renderer,
+    restart_edit: bool,
+) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
@@ -769,7 +784,11 @@ fn seek_across_a_pending_nested_edit<E: Endpoint>(endpoint: E, mut renderer: imp
 
     let plan = graph.loops[2].composite.as_mut().unwrap();
     plan.version += 1;
-    plan.spans.to_mut()[1] = play(101, 64, 80, 1);
+    plan.spans.to_mut()[1] = if restart_edit {
+        play(101, 0, 16, 1)
+    } else {
+        play(101, 64, 80, 1)
+    };
     let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, 23).unwrap();
     for batch in &batches[..batches.len() - 1] {
         client.immediate(*batch).unwrap();
@@ -788,8 +807,26 @@ fn seek_across_a_pending_nested_edit<E: Endpoint>(endpoint: E, mut renderer: imp
     response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0.1875, 0.1875]);
 
-    client.immediate(seek(8, true)).unwrap();
+    client
+        .immediate(seek(if restart_edit { 0 } else { 8 }, true))
+        .unwrap();
     let sought = response(&mut client, &mut renderer);
+    if restart_edit {
+        let audible_start = sought + Q as u64;
+        let mut opening = None;
+        let receipt = wait_response_with_audio(&mut client, &mut renderer, &mut |frame, audio| {
+            if frame == audible_start {
+                opening = Some(audio);
+            }
+        });
+        assert_eq!(applied_frame(receipt), sought);
+        let opening = opening.unwrap_or_else(|| {
+            assert_eq!(renderer.next_frame().0, audible_start);
+            step(&mut renderer)
+        });
+        assert_eq!(opening, [0.1875; 2]);
+        return;
+    }
     assert_eq!(response(&mut client, &mut renderer), sought);
 
     let audible_start = sought + Q as u64;
@@ -842,10 +879,12 @@ fn nested_edits_use_the_parent_seek_resolved_on_the_switch_boundary() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-    seek_across_a_pending_nested_edit(rust.endpoint, rust.renderer);
-    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-    seek_across_a_pending_nested_edit(rtl.endpoint, rtl.renderer);
+    for restart_edit in [false, true] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        seek_across_a_pending_nested_edit(rust.endpoint, rust.renderer, restart_edit);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        seek_across_a_pending_nested_edit(rtl.endpoint, rtl.renderer, restart_edit);
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1732,21 +1771,34 @@ fn edit_at_continuous_wrap<E: Endpoint>(
         vec![span(100, 4, 6, 0), span(101, 0, length, 1)]
     }
     .into();
-    let switched = upload(&mut client, &mut renderer, &graph, 1);
-    assert_eq!(switched, started + old_length * Q as u64);
-    let first_sample = switched + Q as u64;
-    assert_eq!(renderer.next_frame().0, first_sample);
-    for iteration in 0..8 {
-        let sample = if !drop_child && (4..6).contains(&iteration) {
-            0.1875
+    let switch_frame = started + old_length * Q as u64;
+    let first_sample = switch_frame + Q as u64;
+    let check_audio = |frame: u64, audio: [f32; 2]| {
+        if frame >= first_sample {
+            let iteration = (frame - first_sample) / Q as u64;
+            let sample = if !drop_child && (4..6).contains(&iteration) {
+                0.1875
+            } else {
+                0.0625
+            };
+            assert_eq!(audio, [sample; 2], "iteration {iteration}");
+        }
+    };
+    let batches = shoop_rt_protocol::graph::upload(&graph, Q as u32, 1).unwrap();
+    for (index, batch) in batches.iter().enumerate() {
+        client.immediate(*batch).unwrap();
+        let receipt = wait_response_with_audio(&mut client, &mut renderer, &mut |frame, audio| {
+            check_audio(frame, audio)
+        });
+        if index + 1 == batches.len() {
+            assert_eq!(applied_frame(receipt), switch_frame);
         } else {
-            0.0625
-        };
-        assert_eq!(
-            step(&mut renderer),
-            [sample, sample],
-            "iteration {iteration}"
-        );
+            applied_frame(receipt);
+        }
+    }
+    assert!(renderer.next_frame().0 <= first_sample + 8 * Q as u64);
+    while renderer.next_frame().0 < first_sample + 8 * Q as u64 {
+        check_audio(renderer.next_frame().0, step(&mut renderer));
     }
 
     client
@@ -1755,7 +1807,8 @@ fn edit_at_continuous_wrap<E: Endpoint>(
     response(&mut client, &mut renderer);
     let next_wrap = first_sample + length * Q as u64;
     while renderer.next_frame().0 <= next_wrap {
-        assert_eq!(step(&mut renderer), [0.1875, 0.1875]);
+        let frame = renderer.next_frame().0;
+        assert_eq!(step(&mut renderer), [0.1875, 0.1875], "frame {frame}, wrap {next_wrap}, length {length}, dropped {drop_child}, other parent {other_parent}");
     }
 }
 

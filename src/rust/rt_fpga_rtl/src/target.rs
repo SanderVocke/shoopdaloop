@@ -434,7 +434,7 @@ impl RtlTarget<'_> {
             let words = u16::try_from(
                 logical
                     .composite_parents(*loop_id)
-                    .map(|(_, child)| 1 + child.spans.len())
+                    .map(|(_, child)| 1 + child.spans.len() + child.previous_spans.len())
                     .sum::<usize>(),
             )
             .map_err(|_| CompileError::Capacity(Resource::Instructions))?;
@@ -466,9 +466,10 @@ impl RtlTarget<'_> {
                                 Some(PreviousSpan::Active(SpanMode::Stop)) => 4,
                                 Some(PreviousSpan::Active(SpanMode::Record)) => 5,
                             },
-                        );
+                        )
+                        .set(83, 13, child.previous_spans.len() as u64);
                     rows.push(header);
-                    for span in &child.spans {
+                    for span in child.spans.iter().chain(&child.previous_spans) {
                         let mut row = Bits::zero(96);
                         row.set(0, 32, u64::from(span.start))
                             .set(32, 32, u64::from(span.end))

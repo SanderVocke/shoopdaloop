@@ -49,6 +49,8 @@ pub struct CompositeChild {
     /// Previous ownership at the boundary where this image first takes over.
     #[cfg_attr(feature = "serde", serde(default))]
     pub previous_span_at_wrap: Option<PreviousSpan>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_spans: Vec<FrameSpan>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -363,7 +365,7 @@ impl LogicalStateProgram {
                 .composites
                 .iter()
                 .flat_map(|schedule| &schedule.children)
-                .map(|child| 1 + child.spans.len() as u64)
+                .map(|child| 1 + (child.spans.len() + child.previous_spans.len()) as u64)
                 .sum::<u64>()
     }
 
@@ -408,7 +410,7 @@ impl LogicalStateProgram {
             .composites
             .iter()
             .flat_map(|schedule| &schedule.children)
-            .any(|child| child.previous_span_at_wrap.is_some())
+            .any(|child| child.previous_span_at_wrap.is_some() || !child.previous_spans.is_empty())
         {
             return Err(CompileError::InvalidProgram);
         }

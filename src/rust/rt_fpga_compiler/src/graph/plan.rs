@@ -657,6 +657,7 @@ pub(super) fn lower(
                 id,
                 spans,
                 previous_span_at_wrap: None,
+                previous_spans: Vec::new(),
             });
         }
         composites.push(schedule);

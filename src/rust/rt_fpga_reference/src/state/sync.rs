@@ -110,6 +110,8 @@ pub struct Resolution {
 pub(crate) struct LoopMemory {
     pub plan: TransitionPlan,
     pub(crate) program_changed: bool,
+    pub(crate) restart_candidate: Option<LoopId>,
+    pub(crate) restart_ready: bool,
     pub slots: Vec<Option<LoopSlot>>,
     pub frame: u64,
     pub events: Vec<Event>,
@@ -145,6 +147,8 @@ impl LoopMemory {
             projected_pulses,
             plan,
             program_changed: false,
+            restart_candidate: None,
+            restart_ready: false,
             slots,
             frame: 0,
             events,
@@ -258,6 +262,7 @@ impl LoopMemory {
             .frame
             .checked_add(u64::from(quantum))
             .ok_or(TransitionError::Exhausted)?;
+        self.restart_ready = false;
         self.events.clear();
         self.resolutions.clear();
         self.advance_mode_plans(instructions)?;
@@ -470,6 +475,13 @@ impl LoopMemory {
                 }
             }
         }
+        if self.restart_candidate == Some(id) {
+            let slot = self.slot(id)?;
+            self.restart_ready = slot.state.mode == Mode::Stopped
+                || (slot.state.mode == Mode::Playing
+                    && slot.state.position == 0
+                    && (slot.composite_snapshot.is_some() || slot.composite_wrap));
+        }
         let slot = self.slot_mut(id)?;
         slot.render = render(slot.state);
         if slot.state.plays() {
@@ -529,30 +541,42 @@ impl LoopMemory {
             .filter(|_| slot.protected.is_none())
         {
             let parent = self.slot(binding.parent)?;
-            let span_at = |position: u64| {
-                let index = binding
-                    .spans
-                    .partition_point(|span| u64::from(span.end) <= position);
-                binding
-                    .spans
+            fn span_at(
+                spans: &[rt_fpga_compiler::FrameSpan],
+                position: u64,
+            ) -> Option<&rt_fpga_compiler::FrameSpan> {
+                let index = spans.partition_point(|span| u64::from(span.end) <= position);
+                spans
                     .get(index)
                     .filter(|span| u64::from(span.start) <= position)
+            }
+            let conditional = self.restart_candidate == Some(binding.parent)
+                && !binding.previous_spans.is_empty();
+            let before = if conditional {
+                &binding.previous_spans
+            } else {
+                &binding.spans
+            };
+            let after = if conditional && !self.restart_ready {
+                before
+            } else {
+                &binding.spans
             };
             let prior = match binding
                 .previous_span_at_wrap
-                .filter(|_| parent.composite_handoff)
+                .filter(|_| parent.composite_handoff && !conditional)
             {
                 Some(rt_fpga_compiler::PreviousSpan::Active(mode)) => Some(mode),
                 Some(rt_fpga_compiler::PreviousSpan::Idle) => None,
                 None => parent
                     .composite_previous
-                    .and_then(span_at)
+                    .and_then(|pos| span_at(before, pos))
                     .map(|span| span.mode),
             };
             let desired = parent
                 .render
                 .plays()
-                .then(|| span_at(parent.render.position))
+                .then(|| span_at(after, parent.render.position))
                 .flatten();
             let wrap = parent.composite_wrap;
             let needs_entry = clock.is_some_and(|c| {

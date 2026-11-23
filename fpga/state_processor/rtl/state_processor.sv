@@ -101,7 +101,8 @@ module state_processor #(
     wire [PROGRAM_ADDR_BITS-1:0] program_read_address;
     wire [`SHOOP_SP_INSTRUCTION_BITS-1:0] program_read_data;
     localparam integer PROGRAM_MEMORY_BITS = $clog2(PROGRAM_DEPTH*PROGRAM_REGIONS) > 0 ? $clog2(PROGRAM_DEPTH*PROGRAM_REGIONS) : 1;
-    reg program_region;
+    reg program_region, committed_region;
+    wire restart_preview = future_switch_valid && (&future_switch[43:12]);
     wire [PROGRAM_MEMORY_BITS-1:0] program_memory_read_address = busy
         ? PROGRAM_MEMORY_BITS'(program_read_address) + (program_region ? PROGRAM_MEMORY_BITS'(PROGRAM_DEPTH) : 0)
         : PROGRAM_MEMORY_BITS'(cfg_address);
@@ -138,13 +139,17 @@ module state_processor #(
 
     always @(posedge clk) begin
         if (reset) begin
-            program_region <= 0;
+            program_region <= 0; committed_region <= 0;
             cfg_pending <= 0; cfg_response_loop <= 0;
             cfg_response_state <= 0;
             cfg_response_write <= 0;
             cfg_error <= 0;
         end else begin
-            if (start) program_region <= PROGRAM_REGIONS == 2 && run_program_region;
+            if (start) begin
+                program_region <= PROGRAM_REGIONS == 2 && run_program_region;
+                if (!restart_preview) committed_region <= PROGRAM_REGIONS == 2 && run_program_region;
+            end else if (done && restart_preview && future_switch_ready && error_code == 0)
+                committed_region <= program_region;
             cfg_pending <= cfg_accept && !external_cfg;
             if (cfg_accept) begin
                 cfg_response_state <= cfg_state; cfg_response_loop <= cfg_loop;
@@ -236,7 +241,7 @@ module state_processor #(
         .STREAM_JOBS(STREAM_JOBS)
     ) engine (
         .clk(clk), .reset(reset), .start(start),
-        .program_changed(PROGRAM_REGIONS == 2 && run_program_region != program_region),
+        .program_changed(PROGRAM_REGIONS == 2 && !restart_preview && run_program_region != committed_region),
         .future_switch_valid(future_switch_valid), .future_switch(future_switch), .future_switch_ready(future_switch_ready),
         .instruction_count(run_instruction_count), .sync_count(run_sync_count), .state_count(run_state_count),
         .quantum(run_quantum), .chunk_frames(run_chunk_frames), .capture_credits(capture_credits),

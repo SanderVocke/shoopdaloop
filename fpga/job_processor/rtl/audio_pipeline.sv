@@ -167,6 +167,7 @@ module audio_pipeline #(
     reg [15:0] future_instructions, future_sync_count;
     wire future_switch_ready;
     wire guarded_switch = switch_future[43:12] != 0;
+    wire restart_preview = future_pending && (&future_switch[43:12]);
     wire bad_switch = switch_expected != active_revision || switch_revision <= active_revision
         || (active_revision != 0 && switch_region == active_region)
         || (guarded_switch && (active_revision == 0 || switch_states != active_states
@@ -423,9 +424,10 @@ module audio_pipeline #(
                 error_code <= 8; error_stage <= 2; done <= 1; phase <= IDLE;
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
-                    state_instructions <= selected_instructions; state_sync_count <= selected_sync_count;
+                    state_instructions <= restart_preview ? {16'b0,future_instructions} : selected_instructions;
+                    state_sync_count <= restart_preview ? {16'b0,future_sync_count} : selected_sync_count;
                     state_count <= selected_states;
-                    state_region <= LIVE_LOADING != 0 ? active_region : run_program_region;
+                    state_region <= LIVE_LOADING != 0 ? active_region ^ restart_preview : run_program_region;
                     quantum <= run_quantum; chunk_frames <= run_chunk_frames; chunk_shift <= shift_for(run_chunk_frames);
                     buffers <= selected_buffers;
                     inputs <= run_inputs;

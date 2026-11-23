@@ -69,6 +69,17 @@ impl Pipeline {
     pub fn region(&self) -> u8 {
         self.region
     }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn swap_restart_program(
+        &mut self,
+        image: &mut crate::target::ProgramImage,
+        candidate: Option<rt_fpga_compiler::Identity>,
+    ) {
+        self.state
+            .swap_restart_plan(&mut image.compiled.plan, candidate);
+        core::mem::swap(&mut self.program, &mut image.compiled.program);
+    }
+
     pub fn reserve_loading(
         &mut self,
         limits: rt_fpga_compiler::ProgramLimits,
@@ -168,7 +179,7 @@ impl Pipeline {
             .check_job_budget()
             .map_err(PipelineError::State)?;
         self.state
-            .switch_image(image)
+            .switch_image(image, future.is_some_and(|cut| cut.at_restart()))
             .map_err(PipelineError::State)?;
         core::mem::swap(&mut self.program, &mut image.compiled.program);
         self.revision = image.layout.revision;

@@ -303,6 +303,7 @@ impl StateProcessor {
     pub(crate) fn switch_image(
         &mut self,
         image: &mut crate::target::ProgramImage,
+        rendered_restart: bool,
     ) -> Result<(), Error> {
         use rt_fpga_compiler::loading::CompositeCut;
 
@@ -318,11 +319,12 @@ impl StateProcessor {
             if old.state.mode != crate::transitions::Mode::Playing {
                 continue;
             }
-            wrap_pending |= cut.reconciles_wrap(
-                old.state.position,
-                old.state.content_length,
-                old.composite_wait,
-            );
+            wrap_pending |= !rendered_restart
+                && cut.reconciles_wrap(
+                    old.state.position,
+                    old.state.content_length,
+                    old.composite_wait,
+                );
             let Some(destination) = cut.restart_slot else {
                 continue;
             };
@@ -373,10 +375,27 @@ impl StateProcessor {
             .as_ref()
             .is_some_and(|loops| loops.program_changed)
     }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn swap_restart_plan(
+        &mut self,
+        plan: &mut TransitionPlan,
+        candidate: Option<rt_fpga_compiler::Identity>,
+    ) {
+        let loops = self.loops.as_mut().expect("prepared loop pool");
+        loops.restart_candidate = candidate.map(|id| LoopId {
+            slot: id.slot,
+            generation: id.generation,
+        });
+        core::mem::swap(&mut loops.plan, plan);
+    }
+
     pub(crate) fn permits_future_switch(
         &self,
         cut: rt_fpga_compiler::loading::FutureSwitch,
     ) -> bool {
+        if cut.at_restart() {
+            return self.loops.as_ref().is_some_and(|loops| loops.restart_ready);
+        }
         self.loop_state(LoopId {
             slot: cut.target.slot,
             generation: cut.target.generation,

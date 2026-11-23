@@ -428,6 +428,15 @@ impl Processor {
             if let Some(error) = fault {
                 return Err(error);
             }
+            let restart = future_switch
+                .map(|(_, _, _, _, cut)| cut)
+                .filter(|cut| cut.at_restart());
+            if let Some(cut) = restart {
+                let staged = self.next_program.as_mut().expect("armed image");
+                self.engine
+                    .pipeline
+                    .swap_restart_program(&mut staged.image, Some(cut.target));
+            }
             let mut observer = Publication {
                 loops: &mut self.engine.loops,
                 configuration: self.engine.configuration,
@@ -435,7 +444,7 @@ impl Processor {
                 publisher: &mut self.ports.snapshots,
                 staged: self.next_program.as_deref(),
             };
-            if let Some(io) = midi.as_deref_mut() {
+            let result = if let Some(io) = midi.as_deref_mut() {
                 self.engine.pipeline.process_quantum_mixed(
                     jobs,
                     memory,
@@ -456,7 +465,14 @@ impl Processor {
                     &mut observer,
                     base == 0 || switched,
                 )
-            }?;
+            };
+            if restart.is_some() {
+                let staged = self.next_program.as_mut().expect("armed image");
+                self.engine
+                    .pipeline
+                    .swap_restart_program(&mut staged.image, None);
+            }
+            result?;
             if let Some((program_lane, header, record, descriptor, cut)) = future_switch {
                 if self.engine.pipeline.state().permits_future_switch(cut) {
                     memory

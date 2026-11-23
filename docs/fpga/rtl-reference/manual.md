@@ -256,6 +256,13 @@ recording can start. See the admission rule under
   to Play or Stop spans that keep the same children, SP can check the child's
   position after a parent seek. A seek into the changed part leaves the edit
   pending. A seek far enough back can let it take effect on that boundary.
+  If an edit changes the opening but keeps the timing and child list, SP
+  can wait for the transport to stop the composite or return it to the
+  start. The staged image carries old spans only for affected children. If
+  the composite restarts, SP compares the old action at the preceding
+  position with the new opening. If a seek lands elsewhere, SP uses the
+  old spans and the edit waits. Clock-controlled repeats use the actual
+  pulse and playback state for that quantum.
   An edit to a single nested composite can also wait until the child stops,
   either by finishing its own run or when its parent releases it. Unchanged
   parents keep playing and use the new plan the next time they start the child.
@@ -968,6 +975,14 @@ active rows. The pipeline publishes the new revision after the block succeeds.
 The switch is reported at the frame where SP made its decision, and the next
 quantum fetches from the new region. If the check fails, the host can try
 again on a later boundary with the same staged program.
+
+A guarded restart uses the staged region during the switch attempt. The
+compiler checks that the two versions use the same timing, audio work and
+state addresses. SP settles the target before its children. The children
+use the old spans if the attempt fails, or compare them with the new
+opening on an accepted restart. Completion reports the frame that used
+the new schedule. The extra spans count toward the existing program
+capacity.
 
 ## Audio device clock boundary
 
