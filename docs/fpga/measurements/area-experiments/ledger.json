@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 5,
-  "status": "Stages0\u20134complete. Stage5cold-descriptor RAM complete/selectedC6 afterexactrepeat,allregressions andextendedcontrol. Payload lifetime,resetelision,validityfolding remain;Stages6\u201311 unexecuted.",
+  "status": "Stages0\u20134complete; C6 retained. Stage5coldRAM andpayloadlifetime complete (payloadrejected+200slices). Resetelision/validityandStages6\u201311pending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -41,7 +41,8 @@
     "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec",
     "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification.",
     "C3extended1041callbackrows matchC2exactly, includingboth16,384-frameleafspans: steady1024 median52994/max59446; cold88446. Frozenbinary8c51 andimmutablefe2184ea source.",
-    "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
+    "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged.",
+    "C6validity rawcontrol establishedbothAXIwidths; allstandaloneHDLinputhashesexactC6 althoughreused0e/C5immutablemodelroot. Two8988-row-equivalentcontrolpopulations retainedwithactualbinary/fixture/sourceidentity before reset/validitytrials."
   ],
   "pending": [
     "FinishStage5 payload-lifetime/reset-elision/validityfolding experiments",
@@ -66,6 +67,10 @@
     "c3_metadata_validity_controls": [
       "c3-metadata-validity-axi32-summary.json",
       "c3-metadata-validity-axi64-summary.json"
+    ],
+    "c6_metadata_validity_controls": [
+      "s5-c6-validity-axi32-summary.json",
+      "s5-c6-validity-axi64-summary.json"
     ]
   },
   "experiments": [
@@ -1415,6 +1420,44 @@
       "selected": true,
       "repeat_summary": "s5-cold-descriptor-repeat-100-summary.json",
       "extended_summary": "s5-cold-descriptor-extended-100-summary.json"
+    },
+    {
+      "label": "s5-payload-lifetime",
+      "stage": 5,
+      "status": "complete; rejected after route",
+      "control_revision": "5ea0bd6049042e103ad31b7fc36fdcbc973750db",
+      "control_rtl_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+      "control_summary": "s5-cold-descriptor-100-summary.json",
+      "contract": "stage5-state-contracts.md#disjoint-midi-packet-storage-lifetime",
+      "changed_contract": "No intended public orcycle change. Remove fourthpayloadwordstorage: readword3 returned directlyalready; appendword3 formedfromacceptedpacket/length whichstayfixeduntilwritecompleted. Keepthreeframe/orderwords andalladdressformatter sampling/hold behavior.",
+      "validation": [
+        "All38C6productionHDLhashes verifiedbefore edit",
+        "Read-onlyC6DCP query confirmsallfourpayloadwordseach32FF (128total),soeliminatedcopyexistsinmappedcontrol",
+        "StrictVerilatorlint default/minimum/odd/connected-primary passes; allreportedwarnings identical C6.",
+        "Both reserved/relocation tests and dense record/merge/read/stop focused test pass",
+        "All10311boundary+54reserved+108relocated rows exactly match C6, including cycles and memory traffic",
+        "All33mixed+40musical rows exactC6 including cycles/traffic/work/state/finalmixedmemory; all16mainMIDItests passonspace-corrected rerun, expression/reserved running",
+        "All23affected suites pass: MIDI16/405.22sec, expression5/489.28sec, reserved2/1.95sec. Earlier8StorageFullfailures retained andallpasswithunchangedsource/assertions aftercachecleanup.",
+        "FrozenDCP EDIF provesactualpayloadbank128to96FDRE; everycontrolmidi_store directFD name/type exactlymatches completedVivadoquery. Other5globalFFreduction outsidepayload; no over-attribution."
+      ],
+      "pending": [],
+      "rtl_source_revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
+      "raw_unit_summaries": [
+        "s5-payload-lifetime-boundaries-summary.json",
+        "s5-payload-lifetime-reserved-summary.json",
+        "s5-payload-lifetime-relocated-summary.json"
+      ],
+      "environment_retry": "First full suite:8pass8failure, eachfailureStorageFull(os28), not RTLassertion. Initiallog retained; nativeRustcaches reclaimed andexactcommand/source rerunningwith3GBheadroom.",
+      "opt_summary": "s5-payload-lifetime-opt-summary.json",
+      "callback_performance": "s5-payload-lifetime-callback-performance.json",
+      "mapped_screen": "-21LUT/-37FF/+13MUXF7/-2controlsets vsC6; BRAM/DSP/carry unchanged. OptWNS-0.151ns vs+.412control; physicalroutepending.",
+      "regression_summary": "s5-payload-lifetime-regressions-summary.json",
+      "cells_summary": "s5-payload-lifetime-cells-summary.json",
+      "route_summary": "s5-payload-lifetime-100-summary.json",
+      "selected": false,
+      "decision": "Reject: route35186LUT28811FF11941slices78BRAM4DSP3094carry1642controlsets,WNS-.201/WHS+.045. VersusC6 saves34LUT butadds200slices26FF13MUXF7/10physicalcontrolsets,andloses100MHzsetupqualification. Actualpayloadbank-32FF verified; physicalnetlistadds142FFoveropt vs79forC6, sodo notconflateprivatebank savingswithglobalpacking. No repeat forcleararea-negative/clock-negativecandidate. All23tests+10473rawrows+73callbackrows pass exact; optional1041stresscancelledafterrejection, not claimedcomplete.",
+      "physical_qualification": "Routecompletedstatus0, noerrors; timingfails setup100MHz. Allretainedfile/checkpointhashes reverifiedafterrunnerexit0. Archivebeganafteroutcome copiedbutbeforeDockerremoval finished; entirearchiveretains exactcompletedartifacts.",
+      "optional_extended": "s5-payload-lifetime-cancelled-extended-retention.json"
     }
   ],
   "provisioning": {

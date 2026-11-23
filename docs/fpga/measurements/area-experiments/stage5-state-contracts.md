@@ -1,8 +1,8 @@
 # Working-state and validity experiment contracts
 
-Preparation only. Stage 4's iterative capacity decision is still pending. Freeze
-the selected Stage 4 control before starting these candidates, run them one at a
-time, and record the actual parent/source hashes for each. Promote a compatible
+Stage 4's iterative capacity candidate is selected as C5; cold descriptor RAM
+is selected as C6. Freeze the current selected control before each remaining
+candidate, run them one at a time, and record actual parent/source hashes. Promote a compatible
 winner only after its behavior, cycles, mapped resources, routed slices and
 timing have been measured. Retain the faster/smaller alternatives explicitly.
 

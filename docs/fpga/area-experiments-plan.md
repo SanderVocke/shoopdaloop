@@ -198,7 +198,7 @@ sets. Growth setup is slower: +1,712,176 clocks over 77,828 deep writes and
 +14,074 over the public-store fixture. Setup slack improves from -3.668 to
 -0.130 ns; 100 MHz timing still fails. C4 remains the faster setup alternative.
 Stage 5's original-RTL validity control and separate implementation contracts
-are ready; no Stage 5 implementation has been measured.
+are retained alongside the completed Stage 4 evidence.
 
 - [x] Replace repeated MIDI store address expressions with a shared region/index/
   field request datapath. Measure before separately sharing the remaining MIDI
@@ -219,11 +219,16 @@ four-stage physical repeat. It trades 13 LUTs and 159 physical control sets for
 31 fewer slices and 62 fewer FFs than C5. Setup/hold pass at 100 MHz in the
 registered context (+0.142/+0.006 ns); board qualification remains outside scope.
 The [separate contracts](measurements/area-experiments/stage5-state-contracts.md)
-for payload lifetime, private resets and validity folding remain unexecuted.
+for private resets and validity folding remain unexecuted. Payload lifetime
+`bbfaa8ad` is complete and rejected: 34 fewer routed LUTs cost 200 more slices,
+26 more FFs and setup slack −0.201 ns, versus C6's +0.142 ns. The removed bank
+is verified at 128 → 96 FFs, but physical duplication/packing erases that gain.
+All 23 regressions, 10,473 raw rows and 73 callback rows pass exactly; an optional
+long run was stopped after the routed rejection and is not claimed complete.
 Prototype declaration-order cleanup is explicitly reserved for final integration
 and final-source qualification.
 
-- [ ] Keep hot descriptor fields in registers and move colder working fields to
+- [x] Keep hot descriptor fields in registers and move colder working fields to
   synchronous RAM. Separately test reuse of registers with disjoint lifetimes;
   account for extra reads/writes and verify actual RAM inference.
 - [ ] Separately remove unnecessary resets from datapath storage behind explicit
