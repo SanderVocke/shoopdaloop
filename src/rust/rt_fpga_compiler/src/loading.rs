@@ -1038,6 +1038,9 @@ impl Allocator {
                 let [(id, cut)] = composite_cuts.as_slice() else {
                     return None;
                 };
+                if cut.old_slot.slot >= FutureSwitch::NO_CLOCK {
+                    return None;
+                }
                 let old_shape = old.render_shape.as_ref()?;
                 let new_shape = render_shape.as_ref()?;
                 let old_source = old_shape
@@ -1069,12 +1072,12 @@ impl Allocator {
                     order =
                         Some(wrap_sync_order(program, &previous_wrap_children, dependency).ok()?);
                     let slot = match old_source {
-                        Some(source) => old.loop_id(source).ok()?.slot,
+                        Some(source) => {
+                            let slot = old.loop_id(source).ok()?.slot;
+                            (slot < FutureSwitch::NO_CLOCK).then_some(slot)?
+                        }
                         None => FutureSwitch::NO_CLOCK,
                     };
-                    if slot > FutureSwitch::NO_CLOCK {
-                        return None;
-                    }
                     restart = FutureSwitch::RESTART_TAG | slot;
                 } else if old_shape != new_shape {
                     return None;
