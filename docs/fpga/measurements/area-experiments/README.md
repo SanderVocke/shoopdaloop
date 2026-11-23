@@ -554,3 +554,21 @@ require a full clean repeat and extended workload before selection. Fifteen
 noncritical Vivado forward-declaration warnings in the prototype are recorded;
 cleanup and final-source qualification remain necessary before integration.
 C5 remains selected while the repeat and extended run execute.
+
+The cold-descriptor repeat reproduces all four physical stages exactly. All
+1,041 extended rows and final memory also match C5 exactly. It is selected as
+**C6**: **35,220 LUTs, 28,785 FFs and 11,741 slices**, passing setup/hold at
+100 MHz in the registered context (+0.142/+0.006 ns). These are measured cumulative
+savings of **6,760 LUTs, 1,464 slices, 4,656 FFs and 2,397 carries** from B0,
+with half a BRAM tile more, the same four DSPs and 583 fewer physical control
+sets. Prototype declaration-order cleanup and final-source requalification remain
+explicit Stage 11 work; no board deployment is claimed.
+
+Across the observed 1,024 steady quanta, median/max are 532.58/597.76 us at
+this qualified context clock, versus the 666.667 us Q32 budget: the observed
+minimum slack is 68.907 us. This is not a universal bound. Cold playback takes
+927.45 us and musical prefix restoration 4,108.65 us, both exceeding that budget.
+C5 retains the lower-LUT point, and C4 the faster growth/setup point. The other
+three working-state/reset/validity trials and Stages 6–11 remain outstanding.
+C5's complete FPGA CI workflow has also passed all four jobs; broader backend
+integration gates remain separate.

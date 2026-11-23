@@ -213,9 +213,15 @@ are ready; no Stage 5 implementation has been measured.
 
 Depends on stage 4's decision. Start with the MIDI store descriptor staging bank.
 
-Execution status: C5 is frozen as the first control. The separate
-[working-state contracts](measurements/area-experiments/stage5-state-contracts.md)
-are prepared; the cold descriptor RAM trial is starting.
+Execution status: cold descriptor RAM is complete and selected as C6 after all
+23 affected tests, exact raw/short/musical/1,024-quantum comparisons and an exact
+four-stage physical repeat. It trades 13 LUTs and 159 physical control sets for
+31 fewer slices and 62 fewer FFs than C5. Setup/hold pass at 100 MHz in the
+registered context (+0.142/+0.006 ns); board qualification remains outside scope.
+The [separate contracts](measurements/area-experiments/stage5-state-contracts.md)
+for payload lifetime, private resets and validity folding remain unexecuted.
+Prototype declaration-order cleanup is explicitly reserved for final integration
+and final-source qualification.
 
 - [ ] Keep hot descriptor fields in registers and move colder working fields to
   synchronous RAM. Separately test reuse of registers with disjoint lifetimes;
