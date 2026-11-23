@@ -593,6 +593,7 @@ fn edit_at_clock_restart<E: Endpoint>(
     iterations: u64,
     unit_quanta: u64,
     change_ending: bool,
+    composite_clock_pass: Option<u64>,
 ) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
@@ -602,10 +603,15 @@ fn edit_at_clock_restart<E: Endpoint>(
     graph.loops.truncate(if change_ending { 3 } else { 2 });
     graph.loops[1].gain = 0.;
     let parent_index = graph.loops.len();
+    let clock_slot = if composite_clock_pass.is_some() {
+        121
+    } else {
+        101
+    };
     let mut parent = graph.loops[0].clone();
     parent.id = id(120);
     parent.strip = None;
-    parent.sync_source = Some(id(101));
+    parent.sync_source = Some(id(clock_slot));
     parent.repeat_sync = true;
     parent.composite = Some(CompositeView {
         kind: CompositeKind::Regular,
@@ -625,6 +631,24 @@ fn edit_at_clock_restart<E: Endpoint>(
         .into(),
     });
     graph.loops.push(parent);
+    if let Some(iterations) = composite_clock_pass {
+        let mut clock = graph.loops[parent_index].clone();
+        clock.id = id(clock_slot);
+        clock.sync_source = None;
+        clock.repeat_sync = false;
+        let program = clock.composite.as_mut().unwrap();
+        program.iterations = iterations;
+        program.spans = vec![CompositeSpan {
+            target: id(101),
+            start: 0,
+            end: iterations,
+            occurrence_start: 0,
+            ordinal: 0,
+            mode: LoopMode::Playing,
+        }]
+        .into();
+        graph.loops.push(clock);
+    }
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
     let recorded = [(100, 4)]
@@ -651,9 +675,10 @@ fn edit_at_clock_restart<E: Endpoint>(
             response(&mut client, &mut renderer);
         }
     }
-    let clock_length = response(&mut client, &mut renderer) - capture_start;
+    let recorded_length = response(&mut client, &mut renderer) - capture_start;
+    let clock_length = composite_clock_pass.map_or(recorded_length, |pass| pass * Q as u64);
     let play = [
-        transition(101, TransitionMode::Playing),
+        transition(clock_slot, TransitionMode::Playing),
         transition(120, TransitionMode::Playing),
     ];
     client.immediate(Batch::new(1, 1, &play).unwrap()).unwrap();
@@ -748,11 +773,12 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for (iterations, unit_quanta, change_ending) in [
-        (16, 1, false),
-        (24, 1, false),
-        (12, 2, false),
-        (24, 1, true),
+    for (iterations, unit_quanta, change_ending, composite_clock_pass) in [
+        (16, 1, false, None),
+        (24, 1, false, None),
+        (12, 2, false, None),
+        (24, 1, true, None),
+        (24, 1, false, Some(100)),
     ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
         edit_at_clock_restart(
@@ -761,6 +787,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             iterations,
             unit_quanta,
             change_ending,
+            composite_clock_pass,
         );
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
         edit_at_clock_restart(
@@ -769,6 +796,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             iterations,
             unit_quanta,
             change_ending,
+            composite_clock_pass,
         );
     }
 }

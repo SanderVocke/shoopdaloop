@@ -511,18 +511,19 @@ impl Allocator {
                     let restart_source = external_source.and_then(|source| {
                         let old_source = old.loops.iter().find(|loop_| loop_.logical == source)?;
                         let new_source = program.loops.iter().find(|loop_| loop_.id == source)?;
-                        let independent_clock = old_source
-                            .sync_source
-                            .is_none_or(|id| id == source)
-                            && new_source.sync_source == old_source.sync_source
-                            && !old
-                                .composites
-                                .iter()
-                                .chain(&program.composites)
-                                .any(|schedule| {
-                                    schedule.id == source
-                                        || schedule.children.iter().any(|child| child.id == source)
-                                });
+                        let independent_clock =
+                            old_source.sync_source.is_none_or(|id| id == source)
+                                && new_source.sync_source == old_source.sync_source
+                                && old.composite_schedule(source)
+                                    == program
+                                        .composites
+                                        .iter()
+                                        .find(|schedule| schedule.id == source)
+                                && !old.composites.iter().chain(&program.composites).any(
+                                    |schedule| {
+                                        schedule.children.iter().any(|child| child.id == source)
+                                    },
+                                );
                         independent_clock.then_some(old_source.physical)
                     });
                     let same_source = program
