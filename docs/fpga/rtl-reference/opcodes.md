@@ -1,7 +1,8 @@
 # Appendix A. State processor instructions {.unnumbered}
 
 The base encodings are from RTL revision `cc410f27`, with the optional MIDI
-expression extension from `462ce74e` (Appendix E). Bit ranges
+expression extension from `462ce74e` (Appendix E) and the bounded composite
+audio extension. Bit ranges
 are inclusive and numbered from the least-significant bit. Fields named
 `u16`, `u32` or `u64` are unsigned at that width. Signed audio samples and
 gain values use two's-complement Q8.24. In the tables, “—” means the encoder
@@ -11,8 +12,10 @@ least-significant byte first.
 ## Instruction word {.unnumbered}
 
 An SP instruction is 96 bits. SP selects its program pass by the instruction
-index and `run_sync_count`. The sync prefix consists of ProcessLoop
-instructions. The work pass uses the other opcodes.
+index and `run_sync_count`. The sync prefix contains `ProcessLoop` and
+`ProcessCompositeChild` instructions and their schedule rows. `run_sync_count`
+and the full instruction count both include the schedule rows. The work pass
+uses the other opcodes.
 
 | Bits | Field | Width |
 | ---------------------- | ---------------------------------------------------------- | -------------------: |
@@ -51,6 +54,7 @@ generation.
 | `0x11` | MIDI Merge | Left list | Right list | Destination list | — | — |
 | `0x12` | MIDI Output | Source list | Output port | — | — | — |
 | `0x13` | MIDI State | Owner slot | Gen lo | Gen hi | Sequence/input | Output mask/channel bits |
+| `0x14` | ProcessCompositeChild | Child slot | Gen lo | Gen hi | Inline source slot or `0xffff` | Number of following schedule rows |
 
 Other opcode values cause `INVALID_PROGRAM` (`0x03`). Additional operand
 interpretation follows.
@@ -82,6 +86,34 @@ interpretation follows.
   The inline form still checks the target generation and current-boundary
   stamp of an external source. Source generation checking uses the
   RAM-source form. Bits 95:88 must be zero in either form.
+
+<a name="composite-schedule-encoding"></a>
+
+## Composite schedule rows {.unnumbered}
+
+`ProcessCompositeChild` uses the inline sync-source form and requires zero in
+bits 95:88. Its A4 counts the contiguous 96-bit rows following the instruction.
+Each parent contributes one header followed by its spans in increasing start
+order. Parents appear in the compiler's action priority order. The engine
+reads those rows as data during the child visit and skips them on normal
+instruction fetch. The parent must be a valid composite with matching generation
+and a processed stamp for the same boundary.
+
+| Row | Bits | Field |
+| --- | --- | --- |
+| Parent header | 15:0 | Parent loop slot |
+| Parent header | 47:16 | Parent generation |
+| Parent header | 53:48 | Number of span rows for this parent, 1–32 |
+| Parent header | 69:54 | Image-wide compiled audio writer count when authored recording is present, otherwise zero |
+| Parent header | 95:70 | Reserved |
+| Span | 31:0 | Inclusive start frame relative to the parent's pass |
+| Span | 63:32 | Exclusive end frame relative to the parent's pass |
+| Span | 65:64 | Mode (1 Play, 2 Stop, 3 Record) |
+| Span | 95:66 | Reserved |
+
+The schedule can hold up to eight parents for one child. All headers and spans
+count against the existing program region capacity.
+
 ## MIDI instruction operands {.unnumbered}
 
 MIDI list IDs are separate from JP audio scratch-buffer IDs.
@@ -130,15 +162,15 @@ this RAM with `cfg_loop=1` and uses the low 64 bits of the data bus.
 
 | Word | Layout |
 | --------------- | ------------------------------------------------------------------------------------- |
-| 0 | Valid [0], generation [32:1], mode [34:33], repeat [35], source valid [36], source slot [52:37], pulse [53], first capture [54], processed stamp valid [55], newer plan index [56], MIDI writer-open [57], MIDI seek/reposition [58], prior MIDI playback activity [59] for state restore/cleanup. |
-| 1 | Source generation [31:0], plan 0 flags [36:32], plan 1 flags [41:37]. |
-| 2, 3, 4 | Next position, content length, captured frames, respectively. |
-| 5, 6, 7 | Cycle count, content revision, revision watermark, respectively. |
+| 0 | Valid [0], generation [32:1], mode [34:33], repeat [35], source valid [36], source slot [52:37], pulse [53], first capture [54], processed stamp valid [55], newer plan index [56], MIDI writer-open [57], MIDI seek/reposition [58], prior MIDI playback activity [59], composite snapshot [60], composite snapshot restart [61], explicit composite [62], composite wrap [63]. |
+| 1 | Source generation [31:0], plan 0 flags [36:32], plan 1 flags [41:37], composite repeat wait [42], authored capture ownership [43], composite child [44], composite timing slot [45]. |
+| 2, 3, 4 | Next position, content length, captured frames, respectively. For a composite timing slot word 3 is pass length and word 4 is the previous render position, or all ones when the previous render was stopped. |
+| 5, 6, 7 | Cycle count, content revision, revision watermark, respectively. For a composite timing slot word 5 counts completed passes and word 6 is the unit length in frames. |
 | 8, 9 | Render position and processed quantum frame, respectively. |
 | 10–12 | Plan 0 effective frame, remaining pulse skips and requested position. |
 | 13–15 | Plan 1 effective frame, remaining pulse skips and requested position. |
 
-Preserve writer-open, reposition and prior MIDI playback activity when editing plans. SP maintains
+Preserve the composite and MIDI fields when editing plans. SP maintains
 writer-open across quanta and clears the reposition flag at the start
 of the next loop visit. Clear reserved bits. When a logical instruction uses the standalone
 explicit-record port, the 164-bit response packs valid [0], generation

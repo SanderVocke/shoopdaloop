@@ -6,6 +6,8 @@ use rt_fpga_compiler::{
     Resources, StateProgramTarget,
 };
 
+pub(crate) const COMPOSITE_LOOP: u64 = 1 << 45;
+
 pub struct RtlTarget<'a> {
     pub capacities: ProgramLimits,
     pub media_views: &'a [u64],
@@ -152,28 +154,78 @@ impl StateProgramTarget for RtlTarget<'_> {
                 .resized(129),
             );
         }
+        let mut recording_views = alloc::collections::BTreeSet::new();
+        if logical.has_authored_recording() {
+            for operation in &logical.work_pass {
+                if let Operation::Capture { view, .. } = *operation {
+                    let InitialValue::MediaView(index) = logical.initial_state[view as usize]
+                    else {
+                        return Err(CompileError::InvalidProgram);
+                    };
+                    if !recording_views.insert(self.media_views[index as usize]) {
+                        return Err(CompileError::InvalidProgram);
+                    }
+                }
+            }
+        }
+        let capture_views = u16::try_from(recording_views.len())
+            .map_err(|_| CompileError::Capacity(Resource::Jobs))?;
         let mut instructions = Vec::new();
         for loop_id in &logical.sync_pass {
             let mut bits = Bits::zero(96);
+            bits.set(8, 16, u64::from(operand(loop_id.slot)?)).set(
+                24,
+                32,
+                u64::from(loop_id.generation),
+            );
+            let source = logical
+                .loops
+                .iter()
+                .find(|l| l.id == *loop_id)
+                .unwrap()
+                .sync_source
+                .map_or(u16::MAX, |s| s.slot as u16);
+            let words = logical
+                .composite_parents(*loop_id)
+                .map(|(_, spans)| 1 + spans.len())
+                .sum::<usize>();
+            if words != 0 {
+                bits.set(0, 8, 0x14)
+                    .set(56, 16, u64::from(source))
+                    .set(72, 16, words as u64);
+                instructions.push(bits);
+                for (parent, spans) in logical.composite_parents(*loop_id) {
+                    let mut header = Bits::zero(96);
+                    header
+                        .set(0, 16, u64::from(operand(parent.id.slot)?))
+                        .set(16, 32, u64::from(parent.id.generation))
+                        .set(48, 6, spans.len() as u64)
+                        .set(54, 16, u64::from(capture_views));
+                    instructions.push(header);
+                    for span in spans {
+                        let mut row = Bits::zero(96);
+                        row.set(0, 32, u64::from(span.start))
+                            .set(32, 32, u64::from(span.end))
+                            .set(
+                                64,
+                                2,
+                                match span.mode {
+                                    rt_fpga_compiler::SpanMode::Play => 1,
+                                    rt_fpga_compiler::SpanMode::Stop => 2,
+                                    rt_fpga_compiler::SpanMode::Record => 3,
+                                },
+                            );
+                        instructions.push(row);
+                    }
+                }
+                continue;
+            }
             bits.set(0, 8, 12)
-                .set(8, 16, u64::from(operand(loop_id.slot)?))
-                .set(24, 32, u64::from(loop_id.generation))
-                .set(
-                    56,
-                    16,
-                    u64::from(
-                        logical
-                            .loops
-                            .iter()
-                            .find(|l| l.id == *loop_id)
-                            .unwrap()
-                            .sync_source
-                            .map_or(u16::MAX, |s| s.slot as u16),
-                    ),
-                )
+                .set(56, 16, u64::from(source))
                 .set(72, 1, 1);
             instructions.push(bits);
         }
+        let sync_count = instructions.len();
         for op in &logical.work_pass {
             let instruction = match *op {
                 Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
@@ -317,9 +369,21 @@ impl StateProgramTarget for RtlTarget<'_> {
             .map(|l| {
                 let mut words = [0; 16];
                 words[0] = 1 | (u64::from(l.id.generation) << 1) | (u64::from(l.repeat_sync) << 35);
+                if let Some(schedule) = logical
+                    .composites
+                    .iter()
+                    .find(|schedule| schedule.id == l.id)
+                {
+                    words[0] |= u64::from(schedule.explicit) << 62;
+                    words[1] |= COMPOSITE_LOOP;
+                    words[6] = u64::from(schedule.unit_frames);
+                }
                 if let Some(source) = l.sync_source {
                     words[0] |= (1 << 36) | (u64::from(source.slot) << 37);
-                    words[1] = u64::from(source.generation);
+                    words[1] |= u64::from(source.generation);
+                }
+                if logical.composite_parents(l.id).next().is_some() {
+                    words[1] |= 1 << 44;
                 }
                 words[3] = l.length;
                 LoopImage { id: l.id, words }
@@ -344,7 +408,7 @@ impl StateProgramTarget for RtlTarget<'_> {
             bindings,
             quantum: logical.quantum,
             chunk_frames: logical.chunk_frames,
-            sync_count: logical.sync_pass.len(),
+            sync_count,
             jobs_per_quantum: logical.jobs_per_quantum,
             resources: logical.resources,
         })

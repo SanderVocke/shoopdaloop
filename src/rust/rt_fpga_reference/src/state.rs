@@ -2,7 +2,7 @@
 
 use crate::{
     fixed::Ramp,
-    jobs::{BufferId, Job, JobQueue},
+    jobs::{BufferId, CaptureWrite, Job, JobQueue},
     records::{Identity, Mode, SettledRecords},
     storage::ViewId,
     Error,
@@ -13,8 +13,8 @@ use crate::transitions::{
     Event, EventKind, LoopId, LoopState, Operation, TransitionError, TransitionPlan,
 };
 pub use sync::{
-    apply_mode_command, LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution,
-    SyncInstruction,
+    apply_mode_command, prepare_mode_now, LoopSlot, ModePlan, ModeStep, PlannedTransition,
+    Resolution, SyncInstruction,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -229,6 +229,35 @@ pub struct StateProcessor {
     loops: Option<sync::LoopMemory>,
     fault: Option<Error>,
 }
+pub(crate) enum PrepareWork<'a> {
+    Read(crate::resolver::ReadIntent),
+    Captures {
+        requests: &'a mut dyn Iterator<Item = Result<CaptureWrite, Error>>,
+        frames: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompositeStatus {
+    pub version: u64,
+    pub iteration: u64,
+    pub passes: u64,
+    pub waiting_repeat: bool,
+}
+
+fn without_capture_preparation(
+    work: PrepareWork<'_>,
+    sink: &mut impl FnMut(crate::resolver::ReadIntent),
+) -> Result<(), Error> {
+    match work {
+        PrepareWork::Read(intent) => {
+            sink(intent);
+            Ok(())
+        }
+        PrepareWork::Captures { .. } => Err(Error::InvalidState),
+    }
+}
+
 impl StateProcessor {
     pub fn reserve_loading(&mut self, limits: rt_fpga_compiler::ProgramLimits) {
         self.memory
@@ -284,6 +313,23 @@ impl StateProcessor {
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
     }
+    pub fn composite_status(&self, id: LoopId) -> Option<CompositeStatus> {
+        let loops = self.loops.as_ref()?;
+        let clock = loops
+            .plan
+            .composite_clocks
+            .get(id.slot as usize)?
+            .as_ref()?;
+        let slot = loops.slot(id).ok()?;
+        let unit = u64::from(clock.unit_frames);
+        Some(CompositeStatus {
+            version: clock.version,
+            iteration: (slot.render.position / unit)
+                .min((slot.state.content_length / unit).saturating_sub(1)),
+            passes: slot.state.cycles,
+            waiting_repeat: slot.composite_wait,
+        })
+    }
     pub(crate) fn validate_midi_contents(
         &self,
         updates: &[(LoopId, u64)],
@@ -337,6 +383,11 @@ impl StateProcessor {
                 })
                 .map(|slot| slot.state)
         })
+    }
+    pub fn authored_capture_refusals(&self) -> u64 {
+        self.loops
+            .as_ref()
+            .map_or(0, |loops| loops.capture_refusals)
     }
     pub fn events(&self) -> &[Event] {
         self.loops
@@ -465,7 +516,7 @@ impl StateProcessor {
         ))
     }
     pub fn run(&mut self, program: &Program, queue: &mut JobQueue) -> Result<(), Error> {
-        self.run_inner(program, queue, None, &mut |_| {})
+        self.run_with_intents(program, queue, |_| {})
     }
     pub fn run_with_records(
         &mut self,
@@ -473,7 +524,7 @@ impl StateProcessor {
         queue: &mut JobQueue,
         records: SettledRecords<'_>,
     ) -> Result<(), Error> {
-        self.run_inner(program, queue, Some(records), &mut |_| {})
+        self.run_with_records_and_intents(program, queue, records, |_| {})
     }
     pub fn run_with_intents(
         &mut self,
@@ -481,7 +532,9 @@ impl StateProcessor {
         queue: &mut JobQueue,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
-        self.run_inner(program, queue, None, &mut sink)
+        self.run_with_preparation(program, queue, |work| {
+            without_capture_preparation(work, &mut sink)
+        })
     }
     pub fn run_with_records_and_intents(
         &mut self,
@@ -490,19 +543,29 @@ impl StateProcessor {
         loops: SettledRecords<'_>,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
-        self.run_inner(program, queue, Some(loops), &mut sink)
+        self.run_inner(program, queue, Some(loops), &mut |work| {
+            without_capture_preparation(work, &mut sink)
+        })
+    }
+    pub(crate) fn run_with_preparation(
+        &mut self,
+        program: &Program,
+        queue: &mut JobQueue,
+        mut prepare: impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        self.run_inner(program, queue, None, &mut prepare)
     }
     fn run_inner(
         &mut self,
         program: &Program,
         queue: &mut JobQueue,
         loops: Option<SettledRecords<'_>>,
-        sink: &mut impl FnMut(crate::resolver::ReadIntent),
+        prepare: &mut impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Some(error) = self.fault {
             return Err(error);
         }
-        let result = self.run_program(program, queue, loops, sink);
+        let result = self.run_program(program, queue, loops, prepare);
         if self.loops.is_some() {
             self.fault = result.err();
         }
@@ -513,7 +576,7 @@ impl StateProcessor {
         program: &Program,
         queue: &mut JobQueue,
         loops: Option<SettledRecords<'_>>,
-        sink: &mut impl FnMut(crate::resolver::ReadIntent),
+        prepare: &mut impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         program.check_job_budget()?;
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
@@ -529,9 +592,45 @@ impl StateProcessor {
             if loops.is_some() {
                 return Err(Error::InvalidState);
             }
-            memory
-                .run(&program.sync_instructions, program.quantum)
-                .map_err(Error::Transition)?;
+            let values = &self.memory;
+            memory.settle(&program.sync_instructions, program.quantum, |settled| {
+                if !program.sync_instructions.iter().any(|instruction| {
+                    let SyncInstruction::ProcessLoop { loop_id, .. } = *instruction;
+                    settled
+                        .slot(loop_id)
+                        .is_ok_and(|slot| slot.authored_recording)
+                }) {
+                    return Ok(());
+                }
+                let mut requests = program.instructions.iter().filter_map(|instruction| {
+                    let Instruction::ProcessLogicalCapture { loop_id, view, .. } = *instruction
+                    else {
+                        return None;
+                    };
+                    let record = match settled.slot(loop_id) {
+                        Ok(slot) if slot.render.mode == Mode::Recording => slot.render,
+                        Ok(_) => return None,
+                        Err(error) => return Some(Err(Error::Transition(error))),
+                    };
+                    Some(
+                        values
+                            .get(view.0)
+                            .ok_or(Error::InvalidState)
+                            .and_then(|value| value.word())
+                            .and_then(|value| {
+                                usize::try_from(value).map_err(|_| Error::InvalidView)
+                            })
+                            .map(|index| CaptureWrite {
+                                view: ViewId(index),
+                                reset: record.begin_capture,
+                            }),
+                    )
+                });
+                prepare(PrepareWork::Captures {
+                    requests: &mut requests,
+                    frames: program.quantum as usize,
+                })
+            })?;
         } else if !program.sync_instructions.is_empty() {
             return Err(Error::InvalidState);
         }
@@ -544,12 +643,12 @@ impl StateProcessor {
                 ..
             } = job
             {
-                sink(crate::resolver::ReadIntent {
+                prepare(PrepareWork::Read(crate::resolver::ReadIntent {
                     view,
                     position,
                     length,
                     chunks: u64::from(program.quantum / program.chunk_frames),
-                });
+                }))?;
             }
             Ok::<(), Error>(())
         };

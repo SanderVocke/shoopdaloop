@@ -19,6 +19,7 @@ module sp_engine #(
     input  wire [31:0]                         quantum,
     input wire [31:0] chunk_frames,
     input  wire [31:0]                         job_budget,
+    input wire [15:0] capture_credits,
     input  wire [31:0]                         queued_jobs,
     input  wire [31:0]                         queue_remaining,
     output reg                                 busy,
@@ -65,7 +66,13 @@ module sp_engine #(
         SYNC_CANCEL, SYNC_CANCEL_NEXT, SYNC_GROUP_DONE, SYNC_NATURAL, SYNC_WRAP, SYNC_WRAP_EVENT,
         SYNC_SOURCE, SYNC_DELIVER, SYNC_SELF, SYNC_RENDER, SYNC_STAMP,
         SYNC_ADVANCE, SYNC_ADV_POSITION, SYNC_ADV_COMMIT, SYNC_ADV_CAPTURE, SYNC_STORE, SYNC_FINISH,
-        SYNC_WRITE, SYNC_EVENT, OWN_FLAGS, OWN_STAMP, OWN_RENDER, OWN_LENGTH, MIDI_DISPATCH, MIDI_CAPTURE_FLAGS, MIDI_CAPTURE_BEGIN, MIDI_CAPTURE_APPEND, MIDI_CAPTURE_POSITION
+        SYNC_WRITE, SYNC_EVENT, OWN_FLAGS, OWN_STAMP, OWN_RENDER, OWN_LENGTH, MIDI_DISPATCH, MIDI_CAPTURE_FLAGS, MIDI_CAPTURE_BEGIN, MIDI_CAPTURE_APPEND, MIDI_CAPTURE_POSITION,
+        SYNC_SOURCE_BEGIN, COMPOSITE_PREVIOUS,
+        COMPOSITE_TABLE_READ, COMPOSITE_TABLE, COMPOSITE_PARENT_FLAGS, COMPOSITE_PARENT_CONTROL, COMPOSITE_PARENT_STAMP,
+        COMPOSITE_PARENT_PREVIOUS, COMPOSITE_PARENT_CURRENT, COMPOSITE_SPAN, COMPOSITE_APPLY,
+        COMPOSITE_DIRECT_UNIT, COMPOSITE_DIRECT_CHECK, COMPOSITE_CHILD_UNIT, COMPOSITE_ALIGN, COMPOSITE_ALIGN_RESULT,
+        COMPOSITE_LIMIT, COMPOSITE_REMAINDER, COMPOSITE_REMAINDER_RESULT, COMPOSITE_POSITION, COMPOSITE_OPERATION,
+        COMPOSITE_WAIT, COMPOSITE_REFUSE_CAPTURE
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING, LOOP_MEMORY
@@ -93,6 +100,27 @@ module sp_engine #(
     reg [7:0] opcode, instruction_reserved;
     wire [95:0] instruction={instruction_reserved,arg4,arg3,arg2,arg1,arg0,opcode};
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
+    wire composite_child = opcode == `SHOOP_SP_PROCESS_COMPOSITE_CHILD;
+    wire process_loop = opcode == `SHOOP_SP_PROCESS_LOOP || composite_child;
+    wire [31:0] next_pc = 32'(pc) + 1'b1 + (instruction_is_sync && composite_child ? {16'b0,arg4} : 32'b0);
+    reg [PC_BITS-1:0] span_pc;
+    reg [PC_BITS-1:0] parent_end_pc;
+    reg [15:0] parent_slot;
+    reg parent_snapshot, parent_restart, parent_wrap, parent_playing;
+    reg [31:0] parent_position, parent_previous, desired_start;
+    reg [1:0] previous_mode, desired_mode;
+    reg [15:0] run_capture_credits;
+    reg capture_permitted;
+    reg inherited, composite_position_checked;
+    reg [31:0] dividend, divisor, remainder;
+    reg [5:0] division_bits;
+    phase_t division_return;
+    wire [31:0] span_start = program_read_data[31:0];
+    wire [31:0] span_end = program_read_data[63:32];
+    wire [1:0] span_mode = program_read_data[65:64];
+    wire previous_match = parent_previous >= span_start && parent_previous < span_end;
+    wire desired_match = parent_position >= span_start && parent_position < span_end;
+    wire [31:0] next_parent_pc = 32'(span_pc) + 1'b1 + {26'b0,program_read_data[53:48]};
     reg [15:0] operand_address;
     reg midi_prepass, midi_restart;
     phase_t emit_return;
@@ -126,8 +154,8 @@ module sp_engine #(
     endfunction
 
     assign instruction_pc = 32'(pc);
-    assign program_read_enable = (phase == FETCH) && !reset;
-    assign program_read_address = PROGRAM_ADDR_BITS'(pc);
+    assign program_read_enable = (phase == FETCH || phase == COMPOSITE_TABLE_READ) && !reset;
+    assign program_read_address = PROGRAM_ADDR_BITS'(phase == COMPOSITE_TABLE_READ ? span_pc : pc);
     assign state_read_enable = (phase == READ_REQUEST) && operand != LOOP_MEMORY && operand_in_range && !reset;
     assign state_read_address = STATE_ADDR_BITS'(operand_address);
     assign job_valid = (phase == EMIT) && (queue_remaining != 0) && !reset;
@@ -154,6 +182,7 @@ module sp_engine #(
 
     phase_t memory_return, sync_event_return, sync_natural_return, operation_return;
     reg [63:0] flags, control, capture_frames;
+    wire is_composite = control[`SHOOP_SP_L_COMPOSITE];
     reg [LOOP_MEMORY_BITS-1:0] loop_address;
     reg [3:0] loop_word;
     reg [1:0] sync_pass;
@@ -170,6 +199,7 @@ module sp_engine #(
     wire [31:0] selected_source_slot={16'b0,inline_sync ? arg3 : flags[SS+:16]};
     wire source_tick=source_valid && !source_self && source_flags[PULSE];
     wire source_playing=source_flags[M+:2]==1;
+    wire repeat_wait=flags[REP] && source_valid && !source_self && source_playing && !source_tick;
     wire [4:0] scan_flags=scan_index ? control[P1+:5] : control[P0+:5];
     wire [4:0] winner_flags=winner ? control[P1+:5] : control[P0+:5];
     wire [4:0] cancel_flags=cancel_index ? control[P1+:5] : control[P0+:5];
@@ -184,14 +214,27 @@ module sp_engine #(
     reg position_in_range, word_at_frame, word_after_frame, advanced_invalid;
     reg [63:0] arithmetic_left, arithmetic_right;
     reg [32:0] arithmetic_low;
+    reg arithmetic_carry_in;
     reg [64:0] arithmetic_sum;
     phase_t arithmetic_return;
     wire [32:0] arithmetic_high={1'b0,arithmetic_left[63:32]}
         +{1'b0,arithmetic_right[63:32]}+{32'b0,arithmetic_low[32]};
     task automatic add_words(input [63:0] left, input [63:0] right, input phase_t destination);
         begin
-            arithmetic_left<=left; arithmetic_right<=right;
+            arithmetic_left<=left; arithmetic_right<=right; arithmetic_carry_in<=0;
             arithmetic_return<=destination; phase<=ADD_LOW;
+        end
+    endtask
+    task automatic subtract_words(input [63:0] left, input [63:0] right, input phase_t destination);
+        begin
+            arithmetic_left<=left; arithmetic_right<=~right; arithmetic_carry_in<=1;
+            arithmetic_return<=destination; phase<=ADD_LOW;
+        end
+    endtask
+    task automatic composite_remainder(input [31:0] numerator, input [31:0] denominator, input phase_t destination);
+        begin
+            dividend<=numerator; divisor<=denominator; remainder<=0;
+            division_bits<=6'd32; division_return<=destination; phase<=COMPOSITE_REMAINDER;
         end
     endtask
     assign faulted=sync_fault;
@@ -261,6 +304,12 @@ module sp_engine #(
             arg2 <= 0;
             arg3 <= 0;
             arg4 <= 0;
+            span_pc<=0; parent_end_pc<=0; parent_slot<=0;
+            parent_position<=0; parent_previous<=0; desired_start<=0;
+            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0;
+            previous_mode<=0; desired_mode<=0; inherited<=0; composite_position_checked<=0;
+            run_capture_credits<=0; capture_permitted<=0;
+            dividend<=0; divisor<=0; remainder<=0; division_bits<=0; division_return<=IDLE;
             operand_address <= 0;
             position <= 0;
             length <= 0;
@@ -276,7 +325,7 @@ module sp_engine #(
             job_data <= 0;
             done <= 0;
             error_code <= `SHOOP_SP_OK;
-            arithmetic_left<=0; arithmetic_right<=0; arithmetic_low<=0; arithmetic_sum<=0; arithmetic_return<=IDLE;
+            arithmetic_left<=0; arithmetic_right<=0; arithmetic_low<=0; arithmetic_carry_in<=0; arithmetic_sum<=0; arithmetic_return<=IDLE;
         end else begin
             done <= 0;
             case (phase)
@@ -287,12 +336,13 @@ module sp_engine #(
                     queue_bad <= (queued_jobs != 0) || (queue_remaining < job_budget);
                     shape_bad <= chunk_frames == 0 || (chunk_frames & (chunk_frames-1)) != 0
                         || quantum == 0 || (quantum & (chunk_frames-1)) != 0;
-                    program_bad <= instruction_count > 32'(PROGRAM_DEPTH) || sync_count>instruction_count || sync_count>32'(LOOP_DEPTH);
+                    program_bad <= instruction_count > 32'(PROGRAM_DEPTH) || sync_count>instruction_count;
                     state_bad <= state_count > 32'(STATE_DEPTH);
                     empty_program <= instruction_count == 0;
                     midi_prepass <= sync_count!=0;
                     run_count <= PC_BITS'(instruction_count);
                     run_state_count <= state_count;
+                    run_capture_credits <= capture_credits;
                     run_quantum <= quantum; run_sync_count<=sync_count; run_has_sync<=sync_count!=0;
                     if (sync_count!=0 && !(quantum==1 || quantum==16 || quantum==32 || quantum==64 || quantum==128)) shape_bad<=1;
                     if (queued_jobs != 0) begin
@@ -300,7 +350,7 @@ module sp_engine #(
                     end else add_words(sync_frame,{32'b0,quantum},ADMIT);
                 end
                 ADD_LOW: begin
-                    arithmetic_low<={1'b0,arithmetic_left[31:0]}+{1'b0,arithmetic_right[31:0]};
+                    arithmetic_low<={1'b0,arithmetic_left[31:0]}+{1'b0,arithmetic_right[31:0]}+{32'b0,arithmetic_carry_in};
                     phase<=ADD_HIGH;
                 end
                 ADD_HIGH: begin
@@ -332,7 +382,8 @@ module sp_engine #(
                 end
                 DECODE: begin
                     opcode <= program_read_data[7:0];
-                    inline_sync <= program_read_data[7:0]==`SHOOP_SP_PROCESS_LOOP && program_read_data[72];
+                    inline_sync <= program_read_data[7:0]==`SHOOP_SP_PROCESS_COMPOSITE_CHILD
+                        || (program_read_data[7:0]==`SHOOP_SP_PROCESS_LOOP && program_read_data[72]);
                     arg0 <= program_read_data[23:8];
                     arg1 <= program_read_data[39:24];
                     arg2 <= program_read_data[55:40];
@@ -344,12 +395,23 @@ module sp_engine #(
                 DISPATCH: begin
                     writeback <= 0; emit_return<=NEXT;
                     if (midi_prepass && !instruction_is_sync && opcode!=`SHOOP_SP_MIDI_CAPTURE_INSTRUCTION && opcode!=`SHOOP_SP_MIDI_STATE_INSTRUCTION) phase<=NEXT;
-                    else if (instruction_is_sync!=(instruction[7:0]==`SHOOP_SP_PROCESS_LOOP)) begin
+                    else if (instruction_is_sync!=process_loop) begin
                         finish_error(`SHOOP_SP_INVALID_PROGRAM);
                     end else case (instruction[7:0])
                         `SHOOP_SP_PROCESS_LOOP: begin
                             if (instruction[95:56]!=0 && !(instruction[95:72]==24'd1)) begin finish_error(`SHOOP_SP_INVALID_PROGRAM); end
                             else phase<=SYNC_BEGIN;
+                        end
+                        `SHOOP_SP_PROCESS_COMPOSITE_CHILD: begin
+                            if (instruction_reserved!=0 || arg4<2
+                                || arg4>16'(`SHOOP_SP_MAX_CHILD_PARENTS*(1+`SHOOP_SP_MAX_CHILD_SPANS))
+                                || next_pc>run_sync_count) begin
+                                finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                            end else begin
+                                last_sync_instruction<=next_pc==run_sync_count;
+                                last_instruction<=next_pc==32'(run_count);
+                                phase<=SYNC_BEGIN;
+                            end
                         end
                         `SHOOP_SP_MIDI_INPUT_INSTRUCTION: begin
                             job_data<=pack_job(`SHOOP_SP_MIDI_INPUT,arg0,arg1,0,0,0); phase<=EMIT;
@@ -476,7 +538,7 @@ module sp_engine #(
                     word_at_frame<=word_value==sync_frame; word_after_frame<=word_value>sync_frame;
                     if (operand==LOOP_MEMORY) begin
                         case (memory_return)
-                            SYNC_WRAP, SYNC_NEW_REV: add_words(word_value,64'd1,memory_return);
+                            SYNC_WRAP, SYNC_NEW_REV, COMPOSITE_WAIT: add_words(word_value,64'd1,memory_return);
                             SYNC_REMAINING: add_words(word_value,64'hffffffffffffffff,memory_return);
                             OWN_STAMP: add_words(word_value,{32'b0,run_quantum},memory_return);
                             default: phase<=memory_return;
@@ -557,7 +619,7 @@ module sp_engine #(
                 end
                 SYNC_BEGIN: begin
                     if (target>=32'(LOOP_DEPTH)) sync_fail();
-                    else if (opcode==`SHOOP_SP_PROCESS_LOOP) begin loop_word<=0; loop_read(target,FLAGS,SYNC_LOAD); end
+                    else if (process_loop) begin loop_word<=0; loop_read(target,FLAGS,SYNC_LOAD); end
                     else loop_read(target,FLAGS,OWN_FLAGS);
                 end
                 SYNC_LOAD: begin
@@ -581,8 +643,26 @@ module sp_engine #(
                 end
                 SYNC_CHECK: begin
                     pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; flags[PULSE]<=0; flags[`SHOOP_SP_L_MIDI_RESTART]<=0;
-                    if (sync_flags_invalid || (flags[PV] && word_at_frame)) sync_fail();
-                    else if (source_valid) begin
+                    inherited<=0;
+                    flags[`SHOOP_SP_L_COMPOSITE_SNAPSHOT]<=0; flags[`SHOOP_SP_L_COMPOSITE_RESTART]<=0;
+                    flags[`SHOOP_SP_L_COMPOSITE_WRAP]<=0;
+                    control[`SHOOP_SP_L_COMPOSITE_CHILD]<=composite_child;
+                    if (flags[M+:2]!=2) control[`SHOOP_SP_L_AUTHORED_CAPTURE]<=0;
+                    if (sync_flags_invalid || (flags[PV] && word_at_frame)
+                        || (is_composite && flags[M+:2]==2)) sync_fail();
+                    else if (is_composite && flags[M+:2]==1)
+                        loop_read(target,RP,COMPOSITE_PREVIOUS);
+                    else begin
+                        if (is_composite) capture_frames<=64'hffffffffffffffff;
+                        phase<=SYNC_SOURCE_BEGIN;
+                    end
+                end
+                COMPOSITE_PREVIOUS: begin
+                    capture_frames<=word_value;
+                    phase<=SYNC_SOURCE_BEGIN;
+                end
+                SYNC_SOURCE_BEGIN: begin
+                    if (source_valid) begin
                         if (source_slot>=32'(LOOP_DEPTH)) sync_fail();
                         else if (source_self) begin
                             if (!inline_sync && !sync_control_matches) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
@@ -629,11 +709,20 @@ module sp_engine #(
                 SYNC_OP_BEGIN: begin
                     ramp_state[66:0]<={winner_flags[RET],winner_flags[OP+:2],word_value};
                     operation_in_range<=word_value<operation_length;
+                    composite_position_checked<=0;
                     phase<=SYNC_OP_CHECK;
                 end
                 SYNC_OP_CHECK: begin
                     applied_pulse<=0;
-                    case (operation_code)
+                    if (is_composite && operation_code==2)
+                        sync_resolve(winner,3,INVALID_STATE,SYNC_GROUP_DONE);
+                    else if (is_composite && operation_code==1 && operation_empty && operation_position==0)
+                        sync_resolve(winner,0,0,SYNC_GROUP_DONE);
+                    else if (is_composite && !inherited && !composite_position_checked
+                        && operation_position!=0 && operation_in_range
+                        && ((operation_code==1 && !preserve) || (operation_code==3 && flags[M+:2]==1)))
+                        loop_read(target,CR,COMPOSITE_DIRECT_UNIT);
+                    else case (operation_code)
                         0: begin
                             changed<=flags[M+:2]!=0 || position!=0;
                             flags[M+:2]<=0; position<=0;
@@ -676,16 +765,29 @@ module sp_engine #(
                 SYNC_RESET_CYCLES: begin
                     changed<=changed || word_nonzero; loop_write(CYC,0,SYNC_SUCCESS);
                 end
-                SYNC_SUCCESS: sync_resolve(winner,0,0,SYNC_AFTER_APPLY);
+                SYNC_SUCCESS: begin
+                    if (inherited) phase<=SYNC_AFTER_APPLY;
+                    else sync_resolve(winner,0,0,SYNC_AFTER_APPLY);
+                end
                 SYNC_AFTER_APPLY: begin
                     if (changed) sync_emit(0,0,0,operation_position,{61'b0,ramp_state[66:64]},SYNC_EFFECTS);
                     else phase<=SYNC_EFFECTS;
                 end
                 SYNC_EFFECTS: begin
+                    control[`SHOOP_SP_L_AUTHORED_CAPTURE]<=inherited && operation_code==2;
                     if (operation_code==3 && changed) flags[`SHOOP_SP_L_MIDI_RESTART]<=1;
-                    if (operation_code==0) begin masked<=1; pulse_pending<=0; cancel_index<=0; phase<=SYNC_CANCEL; end
+                    if (operation_code==0) begin
+                        masked<=1; pulse_pending<=0; cancel_index<=0;
+                        control[`SHOOP_SP_L_COMPOSITE_WAIT]<=0;
+                        phase<=inherited ? SYNC_GROUP_DONE : SYNC_CANCEL;
+                    end
                     else begin
                         if (applied_pulse) begin masked<=0; if (!delivered) pulse_pending<=1; end
+                        if (is_composite && (operation_code==3 || (operation_code==1 && applied_pulse))) begin
+                            flags[`SHOOP_SP_L_COMPOSITE_SNAPSHOT]<=1;
+                            flags[`SHOOP_SP_L_COMPOSITE_RESTART]<=applied_pulse;
+                            control[`SHOOP_SP_L_COMPOSITE_WAIT]<=0;
+                        end
                         phase<=SYNC_GROUP_DONE;
                     end
                 end
@@ -698,25 +800,194 @@ module sp_engine #(
                 end
                 SYNC_GROUP_DONE: begin
                     sync_natural_return<=sync_pass==0 ? SYNC_SOURCE : sync_pass==1 ? SYNC_DELIVER : SYNC_RENDER;
-                    phase<=SYNC_NATURAL;
+                    if (sync_pass==0 && composite_child && !inherited
+                        && (!protected_valid || control[`SHOOP_SP_L_AUTHORED_CAPTURE])) begin
+                        span_pc<=pc+1'b1; parent_end_pc<=pc+1'b1; phase<=COMPOSITE_TABLE_READ;
+                    end else phase<=SYNC_NATURAL;
+                end
+                COMPOSITE_TABLE_READ: phase<=span_pc==parent_end_pc ? COMPOSITE_TABLE : COMPOSITE_SPAN;
+                COMPOSITE_TABLE: begin
+                    if (program_read_data[95:70]!=0 || program_read_data[53:48]==0
+                        || program_read_data[53:48]>6'(`SHOOP_SP_MAX_CHILD_SPANS)
+                        || next_parent_pc>next_pc || {16'b0,program_read_data[15:0]}>=32'(LOOP_DEPTH)) sync_fail();
+                    else begin
+                        parent_slot<=program_read_data[15:0];
+                        capture_permitted<=program_read_data[69:54]!=0 && program_read_data[69:54]<=run_capture_credits;
+                        parent_end_pc<=PC_BITS'(next_parent_pc);
+                        span_pc<=span_pc+1'b1;
+                        loop_read({16'b0,program_read_data[15:0]},FLAGS,COMPOSITE_PARENT_FLAGS);
+                    end
+                end
+                COMPOSITE_PARENT_FLAGS: begin
+                    if (!word_value[V] || !word_value[PV]
+                        || word_value[G+:32]!=program_read_data[47:16] || word_value[M+:2]>1) sync_fail();
+                    else begin
+                        parent_playing<=word_value[M+:2]==1;
+                        parent_snapshot<=word_value[`SHOOP_SP_L_COMPOSITE_SNAPSHOT];
+                        parent_restart<=word_value[`SHOOP_SP_L_COMPOSITE_RESTART];
+                        parent_wrap<=word_value[`SHOOP_SP_L_COMPOSITE_WRAP];
+                        loop_read({16'b0,parent_slot},CONTROL,COMPOSITE_PARENT_CONTROL);
+                    end
+                end
+                COMPOSITE_PARENT_CONTROL: begin
+                    if (!word_value[`SHOOP_SP_L_COMPOSITE]) sync_fail();
+                    else loop_read({16'b0,parent_slot},PF,COMPOSITE_PARENT_STAMP);
+                end
+                COMPOSITE_PARENT_STAMP: begin
+                    if (!word_at_frame) sync_fail();
+                    else loop_read({16'b0,parent_slot},CAP,COMPOSITE_PARENT_PREVIOUS);
+                end
+                COMPOSITE_PARENT_PREVIOUS: begin
+                    parent_previous<=word_value[31:0];
+                    previous_mode<=0; desired_mode<=0; desired_start<=0;
+                    if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);
+                    else begin
+                        parent_position<=32'hffffffff;
+                        phase<=COMPOSITE_TABLE_READ;
+                    end
+                end
+                COMPOSITE_PARENT_CURRENT: begin
+                    parent_position<=word_value[31:0];
+                    phase<=COMPOSITE_TABLE_READ;
+                end
+                COMPOSITE_SPAN: begin
+                    if (span_start>=span_end || span_mode==0 || program_read_data[95:66]!=0) sync_fail();
+                    else begin
+                        if (previous_match) previous_mode<=span_mode;
+                        if (desired_match) begin
+                            desired_mode<=span_mode; desired_start<=span_start;
+                        end
+                        if (span_pc+1'b1==parent_end_pc || (span_start>parent_previous && span_start>parent_position)
+                            || ((previous_mode!=0 || previous_match) && (desired_mode!=0 || desired_match)))
+                            phase<=COMPOSITE_APPLY;
+                        else begin
+                            span_pc<=span_pc+1'b1; phase<=COMPOSITE_TABLE_READ;
+                        end
+                    end
+                end
+                COMPOSITE_APPLY: begin
+                    if (protected_valid) phase<=COMPOSITE_REFUSE_CAPTURE;
+                    else if (previous_mode!=desired_mode || (desired_mode!=0 && (parent_snapshot
+                        || (parent_wrap && is_composite
+                        && (flags[M+:2]!=1 || (flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT] && position==length)))))) begin
+                        operation_empty<=0; operation_in_range<=1;
+                        if (desired_mode==3) begin
+                            if (is_composite) sync_fail();
+                            else if (capture_permitted) begin
+                                inherited<=1;
+                                ramp_state[66:0]<={3'b010,64'b0}; phase<=SYNC_OP_CHECK;
+                            end else phase<=COMPOSITE_REFUSE_CAPTURE;
+                        end else if (desired_mode!=1 || playable_length==0) begin
+                            inherited<=1;
+                            ramp_state[66:0]<=0; phase<=SYNC_OP_CHECK;
+                        end else begin
+                            inherited<=1;
+                            ramp_state[66:64]<=parent_snapshot && !parent_restart && flags[M+:2]==1 ? 3'b011 : 3'b101;
+                            if (!parent_snapshot || parent_position==desired_start) begin
+                                ramp_state[63:0]<=0; phase<=SYNC_OP_CHECK;
+                            end else subtract_words({32'b0,parent_position},{32'b0,desired_start},COMPOSITE_POSITION);
+                        end
+                    end else if (32'(parent_end_pc)==next_pc) phase<=COMPOSITE_REFUSE_CAPTURE;
+                    else begin
+                        span_pc<=parent_end_pc; phase<=COMPOSITE_TABLE_READ;
+                    end
+                end
+                COMPOSITE_REFUSE_CAPTURE: begin
+                    if (control[`SHOOP_SP_L_AUTHORED_CAPTURE] && !capture_permitted) begin
+                        inherited<=1;
+                        ramp_state[66:0]<=0; phase<=SYNC_OP_CHECK;
+                    end else phase<=SYNC_NATURAL;
+                end
+                COMPOSITE_POSITION: begin
+                    ramp_state[63:0]<=arithmetic_sum[63:0];
+                    if (is_composite) loop_read(target,CR,COMPOSITE_CHILD_UNIT);
+                    else phase<=COMPOSITE_LIMIT;
+                end
+                COMPOSITE_CHILD_UNIT: begin
+                    if (word_value[31:0]==0) sync_fail();
+                    else composite_remainder(operation_position[31:0],word_value[31:0],COMPOSITE_ALIGN);
+                end
+                COMPOSITE_ALIGN: begin
+                    if (remainder==0) phase<=COMPOSITE_LIMIT;
+                    else subtract_words(operation_position,{32'b0,remainder},COMPOSITE_ALIGN_RESULT);
+                end
+                COMPOSITE_ALIGN_RESULT: begin
+                    ramp_state[63:0]<=arithmetic_sum[63:0];
+                    phase<=COMPOSITE_LIMIT;
+                end
+                COMPOSITE_LIMIT: begin
+                    if (operation_position<playable_length) phase<=SYNC_OP_CHECK;
+                    else if (flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT]) begin
+                        ramp_state[66:0]<=0; phase<=SYNC_OP_CHECK;
+                    end else composite_remainder(operation_position[31:0],playable_length[31:0],COMPOSITE_OPERATION);
+                end
+                COMPOSITE_OPERATION: begin
+                    ramp_state[63:0]<={32'b0,remainder};
+                    phase<=SYNC_OP_CHECK;
+                end
+                COMPOSITE_DIRECT_UNIT: begin
+                    if (word_value[31:0]==0) sync_fail();
+                    else composite_remainder(operation_position[31:0],word_value[31:0],COMPOSITE_DIRECT_CHECK);
+                end
+                COMPOSITE_DIRECT_CHECK: begin
+                    composite_position_checked<=1;
+                    if (remainder!=0) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
+                    else phase<=SYNC_OP_CHECK;
+                end
+                COMPOSITE_REMAINDER: begin
+                    subtract_words({31'b0,remainder,dividend[31]},{32'b0,divisor},COMPOSITE_REMAINDER_RESULT);
+                end
+                COMPOSITE_REMAINDER_RESULT: begin
+                    dividend<=dividend<<1;
+                    remainder<=arithmetic_sum[64] ? arithmetic_sum[31:0] : {remainder[30:0],dividend[31]};
+                    division_bits<=division_bits-1'b1;
+                    phase<=division_bits==1 ? division_return : COMPOSITE_REMAINDER;
                 end
                 SYNC_NATURAL: begin
-                    if (flags[M+:2]==1 && length!=0 && position==length
-                        && !(flags[REP] && source_valid && !source_self && source_playing && !source_tick))
-                        loop_read(target,CYC,SYNC_WRAP);
+                    if (is_composite && (sync_pass==2 || (sync_pass==0 && source_tick)))
+                        phase<=sync_natural_return;
+                    else if (flags[M+:2]==1 && length!=0 && position==length) begin
+                        if (flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT]) loop_read(target,CYC,SYNC_WRAP);
+                        else if (repeat_wait) begin
+                            if (is_composite && !control[`SHOOP_SP_L_COMPOSITE_WAIT])
+                                loop_read(target,CYC,COMPOSITE_WAIT);
+                            else phase<=sync_natural_return;
+                        end else if (is_composite && control[`SHOOP_SP_L_COMPOSITE_WAIT]) begin
+                            position<=0;
+                            control[`SHOOP_SP_L_COMPOSITE_WAIT]<=0;
+                            flags[`SHOOP_SP_L_COMPOSITE_SNAPSHOT]<=1;
+                            flags[`SHOOP_SP_L_COMPOSITE_RESTART]<=1;
+                            if (!delivered) pulse_pending<=1;
+                            phase<=sync_natural_return;
+                        end else loop_read(target,CYC,SYNC_WRAP);
+                    end
                     else phase<=sync_natural_return;
+                end
+                COMPOSITE_WAIT: begin
+                    if (arithmetic_sum[64]) sync_fail();
+                    else begin
+                        control[`SHOOP_SP_L_COMPOSITE_WAIT]<=1;
+                        loop_write(CYC,arithmetic_sum[63:0],sync_natural_return);
+                    end
                 end
                 SYNC_WRAP: begin
                     if (arithmetic_sum[64]) sync_fail();
                     else begin
-                        position<=0; if (!delivered) pulse_pending<=1;
-                        loop_write(CYC,arithmetic_sum[63:0],SYNC_WRAP_EVENT);
+                        position<=0;
+                        if (flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT]) begin
+                            flags[M+:2]<=0;
+                            loop_write(CYC,arithmetic_sum[63:0],sync_natural_return);
+                        end else begin
+                            if (!delivered) pulse_pending<=1;
+                            flags[`SHOOP_SP_L_COMPOSITE_WRAP]<=is_composite;
+                            loop_write(CYC,arithmetic_sum[63:0],is_composite ? sync_natural_return : SYNC_WRAP_EVENT);
+                        end
                     end
                 end
                 SYNC_WRAP_EVENT: sync_emit(1,0,0,0,0,sync_natural_return);
                 SYNC_SOURCE: begin
                     if (source_tick) begin
-                        if (!masked && !delivered) pulse_pending<=1;
+                        if (!is_composite && !masked && !delivered) pulse_pending<=1;
                         sync_pass<=1; scan_index<=0; winner_valid<=0; phase<=SYNC_SCAN;
                     end else phase<=SYNC_DELIVER;
                 end
@@ -833,7 +1104,7 @@ module sp_engine #(
                     phase<=EMIT;
                 end
                 NEXT: begin
-                    pc <= pc + 1'b1;
+                    pc <= PC_BITS'(next_pc);
                     if (last_instruction && midi_prepass && run_has_sync) begin
                         midi_prepass<=0;pc<=PC_BITS'(run_sync_count);phase<=FETCH;
                         if (run_sync_count==32'(run_count)) begin done<=1;busy<=0;phase<=IDLE;end

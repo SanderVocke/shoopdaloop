@@ -1,6 +1,6 @@
 //! ARM-owned reservations and address binding for two executable regions.
 use crate::*;
-use alloc::vec;
+use alloc::{collections::BTreeSet, vec};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -39,6 +39,61 @@ pub struct LoopSlot {
     pub sync_source: Option<Identity>,
 }
 
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeCut {
+    pub old_slot: Identity,
+    pub require_empty: bool,
+    pub allow_restart: bool,
+    pub future_before: Option<u32>,
+}
+
+impl CompositeCut {
+    pub fn allows_playing(self, position: u64, length: u64) -> bool {
+        (self.allow_restart && length != 0 && position == length)
+            || (position < length
+                && self
+                    .future_before
+                    .is_some_and(|frame| position < u64::from(frame)))
+    }
+
+    pub fn waits_for_restart(self, position: u64, length: u64) -> bool {
+        self.allow_restart && position < length && !self.allows_playing(position, length)
+    }
+}
+
+impl CompositeSchedule {
+    fn future_edit_before(&self, candidate: &Self) -> Option<u32> {
+        if !self
+            .children
+            .iter()
+            .map(|c| c.id)
+            .eq(candidate.children.iter().map(|c| c.id))
+        {
+            return None;
+        }
+        let mut earliest = self.length;
+        for (before, after) in self.children.iter().zip(&candidate.children) {
+            let mut old = before.spans.iter();
+            let mut new = after.spans.iter();
+            loop {
+                let frame = match (old.next(), new.next()) {
+                    (Some(a), Some(b)) if a == b => continue,
+                    (Some(a), Some(b)) if a.start == b.start && a.mode == b.mode => {
+                        a.end.min(b.end)
+                    }
+                    (Some(a), Some(b)) => a.start.min(b.start),
+                    (Some(a), None) | (None, Some(a)) => a.start,
+                    (None, None) => break,
+                };
+                earliest = earliest.min(frame);
+                break;
+            }
+        }
+        earliest.checked_sub(self.unit_frames)
+    }
+}
+
 /// A bound image owns no mutable access to continuing allocations.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -54,6 +109,10 @@ pub struct Layout {
     changed_sources: Vec<Identity>,
     quantum: u32,
     chunk_frames: u32,
+    #[cfg_attr(feature = "serde", serde(default))]
+    composites: Vec<CompositeSchedule>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    composite_cuts: Vec<CompositeCut>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -128,6 +187,14 @@ impl Layout {
     pub fn changed_sources(&self) -> &[Identity] {
         &self.changed_sources
     }
+    pub fn composite_cuts(&self) -> &[CompositeCut] {
+        &self.composite_cuts
+    }
+    pub fn composite_schedule(&self, logical: Identity) -> Option<&CompositeSchedule> {
+        self.composites
+            .iter()
+            .find(|schedule| schedule.id == logical)
+    }
     pub fn new_loops(&self) -> impl Iterator<Item = Identity> + '_ {
         self.loops.iter().filter(|l| l.fresh).map(|l| l.physical)
     }
@@ -177,6 +244,12 @@ impl Layout {
         }
         for l in &mut bound.sync_pass {
             *l = id(*l)?;
+        }
+        for schedule in &mut bound.composites {
+            schedule.id = id(schedule.id)?;
+            for child in &mut schedule.children {
+                child.id = id(child.id)?;
+            }
         }
         for b in &mut bound.bindings {
             b.id = id(b.id)?;
@@ -259,9 +332,105 @@ impl Allocator {
             return Err(LoadError::Geometry);
         }
         let old = self.current.as_ref();
+        let mut changed_composites = BTreeSet::new();
+        let mut replaced_slots = BTreeSet::new();
+        let mut composite_cuts = Vec::new();
+        if let Some(old) = old {
+            for schedule in &old.composites {
+                if !program.composites.contains(schedule) {
+                    changed_composites.insert(schedule.id);
+                }
+            }
+            for schedule in &program.composites {
+                if old
+                    .composite_schedule(schedule.id)
+                    .is_some_and(|before| before != schedule && before.version >= schedule.version)
+                {
+                    return Err(LoadError::StaleRevision);
+                }
+                if !old.composites.contains(schedule) {
+                    changed_composites.insert(schedule.id);
+                }
+            }
+            let mut stopped = changed_composites.clone();
+            loop {
+                let count = stopped.len();
+                for schedule in &old.composites {
+                    if schedule
+                        .children
+                        .iter()
+                        .any(|child| stopped.contains(&child.id))
+                    {
+                        stopped.insert(schedule.id);
+                    }
+                }
+                if stopped.len() == count {
+                    break;
+                }
+            }
+            for row in &old.loops {
+                if stopped.contains(&row.logical) {
+                    let before = old.composites.iter().find(|s| s.id == row.logical);
+                    let after = program.composites.iter().find(|s| s.id == row.logical);
+                    let continuing = before.zip(after).filter(|(before, after)| {
+                        (before.unit_frames, before.length, before.explicit)
+                            == (after.unit_frames, after.length, after.explicit)
+                    });
+                    if continuing.is_none() && changed_composites.contains(&row.logical) {
+                        replaced_slots.insert(row.logical);
+                    }
+                    let independent = !old
+                        .composites
+                        .iter()
+                        .chain(&program.composites)
+                        .any(|s| s.children.iter().any(|child| child.id == row.logical));
+                    let allow_restart = changed_composites.contains(&row.logical)
+                        && independent
+                        && continuing.is_some_and(|(before, after)| {
+                            let tail = |s: &CompositeSchedule| -> Vec<Identity> {
+                                s.children
+                                    .iter()
+                                    .filter(|child| {
+                                        child.spans.last().is_some_and(|span| span.end == s.length)
+                                    })
+                                    .map(|child| child.id)
+                                    .collect()
+                            };
+                            !before.explicit
+                                && row.sync_source.is_none()
+                                && program
+                                    .loops
+                                    .iter()
+                                    .any(|l| l.id == row.logical && l.sync_source.is_none())
+                                && tail(before) == tail(after)
+                        });
+                    let future_before = if changed_composites.contains(&row.logical)
+                        && independent
+                        && program
+                            .loops
+                            .iter()
+                            .any(|l| l.id == row.logical && l.sync_source == row.sync_source)
+                    {
+                        continuing.and_then(|(before, after)| before.future_edit_before(after))
+                    } else {
+                        None
+                    };
+                    composite_cuts.push(CompositeCut {
+                        old_slot: row.physical,
+                        require_empty: before.is_none(),
+                        allow_restart,
+                        future_before,
+                    });
+                }
+            }
+        }
         let mut loops: Vec<LoopSlot> = Vec::new();
         for l in &program.loops {
-            if let Some(existing) = old.and_then(|o| o.loops.iter().find(|v| v.logical == l.id)) {
+            if let Some(existing) = old.and_then(|o| {
+                o.loops
+                    .iter()
+                    .find(|v| v.logical == l.id && !replaced_slots.contains(&l.id))
+            }) {
                 loops.push(LoopSlot {
                     fresh: false,
                     sync_source: l.sync_source,
@@ -383,6 +552,8 @@ impl Allocator {
             changed_sources,
             quantum: program.quantum,
             chunk_frames: program.chunk_frames,
+            composites: program.composites.clone(),
+            composite_cuts,
         };
         layout.relocate(program)?.validate(self.limits)?;
         self.pending = Some(layout.clone());

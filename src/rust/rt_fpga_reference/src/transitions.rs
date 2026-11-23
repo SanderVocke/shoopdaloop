@@ -1,6 +1,7 @@
 //! Loop graph compilation and transition values used by the state processor.
 mod plan;
 mod types;
+pub(crate) use plan::{CompositeClock, ParentSpans};
 pub use plan::{
     LoopKind, LoopSpec, PlanDescription, TransitionLimits, TransitionPlan, TransitionPlanImage,
 };

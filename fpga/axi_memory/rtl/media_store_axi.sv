@@ -135,6 +135,7 @@ module media_store_axi #(
     wire [31:0] memory_meta_read_data;
     wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     wire [31:0] physical_base = PHYSICAL_BASE;
+    wire [15:0] unused_capture_credits;
     media_store #(
         .REUSE_VIEWS(REUSE_VIEWS),
         .VIEWS(VIEWS),
@@ -154,7 +155,7 @@ module media_store_axi #(
         .BURST_MEMORY(BURST_MEMORY),
         .VIEW_BITS(VIEW_BITS),
         .SLOT_BITS(SLOT_BITS),
-        .TABLE_BITS(TABLE_BITS)) core (.*);
+        .TABLE_BITS(TABLE_BITS)) core (.capture_credits(unused_capture_credits), .*);
     localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;
     initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
     shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);

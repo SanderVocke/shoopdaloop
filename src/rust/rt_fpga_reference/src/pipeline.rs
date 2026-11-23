@@ -2,7 +2,7 @@
 use crate::{
     fixed::Fixed,
     jobs::{Job, JobProcessor, JobQueue, Memory},
-    state::{Address, ModePlan, PlannedTransition, Program, StateProcessor, Value},
+    state::{Address, ModePlan, PlannedTransition, PrepareWork, Program, StateProcessor, Value},
     transitions::*,
     Error,
 };
@@ -99,6 +99,24 @@ impl Pipeline {
                 && !self.program.instructions.contains(i)
         }) {
             return Err(PipelineError::State(Error::InvalidState));
+        }
+        for cut in image.layout.composite_cuts() {
+            let slot = self
+                .state
+                .loop_state(LoopId {
+                    slot: cut.old_slot.slot,
+                    generation: cut.old_slot.generation,
+                })
+                .map_err(PipelineError::Transition)?;
+            let ready = (slot.state.mode == Mode::Stopped && !slot.render.plays())
+                || (slot.state.mode == Mode::Playing
+                    && cut.allows_playing(slot.state.position, slot.state.content_length));
+            if !ready
+                || slot.planned.iter().any(Option::is_some)
+                || (cut.require_empty && slot.state.content_length != 0)
+            {
+                return Err(PipelineError::State(Error::InvalidState));
+            }
         }
         for instruction in &self.program.instructions {
             if let crate::state::Instruction::ProcessMidiState { loop_id, .. } = instruction {
@@ -463,11 +481,17 @@ impl Pipeline {
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
-        let state_result = self
-            .state
-            .run_with_intents(&self.program, &mut self.queue, |intent| {
-                intent.prefetch(memory)
-            });
+        let state_result =
+            self.state
+                .run_with_preparation(&self.program, &mut self.queue, |work| match work {
+                    PrepareWork::Read(intent) => {
+                        intent.prefetch(memory);
+                        Ok(())
+                    }
+                    PrepareWork::Captures { requests, frames } => {
+                        memory.prepare_capture_writes(requests, frames)
+                    }
+                });
         if self.trace_jobs {
             self.emitted.extend(self.queue.iter().copied());
         }

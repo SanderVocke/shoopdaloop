@@ -107,3 +107,133 @@ fn compiled_graph_records_routes_and_sums_exact_samples() {
         }
     }
 }
+
+#[shoop_test]
+fn authored_recording_publishes_the_take_before_play_and_preserves_the_old_take_on_refusal() {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    use rt_fpga_reference::{
+        state::PlannedTransition,
+        transitions::{LoopId, Operation},
+    };
+
+    let child = Identity {
+        slot: 0,
+        generation: 1,
+    };
+    let mut graph = mono::session(&[mono::MonoLoop {
+        id: child,
+        source: None,
+        input: true,
+        output: true,
+        gain: 1.0,
+        repeat_sync: false,
+    }]);
+    let mut parent = graph.loops[0].clone();
+    parent.id.slot = 1;
+    parent.strip = None;
+    parent.composite = Some(CompositeView {
+        kind: CompositeKind::Explicit,
+        version: 1,
+        unit_frames: 16,
+        iterations: 3,
+        sample_rate: 48000,
+        quantum: 16,
+        spans: vec![
+            CompositeSpan {
+                target: child,
+                start: 0,
+                end: 2,
+                occurrence_start: 0,
+                ordinal: 0,
+                mode: LoopMode::Recording,
+            },
+            CompositeSpan {
+                target: child,
+                start: 2,
+                end: 3,
+                occurrence_start: 2,
+                ordinal: 1,
+                mode: LoopMode::Playing,
+            },
+        ]
+        .into(),
+    });
+    graph.loops.push(parent);
+    let logical = rt_fpga_compiler::compile_composites(
+        &graph,
+        CompileContext {
+            quantum: 16,
+            limits: Default::default(),
+        },
+        16,
+    )
+    .unwrap();
+
+    let old = Fixed::from_f32(0.125);
+    let first = Fixed::from_f32(0.25);
+    let second = Fixed::from_f32(0.5);
+    for (capacity, prior_take, denied, expected) in
+        [(1, true, 1, old), (1, false, 1, first), (2, true, 0, first)]
+    {
+        let mut media = MediaStore::with_chunk_limit(16, capacity).unwrap();
+        let view = if prior_take {
+            media.insert(&[old; 16]).unwrap()
+        } else {
+            media.create_recording().unwrap()
+        };
+        let mut logical = logical.clone();
+        if prior_take {
+            logical.loops[0].length = 16;
+        }
+        let compiled = RustTarget::new(&[view.0 as u64]).build(&logical).unwrap();
+        let resources = compiled.resources;
+        let mut jobs = JobProcessor::new(16, resources.buffers as usize);
+        let mut pipeline = Pipeline::prepare(
+            compiled.plan,
+            compiled.program,
+            compiled.memory,
+            resources.queue_capacity as usize,
+        )
+        .unwrap();
+        pipeline
+            .write_plans(
+                LoopId {
+                    slot: 1,
+                    generation: 1,
+                },
+                [
+                    Some(PlannedTransition {
+                        sequence: 1,
+                        operation: Operation::Play {
+                            position: 0,
+                            retrigger: true,
+                        },
+                        effective: 0,
+                        on_pulse: false,
+                        remaining_ticks: 0,
+                    }),
+                    None,
+                ],
+            )
+            .unwrap();
+        let mut left = [Fixed::ZERO; 16];
+        let mut right = left;
+        for (tick, input) in [first, second, Fixed::ZERO].into_iter().enumerate() {
+            pipeline
+                .process(
+                    &mut jobs,
+                    &mut media,
+                    &[&[input; 16]],
+                    &mut [&mut left, &mut right],
+                )
+                .unwrap();
+            assert_eq!(left, [if tick == 2 { expected } else { Fixed::ZERO }; 16]);
+            assert_eq!(right, left);
+        }
+        assert_eq!(pipeline.state().authored_capture_refusals(), denied);
+        assert_eq!(
+            media.frames(view).unwrap(),
+            if denied == 0 { 32 } else { 16 }
+        );
+    }
+}

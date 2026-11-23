@@ -7,8 +7,9 @@ lang: en
 # System architecture
 
 This reference describes the shared audio/event pipeline at
-`feat/backend-replacement` revision `cc410f27`, extended with the optional MIDI
-expression-state implementation at `462ce74e`. Source links pin the relevant
+`feat/backend-replacement` revision `cc410f27`, the optional MIDI expression-state
+implementation at `462ce74e`, and the bounded composite audio extension described
+in the state processor chapter. Historical source links pin the relevant
 revision. For each processing quantum, the **state processor (SP)**
 determines which loops are playing or recording and where they are in their
 content. It writes an ordered list of jobs for the **job processor (JP)**,
@@ -70,8 +71,9 @@ Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc
 
 # State processor
 
-The program has a sync prefix and a work section. The prefix executes one
-`ProcessLoop` instruction per loop. After the prefix, a capture prepass
+The program has a sync prefix and a work section. The prefix visits each loop
+once, using `ProcessLoop` for an ordinary visit and `ProcessCompositeChild`
+for a loop driven by a composite. After the prefix, a capture prepass
 scans the work section for MIDI Capture and State instructions and queues
 writer transitions and optional state restore/cleanup jobs. SP then walks the
 work section again to build the audio and MIDI data jobs. All three scans use the same `sp_engine` hardware, including
@@ -89,7 +91,7 @@ utilization for the target profile to see the BRAM mapping.
 
 | Storage | What it holds |
 | --- | --- |
-| Program RAM | 96-bit instructions. Live loading can provide a second program region. |
+| Program RAM | 96-bit instructions and composite schedule rows. Live loading can provide a second program region. |
 | Node-state RAM | 129-bit entries for values such as view IDs, enables and gain ramps. |
 | Loop RAM | Sixteen 64-bit words per loop. They hold loop identity, mode, positions, capture length, revisions and two plan slots. |
 | Job FIFO | 256-bit job descriptors for the current run. |
@@ -129,6 +131,40 @@ the receiver when to play an event. SP loop decisions still occur at the
 boundaries.
 
 ![Figure 3. With Q=32, a request stored for frame 80 waits until the frame-96 boundary. The loop record and FIFO hold different parts of the state handoff.](figures/quantum.svg)
+
+## Composite audio loops
+
+A composite loop holds a playhead and a schedule of actions for its children.
+The children own their audio and use the ordinary playback and capture jobs.
+The compiler lowers each scheduled action to a span with an inclusive start
+and exclusive end, in frames relative to the parent's pass. Program RAM holds
+one 96-bit header per parent-child relationship and one row per span. A parent
+with 64 one-span children therefore uses 128 schedule rows in addition to the
+loop visits. The tables share the instruction budget and the active and staged
+program regions, with all schedule reads served by on-chip program RAM.
+
+The sync prefix visits parents and sync sources before their dependents. At
+each visit, SP looks at each parent's previous and current render positions to
+find span entries, exits and seeks. An eligible absolute plan for the child can
+take precedence. Among due actions from different parents, the first wins in
+compiled order, with explicit programs before regular programs and logical
+loop identity breaking ties. A child can still have its own sync source. SP
+saves the settled child render state for the existing work pass. A nested seek
+uses the offset into the active span and the same adder used for loop timing.
+
+| Behaviour | Supported subset |
+| --- | --- |
+| Playback | Regular repeating programs, including empty programs, and explicit one-pass programs. Nested playback and seek run at quantum boundaries, and explicit programs stop at the end of their pass. |
+| Actions | Regular spans play children. Explicit spans can Play, Stop or Record. Record targets primitive Direct audio loops with prepared, distinct writable media views. |
+| Timing and capacity | Composite units occupy whole quanta. Unit and total pass length fit in 32-bit frame counts. Each child can have up to eight parents, and each parent-child relationship can have up to 32 spans. The whole schedule must fit the program region. The combined parent and sync dependencies must be acyclic apart from ordinary self-sync. |
+| Host control | The prepared Rust and Marlin hosts accept composite graph images and immediate start/stop. Low-level plans handle seek and scheduling. The application composite editor and iteration controls are outside this profile. |
+| Media and modes outside the profile | Authored MIDI and Replace or dry/wet modes are outside the composite graph profile. The core's primitive MIDI support is described in the MIDI chapters. |
+
+For example, a one-pass program can record a child during `[0, 2Q)` and play
+it during `[2Q, 8Q)`. At `2Q` the settled state exposes the completed take to
+the ordinary playback jobs. The audio store supplies capture credits so SP
+can check capacity before starting the take. See the audio media chapter for
+the admission rule and Appendix A for the instruction and RAM layout.
 
 ## How the render state reaches JP
 
@@ -290,6 +326,15 @@ writes and in-flight traffic, cancels speculative work, and invalidates
 matching entries before the block ID is published on the free stack. Pending
 retirements therefore consume capacity. The view pool, block pool, table page
 pool and retirement queue each have independent capacity limits.
+
+For authored composite recording, the media wrapper reports credits based on
+available sample blocks, table pages and retired-root slots. SP samples these
+credits at run admission and compares them with the compiled count of audio
+writer lanes. The count covers all compiled capture lanes when the image can
+perform authored Record, even if only some write in the current quantum. A
+refused start keeps the old take. If capacity runs out during an admitted take,
+the accepted prefix closes and remains playable. Rust preflights the selected
+writes, so RTL can decline a take earlier near capacity.
 
 ## Sample-cache operations
 
@@ -779,6 +824,16 @@ switch. The returned first frame identifies the new program's boundary.
 The host must wait for completion before reclaiming the previous region or
 the retired state bindings.
 
+For a composite edit, the prepared host stages a versioned schedule in the
+inactive region and checks the affected loops before selecting it. Supported
+boundaries include a switch with the affected loops stopped, a compatible
+restart of an independent repeating parent, and a future-only edit that leaves
+the next unit intact. A single compatible switch request can wait for the
+restart while the old program keeps running. Timing geometry changes require
+the affected loops to stop first.
+Continuing child media remains attached to its existing views through the
+handoff.
+
 ## Audio device clock boundary
 
 The board audio path uses two banks between the sample clock and core clock.
@@ -807,6 +862,7 @@ revision, event count and the audio bank release.
 | --- | --- |
 | Did loop mode and render position settle as expected? | Marlin `sync` test and SP sync-event stream |
 | Did the compiled sequence drive the intended jobs and produce the right samples? | `state`, `audio`, `pipeline`, and mixed `midi` tests |
+| Did a composite seek, shared child, authored take or schedule switch settle correctly? | `graph_compiler` in `rt_fpga_testbench` and `shoop_rt_host_marlin`, and `transition_traces` in `rt_fpga_reference` |
 | Did the second read observe intervening writes? | `chunk`, `metadata`, `ownership` and `deferred` tests |
 | Did ownership survive a switch at the intended frame? | `loading` and `shoop_rt_host_marlin` mailbox tests |
 | Did snapshots and musical repairs agree, including held pedals and shared outputs? | `midi_expression` RTL suite and Rust `midi_expression` tests |
@@ -817,6 +873,8 @@ Run individual suites from the repository root.
 
 ```sh
 cargo test --locked -p rt_fpga_testbench --features sim --test sync
+cargo test --locked -p rt_fpga_testbench --features sim --test graph_compiler
+cargo test --locked -p shoop_rt_host_marlin --features sim --test graph_compiler
 cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=2
 cargo test --locked -p rt_fpga_testbench --features sim --test midi_expression
 cargo test --locked -p rt_fpga_reference --test midi_expression

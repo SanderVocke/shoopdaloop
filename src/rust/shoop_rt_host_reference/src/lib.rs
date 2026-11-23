@@ -10,8 +10,8 @@ use alloc::{sync::Arc, vec, vec::Vec};
 use anyhow::{ensure, Result};
 use core::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 use rt_fpga_compiler::{
-    compile_with_chunk_frames, loading::Allocator, CompileContext, CompileError, Feature,
-    ProgramLimits, Resource,
+    compile_composites, compile_with_chunk_frames, loading::Allocator, CompileContext,
+    CompileError, Feature, ProgramLimits, Resource,
 };
 use rt_fpga_reference::{
     fixed::Fixed,
@@ -674,7 +674,7 @@ impl<L: ProgramLoader> Endpoint<L> {
                             "incomplete graph image"
                         );
                         let graph = shoop_graph::Graph::decode(&upload.bytes)?;
-                        let logical = compile_with_chunk_frames(
+                        let logical = compile_composites(
                             &graph,
                             CompileContext {
                                 quantum: upload.quantum,

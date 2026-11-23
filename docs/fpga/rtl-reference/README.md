@@ -2,7 +2,10 @@
 
 Read [the manual](manual.md) and the [opcode appendices](opcodes.md) in the
 repository, including the [musical-state chapter](manual.md#midi-expression-state-and-restoration)
-and [state ABI appendix](opcodes.md#midi-expression-state-abi), or build the standalone HTML and paginated PDF. Markdown is the master text. The SVGs in [figures](figures/) are
+and [state ABI appendix](opcodes.md#midi-expression-state-abi), along with
+[composite audio loops](manual.md#composite-audio-loops) and their
+[schedule encoding](opcodes.md#composite-schedule-encoding). The same sources build
+the standalone HTML and paginated PDF. Markdown is the master text. The SVGs in [figures](figures/) are
 the editable Inkscape sources and are used directly by both builds. Labels,
 blocks and connectors remain separate SVG objects.
 

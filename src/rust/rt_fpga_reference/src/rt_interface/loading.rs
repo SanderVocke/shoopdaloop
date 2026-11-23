@@ -69,6 +69,9 @@ impl PreparedProgram {
     pub fn descriptor(&self) -> SwitchProgram {
         self.descriptor
     }
+    pub(super) fn ready(&self) -> bool {
+        self.ready_sent && self.error.is_none()
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub struct ProgramReady {
@@ -214,6 +217,23 @@ impl Processor {
     }
 }
 impl Engine {
+    pub(super) fn waits_for_composite_cut(&self, image: &PreparedProgram) -> bool {
+        let [cut] = image.image.layout.composite_cuts() else {
+            return false;
+        };
+        self.pipeline
+            .state()
+            .loop_state(LoopId {
+                slot: cut.old_slot.slot,
+                generation: cut.old_slot.generation,
+            })
+            .is_ok_and(|slot| {
+                slot.state.mode == Mode::Playing
+                    && slot.planned.iter().all(Option::is_none)
+                    && cut.waits_for_restart(slot.state.position, slot.state.content_length)
+            })
+    }
+
     pub(super) fn switch(
         &mut self,
         image: &mut PreparedProgram,

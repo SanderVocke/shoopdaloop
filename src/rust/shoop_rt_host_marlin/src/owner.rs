@@ -19,7 +19,7 @@ use rt_fpga_rtl::{
 use shoop_rt_host_reference::{program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS};
 use shoop_rt_protocol::{
     codec,
-    immediate::{Code, Command, CommandRecord, Header, TransitionMode, COMMANDS},
+    immediate::{Code, Command, CommandRecord, Header, SwitchProgram, TransitionMode, COMMANDS},
     snapshot::{self, Record},
     DspMeasurement, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
 };
@@ -393,6 +393,14 @@ impl Owner<'_> {
             group.respond(header.complete(self.frame, code), |r| r.complete(code));
             return Ok(true);
         }
+        if let [record] = records.as_slice() {
+            if let Command::SwitchProgram(descriptor) = record.command() {
+                if self.waits_for_composite_cut(descriptor)? {
+                    group.leave_unread();
+                    return Ok(false);
+                }
+            }
+        }
         let mut complete = Vec::with_capacity(COMMANDS);
         let mut switching = false;
         for record in &records {
@@ -403,6 +411,8 @@ impl Owner<'_> {
                         .as_ref()
                         .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
                 {
+                    Code::CannotApply
+                } else if !self.composite_cuts_ready()? {
                     Code::CannotApply
                 } else {
                     let changed = self
@@ -460,10 +470,55 @@ impl Owner<'_> {
         }
         Ok(true)
     }
+
+    fn waits_for_composite_cut(&mut self, switch: SwitchProgram) -> Result<bool> {
+        let Some(upload) = self.upload.as_ref() else {
+            return Ok(false);
+        };
+        if self.retired.is_some() || !upload.announced || descriptor(&upload.upload.image) != switch
+        {
+            return Ok(false);
+        }
+        let [cut] = upload.upload.image.layout.composite_cuts() else {
+            return Ok(false);
+        };
+        let cut = *cut;
+        if !cut.allow_restart {
+            return Ok(false);
+        }
+        let words = self.loop_words(cut.old_slot)?;
+        Ok(rt_fpga_rtl::host::control::composite_cut_waits_for_restart(
+            cut, &words,
+        ))
+    }
+
+    fn composite_cuts_ready(&mut self) -> Result<bool> {
+        let cuts = self
+            .upload
+            .as_ref()
+            .unwrap()
+            .upload
+            .image
+            .layout
+            .composite_cuts()
+            .to_vec();
+        for cut in cuts {
+            let words = self.loop_words(cut.old_slot)?;
+            if !rt_fpga_rtl::host::control::composite_cut_ready(cut, &words) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
     fn publish(&mut self, execution: &mut rt::Execution, processed: bool) -> Result<()> {
         let mut bytes = std::mem::take(&mut self.snapshot);
         let mut position = snapshot::HEADER;
         let mut records = 0;
+        let frame = self.frame.saturating_sub(if processed {
+            u64::from(self.quantum)
+        } else {
+            0
+        });
         for index in 0..self.rows.len() {
             let row = self.rows[index].clone();
             let words = self.loop_words(row.physical)?;
@@ -541,6 +596,39 @@ impl Owner<'_> {
                     .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
                 records += 1;
             }
+            if let Some(composite) = self
+                .current
+                .as_ref()
+                .unwrap()
+                .layout
+                .composite_schedule(row.id)
+            {
+                let pending = self
+                    .upload
+                    .as_ref()
+                    .and_then(|staged| staged.upload.image.layout.composite_schedule(row.id))
+                    .filter(|plan| plan.version != composite.version);
+                let playhead = if processed { words[8] } else { state.position };
+                let unit = u64::from(composite.unit_frames);
+                let record = Record::Telemetry(Telemetry::Composite {
+                    loop_id: id,
+                    frame,
+                    mode: protocol_mode(state.mode),
+                    position: playhead,
+                    length: state.content_length,
+                    active_version: composite.version,
+                    pending_version: pending.map(|plan| plan.version),
+                    pending_admitted: pending.is_some()
+                        && self.upload.as_ref().is_some_and(|staged| staged.announced),
+                    iteration: (playhead / unit)
+                        .min((state.content_length / unit).saturating_sub(1)),
+                    passes: state.cycles,
+                    waiting_repeat: words[1] & (1 << 42) != 0,
+                });
+                position += codec::encode_snapshot(&record, &mut bytes[position..])
+                    .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
+                records += 1;
+            }
             if processed {
                 let mut peak = 0f32;
                 if let Some(buffer) = meter {
@@ -561,11 +649,7 @@ impl Owner<'_> {
         }
         let revision = self.sim.model.get("active_revision");
         snapshot::Header {
-            frame: self.frame.saturating_sub(if processed {
-                u64::from(self.quantum)
-            } else {
-                0
-            }),
+            frame,
             graph: revision,
             topology: revision,
             records,

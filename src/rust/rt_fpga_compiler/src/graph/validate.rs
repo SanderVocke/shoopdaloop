@@ -20,7 +20,11 @@ fn layout(owner: Owner, value: ChannelLayout) -> Result<(), CompileError> {
         _ => Ok(()),
     }
 }
-pub(super) fn graph(g: &Graph, context: CompileContext) -> Result<(), CompileError> {
+pub(super) fn graph(
+    g: &Graph,
+    context: CompileContext,
+    composites: bool,
+) -> Result<(), CompileError> {
     let invalid = CompileError::InvalidProgram;
     if !matches!(context.quantum, 1 | 16 | 32 | 64 | 128) {
         return Err(invalid);
@@ -70,7 +74,10 @@ pub(super) fn graph(g: &Graph, context: CompileContext) -> Result<(), CompileErr
         let owner = Owner::Loop(l.id);
         layout(owner, l.layout)?;
         if l.composite.is_some() {
-            return Err(unsupported(owner, Feature::Composite));
+            if !composites || g.ports.iter().any(|p| p.id.owner == owner) {
+                return Err(unsupported(owner, Feature::Composite));
+            }
+            continue;
         }
         if !l.gain.is_finite() || !(0.0..=1.0).contains(&l.gain) || !finite_balance(l.balance) {
             return Err(invalid);

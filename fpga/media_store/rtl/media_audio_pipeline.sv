@@ -118,6 +118,7 @@ module media_audio_pipeline #(
     wire hint_valid, hint_ready;
     wire [63:0] hint_view, hint_position, hint_length;
     wire [31:0] hint_count;
+    wire [15:0] capture_credits;
     assign busy = pipeline_busy || store_busy;
     assign done = (pipeline_done || completion_pending) && !store_busy;
     always @(posedge clk) begin
@@ -169,6 +170,7 @@ module media_audio_pipeline #(
         .handoff_request(handoff_request), .handoff_complete(fence_issued && internal_done && store_error_code == 0),
         .run_instruction_count(run_instruction_count), .run_sync_count(run_sync_count), .run_program_region(run_program_region), .run_state_count(run_state_count),
         .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
+        .capture_credits(capture_credits),
         .run_inputs(run_inputs), .run_outputs(run_outputs), .job_enable(job_enable),
         .busy(pipeline_busy), .done(pipeline_done), .error_code(error_code), .error_stage(error_stage),
         .state_busy(state_busy), .state_done(state_done), .jobs_busy(jobs_busy), .jobs_done(jobs_done), .buffer_ready(buffer_ready),
@@ -194,8 +196,9 @@ module media_audio_pipeline #(
         .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
+    media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .CAPTURE_FRAMES(MAX_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
+        .capture_credits(capture_credits),
         .maintenance_tick(maintenance_tick || (MAINTENANCE_AT_RUN != 0 && run_valid && run_ready)),.reclaim_pages_used(reclaim_pages_used),.reclaim_pages_available(reclaim_pages_available),
         .reclaim_pages_freed(reclaim_pages_freed),.reclaim_capacity_failures(reclaim_capacity_failures),
         .maintenance_enable(maintenance_enable && !(run_valid && !pipeline_busy)),.reclaim_pending(reclaim_pending),.reclaim_high_water(reclaim_high_water),

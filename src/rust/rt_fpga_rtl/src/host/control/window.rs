@@ -53,6 +53,16 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         Ok(fence)
     }
 
+    pub fn composite_cut_ready(
+        &mut self,
+        cut: rt_fpga_compiler::loading::CompositeCut,
+    ) -> Result<bool, Error<B::Error>> {
+        Ok(self
+            .read_loop(cut.old_slot)?
+            .1
+            .is_some_and(|words| super::composite_cut_ready(cut, &words)))
+    }
+
     pub fn apply_transition(
         &mut self,
         id: Identity,

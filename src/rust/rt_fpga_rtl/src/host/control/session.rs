@@ -106,7 +106,7 @@ impl<B: RegisterBus> ProgramSession<B> {
     pub fn activate(
         &mut self,
         requested: SwitchProgram,
-        time_left: impl FnMut() -> bool,
+        mut time_left: impl FnMut() -> bool,
     ) -> Result<(ActiveProgram, Option<Upload>), Error<B::Error>> {
         if self.failed {
             return Err(Error::Fault);
@@ -118,6 +118,29 @@ impl<B: RegisterBus> ProgramSession<B> {
         else {
             return Err(Error::InvalidRequest);
         };
+        let layout = &staged.image.layout;
+        if !layout.composite_cuts().is_empty() {
+            let mut window =
+                super::ControlWindow::begin(&mut self.client, layout.expected, &mut time_left)?;
+            let result = (|| {
+                for &cut in layout.composite_cuts() {
+                    if !window.composite_cut_ready(cut)? {
+                        return Ok(None);
+                    }
+                }
+                window.switch_program(requested).map(Some)
+            })();
+            let release = window.release();
+            let fence = match (result, release) {
+                (Ok(Some(fence)), Ok(())) => fence,
+                (Ok(None), Ok(())) => return Err(Error::Rejected(RESULT_REJECTED)),
+                (Err(error), _) | (_, Err(error)) => {
+                    self.failed = true;
+                    return Err(error);
+                }
+            };
+            return self.accept_fence(fence);
+        }
         let response = self.exchange(
             Ok(Request::switch_program(
                 staged.image.layout.expected,

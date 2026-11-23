@@ -21,6 +21,7 @@ module state_processor #(
     input  wire [31:0]                         run_quantum,
     input wire [31:0] run_chunk_frames,
     input  wire [31:0]                         run_job_budget,
+    input wire [15:0] capture_credits,
     output wire                                busy,
     output wire                                done,
     output wire [7:0]                          error_code,
@@ -163,7 +164,7 @@ module state_processor #(
     ) engine (
         .clk(clk), .reset(reset), .start(start),
         .instruction_count(run_instruction_count), .sync_count(run_sync_count), .state_count(run_state_count),
-        .quantum(run_quantum), .chunk_frames(run_chunk_frames), .job_budget(run_job_budget),
+        .quantum(run_quantum), .chunk_frames(run_chunk_frames), .job_budget(run_job_budget), .capture_credits(capture_credits),
         .queued_jobs(queued_jobs), .queue_remaining(queue_remaining),
         .busy(busy), .done(done), .error_code(error_code), .instruction_pc(instruction_pc),
         .program_read_enable(program_read_enable), .program_read_address(program_read_address),

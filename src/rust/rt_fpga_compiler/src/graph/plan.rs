@@ -203,7 +203,10 @@ impl<'a> Plan<'a> {
         for s in &g.strips {
             let count = channels(s.layout)?;
             let mut used = self.connected_channels(Owner::Strip(s.id));
-            if g.loops.iter().any(|l| l.strip == Some(s.id)) {
+            if g.loops
+                .iter()
+                .any(|l| l.strip == Some(s.id) && l.composite.is_none())
+            {
                 used.extend(0..count);
             }
             for channel in used {
@@ -216,6 +219,15 @@ impl<'a> Plan<'a> {
         }
         let mut playback = BTreeMap::new();
         for l in &g.loops {
+            if l.composite.is_some() {
+                self.bindings.push(LoopBinding {
+                    id: l.id,
+                    gain: None,
+                    view: None,
+                    meter: None,
+                });
+                continue;
+            }
             let owner = Owner::Loop(l.id);
             let gain = self.state(
                 StateKey {
@@ -285,14 +297,17 @@ impl<'a> Plan<'a> {
         for s in &g.strips {
             let count = channels(s.layout)?;
             let mut used = self.connected_channels(Owner::Strip(s.id));
-            if g.loops.iter().any(|l| l.strip == Some(s.id)) {
+            if g.loops
+                .iter()
+                .any(|l| l.strip == Some(s.id) && l.composite.is_none())
+            {
                 used.extend(0..count);
             }
             for channel in used {
                 let mut values = g
                     .loops
                     .iter()
-                    .filter(|l| l.strip == Some(s.id))
+                    .filter(|l| l.strip == Some(s.id) && l.composite.is_none())
                     .map(|l| playback[&(l.id, channel)])
                     .collect::<Vec<_>>();
                 if s.controls.input_monitoring {
@@ -349,6 +364,7 @@ impl<'a> Plan<'a> {
         context: CompileContext,
         chunk_frames: u32,
         sync_pass: Vec<Identity>,
+        composites: Vec<CompositeSchedule>,
     ) -> Result<LogicalStateProgram, CompileError> {
         let resolved = (0..self.steps.len())
             .map(|n| self.resolve(n))
@@ -488,7 +504,10 @@ impl<'a> Plan<'a> {
                 .iter()
                 .map(|l| Loop {
                     id: l.id,
-                    length: 0,
+                    length: l
+                        .composite
+                        .as_ref()
+                        .map_or(0, |c| c.unit_frames * c.iterations),
                     sync_source: l.sync_source,
                     repeat_sync: l.repeat_sync,
                 })
@@ -503,6 +522,7 @@ impl<'a> Plan<'a> {
                 output_ports,
                 events: (4 * self.graph.loops.len()) as u32,
             },
+            composites,
         };
         program.validate_logical(context.limits)?;
         Ok(program)
@@ -533,6 +553,67 @@ pub(super) fn lower(
     context: CompileContext,
     chunk_frames: u32,
 ) -> Result<LogicalStateProgram, CompileError> {
+    let mut composites = Vec::new();
+    let mut parents = BTreeMap::<Identity, Vec<Identity>>::new();
+    for l in &graph.loops {
+        let Some(program) = &l.composite else {
+            continue;
+        };
+        let unsupported = unsupported(Owner::Loop(l.id), Feature::Composite);
+        let explicit = program.kind == shoop_graph::CompositeKind::Explicit;
+        if program.quantum != context.quantum
+            || program.unit_frames == 0
+            || program.unit_frames > u64::from(u32::MAX)
+            || program.unit_frames % u64::from(context.quantum) != 0
+            || program
+                .unit_frames
+                .checked_mul(program.iterations)
+                .is_none_or(|length| length > u64::from(u32::MAX))
+        {
+            return Err(unsupported);
+        }
+        let mut children = BTreeMap::<Identity, Vec<FrameSpan>>::new();
+        for span in program.spans.iter() {
+            if span.occurrence_start != span.start
+                || span.start >= span.end
+                || span.end > program.iterations
+            {
+                return Err(unsupported);
+            }
+            let spans = children.entry(span.target).or_default();
+            if spans.len() == MAX_CHILD_SPANS {
+                return Err(CompileError::Capacity(Resource::Instructions));
+            }
+            spans.push(FrameSpan {
+                start: (span.start * program.unit_frames) as u32,
+                end: (span.end * program.unit_frames) as u32,
+                mode: match span.mode {
+                    shoop_graph::LoopMode::Playing => SpanMode::Play,
+                    shoop_graph::LoopMode::Stopped if explicit => SpanMode::Stop,
+                    shoop_graph::LoopMode::Recording if explicit => SpanMode::Record,
+                    _ => return Err(unsupported),
+                },
+            });
+        }
+        let mut schedule = CompositeSchedule {
+            id: l.id,
+            version: program.version,
+            length: (program.unit_frames * program.iterations) as u32,
+            explicit,
+            unit_frames: program.unit_frames as u32,
+            children: Vec::new(),
+        };
+        for (id, mut spans) in children {
+            if !graph.loops.iter().any(|child| child.id == id) {
+                return Err(unsupported);
+            }
+            parents.entry(id).or_default().push(l.id);
+            spans.sort_by_key(|span| span.start);
+            schedule.children.push(CompositeChild { id, spans });
+        }
+        composites.push(schedule);
+    }
+    composites.sort_by_key(|schedule| (!schedule.explicit, schedule.id));
     let mut sync_pass = Vec::new();
     while sync_pass.len() < graph.loops.len() {
         let next = graph
@@ -542,11 +623,14 @@ pub(super) fn lower(
             .find(|l| {
                 l.sync_source
                     .is_none_or(|s| s == l.id || sync_pass.contains(&s))
+                    && parents
+                        .get(&l.id)
+                        .is_none_or(|p| p.iter().all(|id| sync_pass.contains(id)))
             })
             .ok_or(CompileError::InvalidProgram)?;
         sync_pass.push(next.id);
     }
     let mut plan = Plan::new(graph);
     plan.build()?;
-    plan.emit(context, chunk_frames, sync_pass)
+    plan.emit(context, chunk_frames, sync_pass, composites)
 }

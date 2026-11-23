@@ -153,6 +153,7 @@ impl Processor {
             configuration: self.engine.configuration,
             bytes: &mut self.snapshot_bytes,
             publisher: &mut self.ports.snapshots,
+            staged: self.next_program.as_deref(),
         };
         publication.settled(self.engine.pipeline.state());
     }
@@ -308,6 +309,19 @@ impl Processor {
                 } else {
                     Code::Applied
                 };
+                if code == Code::Applied && count == 1 {
+                    let command = group.commands().next().unwrap().command();
+                    if let Command::SwitchProgram(descriptor) = command {
+                        if self.next_program.as_ref().is_some_and(|stage| {
+                            stage.descriptor() == descriptor
+                                && stage.ready()
+                                && self.engine.waits_for_composite_cut(stage)
+                        }) {
+                            group.leave_unread();
+                            break;
+                        }
+                    }
+                }
                 let mut records =
                     [shoop_rt_protocol::immediate::CommandRecord::new(Command::BusMute(0, false));
                         shoop_rt_protocol::immediate::COMMANDS];
@@ -373,6 +387,7 @@ impl Processor {
                 configuration: self.engine.configuration,
                 bytes: &mut self.snapshot_bytes,
                 publisher: &mut self.ports.snapshots,
+                staged: self.next_program.as_deref(),
             };
             if let Some(io) = midi.as_deref_mut() {
                 self.engine.pipeline.process_quantum_mixed(
@@ -504,6 +519,7 @@ impl Engine {
             }
             Ok(()) => Code::Applied,
             Err(TransitionError::Exhausted | TransitionError::Capacity) => Code::CaptureUnavailable,
+            Err(TransitionError::Unsupported) => Code::Unsupported,
             Err(_) => Code::CannotApply,
         }
     }
@@ -513,11 +529,15 @@ struct Publication<'a> {
     configuration: Configuration,
     bytes: &'a mut [u8],
     publisher: &'a mut shoop_rt_transport::rt::SnapshotPublisher,
+    staged: Option<&'a PreparedProgram>,
 }
 impl Observer for Publication<'_> {
     fn settled(&mut self, state: &StateProcessor) {
         let mut position = snapshot::HEADER;
         let mut records = 0;
+        let frame = state
+            .frame()
+            .saturating_sub(u64::from(state.quantum().unwrap_or(0)));
         for row in self.loops.iter_mut() {
             let Ok(value) = state.render_state(row.binding.id) else {
                 self.publisher.fail();
@@ -590,11 +610,42 @@ impl Observer for Publication<'_> {
                 position += len;
                 records += 1;
             }
+            if let Some(composite) = state.composite_status(row.binding.id) {
+                let pending = self.staged.and_then(|staged| {
+                    let id = row.binding.public_id;
+                    staged
+                        .image
+                        .layout
+                        .composite_schedule(rt_fpga_compiler::Identity {
+                            slot: id.slot,
+                            generation: id.generation,
+                        })
+                        .filter(|plan| plan.version != composite.version)
+                });
+                let record = Record::Telemetry(Telemetry::Composite {
+                    loop_id: id,
+                    frame,
+                    mode: protocol_mode(value.mode),
+                    position: value.position,
+                    length: value.content_length,
+                    active_version: composite.version,
+                    pending_version: pending.map(|plan| plan.version),
+                    pending_admitted: pending.is_some()
+                        && self.staged.is_some_and(PreparedProgram::ready),
+                    iteration: composite.iteration,
+                    passes: composite.passes,
+                    waiting_repeat: composite.waiting_repeat,
+                });
+                let Ok(len) = codec::encode_snapshot(&record, &mut self.bytes[position..]) else {
+                    self.publisher.fail();
+                    return;
+                };
+                position += len;
+                records += 1;
+            }
         }
         snapshot::Header {
-            frame: state
-                .frame()
-                .saturating_sub(u64::from(state.quantum().unwrap_or(0))),
+            frame,
             graph: self.configuration.graph,
             topology: self.configuration.topology,
             records,

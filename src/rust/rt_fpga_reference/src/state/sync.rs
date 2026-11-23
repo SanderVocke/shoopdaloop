@@ -4,6 +4,7 @@ use crate::{
     transitions::*,
 };
 use alloc::vec::Vec;
+use rt_fpga_compiler::SpanMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -42,7 +43,7 @@ pub struct ModePlan {
     pub steps: [Option<ModeStep>; 2],
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopSlot {
     /// Logical state at the next quantum boundary after the sync instruction runs.
@@ -54,6 +55,16 @@ pub struct LoopSlot {
     pulse_pending: bool,
     pulse_masked: bool,
     protected: Option<u64>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    composite_previous: Option<u64>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    composite_snapshot: Option<bool>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    composite_wrap: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) composite_wait: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) authored_recording: bool,
     pub(crate) mode_plan: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) midi_capture_open: bool,
@@ -71,6 +82,11 @@ impl LoopSlot {
             pulse_pending: false,
             pulse_masked: false,
             protected: None,
+            composite_previous: None,
+            composite_snapshot: None,
+            composite_wrap: false,
+            composite_wait: false,
+            authored_recording: false,
             mode_plan,
             midi_capture_open: false,
             midi_playing: false,
@@ -95,10 +111,13 @@ pub(crate) struct LoopMemory {
     pub events: Vec<Event>,
     pub resolutions: Vec<Resolution>,
     projected_pulses: Vec<bool>,
+    capture_checkpoint: Vec<Option<LoopSlot>>,
+    pub(crate) capture_refusals: u64,
 }
 impl LoopMemory {
     pub(crate) fn reserve_loading(&mut self, slots: usize) {
         self.projected_pulses.resize(slots, false);
+        self.capture_checkpoint.resize(slots, None);
         self.events
             .reserve((4 * slots).saturating_sub(self.events.len()));
         self.resolutions
@@ -108,25 +127,16 @@ impl LoopMemory {
         let slots = plan
             .initial_states()
             .into_iter()
-            .map(|state| {
-                state.map(|state| LoopSlot {
-                    render: render(state),
-                    state,
-                    planned: [None; 2],
-                    pulse_this_quantum: false,
-                    pulse_pending: false,
-                    pulse_masked: false,
-                    protected: None,
-                    mode_plan: false,
-                    midi_capture_open: false,
-                    midi_playing: false,
-                    mode_failures: 0,
-                })
-            })
+            .map(|state| state.map(|state| LoopSlot::initial(state, false)))
             .collect();
         let events = Vec::with_capacity(plan.image.limits.events as usize);
         let resolutions = Vec::with_capacity(2 * plan.image.description.loops.len());
         let projected_pulses = alloc::vec![false; plan.image.limits.loop_slots as usize];
+        let capture_checkpoint = if plan.authored_recording {
+            alloc::vec![None; plan.image.limits.loop_slots as usize]
+        } else {
+            Vec::new()
+        };
         Self {
             projected_pulses,
             plan,
@@ -134,6 +144,8 @@ impl LoopMemory {
             frame: 0,
             events,
             resolutions,
+            capture_checkpoint,
+            capture_refusals: 0,
         }
     }
     pub fn slot(&self, id: LoopId) -> Result<&LoopSlot, TransitionError> {
@@ -168,10 +180,42 @@ impl LoopMemory {
             .filter(|slot| slot.state.id == id)
             .ok_or(TransitionError::InvalidId)
     }
-    pub fn run(
+    pub fn settle(
         &mut self,
         instructions: &[SyncInstruction],
         quantum: u32,
+        prepare_captures: impl FnOnce(&Self) -> Result<(), crate::Error>,
+    ) -> Result<(), crate::Error> {
+        if !self.plan.authored_recording {
+            return self
+                .run(instructions, quantum, false)
+                .map_err(crate::Error::Transition);
+        }
+        let frame = self.frame;
+        self.capture_checkpoint.copy_from_slice(&self.slots);
+        self.run(instructions, quantum, true)
+            .map_err(crate::Error::Transition)?;
+        if let Err(error) = prepare_captures(self) {
+            self.slots.copy_from_slice(&self.capture_checkpoint);
+            self.frame = frame;
+            match error {
+                crate::Error::MemoryFull
+                | crate::Error::InvalidView
+                | crate::Error::InvalidState => {
+                    self.run(instructions, quantum, false)
+                        .map_err(crate::Error::Transition)?;
+                    self.capture_refusals = self.capture_refusals.saturating_add(1);
+                }
+                error => return Err(error),
+            }
+        }
+        Ok(())
+    }
+    fn run(
+        &mut self,
+        instructions: &[SyncInstruction],
+        quantum: u32,
+        allow_authored_recording: bool,
     ) -> Result<(), TransitionError> {
         if quantum != self.plan.image.description.quantum
             || instructions.len() != self.plan.image.description.loops.len()
@@ -195,6 +239,11 @@ impl LoopMemory {
                         .iter()
                         .any(|&SyncInstruction::ProcessLoop { loop_id: old, .. }| old == s)
                 })
+                || self.composite_parents(loop_id).iter().any(|parent| {
+                    !instructions[..i].iter().any(
+                        |&SyncInstruction::ProcessLoop { loop_id: old, .. }| old == parent.parent,
+                    )
+                })
             {
                 return Err(TransitionError::InvalidConfig);
             }
@@ -211,21 +260,18 @@ impl LoopMemory {
             sync_source,
         } in instructions
         {
-            self.process_loop(loop_id, sync_source, quantum)?;
+            self.process_loop(loop_id, sync_source, quantum, allow_authored_recording)?;
         }
         self.frame = next;
         Ok(())
     }
     pub fn mode_plan(&self, id: LoopId) -> Result<(ModePlan, u32), TransitionError> {
         let slot = self.slot(id)?;
-        if !slot.mode_plan {
-            return Err(TransitionError::InvalidState);
-        }
         Ok((
             ModePlan {
                 now: None,
                 steps: slot.planned.map(|plan| {
-                    plan.map(|p| ModeStep {
+                    plan.filter(|p| p.on_pulse).map(|p| ModeStep {
                         mode: match p.operation {
                             Operation::Stop => Mode::Stopped,
                             Operation::Record => Mode::Recording,
@@ -243,11 +289,8 @@ impl LoopMemory {
             return Err(TransitionError::InvalidConfig);
         }
         let slot = self.slot_mut(id)?;
-        if !slot.mode_plan {
-            return Err(TransitionError::InvalidState);
-        }
         for i in 0..2 {
-            if mask & (1 << i) != 0 {
+            if mask & (1 << i) != 0 && slot.planned[i].is_some_and(|p| p.on_pulse) {
                 slot.planned[i] = None;
             }
         }
@@ -255,6 +298,14 @@ impl LoopMemory {
     }
     /// Apply an immediate mode and replace the two ordered source-pulse steps.
     pub fn write_mode_plan(&mut self, id: LoopId, plan: ModePlan) -> Result<(), TransitionError> {
+        let composite = self.composite_clock(id).is_some();
+        if composite || !self.composite_parents(id).is_empty() {
+            let planned = prepare_mode_now(self.slot(id)?.state, self.frame, plan, composite)?;
+            let slot = self.slot_mut(id)?;
+            slot.planned = [planned, None];
+            slot.mode_plan = false;
+            return Ok(());
+        }
         let slot = self.slot(id)?;
         if !slot.mode_plan && slot.planned.iter().any(Option::is_some) {
             return Err(TransitionError::InvalidState);
@@ -356,26 +407,39 @@ impl LoopMemory {
         id: LoopId,
         source: Option<LoopId>,
         quantum: u32,
+        allow_authored_recording: bool,
     ) -> Result<(), TransitionError> {
+        let composite = self.composite_clock(id).is_some();
         let slot = self.slot_mut(id)?;
         slot.pulse_this_quantum = false;
         slot.pulse_pending = false;
         slot.pulse_masked = false;
         slot.protected = None;
+        slot.composite_previous = slot.render.plays().then_some(slot.render.position);
+        slot.composite_snapshot = None;
+        slot.composite_wrap = false;
         if !self.slot(id)?.mode_plan {
             self.apply_due(id, true)?;
         }
-        self.natural_boundary(id, source)?;
+        self.apply_composite_parents(id, allow_authored_recording)?;
+        if !composite {
+            self.natural_boundary(id, source)?;
+        }
         if let Some(source) = source.filter(|source| *source != id) {
             if self.slot(source)?.pulse_this_quantum {
-                if !self.slot(id)?.pulse_masked {
+                if !composite && !self.slot(id)?.pulse_masked {
                     self.queue_pulse(id)?;
                 }
                 if !self.slot(id)?.mode_plan {
                     self.apply_due(id, false)?;
                 }
-                self.natural_boundary(id, Some(source))?;
+                if !composite {
+                    self.natural_boundary(id, Some(source))?;
+                }
             }
+        }
+        if composite {
+            self.natural_boundary(id, source)?;
         }
         if self.slot(id)?.pulse_pending {
             let frame = self.frame;
@@ -388,7 +452,9 @@ impl LoopMemory {
                 if !self.slot(id)?.mode_plan {
                     self.apply_due(id, false)?;
                 }
-                self.natural_boundary(id, source)?;
+                if !composite {
+                    self.natural_boundary(id, source)?;
+                }
             }
         }
         let slot = self.slot_mut(id)?;
@@ -407,6 +473,126 @@ impl LoopMemory {
                 .capture_frames
                 .checked_add(u64::from(quantum))
                 .ok_or(TransitionError::Exhausted)?;
+        }
+        Ok(())
+    }
+    fn composite_clock(&self, id: LoopId) -> Option<CompositeClock> {
+        self.plan
+            .composite_clocks
+            .get(id.slot as usize)
+            .copied()
+            .flatten()
+    }
+    fn composite_parents(&self, id: LoopId) -> &[ParentSpans] {
+        self.plan
+            .composite_parents
+            .get(id.slot as usize)
+            .map_or(&[], Vec::as_slice)
+    }
+    fn apply_composite_parents(
+        &mut self,
+        id: LoopId,
+        allow_authored_recording: bool,
+    ) -> Result<(), TransitionError> {
+        let slot = self.slot(id)?;
+        if slot.protected.is_some() && (allow_authored_recording || !slot.authored_recording) {
+            return Ok(());
+        }
+        let clock = self.composite_clock(id);
+        let playable_length = if slot.state.mode == Mode::Recording {
+            slot.state.capture_frames
+        } else {
+            slot.state.content_length
+        };
+        let mut operation = None;
+        for binding in self
+            .composite_parents(id)
+            .iter()
+            .filter(|_| slot.protected.is_none())
+        {
+            let parent = self.slot(binding.parent)?;
+            let span_at = |position: u64| {
+                let index = binding
+                    .spans
+                    .partition_point(|span| u64::from(span.end) <= position);
+                binding
+                    .spans
+                    .get(index)
+                    .filter(|span| u64::from(span.start) <= position)
+            };
+            let prior = parent.composite_previous.and_then(span_at);
+            let desired = parent
+                .render
+                .plays()
+                .then(|| span_at(parent.render.position))
+                .flatten();
+            let wrap = parent.composite_wrap;
+            let needs_entry = clock.is_some_and(|c| {
+                slot.state.mode != Mode::Playing || (c.explicit && slot.state.at_end())
+            });
+            if prior.map(|span| span.mode) == desired.map(|span| span.mode)
+                && !(desired.is_some()
+                    && (parent.composite_snapshot.is_some() || (wrap && needs_entry)))
+            {
+                continue;
+            }
+            operation = Some(match desired {
+                Some(span) if span.mode == SpanMode::Record => Operation::Record,
+                Some(span) if span.mode == SpanMode::Play && playable_length != 0 => {
+                    let mut offset = parent
+                        .composite_snapshot
+                        .map_or(0, |_| parent.render.position - u64::from(span.start));
+                    if let Some(clock) = clock {
+                        let unit = u64::from(clock.unit_frames);
+                        offset -= offset % unit;
+                    }
+                    if clock.is_some_and(|c| c.explicit) && offset >= playable_length {
+                        Operation::Stop
+                    } else if parent.composite_snapshot == Some(false)
+                        && slot.state.mode == Mode::Playing
+                    {
+                        Operation::Seek {
+                            position: offset % playable_length,
+                            retrigger: false,
+                        }
+                    } else {
+                        Operation::Play {
+                            position: offset % playable_length,
+                            retrigger: true,
+                        }
+                    }
+                }
+                _ => Operation::Stop,
+            });
+            break;
+        }
+        let operation = match operation {
+            Some(Operation::Record) | None if !allow_authored_recording => {
+                slot.authored_recording.then_some(Operation::Stop)
+            }
+            operation => operation,
+        };
+        let Some(operation) = operation else {
+            return Ok(());
+        };
+        let before = self.slot(id)?.state;
+        let mut state = before;
+        let (pulse, snapshot) = apply_loop_operation(&mut state, clock, operation)?;
+        let slot = self.slot_mut(id)?;
+        slot.state = state;
+        slot.composite_snapshot = snapshot;
+        slot.authored_recording = operation == Operation::Record;
+        if snapshot.is_some() || operation == Operation::Stop {
+            slot.composite_wait = false;
+        }
+        if operation == Operation::Stop {
+            slot.pulse_masked = true;
+        }
+        if before != state {
+            self.event(id, EventKind::Transition(operation))?;
+        }
+        if pulse {
+            self.queue_pulse(id)?;
         }
         Ok(())
     }
@@ -492,10 +678,19 @@ impl LoopMemory {
         self.slot_mut(id)?.protected = Some(plan.sequence);
         let before = self.slot(id)?.state;
         let mut state = before;
-        match apply_operation(&mut state, plan.operation) {
+        let result = apply_loop_operation(&mut state, self.composite_clock(id), plan.operation);
+        match result {
             Err(reason) => self.terminal(id, index, Outcome::Failed { frame, reason })?,
-            Ok(pulse) => {
-                self.slot_mut(id)?.state = state;
+            Ok((pulse, snapshot)) => {
+                let slot = self.slot_mut(id)?;
+                slot.state = state;
+                slot.authored_recording = false;
+                if snapshot.is_some() {
+                    slot.composite_snapshot = snapshot;
+                }
+                if snapshot.is_some() || plan.operation == Operation::Stop {
+                    slot.composite_wait = false;
+                }
                 self.terminal(id, index, Outcome::Applied { frame })?;
                 if state != before {
                     self.event(id, EventKind::Transition(plan.operation))?;
@@ -527,23 +722,121 @@ impl LoopMemory {
         if !state.at_end() {
             return Ok(());
         }
-        if state.repeat_sync {
-            if let Some(source) = sync_source.filter(|source| *source != id) {
-                let source = self.slot(source)?;
-                if source.state.mode == Mode::Playing && !source.pulse_this_quantum {
-                    return Ok(());
-                }
+        let clock = self.composite_clock(id);
+        let explicit = clock.is_some_and(|clock| clock.explicit);
+        let waiting = if !explicit && state.repeat_sync {
+            sync_source
+                .filter(|source| *source != id)
+                .map(|source| {
+                    self.slot(source).map(|source| {
+                        source.state.mode == Mode::Playing && !source.pulse_this_quantum
+                    })
+                })
+                .transpose()?
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        let slot = self.slot_mut(id)?;
+        if waiting {
+            if clock.is_some() && !slot.composite_wait {
+                slot.state.cycles = slot
+                    .state
+                    .cycles
+                    .checked_add(1)
+                    .ok_or(TransitionError::Exhausted)?;
+                slot.composite_wait = true;
             }
+            return Ok(());
         }
-        let state = &mut self.slot_mut(id)?.state;
-        state.cycles = state
-            .cycles
-            .checked_add(1)
-            .ok_or(TransitionError::Exhausted)?;
-        state.position = 0;
+        if !slot.composite_wait {
+            slot.state.cycles = slot
+                .state
+                .cycles
+                .checked_add(1)
+                .ok_or(TransitionError::Exhausted)?;
+        }
+        slot.state.position = 0;
+        if explicit {
+            slot.state.mode = Mode::Stopped;
+            return Ok(());
+        }
+        if slot.composite_wait {
+            slot.composite_wait = false;
+            slot.composite_snapshot = Some(true);
+        } else {
+            slot.composite_wrap = clock.is_some();
+        }
         self.queue_pulse(id)?;
-        self.event(id, EventKind::Wrap)
+        if clock.is_none() {
+            self.event(id, EventKind::Wrap)?;
+        }
+        Ok(())
     }
+}
+pub fn prepare_mode_now(
+    mut state: LoopState,
+    frame: u64,
+    plan: ModePlan,
+    composite: bool,
+) -> Result<Option<PlannedTransition>, TransitionError> {
+    if plan.steps.iter().any(Option::is_some) {
+        return Err(TransitionError::Unsupported);
+    }
+    let operation = match plan.now {
+        None => return Ok(None),
+        Some(Mode::Stopped) => Operation::Stop,
+        Some(Mode::Playing) => Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+        Some(Mode::Recording) if composite => return Err(TransitionError::InvalidState),
+        Some(Mode::Recording) if state.mode == Mode::Recording => return Ok(None),
+        Some(Mode::Recording) => Operation::Record,
+    };
+    if !(composite && state.content_length == 0 && plan.now == Some(Mode::Playing)) {
+        apply_operation(&mut state, operation)?;
+    }
+    Ok(Some(PlannedTransition {
+        sequence: 0,
+        operation,
+        on_pulse: false,
+        effective: frame,
+        remaining_ticks: 0,
+    }))
+}
+
+fn apply_loop_operation(
+    state: &mut LoopState,
+    clock: Option<CompositeClock>,
+    operation: Operation,
+) -> Result<(bool, Option<bool>), TransitionError> {
+    let Some(clock) = clock else {
+        return apply_operation(state, operation).map(|pulse| (pulse, None));
+    };
+    let (position, retrigger, seek) = match operation {
+        Operation::Stop => return apply_operation(state, operation).map(|pulse| (pulse, None)),
+        Operation::Play {
+            position,
+            retrigger,
+        } => (position, retrigger, false),
+        Operation::Seek {
+            position,
+            retrigger,
+        } => (position, retrigger, true),
+        Operation::Record => return Err(TransitionError::InvalidState),
+    };
+    if !seek && state.mode == Mode::Playing && !retrigger {
+        return Ok((false, None));
+    }
+    if !seek && position == 0 && state.content_length == 0 {
+        return Ok((false, None));
+    }
+    if position % u64::from(clock.unit_frames) != 0 {
+        return Err(TransitionError::InvalidFrame);
+    }
+    let pulse = apply_operation(state, operation)?;
+    Ok((pulse, Some(pulse)))
 }
 fn render(state: LoopState) -> LoopRecord {
     LoopRecord {

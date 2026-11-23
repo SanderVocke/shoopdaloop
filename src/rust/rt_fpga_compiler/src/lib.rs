@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 mod graph;
-pub use graph::{compile, compile_with_chunk_frames, CompileContext, Feature};
+pub use graph::{compile, compile_composites, compile_with_chunk_frames, CompileContext, Feature};
 pub use shoop_graph;
 pub mod loading;
 use alloc::vec::Vec;
@@ -16,6 +16,43 @@ pub struct Loop {
     pub length: u64,
     pub sync_source: Option<Identity>,
     pub repeat_sync: bool,
+}
+
+pub const MAX_CHILD_SPANS: usize = 32;
+pub const MAX_CHILD_PARENTS: usize = 8;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SpanMode {
+    Stop,
+    Play,
+    Record,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FrameSpan {
+    pub start: u32,
+    pub end: u32,
+    pub mode: SpanMode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeChild {
+    pub id: Identity,
+    pub spans: Vec<FrameSpan>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeSchedule {
+    pub id: Identity,
+    pub version: u64,
+    pub length: u32,
+    pub explicit: bool,
+    pub unit_frames: u32,
+    pub children: Vec<CompositeChild>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -238,6 +275,8 @@ pub struct LogicalStateProgram {
     pub bindings: Vec<LoopBinding>,
     pub jobs_per_quantum: u32,
     pub resources: Resources,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub composites: Vec<CompositeSchedule>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -305,12 +344,41 @@ pub trait StateProgramTarget {
 }
 
 impl LogicalStateProgram {
+    pub fn has_authored_recording(&self) -> bool {
+        self.composites
+            .iter()
+            .flat_map(|c| &c.children)
+            .flat_map(|c| &c.spans)
+            .any(|s| s.mode == SpanMode::Record)
+    }
+
+    /// Entries are ordered by action priority before physical relocation.
+    pub fn composite_parents(
+        &self,
+        id: Identity,
+    ) -> impl Iterator<Item = (&CompositeSchedule, &[FrameSpan])> {
+        self.composites.iter().filter_map(move |parent| {
+            parent
+                .children
+                .iter()
+                .find(|child| child.id == id)
+                .map(|child| (parent, child.spans.as_slice()))
+        })
+    }
+
     /// Logical identities are names, not physical state-memory addresses.
     pub fn validate_logical(&self, limits: ProgramLimits) -> Result<(), CompileError> {
         if self.loops.len() as u64 > u64::from(limits.loop_slots) {
             return Err(CompileError::Capacity(Resource::Loops));
         }
         if self.state_bindings.len() != self.initial_state.len() {
+            return Err(CompileError::InvalidProgram);
+        }
+        if self
+            .composites
+            .windows(2)
+            .any(|pair| (!pair[0].explicit, pair[0].id) >= (!pair[1].explicit, pair[1].id))
+        {
             return Err(CompileError::InvalidProgram);
         }
         self.validate(ProgramLimits {
@@ -410,7 +478,13 @@ impl LogicalStateProgram {
         for (resource, needed, available) in [
             (
                 Resource::Instructions,
-                (self.sync_pass.len() + self.work_pass.len()) as u64,
+                (self.sync_pass.len() + self.work_pass.len()) as u64
+                    + self
+                        .composites
+                        .iter()
+                        .flat_map(|schedule| &schedule.children)
+                        .map(|child| 1 + child.spans.len() as u64)
+                        .sum::<u64>(),
                 limits.instructions,
             ),
             (
@@ -461,9 +535,79 @@ impl LogicalStateProgram {
                 }
             }
         }
+        let mut parents = alloc::collections::BTreeSet::new();
+        let mut children = alloc::collections::BTreeMap::new();
+        let mut authors = alloc::collections::BTreeSet::new();
+        for schedule in &self.composites {
+            let (index, parent) = self
+                .loops
+                .iter()
+                .enumerate()
+                .find(|(_, l)| l.id == schedule.id)
+                .ok_or(InvalidProgram)?;
+            let parent_position = self
+                .sync_pass
+                .iter()
+                .position(|&id| id == parent.id)
+                .ok_or(InvalidProgram)?;
+            if !parents.insert(parent.id)
+                || parent.length != u64::from(schedule.length)
+                || schedule.unit_frames == 0
+                || schedule.unit_frames % self.quantum != 0
+                || parent.length % u64::from(schedule.unit_frames) != 0
+                || (parent.length == 0 && (schedule.explicit || !schedule.children.is_empty()))
+            {
+                return Err(InvalidProgram);
+            }
+            let binding = &self.bindings[index];
+            if binding.gain.is_some() || binding.view.is_some() || binding.meter.is_some() {
+                return Err(InvalidProgram);
+            }
+            let mut local_children = alloc::collections::BTreeSet::new();
+            for child in &schedule.children {
+                if child.spans.len() > MAX_CHILD_SPANS {
+                    return Err(Capacity(Resource::Instructions));
+                }
+                let count = children.entry(child.id).or_insert(0);
+                *count += 1;
+                if *count > MAX_CHILD_PARENTS {
+                    return Err(Capacity(Resource::Instructions));
+                }
+                if !local_children.insert(child.id)
+                    || !self.sync_pass[parent_position + 1..].contains(&child.id)
+                    || child.spans.is_empty()
+                {
+                    return Err(InvalidProgram);
+                }
+                let mut previous_end = 0;
+                for span in &child.spans {
+                    if span.start < previous_end
+                        || span.start >= span.end
+                        || span.start % schedule.unit_frames != 0
+                        || span.end % schedule.unit_frames != 0
+                        || (!schedule.explicit && span.mode != SpanMode::Play)
+                        || u64::from(span.end) > parent.length
+                    {
+                        return Err(InvalidProgram);
+                    }
+                    previous_end = span.end;
+                    if span.mode == SpanMode::Record {
+                        authors.insert(child.id);
+                    }
+                }
+            }
+        }
+        for id in authors {
+            if parents.contains(&id)
+                || !self.work_pass.iter().any(|op| matches!(op, Operation::Capture { loop_id, .. } if *loop_id == id))
+                || self.work_pass.iter().any(|op| matches!(op, Operation::MidiData(MidiOperation::Capture { loop_id, .. }) if *loop_id == id))
+            {
+                return Err(InvalidProgram);
+            }
+        }
         let state = |slot: u32| self.initial_state.get(slot as usize).ok_or(InvalidProgram);
         let loop_id = |id| {
-            if self.loops.iter().any(|l| l.id == id) {
+            if !parents.contains(&id) && self.loops.iter().any(|l| l.id == id) {
                 Ok(())
             } else {
                 Err(InvalidProgram)

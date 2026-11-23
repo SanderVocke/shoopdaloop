@@ -438,3 +438,99 @@ fn explicit_midi_capture_survives_image_switch_and_refuses_writer_rebinding() {
         vec![(7, cc)]
     );
 }
+
+#[path = "../../rt_fpga_compiler/tests/support/composite.rs"]
+mod composite_fixtures;
+
+#[shoop_test]
+fn composite_image_switch_waits_for_a_compatible_restart() {
+    use rt_fpga_reference::{state::PlannedTransition, transitions::Operation as Transition};
+    let context = CompileContext {
+        quantum: 16,
+        limits: limits(),
+    };
+    let mut graph = composite_fixtures::arbitration_graph();
+    let before = rt_fpga_compiler::compile_composites(&graph, context, 16).unwrap();
+    let mut allocator = Allocator::new(limits());
+    let initial = image(&mut allocator, &before, &[]);
+    let parent = id(&initial.layout, 1);
+    allocator.publish(initial.layout.revision).unwrap();
+    allocator.complete(initial.layout.revision).unwrap();
+    let mut pipeline = start(initial);
+    pipeline
+        .write_plans(
+            parent,
+            [
+                Some(PlannedTransition {
+                    sequence: 1,
+                    operation: Transition::Play {
+                        position: 0,
+                        retrigger: true,
+                    },
+                    on_pulse: false,
+                    remaining_ticks: 0,
+                    effective: 0,
+                }),
+                None,
+            ],
+        )
+        .unwrap();
+    let mut media = MediaStore::new(16).unwrap();
+    let mut jobs = JobProcessor::new(16, 32);
+    pipeline
+        .process(&mut jobs, &mut media, &[], &mut [])
+        .unwrap();
+
+    let plan = graph.loops[1].composite.as_mut().unwrap();
+    plan.version += 1;
+    plan.spans.to_mut()[0].start = 1;
+    plan.spans.to_mut()[0].occurrence_start = 1;
+    let next = rt_fpga_compiler::compile_composites(&graph, context, 16).unwrap();
+    let mut candidate = image(&mut allocator, &next, &[]);
+    let revision = candidate.layout.revision;
+    assert_eq!(candidate.layout.composite_cuts().len(), 1);
+    assert!(candidate.layout.composite_cuts()[0].allow_restart);
+    assert_eq!(id(&candidate.layout, 1), parent);
+    assert!(pipeline.switch_image(&mut candidate).is_err());
+    for _ in 0..3 {
+        pipeline
+            .process(&mut jobs, &mut media, &[], &mut [])
+            .unwrap();
+    }
+    assert_eq!(pipeline.state().frame(), 64);
+    assert_no_heap(|| pipeline.switch_image(&mut candidate)).unwrap();
+    allocator.publish(revision).unwrap();
+    allocator.complete(revision).unwrap();
+    pipeline
+        .process(&mut jobs, &mut media, &[], &mut [])
+        .unwrap();
+    assert_eq!(pipeline.revision(), revision);
+    let state = pipeline.state().loop_state(parent).unwrap();
+    assert!(state.pulse_this_quantum);
+    assert_eq!(state.render.position, 0);
+    assert_eq!(state.state.cycles, 1);
+
+    let plan = graph.loops[1].composite.as_mut().unwrap();
+    plan.version += 1;
+    plan.spans.to_mut()[0].end = 3;
+    let future = rt_fpga_compiler::compile_composites(&graph, context, 16).unwrap();
+    let mut candidate = image(&mut allocator, &future, &[]);
+    assert!(!candidate.layout.composite_cuts()[0].allow_restart);
+    assert_eq!(candidate.layout.composite_cuts()[0].future_before, Some(32));
+    assert_eq!(
+        pipeline.state().loop_state(parent).unwrap().state.position,
+        16
+    );
+    assert_no_heap(|| pipeline.switch_image(&mut candidate)).unwrap();
+    pipeline
+        .process(&mut jobs, &mut media, &[], &mut [])
+        .unwrap();
+    assert_eq!(
+        pipeline.state().composite_status(parent).unwrap().version,
+        3
+    );
+    assert_eq!(
+        pipeline.state().loop_state(parent).unwrap().render.position,
+        16
+    );
+}
