@@ -115,15 +115,15 @@ and a processed stamp for the same boundary.
 | Parent header | 53:48 | Low six bits of the span row count for this parent |
 | Parent header | 69:54 | Image-wide compiled audio writer count when authored recording is present, otherwise zero |
 | Parent header | 79:70 | High ten bits of the span row count |
-| Parent header | 81:80 | Previous mode at a live handoff at the end of a pass (0 use spans, 2 no active span, 3 Play) |
-| Parent header | 95:82 | Reserved |
+| Parent header | 82:80 | Previous mode at a live handoff at the end of a pass (0 use spans, 2 no active span, 3 Play, 4 Stop, 5 Record) |
+| Parent header | 95:83 | Reserved |
 | Span | 31:0 | Inclusive start frame relative to the parent's pass |
 | Span | 63:32 | Exclusive end frame relative to the parent's pass |
 | Span | 65:64 | Mode (1 Play, 2 Stop, 3 Record) |
 | Span | 95:66 | Reserved |
 
 Each header's block fits within the rows declared by the instruction. A
-header with no spans supplies the old Play mode of a dropped child during the
+header with no spans supplies the old ending mode of a dropped child during the
 handoff. All headers and spans count against the existing program region
 capacity. In the first quantum after a region change, SP marks
 the previous position of a composite that reached its end without a repeat

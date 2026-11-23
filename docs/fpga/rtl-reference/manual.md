@@ -282,8 +282,10 @@ recording can start. See the admission rule under
   A timing change needs one free loop record while the new program is staged.
   For a one-pass composite that keeps its sync source, an edit can take effect
   as the old run ends. When both plans end with the same child modes, the
-  switch needs no extra rows. If the old ending only plays children, the same
-  additional rows can release children that the new plan drops.
+  switch needs no extra rows. If the endings differ, the new schedule also
+  carries each child's old action. A dropped child may need a temporary row.
+  If the old ending records a child and the new opening plays it, the usual
+  transition finishes the take and plays it on the same boundary.
   An independent one-pass edit also keeps pending transport commands when it
   preserves the ending modes and the iteration and pass lengths. Other
   one-pass edits can take effect one quantum after the old run stops.

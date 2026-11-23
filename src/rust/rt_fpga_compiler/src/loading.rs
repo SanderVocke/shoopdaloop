@@ -193,10 +193,6 @@ impl CompositeSchedule {
             == (candidate.unit_frames, candidate.length, candidate.explicit)
     }
 
-    fn ending_children(&self) -> impl Iterator<Item = Identity> + '_ {
-        self.ending_modes().map(|(id, _)| id)
-    }
-
     fn ending_modes(&self) -> impl Iterator<Item = (Identity, SpanMode)> + '_ {
         self.children.iter().filter_map(|child| {
             let span = child.spans.last().filter(|span| span.end == self.length)?;
@@ -249,14 +245,14 @@ impl CompositeSchedule {
 
 fn wrap_only_children<'a>(
     program: &'a LogicalStateProgram,
-    previous: &'a [(Identity, Vec<Identity>)],
+    previous: &'a [(Identity, Vec<(Identity, SpanMode)>)],
 ) -> impl Iterator<Item = (Identity, Identity)> + 'a {
     previous.iter().flat_map(|(parent, ending)| {
         let current = program
             .composites
             .iter()
             .find(|schedule| schedule.id == *parent);
-        ending.iter().copied().filter_map(move |child| {
+        ending.iter().copied().filter_map(move |(child, _)| {
             current
                 .is_some_and(|schedule| !schedule.children.iter().any(|row| row.id == child))
                 .then_some((*parent, child))
@@ -266,7 +262,7 @@ fn wrap_only_children<'a>(
 
 fn wrap_sync_order(
     program: &LogicalStateProgram,
-    previous: &[(Identity, Vec<Identity>)],
+    previous: &[(Identity, Vec<(Identity, SpanMode)>)],
 ) -> Result<Vec<Identity>, CompileError> {
     let mut parents = BTreeMap::<Identity, Vec<Identity>>::new();
     for schedule in &program.composites {
@@ -289,14 +285,14 @@ fn wrap_sync_order(
 
 fn keep_wrap_ending(
     program: &LogicalStateProgram,
-    previous: &mut Vec<(Identity, Vec<Identity>)>,
+    previous: &mut Vec<(Identity, Vec<(Identity, SpanMode)>)>,
     before: &CompositeSchedule,
     limit: u32,
 ) -> bool {
-    let ending: Vec<_> = before.ending_children().collect();
+    let ending: Vec<_> = before.ending_modes().collect();
     if !ending
         .iter()
-        .all(|id| program.loops.iter().any(|row| row.id == *id))
+        .all(|(id, _)| program.loops.iter().any(|row| row.id == *id))
     {
         return false;
     }
@@ -332,7 +328,7 @@ pub struct Layout {
     #[cfg_attr(feature = "serde", serde(default))]
     composite_cuts: Vec<CompositeCut>,
     #[cfg_attr(feature = "serde", serde(default))]
-    previous_wrap_children: Vec<(Identity, Vec<Identity>)>,
+    previous_wrap_children: Vec<(Identity, Vec<(Identity, SpanMode)>)>,
     #[cfg_attr(feature = "serde", serde(default))]
     retiring_composite: Option<Identity>,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -574,12 +570,12 @@ impl Layout {
                 .iter()
                 .find(|(parent, _)| *parent == schedule.id);
             if let Some((_, ending)) = previous_ending {
-                for &previous in ending {
+                for &(previous, mode) in ending {
                     if !schedule.children.iter().any(|child| child.id == previous) {
                         schedule.children.push(CompositeChild {
                             id: previous,
                             spans: Vec::new(),
-                            previous_play_at_wrap: Some(true),
+                            previous_span_at_wrap: Some(PreviousSpan::Active(mode)),
                         });
                     }
                 }
@@ -587,7 +583,12 @@ impl Layout {
             schedule.id = id(schedule.id)?;
             for child in &mut schedule.children {
                 if let Some((_, ending)) = previous_ending {
-                    child.previous_play_at_wrap = Some(ending.contains(&child.id));
+                    child.previous_span_at_wrap = Some(
+                        ending
+                            .iter()
+                            .find(|(id, _)| *id == child.id)
+                            .map_or(PreviousSpan::Idle, |(_, mode)| PreviousSpan::Active(*mode)),
+                    );
                 }
                 child.id = id(child.id)?;
             }
@@ -771,7 +772,7 @@ impl Allocator {
                         .iter()
                         .any(|l| l.id == row.logical && l.sync_source == row.sync_source);
                     let changed_ending = before.zip(after).is_some_and(|(before, after)| {
-                        !before.ending_children().eq(after.ending_children())
+                        !before.ending_modes().eq(after.ending_modes())
                     });
                     let compatible_restart = changed_composites.contains(&row.logical)
                         && (independent || single_edit == Some(row.logical))
@@ -797,13 +798,7 @@ impl Allocator {
                     let same_finish = finishing.is_some_and(|(before, after)| {
                         before.ending_modes().eq(after.ending_modes())
                     });
-                    let reconcile_finish = !same_finish
-                        && finishing.is_some_and(|(before, _)| {
-                            // The existing handoff row can describe an ending Play.
-                            before
-                                .ending_modes()
-                                .all(|(_, mode)| mode == SpanMode::Play)
-                        });
+                    let reconcile_finish = finishing.is_some() && !same_finish;
                     let reconcile_ending = before.is_some_and(|before| {
                         ((compatible_restart && changed_ending) || reconcile_finish)
                             && keep_wrap_ending(

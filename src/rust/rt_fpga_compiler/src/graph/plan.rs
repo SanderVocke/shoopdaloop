@@ -656,7 +656,7 @@ pub(super) fn lower(
             schedule.children.push(CompositeChild {
                 id,
                 spans,
-                previous_play_at_wrap: None,
+                previous_span_at_wrap: None,
             });
         }
         composites.push(schedule);

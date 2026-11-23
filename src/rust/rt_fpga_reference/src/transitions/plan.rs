@@ -74,7 +74,7 @@ pub(crate) struct ParentSpans {
     pub parent: LoopId,
     pub spans: Vec<rt_fpga_compiler::FrameSpan>,
     #[cfg_attr(feature = "serde", serde(default))]
-    pub previous_play_at_wrap: Option<bool>,
+    pub previous_span_at_wrap: Option<rt_fpga_compiler::PreviousSpan>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

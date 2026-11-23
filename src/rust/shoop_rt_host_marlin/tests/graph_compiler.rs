@@ -1570,6 +1570,97 @@ fn a_compatible_one_shot_edit_applies_as_the_old_take_finishes() {
     }
 }
 
+fn play_take_at_parent_reentry(endpoint: impl Endpoint, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(1);
+    let length = 64;
+    let program = |kind, target, mode| CompositeView {
+        kind,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: length,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![CompositeSpan {
+            target: id(target),
+            start: 0,
+            end: length,
+            occurrence_start: 0,
+            ordinal: 0,
+            mode,
+        }]
+        .into(),
+    };
+    let mut child = graph.loops[0].clone();
+    child.id = id(120);
+    child.strip = None;
+    child.composite = Some(program(CompositeKind::Explicit, 100, LoopMode::Recording));
+    let mut parent = child.clone();
+    parent.id = id(121);
+    parent.composite = Some(program(CompositeKind::Regular, 120, LoopMode::Playing));
+    graph.loops.extend([child, parent]);
+    upload(&mut client, &mut renderer, &graph, 0);
+    client
+        .immediate(
+            Batch::new(
+                1,
+                1,
+                &[Command::Transition(121, TransitionMode::Playing.into())],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let started = response(&mut client, &mut renderer);
+    let finish = started + length * Q as u64;
+
+    let candidate = graph.loops[1].composite.as_mut().unwrap();
+    candidate.version = 2;
+    candidate.spans.to_mut()[0].mode = LoopMode::Playing;
+    let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, 44).unwrap();
+    for (index, batch) in batches.iter().enumerate() {
+        client.immediate(*batch).unwrap();
+        if index + 1 < batches.len() {
+            response(&mut client, &mut renderer);
+        }
+    }
+    assert!(renderer.next_frame().0 < finish - Q as u64);
+    while renderer.next_frame().0 < finish - Q as u64 {
+        assert_eq!(step(&mut renderer), [0.; 2]);
+        while let Some(message) = client.poll() {
+            assert!(!matches!(message, EngineMessage::ImmediateResponse(_)));
+        }
+    }
+    assert_eq!(step_with_input(&mut renderer, 0.5), [0.; 2]);
+    assert_eq!(renderer.next_frame().0, finish);
+    // The quantum adapter returns each block one quantum after rendering it.
+    assert_eq!(step(&mut renderer), [0.; 2]);
+    assert_eq!(response(&mut client, &mut renderer), finish);
+    assert_eq!(step(&mut renderer), [0.125; 2]);
+    while renderer.next_frame().0 < finish + length * Q as u64 {
+        step(&mut renderer);
+    }
+    assert_eq!(step(&mut renderer), [0.25; 2]);
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn a_recorded_one_shot_can_play_its_take_as_its_parent_restarts_it() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    play_take_at_parent_reentry(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    play_take_at_parent_reentry(rtl.endpoint, rtl.renderer);
+}
+
 fn edit_at_continuous_wrap<E: Endpoint>(
     endpoint: E,
     mut renderer: impl Renderer,

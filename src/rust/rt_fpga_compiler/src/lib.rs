@@ -28,6 +28,13 @@ pub enum SpanMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PreviousSpan {
+    Idle,
+    Active(SpanMode),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FrameSpan {
     pub start: u32,
     pub end: u32,
@@ -41,7 +48,7 @@ pub struct CompositeChild {
     pub spans: Vec<FrameSpan>,
     /// Previous ownership at the boundary where this image first takes over.
     #[cfg_attr(feature = "serde", serde(default))]
-    pub previous_play_at_wrap: Option<bool>,
+    pub previous_span_at_wrap: Option<PreviousSpan>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -401,7 +408,7 @@ impl LogicalStateProgram {
             .composites
             .iter()
             .flat_map(|schedule| &schedule.children)
-            .any(|child| child.previous_play_at_wrap.is_some())
+            .any(|child| child.previous_span_at_wrap.is_some())
         {
             return Err(CompileError::InvalidProgram);
         }
@@ -586,7 +593,8 @@ impl LogicalStateProgram {
             for child in &schedule.children {
                 if !local_children.insert(child.id)
                     || !self.sync_pass[parent_position + 1..].contains(&child.id)
-                    || (child.spans.is_empty() && child.previous_play_at_wrap != Some(true))
+                    || (child.spans.is_empty()
+                        && !matches!(child.previous_span_at_wrap, Some(PreviousSpan::Active(_))))
                 {
                     return Err(InvalidProgram);
                 }

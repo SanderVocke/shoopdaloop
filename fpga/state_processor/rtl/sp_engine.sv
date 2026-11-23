@@ -117,7 +117,7 @@ module sp_engine #(
     reg [15:0] parent_slot;
     reg [31:0] parent_generation;
     reg parent_snapshot, parent_restart, parent_wrap, parent_playing;
-    reg [1:0] parent_previous_play;
+    reg [2:0] parent_previous_span;
     reg [31:0] parent_position, parent_previous, desired_start;
     reg [1:0] previous_mode, desired_mode;
     reg [15:0] run_capture_credits;
@@ -323,7 +323,7 @@ module sp_engine #(
             arg4 <= 0;
             span_pc<=0; parent_end_pc<=0; parent_slot<=0; parent_generation<=0;
             parent_position<=0; parent_previous<=0; desired_start<=0;
-            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0; parent_previous_play<=0;
+            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0; parent_previous_span<=0;
             previous_mode<=0; desired_mode<=0; inherited<=0; composite_position_checked<=0;
             run_capture_credits<=0; capture_permitted<=0;
             dividend<=0; divisor<=0; remainder<=0; division_bits<=0; division_return<=IDLE;
@@ -842,8 +842,9 @@ module sp_engine #(
                     finish_error(`SHOOP_SP_PROGRAM_MEMORY_ERROR);
                 end else if (program_available) phase<=span_pc==parent_end_pc ? COMPOSITE_TABLE : COMPOSITE_SPAN;
                 COMPOSITE_TABLE: begin
-                    if (program_read_data[95:82]!=0 || program_read_data[81:80]==2'b01
-                        || (parent_span_count==0 && program_read_data[81:80]!=2'b11)
+                    if (program_read_data[95:83]!=0 || program_read_data[82:80]==3'd1
+                        || program_read_data[82:80]>3'd5
+                        || (parent_span_count==0 && program_read_data[82:80]<3'd3)
                         || (parent_span_count!=0 && instruction_reserved[0])
                         || next_parent_pc>next_pc || {16'b0,program_read_data[15:0]}>=32'(LOOP_DEPTH)) sync_fail();
                     else if (parent_span_count==0 && !run_program_changed) begin
@@ -853,7 +854,7 @@ module sp_engine #(
                     end else begin
                         parent_slot<=program_read_data[15:0];
                         parent_generation<=program_read_data[47:16];
-                        parent_previous_play<=program_read_data[81:80];
+                        parent_previous_span<=program_read_data[82:80];
                         capture_permitted<=program_read_data[69:54]!=0 && program_read_data[69:54]<=run_capture_credits;
                         parent_end_pc<=PC_BITS'(next_parent_pc);
                         span_pc<=span_pc+1'b1;
@@ -882,9 +883,9 @@ module sp_engine #(
                 COMPOSITE_PARENT_PREVIOUS: begin
                     parent_previous<=word_value[31:0];
                     previous_mode<=0; desired_mode<=0; desired_start<=0;
-                    if (word_value[33:32]==2'b01 && parent_previous_play[1]) begin
+                    if (word_value[33:32]==2'b01 && parent_previous_span!=0) begin
                         parent_previous<=32'hffffffff;
-                        previous_mode<={1'b0,parent_previous_play[0]};
+                        previous_mode<=parent_previous_span[1:0]-2'd2;
                     end
                     if (span_pc==parent_end_pc) phase<=COMPOSITE_APPLY;
                     else if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);

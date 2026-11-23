@@ -458,10 +458,14 @@ impl RtlTarget<'_> {
                         .set(70, 10, span_count >> 6)
                         .set(
                             80,
-                            2,
-                            child
-                                .previous_play_at_wrap
-                                .map_or(0, |playing| 2 + u64::from(playing)),
+                            3,
+                            match child.previous_span_at_wrap {
+                                None => 0,
+                                Some(PreviousSpan::Idle) => 2,
+                                Some(PreviousSpan::Active(SpanMode::Play)) => 3,
+                                Some(PreviousSpan::Active(SpanMode::Stop)) => 4,
+                                Some(PreviousSpan::Active(SpanMode::Record)) => 5,
+                            },
                         );
                     rows.push(header);
                     for span in &child.spans {
@@ -489,7 +493,7 @@ impl RtlTarget<'_> {
             rows.push(bits);
             sync_instructions.push(rows);
         }
-        use rt_fpga_compiler::MidiOperation as M;
+        use rt_fpga_compiler::{MidiOperation as M, PreviousSpan, SpanMode};
         let fusion = merge_output.then(|| midi::merge_outputs(&logical.work_pass));
         let byte = |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
         for op in &logical.work_pass {

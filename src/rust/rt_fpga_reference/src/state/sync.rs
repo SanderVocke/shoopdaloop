@@ -539,10 +539,11 @@ impl LoopMemory {
                     .filter(|span| u64::from(span.start) <= position)
             };
             let prior = match binding
-                .previous_play_at_wrap
+                .previous_span_at_wrap
                 .filter(|_| parent.composite_handoff)
             {
-                Some(playing) => playing.then_some(SpanMode::Play),
+                Some(rt_fpga_compiler::PreviousSpan::Active(mode)) => Some(mode),
+                Some(rt_fpga_compiler::PreviousSpan::Idle) => None,
                 None => parent
                     .composite_previous
                     .and_then(span_at)
