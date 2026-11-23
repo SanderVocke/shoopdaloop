@@ -265,8 +265,8 @@ recording can start. See the admission rule under
   switch needs no extra rows. If the old ending only plays children, the same
   additional rows can release children that the new plan drops.
   An independent one-pass edit also keeps pending transport commands when it
-  preserves the iteration and pass lengths. Other one-pass edits can take
-  effect one quantum after the old run stops.
+  preserves the ending modes and the iteration and pass lengths. Other
+  one-pass edits can take effect one quantum after the old run stops.
   Playback controls still run while an edit waits. If a scheduled stop is
   pending, it takes effect first and the edit can apply once the loop stops.
   Cancelling an edit that still waits leaves the active version in place. If

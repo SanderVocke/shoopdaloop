@@ -281,6 +281,7 @@ fn check_ending_row_budget(kind: rt_fpga_compiler::shoop_graph::CompositeKind) {
             extra == 1 && kind == CompositeKind::Explicit
         );
         assert_eq!(cut.reconcile_ending, extra == 1);
+        assert!(!cut.preserves_transport_at_finish(true));
         let bound = next.relocate(&after).unwrap();
         bound.validate(capacity).unwrap();
         let child = next.loop_id(dropped).unwrap();

@@ -120,6 +120,7 @@ impl CompositeCut {
     pub fn preserves_transport_at_finish(&self, at_end: bool) -> bool {
         at_end
             && self.finish_at_boundary
+            && !self.reconcile_ending
             && self.restart_slot.is_none()
             && self.parent_guards.is_empty()
     }
