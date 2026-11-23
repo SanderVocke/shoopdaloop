@@ -1,0 +1,10 @@
+group,flip_flops
+path_address,0
+path_page,160
+parent_address,37
+cache_address,38
+root_data,72
+root_valid,512
+leaf_valid,512
+required_nodes,31
+existing_nodes,31

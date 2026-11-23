@@ -1,0 +1,9 @@
+{
+  "archive": "s4-midi-address-regressions-raw.tar.gz",
+  "archive_sha256": "0d508c880554ef61383ea504d2f65880feb7d1afbaa72fa77e109b6ef1c2e30e",
+  "members_sha256": {
+    "logs/s4-midi-address-regressions.log": "d9029de0fc48678b4f9860af82012b35f414a95c05eb168a95b728133fb08e9f",
+    "snapshot-provenance.json": "8751c30291c18ad01bdad31dfd18836acbc431ff1f3476910e3c6da36ea223bc",
+    "recipe.json": "25532bbc6851ab3914ecbb1fd65697bf072fdbc3813302438bed6fc1bff3ee29"
+  }
+}

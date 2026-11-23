@@ -8,7 +8,7 @@ use crate::{
     clock::Edges,
     drivers::{pipeline::Pipeline, store::Geometry},
     memory::{Backend, Control, Memory, Mode, Shared, axi::Axi},
-    model::Model,
+    model::{Model, Probe},
     sim::{Agent, Sim},
     timing::Fixed,
 };
@@ -248,6 +248,15 @@ fn traffic(memory: &Shared) -> [u64; 4] {
     };
     [bus.reads, bus.writes, bus.native_reads, bus.native_writes]
 }
+fn cache_traffic(model: &Model<'_>) -> [[u64; 4]; 3] {
+    std::array::from_fn(|bank| {
+        ["hits", "misses", "fills", "writebacks"].map(|counter| {
+            model.get(&format!(
+                "core.audio.core.media.metadata.banks[{bank}].cache.{counter}"
+            ))
+        })
+    })
+}
 
 pub fn run(
     audio: bool,
@@ -268,10 +277,43 @@ pub fn run_config(
     delay: u64,
     state: bool,
 ) -> Result<Value> {
-    run_case(audio, midi, loops, frames, quanta, delay, state, false)
+    run_parameters(
+        audio,
+        midi,
+        loops,
+        frames,
+        quanta,
+        delay,
+        state,
+        &Default::default(),
+    )
+}
+pub fn run_parameters(
+    audio: bool,
+    midi: bool,
+    loops: usize,
+    frames: usize,
+    quanta: usize,
+    delay: u64,
+    state: bool,
+    parameters: &std::collections::BTreeMap<String, String>,
+) -> Result<Value> {
+    run_case(
+        audio, midi, loops, frames, quanta, delay, state, false, parameters,
+    )
 }
 pub fn musical(delay: u64) -> Result<Value> {
-    run_case(false, true, 64, 1_440_000, 16, delay, true, true)
+    run_case(
+        false,
+        true,
+        64,
+        1_440_000,
+        16,
+        delay,
+        true,
+        true,
+        &Default::default(),
+    )
 }
 fn run_case(
     audio: bool,
@@ -282,6 +324,7 @@ fn run_case(
     delay: u64,
     state: bool,
     musical: bool,
+    parameters: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
     assert!(quanta > 0 && (quanta + 17) * QUANTUM <= frames);
     let cap = [2048, 256, 2048, QUANTUM as u64, 512, 2, 2];
@@ -291,6 +334,13 @@ fn run_case(
     let mut design = crate::suites::pipeline::design(cap, &geometry, 64, Mode::Fixed, 1);
     design.top = "midi_audio_pipeline_axi".into();
     design.probes.clear();
+    for bank in 0..3 {
+        for counter in ["hits", "misses", "fills", "writebacks"] {
+            design.probes.push(Probe::observe(&format!(
+                "core.audio.core.media.metadata.banks[{bank}].cache.{counter}"
+            )));
+        }
+    }
     design.includes.push(crate::root().join("fpga/midi/rtl"));
     for name in [
         "midi_audio_pipeline_axi",
@@ -322,8 +372,29 @@ fn run_case(
     ] {
         design.parameters.insert(name.into(), value.to_string());
     }
+    for (name, value) in parameters {
+        if !design.parameters.contains_key(name)
+            && !matches!(name.as_str(), "READ_HINT_POLICY" | "LOCAL_FRAME_BITS")
+        {
+            return Err(format!("Unknown benchmark parameter: {name}").into());
+        }
+        if name == "READ_HINT_POLICY" && !matches!(value.as_str(), "0" | "1" | "2") {
+            return Err("READ_HINT_POLICY must be 0, 1 or 2".into());
+        }
+        if name == "LOCAL_FRAME_BITS" {
+            let bits: u32 = value.parse()?;
+            if !(1..=64).contains(&bits) {
+                return Err("LOCAL_FRAME_BITS must be between 1 and 64".into());
+            }
+            if audio && bits < 64 && frames as u64 >= (1u64 << bits) {
+                return Err("Audio preload exceeds the explicit local-frame limit".into());
+            }
+        }
+        design.parameters.insert(name.clone(), value.clone());
+    }
+    let model_parameters = design.parameters.clone();
     let compiled = design.build(&crate::root().join("work/marlin-suite/midi-data-benchmark"))?;
-    let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    let mut sim = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
     sim.max_ps = 10_000_000_000_000_000;
     let size = sim.model.get("midi_arena_bytes") as usize + 32768;
     let midi_memory = Rc::new(RefCell::new(Memory {
@@ -433,6 +504,7 @@ fn run_case(
         }
         driver.audio.clear_jobs();
         let audio_before = traffic(&driver.store.memory);
+        let cache_before = cache_traffic(&sim.model);
         let midi_before = traffic(&midi_memory);
         sim.model.set_all(&[
             ("run_buffers", driver.audio.buffers),
@@ -469,6 +541,12 @@ fn run_case(
             std::array::from_fn::<_, 4, _>(|i| traffic(&driver.store.memory)[i] - audio_before[i]);
         let midi_traffic =
             std::array::from_fn::<_, 4, _>(|i| traffic(&midi_memory)[i] - midi_before[i]);
+        let cache_after = cache_traffic(&sim.model);
+        let cache_delta = std::array::from_fn::<_, 3, _>(|bank| {
+            std::array::from_fn::<_, 4, _>(|counter| {
+                cache_after[bank][counter] - cache_before[bank][counter]
+            })
+        });
         sim.idle(2);
         for channel in 0..reference.outputs.len() {
             for offset in 0..QUANTUM {
@@ -503,6 +581,7 @@ fn run_case(
             "midi_packets":reference.emitted.len(), "jobs":driver.audio.consumed().len(),
             "state_work":reference.midi.expression.as_ref().map(|s|json!({"tracker_visits":s.work.tracker_visits,"compared_fields":s.work.compared_fields,"restored_messages":s.work.restored_messages,"prefix_events":s.work.prefix_events})),
             "audio_axi_reads_writes_native_reads_writes":audio_traffic,
+            "audio_metadata_table_reference_stack_hits_misses_fills_writebacks":cache_delta,
             "midi_axi_reads_writes_native_reads_writes":midi_traffic,
         }));
         eprintln!("RTL audio={audio} midi={midi}, delay={delay}, quantum {tick}: {cycles} clocks");
@@ -512,6 +591,8 @@ fn run_case(
         "loops":loops, "sample_rate":SAMPLE_RATE, "quantum_frames":QUANTUM, "chunk_frames":QUANTUM,
         "sequence_frames":frames, "midi_events_per_loop":if midi {records(0,frames).len()} else {0},
         "ddr_added_delay_clocks":delay,
+        "rtl_parameters":model_parameters,
+        "simulation_optimization":3, "waveform_instrumentation":false,
         "memory":format!("two independent 64-bit AXI ports, fixed {delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects"),
         "scope":"same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
         "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",

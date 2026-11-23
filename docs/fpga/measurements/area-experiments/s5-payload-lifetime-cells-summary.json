@@ -1,0 +1,41 @@
+{
+  "control": "C6 RTL7eba4933",
+  "candidate": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
+  "method": "Parse frozen post_optDCP EDIF midi_store cell; validate every control directFD instance name/type exactly against completed Vivado2021.1 checkpointquery, not just totalcount",
+  "results": {
+    "control": {
+      "dcp": "/workspace/shoopdaloop/work/area-experiments/s5-cold-descriptor-opt/post_opt.dcp",
+      "dcp_sha256": "800dc429f6d36f6e295729abe28e3feb3e3288f46ec6828174aee504ec8b4498",
+      "full_edif_sha256": "2cb4e6b3962445a1f4ee5fbc6991c78644c92819892c711afe94fdfae78c3316",
+      "midi_store_cell_sha256": "7a7a1278979cbc108a91ef36c7ce1f1f4db34df062f7858261d6800aee58b880",
+      "direct_instances": 8478,
+      "direct_ff": 2579,
+      "payload_ff": 128,
+      "payload_words": {
+        "0": 32,
+        "1": 32,
+        "2": 32,
+        "3": 32
+      }
+    },
+    "candidate": {
+      "dcp": "/workspace/shoopdaloop/work/area-experiments/s5-payload-lifetime-opt/post_opt.dcp",
+      "dcp_sha256": "52c8b3e43aaed218696daa3b9dfdb1036b61b1ee27cb180b23bd46d494ec385a",
+      "full_edif_sha256": "201edbce4a3fa6b3ce9c1b1b825216d0b9bdd566f3b5b9df31f4737550c66690",
+      "midi_store_cell_sha256": "df1dbb25aaa666a5b019d639a9e0cbbb6879532c498c23f89d57be56c9af40c0",
+      "direct_instances": 8449,
+      "direct_ff": 2540,
+      "payload_ff": 96,
+      "payload_words": {
+        "0": 32,
+        "1": 32,
+        "2": 32
+      }
+    }
+  },
+  "payload_bank_ff_delta": -32,
+  "connected_opt_ff_delta": -37,
+  "attribution": "Payload bank128to96FF accounts for32of37connectedFF reduction. Remaining5FF are outside this payload bank; do not attribute all37 to the removed copy.",
+  "retention": "s5-payload-lifetime-cells-retention.json",
+  "interrupted_optional_query": "Stopped137 to restoreDocker vfs diskheadroom while mainroute continued. Partialquery is not qualifyingevidence; exact completed controlquery + frozen EDIF inspection above provide verification."
+}

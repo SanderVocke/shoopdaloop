@@ -41,15 +41,20 @@ module media_metadata #(
     typedef enum logic [5:0] {IDLE, ROOT_CAPTURE, ROOT, WALK, CHILD, ACCESS_DONE, PUBLISH, RESPONSE,
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
         TRIM_COUNT, TRIM_CHECK, TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
-        CHECK_TREE, COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
+        CHECK_TREE, COUNT_NODES, COUNT_CEIL, COUNT_SUM, COUNT_FREE, COUNT_AVAILABLE, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
         GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT} phase_t;
     (* fsm_encoding = "one_hot" *) phase_t phase;
     phase_t resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
-    wire [127:0] root_ram_data;
+    localparam integer MIDDLE_WORDS = LEVELS > 2 ? LEVELS-2 : 1;
+    localparam integer ROOT_BITS = 192+MIDDLE_WORDS*32;
+    wire [ROOT_BITS-1:0] root_ram_data;
+    // Contents share the roots RAM and its existing leaf-valid lifetime.
     reg root_used_nonzero;
+    reg cached_translation_match;
+    reg [31:0] cached_block, cached_ordinal;
     reg [63:0] memory_origin;
-    reg [127:0] root_data;
+    reg [ROOT_BITS-1:0] root_data;
     localparam integer LEVEL_BITS = LEVELS < 2 ? 1 : $clog2(LEVELS);
     reg [31:0] view, ordinal, payload, root, used, page;
     reg [LEVEL_BITS-1:0] level;
@@ -61,20 +66,60 @@ module media_metadata #(
     reg [31:0] gc_root, gc_used;
     reg gc_loaded;
     reg [63:0] required_nodes, existing_nodes, unallocated_pages, additional, available;
+    wire unused_capacity_bits = &{1'b0,required_nodes,existing_nodes,unallocated_pages,additional,available};
     reg capacity_grow, capacity_insufficient;
+    reg [32:0] count_n;
+    reg [28:0] count_acc;
+    reg [LEVEL_BITS-1:0] count_step;
+    reg count_existing;
+    wire [33:0] count_left = phase==COUNT_CEIL ? {1'b0,count_n}
+        : phase==COUNT_SUM ? {5'b0,count_acc} : phase==COUNT_FREE ? 34'(TABLE_PAGES)
+        : phase==COUNT_AVAILABLE ? unallocated_pages[33:0]
+        : phase==CAPACITY ? required_nodes[33:0] : available[33:0];
+    wire [33:0] count_right = phase==COUNT_CEIL ? 34'd15
+        : phase==COUNT_SUM ? {1'b0,count_n} : phase==COUNT_FREE ? {2'b0,high_water}
+        : phase==COUNT_AVAILABLE ? {2'b0,free_pages}
+        : phase==CAPACITY ? existing_nodes[33:0] : additional[33:0];
+    wire count_subtract = phase==COUNT_FREE || phase==CAPACITY || phase==CHECK_CAPACITY;
+    wire [33:0] count_result = count_left+(count_right^{34{count_subtract}})+34'(count_subtract);
     reg [63:0] operations [0:9];
     reg [63:0] directory_reads, table_reads;
     wire unused_operations = &{1'b0,directory_reads,table_reads,operations[0],operations[1],operations[2],operations[3],operations[4],operations[5],operations[6],operations[7],operations[8],operations[9]};
-    reg [63:0] parent_address;
+    localparam [63:0] MAX_BASE_0 = REF_BASE > STACK_BASE ? REF_BASE : STACK_BASE;
+    localparam [63:0] MAX_BASE_1 = PAGE_BASE > QUEUE_BASE ? PAGE_BASE : QUEUE_BASE;
+    localparam [63:0] MAX_BASE = MAX_BASE_0 > MAX_BASE_1 ? MAX_BASE_0 : MAX_BASE_1;
+    localparam [64:0] MAX_RELATIVE = {1'b0,MAX_BASE}+65'h3fffffffff;
+    localparam integer RELATIVE_BITS = MAX_RELATIVE[64] || PAGE_BASE < 64 ? 64 : $clog2(MAX_RELATIVE+1'b1);
+    reg [RELATIVE_BITS-1:0] parent_address;
     reg [31:0] path_page [0:LEVELS-1];
-    reg [63:0] path_address [0:LEVELS-1];
+    wire [MIDDLE_WORDS*32-1:0] directory_path;
+    wire unused_path_padding = &{1'b0,root_data[ROOT_BITS-1:192]};
+    reg directory_hit, path_match;
+    reg [LEVEL_BITS-1:0] directory_level, path_match_level;
+    reg [31:0] directory_page, path_match_page;
+    generate for (genvar d=0; d<MIDDLE_WORDS; d=d+1) begin : cached_directory
+        assign directory_path[d*32+:32] = LEVELS > 2 ? path_page[d+1] : 32'b0;
+    end endgenerate
+    always @* begin
+        directory_hit = 0; directory_level = 0; directory_page = 0;
+        for (integer d=LEVELS-2; d>0; d=d-1) begin
+            if (path_page[d] != 0 && (cached_index >> (d*4)) == (ordinal >> ((d+1)*4))) begin
+                directory_hit = 1; directory_level = LEVEL_BITS'(d); directory_page = path_page[d];
+            end
+        end
+    end
+    reg [3:0] path_index [0:LEVELS-1];
+    wire [LEVEL_BITS-1:0] saved_path_level = phase == CHILD ? level : LEVEL_BITS'(32'(level)+1);
+    wire [63:0] saved_page_address = page_address(path_page[saved_path_level]);
+    wire unused_page_alignment = &{1'b0,saved_page_address[5:0]};
+    wire [63:0] saved_path_address = {saved_page_address[63:6],path_index[saved_path_level],2'b0};
     reg [31:0] trim_count, trim_start;
     reg [31:0] trim_used_pages, trim_requested_pages;
     reg trim_finished;
     reg root_exists, checked;
     reg [3:0] opcode;
     reg [1:0] bank, cache_opcode;
-    reg [63:0] cache_address;
+    reg [RELATIVE_BITS-1:0] cache_address;
     reg [31:0] cache_data, value;
     reg cache_invalidate;
     wire [2:0] cache_ready, cache_valid, cache_error, cache_fault;
@@ -99,20 +144,12 @@ module media_metadata #(
     function automatic [63:0] page_address(input [31:0] id);
         page_address = (PAGE_BASE-64)+64'(id)*64;
     endfunction
-    function automatic [63:0] nodes(input [31:0] count);
-        reg [63:0] n, total;
-        begin
-            n = {32'b0,count}; total = 0;
-            for (integer i=0; i<LEVELS; i=i+1) begin n = (n+15) >> 4; total = total+n; end
-            nodes = total;
-        end
-    endfunction
     wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (32'(level)*4)) & 64'd15)*4;
     wire bad_tree_request = (opcode != 11 && view >= 32'(VIEWS)) || ordinal > 32'(SLOTS)
         || (opcode < 2 && ordinal == 32'(SLOTS));
-    media_ram #(.WIDTH(128),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
+    media_ram #(.WIDTH(ROOT_BITS),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
         .clk(clk),.read_enable(request_valid && request_ready && request_view < 32'(VIEWS)),.read_address(VIEW_BITS'(request_view)),.read_data(root_ram_data),
-        .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({cached_leaf,cached_index,used,root})
+        .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({directory_path,cached_block,cached_ordinal,cached_leaf,cached_index,used,root})
     );
     generate for (genvar i=0; i<3; i=i+1) begin : banks
         wire [63:0] hits, misses, fills, writebacks;
@@ -123,9 +160,9 @@ module media_metadata #(
         assign bus_read_data[i*32+:32] = memory_read_data;
         assign bus_response_valid[i] = bank == i && memory_response_valid;
         assign bus_response_error[i] = memory_response_error;
-        metadata_cache #(.LINES(i == 0 ? TABLE_LINES : i == 1 ? REF_LINES : STACK_LINES),.BURST_MEMORY(BURST_MEMORY)) cache (
+        metadata_cache #(.LINES(i == 0 ? (TABLE_LINES > 8 ? 8 : TABLE_LINES) : i == 1 ? REF_LINES : STACK_LINES),.BURST_MEMORY(BURST_MEMORY)) cache (
             .clk(clk),.reset(reset),.request_valid(phase == CACHE_SEND && bank == i),.request_ready(cache_ready[i]),
-            .request_opcode(cache_opcode),.request_invalidate(cache_invalidate),.request_address(cache_address),.request_data(cache_data),
+            .request_opcode(cache_opcode),.request_invalidate(cache_invalidate),.request_address(64'(cache_address)),.request_data(cache_data),
             .response_valid(cache_valid[i]),.response_ready(phase == CACHE_WAIT && bank == i),
             .response_data(cache_result[i*32+:32]),.response_error(cache_error[i]),.fault(cache_fault[i]),
             .hits(hits),.misses(misses),.fills(fills),.writebacks(writebacks),
@@ -139,19 +176,24 @@ module media_metadata #(
     end endgenerate
     task automatic access_cache(input [1:0] which, input [1:0] op, input [63:0] address,
                                  input [31:0] data, input phase_t next);
-        begin bank <= which; cache_opcode <= op; cache_address <= address; cache_data <= data; resume <= next; phase <= CACHE_SEND; end
+        reg unused_address_bits;
+        begin
+            unused_address_bits = &{1'b0,address};
+            bank <= which; cache_opcode <= op; cache_address <= RELATIVE_BITS'(address); cache_data <= data; resume <= next; phase <= CACHE_SEND;
+        end
     endtask
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8 || RETIRED_TABLES < 1) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
+            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; cached_block <= 0; cached_ordinal <= 0; path_match <= 0; path_match_level <= 0; path_match_page <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
-            invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0;
+            invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0; cached_translation_match <= 0;
             allocated <= 0; parent_is_root <= 1; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             trim_used_pages <= 0; trim_requested_pages <= 0; trim_finished <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
             retired_head_index <= RETIRED_INDEX_BITS'(0); retired_tail_index <= RETIRED_INDEX_BITS'(0); retired_entries <= RETIRED_COUNT_BITS'(0); retired_peak <= RETIRED_COUNT_BITS'(0);
             retired_references <= 0; pages_freed <= 0; gc_root <= 0; gc_used <= 0; gc_loaded <= 0;
+            count_n<=0;count_acc<=0;count_step<=0;count_existing<=0;
             unallocated_pages <= 0; additional <= 0; available <= 0; capacity_grow <= 0; capacity_insufficient <= 0;
             root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
             cache_opcode <= 0; cache_address <= 0; cache_data <= 0; value <= 0; cache_invalidate <= 0;
@@ -175,6 +217,8 @@ module media_metadata #(
                     used <= root_exists ? root_data[63:32] : 0;
                     cached_leaf <= root_exists && leaf_valid[VIEW_BITS'(view)] ? root_data[127:96] : 0;
                     cached_index <= root_data[95:64];
+                    cached_ordinal <= root_data[159:128]; cached_block <= root_data[191:160];
+                    for (integer d=1; d<LEVELS-1; d=d+1) path_page[d] <= root_data[192+(d-1)*32+:32];
                     if (opcode == 9) leaf_valid <= 0;
                     if (opcode == 6) begin leaf_valid[VIEW_BITS'(view)] <= 0; cached_leaf <= 0; end
                     if (opcode == 10) begin
@@ -221,23 +265,46 @@ module media_metadata #(
                     invalid_read_extent <= opcode == 0 && ordinal >= used;
                     invalid_write_extent <= (opcode == 1 || opcode == 6) && ordinal > used;
                     cached_leaf_match <= cached_leaf != 0 && cached_index == (ordinal >> 4);
+                    cached_translation_match <= cached_leaf != 0 && cached_ordinal == ordinal;
+                    path_match <= cached_leaf != 0 && directory_hit;
+                    path_match_level <= directory_level; path_match_page <= directory_page;
                     phase <= opcode == 1 || opcode == 7 ? COUNT_NODES : WALK;
                 end
                 COUNT_NODES: begin
-                    required_nodes <= nodes(new_count);
-                    existing_nodes <= nodes(used);
-                    capacity_grow <= new_count > used;
-                    unallocated_pages <= 64'(TABLE_PAGES)-{32'b0,high_water};
-                    phase <= CAPACITY;
+                    count_n<={1'b0,new_count};count_acc<=0;count_step<=0;count_existing<=0;
+                    capacity_grow<=new_count>used;
+                    if(new_count<=used) begin
+                        required_nodes<=0;existing_nodes<=0;unallocated_pages<=0;available<=0;
+                        phase<=CAPACITY;
+                    end else phase<=COUNT_CEIL;
+                end
+                COUNT_CEIL: begin count_n<=33'(count_result>>4);phase<=COUNT_SUM;end
+                COUNT_SUM: begin
+                    count_acc<=count_result[28:0];
+                    if(count_step==LEVEL_BITS'(LEVELS-1)) begin
+                        if(!count_existing && used!=0) begin
+                            required_nodes<={35'b0,count_result[28:0]};count_existing<=1;
+                            count_n<={1'b0,used};count_acc<=0;count_step<=0;phase<=COUNT_CEIL;
+                        end else begin
+                            if(count_existing) existing_nodes<={35'b0,count_result[28:0]};
+                            else begin required_nodes<={35'b0,count_result[28:0]};existing_nodes<=0;end
+                            phase<=COUNT_FREE;
+                        end
+                    end else begin count_step<=count_step+1'b1;phase<=COUNT_CEIL;end
+                end
+                COUNT_FREE: begin
+                    unallocated_pages<={{30{count_result[33]}},count_result};phase<=COUNT_AVAILABLE;
+                end
+                COUNT_AVAILABLE: begin
+                    available<={{30{count_result[33]}},count_result};phase<=CAPACITY;
                 end
                 CAPACITY: begin
-                    additional <= capacity_grow ? required_nodes-existing_nodes : 64'b0;
-                    available <= unallocated_pages+{32'b0,free_pages};
-                    phase <= CHECK_CAPACITY;
+                    additional<=capacity_grow ? {30'b0,count_result} : 64'b0;
+                    phase<=CHECK_CAPACITY;
                 end
                 CHECK_CAPACITY: begin
-                    capacity_insufficient <= additional > available;
-                    phase <= WALK;
+                    capacity_insufficient<=capacity_grow && !available[63] && count_result[33];
+                    phase<=WALK;
                 end
                 WALK: begin
                     checked <= 1;
@@ -249,13 +316,17 @@ module media_metadata #(
                     else if (invalid_write_extent) begin response_error <= 4; phase <= RESPONSE; end
                     else if (opcode == 7) phase <= RESPONSE;
                     else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_COUNT; end
-                    else if (!checked && cached_leaf_match) begin
+                    else if (!checked && opcode == 0 && cached_translation_match) begin
+                        response_data <= cached_block; phase <= RESPONSE;
+                    end else if (!checked && cached_leaf_match) begin
                         page <= cached_leaf; level <= 0;
+                    end else if (!checked && path_match) begin
+                        page <= path_match_page; level <= path_match_level;
                     end else if (page == 0) begin
                         if (opcode == 0 || opcode == 11) begin response_error <= 1; phase <= RESPONSE; end
                         else phase <= ALLOCATE;
                     end else begin
-                        path_page[level] <= page; path_address[level] <= entry_address;
+                        path_page[level] <= page; path_index[level] <= 4'((ordinal >> (32'(level)*4)) & 32'd15);
                         if (level == 0) begin
                             table_reads <= table_reads+64'(opcode == 0);
                             access_cache(0,opcode == 1 ? 2'd1 : 2'd0,entry_address,payload,ACCESS_DONE);
@@ -265,7 +336,7 @@ module media_metadata #(
                     end
                 end
                 CHILD: begin
-                    parent_is_root <= page == 0; parent_address <= path_address[level];
+                    parent_is_root <= page == 0; parent_address <= RELATIVE_BITS'(saved_path_address);
                     level <= level-1'b1; page <= value;
                     phase <= WALK;
                 end
@@ -282,11 +353,12 @@ module media_metadata #(
                 ALLOCATE_ATTACH: begin
                     page <= allocated;
                     if (parent_is_root) begin root <= allocated; phase <= WALK; end
-                    else access_cache(0,1,parent_address,allocated,WALK);
+                    else access_cache(0,1,64'(parent_address),allocated,WALK);
                 end
                 ACCESS_DONE: begin
                     response_data <= value;
                     if (opcode < 2) begin
+                        cached_block <= opcode == 1 ? payload : value; cached_ordinal <= ordinal;
                         cached_leaf <= page; cached_index <= ordinal >> 4;
                         if (opcode == 1 && ordinal >= used) used <= ordinal+1;
                         phase <= PUBLISH;
@@ -350,7 +422,7 @@ module media_metadata #(
                     end
                 end
                 SCAN_START: begin
-                    path_page[level] <= page; path_address[level] <= entry_address;
+                    path_page[level] <= page; path_index[level] <= 4'((ordinal >> (32'(level)*4)) & 32'd15);
                     if (level == 0) phase <= FREE_PAGE;
                     else access_cache(0,0,entry_address,0,SCAN_WORD);
                 end
@@ -362,7 +434,7 @@ module media_metadata #(
                     else begin
                         page <= path_page[32'(level)+1]; level <= level+1'b1;
                         if (((ordinal >> ((32'(level)+1)*4)) & 15) == 0) phase <= FREE_PAGE;
-                        else access_cache(0,1,path_address[32'(level)+1],0,SCAN_RESULT);
+                        else access_cache(0,1,saved_path_address,0,SCAN_RESULT);
                     end
                 end
                 SCAN_RESULT: begin used <= trim_start; phase <= TRIM_COUNT; end

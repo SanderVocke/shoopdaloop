@@ -1,0 +1,115 @@
+{
+  "control": "C3 607c8a0f / fe2184ea",
+  "candidate": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
+  "binary_sha256": "fa6f5a3a473ef487fd5f9e44ac465b7cb335312bf8d693fbe4597690bde45925",
+  "fixture_revision": "d6291799d4cacb3c92b16192b8cd9e7fb9c9ea6c",
+  "rows": 40,
+  "exact_noncycle_fields": true,
+  "implementation_parameter_differences": {},
+  "scope": "MIDI-only musical transitions, same connected primary hardware; nominal 100MHz budget is not physical timing qualification. Data, logical work and traffic counts match; per-row samples remain archived.",
+  "budget_cycles_nominal_100mhz": 66666.66666666667,
+  "timing_met": false,
+  "populations": {
+    "playback_start": {
+      "count": 1,
+      "control_median": 58804,
+      "control_max": 58804,
+      "candidate_median": 63103,
+      "candidate_max": 63103,
+      "median_delta_cycles": 4299,
+      "median_delta_percent": 7.310727161417585,
+      "candidate_nominal_budget_slack": 3563.6666666666715
+    },
+    "warmup": {
+      "count": 16,
+      "control_median": 16952.0,
+      "control_max": 17543,
+      "candidate_median": 17216.0,
+      "candidate_max": 17873,
+      "median_delta_cycles": 264.0,
+      "median_delta_percent": 1.5573383671543262,
+      "candidate_nominal_budget_slack": 48793.66666666667
+    },
+    "steady": {
+      "count": 16,
+      "control_median": 16880.0,
+      "control_max": 17487,
+      "candidate_median": 17144.0,
+      "candidate_max": 17817,
+      "median_delta_cycles": 264.0,
+      "median_delta_percent": 1.563981042654028,
+      "candidate_nominal_budget_slack": 48849.66666666667
+    },
+    "retrigger": {
+      "count": 1,
+      "control_median": 18809,
+      "control_max": 18809,
+      "candidate_median": 19220,
+      "candidate_max": 19220,
+      "median_delta_cycles": 411,
+      "median_delta_percent": 2.1851241426976475,
+      "candidate_nominal_budget_slack": 47446.66666666667
+    },
+    "stop_cleanup": {
+      "count": 1,
+      "control_median": 19902,
+      "control_max": 19902,
+      "candidate_median": 20166,
+      "candidate_max": 20166,
+      "median_delta_cycles": 264,
+      "median_delta_percent": 1.3264998492613866,
+      "candidate_nominal_budget_slack": 46500.66666666667
+    },
+    "warm_play": {
+      "count": 1,
+      "control_median": 32594,
+      "control_max": 32594,
+      "candidate_median": 32939,
+      "candidate_max": 32939,
+      "median_delta_cycles": 345,
+      "median_delta_percent": 1.0584770203104776,
+      "candidate_nominal_budget_slack": 33727.66666666667
+    },
+    "seek_prefix": {
+      "count": 1,
+      "control_median": 365340,
+      "control_max": 365340,
+      "candidate_median": 410865,
+      "candidate_max": 410865,
+      "median_delta_cycles": 45525,
+      "median_delta_percent": 12.460995237313188,
+      "candidate_nominal_budget_slack": -344198.3333333333
+    },
+    "wrap_after_seek": {
+      "count": 1,
+      "control_median": 18206,
+      "control_max": 18206,
+      "candidate_median": 18551,
+      "candidate_max": 18551,
+      "median_delta_cycles": 345,
+      "median_delta_percent": 1.8949796770295402,
+      "candidate_nominal_budget_slack": 48115.66666666667
+    },
+    "stop_after_wrap": {
+      "count": 1,
+      "control_median": 19902,
+      "control_max": 19902,
+      "candidate_median": 20166,
+      "candidate_max": 20166,
+      "median_delta_cycles": 264,
+      "median_delta_percent": 1.3264998492613866,
+      "candidate_nominal_budget_slack": 46500.66666666667
+    },
+    "quiet_after_stop": {
+      "count": 1,
+      "control_median": 16868,
+      "control_max": 16868,
+      "candidate_median": 17132,
+      "candidate_max": 17132,
+      "median_delta_cycles": 264,
+      "median_delta_percent": 1.565093668484696,
+      "candidate_nominal_budget_slack": 49534.66666666667
+    }
+  },
+  "retention": "s4-musical-comparison-retention.json"
+}

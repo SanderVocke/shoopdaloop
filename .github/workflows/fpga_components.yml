@@ -211,6 +211,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check area experiment preparation and evidence
+        run: PYTHONPATH=fpga/synthesis python3 -m unittest fpga/synthesis/test_area_experiments.py
       - name: Install pinned synthesis tools
         uses: YosysHQ/setup-oss-cad-suite@853bb54f52246aa8fb4fab963f104cfb6676197a
         with:

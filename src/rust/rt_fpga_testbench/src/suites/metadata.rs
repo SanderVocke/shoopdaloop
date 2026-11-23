@@ -1,4 +1,5 @@
 //! Metadata indexing, detached radix roots, and coherent shared cache transport.
+pub mod validity;
 use crate::{
     Result,
     clock::Edges,
@@ -367,8 +368,14 @@ impl Agent for Stalls {
     }
 }
 pub fn coherent_cache_and_transport(width: u64, words: u64) -> Result<()> {
-    let compiled = design("metadata_cache_tb", width, words, 0)
-        .build(&crate::root().join("work/marlin-suite/metadata"))?;
+    coherent_cache_lines(width, words, 2)
+}
+pub fn coherent_cache_lines(width: u64, words: u64, lines: u64) -> Result<()> {
+    let mut design = design("metadata_cache_tb", width, words, 0);
+    design
+        .parameters
+        .insert("CACHE_LINES".into(), lines.to_string());
+    let compiled = design.build(&crate::root().join("work/marlin-suite/metadata"))?;
     let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
     let memory = Memory::attach(
         &mut s,
@@ -498,4 +505,448 @@ pub fn coherent_cache_and_transport(width: u64, words: u64) -> Result<()> {
     request(&mut s, 1, 3, 0, 0, 0, 1);
     assert_ne!(s.model.get("c1_fault"), 0);
     Ok(())
+}
+
+pub fn cache_area_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut design = design("metadata_cache_tb", width, 16, 0);
+    design.parameters.insert("CACHE_LINES".into(), "128".into());
+    let compiled = design.build(&crate::root().join("work/marlin-suite/metadata-area"))?;
+    let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+    let memory = Memory::attach(
+        &mut s,
+        Mode::Instant,
+        8192,
+        0x01000000,
+        &crate::artifact_directory("metadata-cache-area"),
+        7654,
+    )?;
+    memory.borrow_mut().control.stalls = false;
+    let port = Request::new(&mut s, "c0_");
+    s.model.set("reset", 1);
+    s.idle(1);
+    s.model.set("reset", 0);
+    s.idle(1);
+    let mut rng = Random::new(7654);
+    let mut image: Vec<_> = (0..8192).map(|_| rng.next() as u32).collect();
+    Memory::load(&memory, &mut s, &image);
+    let counters =
+        |s: &Sim<'_>| ["hits", "misses", "fills", "writebacks"].map(|name| port.get(s, name));
+    let mut measurements = Vec::new();
+    for (kind, order) in [
+        ("sequential", (0..128).collect::<Vec<_>>()),
+        ("strided", (0..128).map(|i| i * 17 % 128).collect()),
+        ("set_conflict", (0..5).map(|i| i * 32).collect()),
+    ] {
+        port.transaction(
+            &mut s,
+            &[("request_opcode", 3), ("request_invalidate", 1)],
+            0,
+            0,
+        );
+        for pass in 0..3 {
+            for &line in &order {
+                let word = line * 16 + (pass * 7 % 16);
+                let write = kind == "set_conflict" && pass != 1;
+                let value = rng.next() as u32;
+                let before = counters(&s);
+                let start = s.cycles;
+                let actual = port
+                    .transaction(
+                        &mut s,
+                        &[
+                            ("request_opcode", u64::from(write)),
+                            ("request_invalidate", 0),
+                            ("request_address", 0x01000000 + word as u64 * 4),
+                            ("request_data", u64::from(value)),
+                        ],
+                        0,
+                        0,
+                    )
+                    .get(0, 32);
+                let cycles = s.cycles - start;
+                let after = counters(&s);
+                if write {
+                    image[word] = value;
+                } else {
+                    assert_eq!(actual, u64::from(image[word]));
+                }
+                measurements.push(json!({
+                    "kind":kind,"pass":pass,"line":line,"word":word,"write":write,
+                    "cycles":cycles,"hits":after[0]-before[0],"misses":after[1]-before[1],
+                    "fills":after[2]-before[2],"writebacks":after[3]-before[3]
+                }));
+            }
+        }
+        let start = s.cycles;
+        port.transaction(
+            &mut s,
+            &[("request_opcode", 3), ("request_invalidate", 1)],
+            0,
+            0,
+        );
+        measurements.push(json!({"kind":format!("{kind}_fence"),"cycles":s.cycles-start}));
+        assert_eq!(Memory::read(&memory, &mut s), image);
+    }
+    Ok(json!({
+        "schema_version":1,"scope":"cache plus shared AXI and direct-memory timing model; request assertion through response acceptance; hold=0; preparation/readback excluded",
+        "cache_lines":128,"line_words":16,"axi_data_width":width,"seed":7654,
+        "validation":"read values and final fenced memory match an independent word array; protocol agents check held responses",
+        "measurements":measurements,"provenance":crate::report::provenance()
+    }))
+}
+
+pub fn translation_area_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut design = design("media_metadata_tb", width, 16, 1);
+    design.parameters.insert("TABLE_PAGES".into(), "128".into());
+    design.parameters.insert("TABLE_LINES".into(), "128".into());
+    for name in ["directory_reads", "table_reads"] {
+        design
+            .probes
+            .push(Probe::observe(&format!("metadata.{name}")));
+    }
+    for name in ["hits", "misses", "fills", "writebacks"] {
+        design
+            .probes
+            .push(Probe::observe(&format!("metadata.banks[0].cache.{name}")));
+    }
+    let compiled = design.build(&crate::root().join("work/marlin-suite/translation-area"))?;
+    let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+    let memory = Memory::attach(
+        &mut s,
+        Mode::Instant,
+        8192,
+        0x01000000,
+        &crate::artifact_directory("metadata-translation-area"),
+        91833,
+    )?;
+    memory.borrow_mut().control.stalls = false;
+    let d = Metadata {
+        port: Request::new(&mut s, ""),
+        memory,
+        slots: 512,
+    };
+    d.reset(&mut s);
+    let mut expected = vec![vec![0_u64; 272]; 4];
+    for (view, values) in expected.iter_mut().enumerate() {
+        for (ordinal, value) in values.iter_mut().enumerate() {
+            *value = 1 + view as u64 * 4096 + ordinal as u64;
+            d.request(&mut s, 1, view as u64, ordinal as u64, *value, 0);
+        }
+    }
+    let counters = |s: &Sim<'_>| {
+        ["hits", "misses", "fills", "writebacks"]
+            .map(|name| s.model.get(&format!("metadata.banks[0].cache.{name}")))
+    };
+    let mut measurements = Vec::new();
+    for (kind, order) in [
+        ("repeated_block", vec![0_usize; 32]),
+        ("sequential", (0..272).collect::<Vec<_>>()),
+        ("strided", (0..272).map(|i| i * 19 % 272).collect()),
+        (
+            "leaf_boundaries",
+            vec![0, 15, 16, 255, 256, 271, 256, 255, 16, 15, 0],
+        ),
+    ] {
+        d.request(&mut s, 9, 0, 0, 0, 0);
+        for (step, &ordinal) in order.iter().enumerate() {
+            for (view, values) in expected.iter().enumerate() {
+                let before = counters(&s);
+                let start = s.cycles;
+                assert_eq!(
+                    d.request(&mut s, 0, view as u64, ordinal as u64, 0, 0),
+                    values[ordinal]
+                );
+                let elapsed = s.cycles - start;
+                let after = counters(&s);
+                measurements.push(
+                    json!({"kind":kind,"step":step,"view":view,"ordinal":ordinal,
+                    "cycles":elapsed,"hits":after[0]-before[0],"misses":after[1]-before[1],
+                    "fills":after[2]-before[2],"writebacks":after[3]-before[3]}),
+                );
+            }
+        }
+    }
+    // Keep a logical map independent of cache layout through mutations and reuse.
+    for (view, values) in expected.iter_mut().enumerate() {
+        for ordinal in [0, 7, 15, 16, 255, 256, 271, 0] {
+            values[ordinal] += 65536;
+            d.request(&mut s, 1, view as u64, ordinal as u64, values[ordinal], 0);
+            for i in [0, 7, 15, 16, 255, 256, 271] {
+                assert_eq!(d.request(&mut s, 0, view as u64, i as u64, 0, 0), values[i]);
+            }
+        }
+        d.request(&mut s, 6, view as u64, 257, 0, 0);
+        values.truncate(257);
+        assert_eq!(d.request(&mut s, 0, view as u64, 256, 0, 0), values[256]);
+        d.request(&mut s, 0, view as u64, 257, 0, 1);
+        values.push(0x12340000 + view as u64);
+        d.request(&mut s, 1, view as u64, 257, values[257], 0);
+        assert_eq!(d.request(&mut s, 0, view as u64, 257, 0, 0), values[257]);
+    }
+    d.request(&mut s, 6, 0, 0, 0, 0);
+    d.request(&mut s, 0, 0, 0, 0, 1);
+    d.request(&mut s, 1, 0, 0, 0xaa, 0);
+    assert_eq!(d.request(&mut s, 10, 0, 0, 0, 0), 1);
+    d.request(&mut s, 1, 0, 0, 0xbb, 0);
+    assert_eq!(d.request(&mut s, 11, 0, 0, 0, 0), 0xaa);
+    assert_eq!(d.request(&mut s, 12, 0, 0, 0, 0), 0);
+    assert_eq!(d.request(&mut s, 0, 0, 0, 0, 0), 0xbb);
+    d.request(&mut s, 9, 0, 0, 0, 0);
+    assert_eq!(d.request(&mut s, 0, 0, 0, 0, 0), 0xbb);
+    d.reset(&mut s);
+    d.request(&mut s, 0, 0, 0, 0, 1);
+    d.request(&mut s, 1, 0, 0, 0xcc, 0);
+    assert_eq!(d.request(&mut s, 0, 0, 0, 0, 0), 0xcc);
+    Ok(
+        json!({"schema_version":1,"axi_data_width":width,"seed":91833,
+        "scope":"metadata controller plus coherent cache, AXI and direct-memory model; driver request assertion through response acceptance and cleanup; preparation excluded; four views with 272 entries",
+        "validation":"reads, repeated writes, trim/regrow, global invalidation, detached GC with live view reuse, and reset agree with an independent logical map",
+        "measurements":measurements,"provenance":crate::report::provenance()}),
+    )
+}
+
+pub fn width_boundary_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut results = Vec::new();
+    for (views, slots, pages, retired) in [(1, 1, 4, 1), (3, 17, 8, 3), (4, 180096, 64, 2)] {
+        let words = (3 * slots + (pages * 16 + 96).max(1024)).max(8192);
+        let mut design =
+            design("media_metadata_tb", width, 16, 0).administration_at(words, "dut.ram");
+        for (key, value) in [
+            ("VIEWS", views),
+            ("SLOTS", slots),
+            ("TABLE_PAGES", pages),
+            ("RETIRED_TABLES", retired),
+        ] {
+            design.parameters.insert(key.into(), value.to_string());
+        }
+        let compiled =
+            design.build(&crate::root().join("work/marlin-suite/metadata-width-boundaries"))?;
+        let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+        let memory = Memory::attach(
+            &mut s,
+            Mode::Instant,
+            words,
+            0x01000000,
+            &crate::artifact_directory("metadata-width-boundaries"),
+            20261122,
+        )?;
+        let d = Metadata {
+            port: Request::new(&mut s, ""),
+            memory,
+            slots: slots as u64,
+        };
+        d.memory.borrow_mut().control.stalls = false;
+        d.reset(&mut s);
+        let count = if slots <= 17 { slots } else { 1 };
+        for index in 0..count {
+            d.request(&mut s, 1, 0, index as u64, 0x80000000 + index as u64, 0);
+        }
+        let mut rows = Vec::new();
+        let mut request = |s: &mut Sim<'_>, op, view, index, data, error| {
+            let start = s.cycles;
+            let value = d.request(s, op, view, index, data, error);
+            rows.push(json!({"opcode":op,"view":view,"index":index,"data":data,"error":error,"value":value,"cycles":s.cycles-start}));
+            value
+        };
+        request(&mut s, 1, views as u64 - 1, 0, 0x80000000, 0);
+        assert_eq!(request(&mut s, 0, views as u64 - 1, 0, 0, 0), 0x80000000);
+        for view in [views as u64, 0x80000000, u64::from(u32::MAX)] {
+            for op in [0, 1, 6, 7, 10] {
+                request(&mut s, op, view, 0, 123, 1);
+            }
+        }
+        for index in [slots as u64, 0x80000000, u64::from(u32::MAX)] {
+            for op in [0, 1, 2, 3, 4, 5] {
+                request(&mut s, op, 0, index, 123, 1);
+            }
+        }
+        for index in [0x80000000, u64::from(u32::MAX)] {
+            for op in [6, 7, 13, 14] {
+                request(&mut s, op, 0, index, 0, 1);
+            }
+        }
+        let mut nodes = 0;
+        let mut level_count = slots;
+        loop {
+            level_count = level_count.div_ceil(16);
+            nodes += level_count;
+            if level_count == 1 {
+                break;
+            }
+        }
+        request(
+            &mut s,
+            7,
+            0,
+            slots as u64,
+            0,
+            if nodes > pages { 3 } else { 0 },
+        );
+        request(&mut s, 13, 0, (retired * 16) as u64, 0, 1);
+        request(&mut s, 14, 0, 4, 0, 1);
+        for op in [8, 9] {
+            request(&mut s, op, u64::from(u32::MAX), u64::from(u32::MAX), 0, 0);
+        }
+        request(&mut s, 15, u64::from(u32::MAX), u64::from(u32::MAX), 0, 2);
+        for index in 0..count {
+            assert_eq!(
+                request(&mut s, 0, 0, index as u64, 0, 0),
+                0x80000000 + index as u64
+            );
+        }
+        assert_eq!(request(&mut s, 10, 0, 0, 0, 0), count as u64);
+        request(&mut s, 9, 0, 0, 0, 0);
+        let queue_word = 3 * slots.div_ceil(16) * 16 + pages * 16 + 1;
+        assert_eq!(s.model.get("sim_busy"), 0);
+        s.model.set_all(&[
+            ("sim_host_op", 1),
+            ("sim_host_address", queue_word as u64),
+            ("sim_host_write_data", u64::from(u32::MAX)),
+        ]);
+        s.idle(1);
+        s.model.set("sim_host_op", 0);
+        request(&mut s, 11, u64::from(u32::MAX), 0, 0, 2);
+        request(&mut s, 12, u64::from(u32::MAX), 0, 0, 2);
+        d.reset(&mut s);
+        request(&mut s, 0, 0, 0, 0, 1);
+        request(&mut s, 1, 0, 0, u64::from(u32::MAX), 0);
+        assert_eq!(request(&mut s, 0, 0, 0, 0, 0), u64::from(u32::MAX));
+        results.push(json!({"views":views,"slots":slots,"pages":pages,"retirements":retired,"measurements":rows}));
+    }
+    Ok(
+        json!({"axi_data_width":width,"scope":"minimum, odd and primary-sized metadata counts; wide invalid input/error priority, opaque values, malformed retired DDR count and stale-RAM reset","validation":"all public responses match independent extent/capacity/opaque-value checks; full small pools and highest view IDs retained; malformed raw32 retirement count rejected before traversal","cases":results}),
+    )
+}
+
+pub fn directory_area_workloads(width: u64) -> Result<serde_json::Value> {
+    use serde_json::json;
+    use std::collections::BTreeMap;
+    const SLOTS: usize = 180096;
+    const PAGES: usize = 8192;
+    const WORDS: usize = 3 * SLOTS + PAGES * 16 + 96;
+    let mut design = design("media_metadata_tb", width, 16, 2).administration_at(WORDS, "dut.ram");
+    for (name, value) in [
+        ("SLOTS", SLOTS),
+        ("TABLE_PAGES", PAGES),
+        ("TABLE_LINES", 128),
+    ] {
+        design.parameters.insert(name.into(), value.to_string());
+    }
+    for name in ["hits", "misses", "fills", "writebacks"] {
+        design
+            .probes
+            .push(Probe::observe(&format!("metadata.banks[0].cache.{name}")));
+    }
+    let compiled = design.build(&crate::root().join("work/marlin-suite/directory-area"))?;
+    let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
+    let memory = Memory::attach(
+        &mut s,
+        Mode::Instant,
+        WORDS,
+        0x01000000,
+        &crate::artifact_directory("metadata-directory-area"),
+        100789,
+    )?;
+    memory.borrow_mut().control.stalls = false;
+    let d = Metadata {
+        port: Request::new(&mut s, ""),
+        memory,
+        slots: SLOTS as u64,
+    };
+    d.reset(&mut s);
+    let counts = [65537_u64, 4097, 4097, 4097];
+    let expected = |view: u64, index: u64| 1 + view * 4099 + index;
+    let setup_start = s.cycles;
+    let mut setup = Vec::new();
+    for (view, &count) in counts.iter().enumerate() {
+        let start = s.cycles;
+        for index in 0..count {
+            d.request(
+                &mut s,
+                1,
+                view as u64,
+                index,
+                expected(view as u64, index),
+                0,
+            );
+        }
+        setup.push(json!({"view":view,"writes":count,"cycles":s.cycles-start}));
+    }
+    let setup_cycles = s.cycles - setup_start;
+    let mut measurements = Vec::new();
+    let counters = |s: &Sim<'_>| {
+        ["hits", "misses", "fills", "writebacks"]
+            .map(|name| s.model.get(&format!("metadata.banks[0].cache.{name}")))
+    };
+    let mut request = |s: &mut Sim<'_>, kind: &str, op, view, index, value, error| {
+        let before = counters(s);
+        let start = s.cycles;
+        let actual = d.request(s, op, view, index, value, error);
+        let after = counters(s);
+        measurements.push(json!({"kind":kind,"opcode":op,"view":view,"index":index,
+            "error":error,"value":actual,"cycles":s.cycles-start,
+            "hits":after[0]-before[0],"misses":after[1]-before[1],
+            "fills":after[2]-before[2],"writebacks":after[3]-before[3]}));
+        actual
+    };
+    let positions = vec![0, 1, 15, 16, 255, 256, 4095, 4096, 65535, 65536];
+    for (kind, order) in [
+        ("forward", positions.clone()),
+        ("reverse", positions.into_iter().rev().collect()),
+        (
+            "alternating",
+            [255, 256, 4095, 4096, 65535, 65536].repeat(4),
+        ),
+    ] {
+        request(&mut s, "invalidate", 9, 0, 0, 0, 0);
+        for index in order {
+            for (view, &count) in counts.iter().enumerate() {
+                let error = u64::from(index >= count);
+                let actual = request(&mut s, kind, 0, view as u64, index, 0, error);
+                if error == 0 {
+                    assert_eq!(actual, expected(view as u64, index));
+                }
+            }
+        }
+    }
+    let mut changed = BTreeMap::new();
+    for index in [255, 256, 4095, 4096, 65535, 65536] {
+        let value = 0xf0000000 + index;
+        request(&mut s, "rewrite", 1, 0, index, value, 0);
+        changed.insert(index, value);
+        assert_eq!(request(&mut s, "rewrite_read", 0, 0, index, 0, 0), value);
+    }
+    request(&mut s, "trim", 6, 0, 65536, 0, 0);
+    request(&mut s, "trim_extent", 0, 0, 65536, 0, 1);
+    assert_eq!(
+        request(&mut s, "trim_read", 0, 0, 65535, 0, 0),
+        changed[&65535]
+    );
+    request(&mut s, "regrow", 1, 0, 65536, 0xfeedc0de, 0);
+    assert_eq!(
+        request(&mut s, "regrow_read", 0, 0, 65536, 0, 0),
+        0xfeedc0de
+    );
+    assert_eq!(request(&mut s, "detach", 10, 0, 0, 0, 0), 65537);
+    request(&mut s, "live_reuse", 1, 0, 0, 0x55aaa5a5, 0);
+    assert_eq!(request(&mut s, "gc_read", 11, 0, 0, 0, 0), 0xfeedc0de);
+    assert_eq!(request(&mut s, "gc_trim", 12, 0, 0, 0, 0), 65536);
+    assert_eq!(request(&mut s, "live_read", 0, 0, 0, 0, 0), 0x55aaa5a5);
+    assert_eq!(request(&mut s, "gc_read", 11, 0, 0, 0, 0), changed[&65535]);
+    assert_eq!(request(&mut s, "gc_trim", 12, 0, 0, 0, 0), 65535);
+    assert_eq!(request(&mut s, "live_read", 0, 0, 0, 0, 0), 0x55aaa5a5);
+    d.reset(&mut s);
+    request(&mut s, "reset_extent", 0, 0, 0, 0, 1);
+    request(&mut s, "reset_write", 1, 0, 0, 0x99117733, 0);
+    assert_eq!(request(&mut s, "reset_read", 0, 0, 0, 0, 0), 0x99117733);
+    Ok(
+        json!({"schema_version":1,"axi_data_width":width,"slots":SLOTS,"pages":PAGES,
+        "scope":"whole metadata driver call including admission/response cleanup; preparation writes timed separately; direct-memory model, no randomized stalls",
+        "validation":"independent logical values across competing views, 16/256/4096/65536 boundaries, high opaque rewrites, trim/regrow, detached deep-root GC with live-ID reuse and stale-RAM reset",
+        "setup_cycles":setup_cycles,"setup":setup,"measurements":measurements,
+        "provenance":crate::report::provenance()}),
+    )
 }

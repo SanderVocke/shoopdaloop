@@ -1,0 +1,18 @@
+{
+  "archive": "c2-midi-reserved-control-raw.tar.gz",
+  "archive_sha256": "aebe5ef6871863aa2f906f3c7aee44cd085f06f1bb7fb90c18b2d94d3fe6c16a",
+  "members_sha256": {
+    "fixture/src/rust/rt_fpga_testbench/examples/midi_reserved_words.rs": "e2b3e2c32716fa60048373cb0ec97f1494e1cf8e20e6deac5aae5559b7267390",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/midi.rs": "86aa422bd063507627e4820347f3b469570e2dbc5752eaaffa5a2a0fdaefb713",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/midi/store_area.rs": "cd5de538173a9af1b344f5d0f4f387e127d13b6257a09d65f82eadfce6d47f81",
+    "fixture/src/rust/rt_fpga_testbench/tests/midi_reserved.rs": "688b24adba62641c2cd440cc70347077196b3789f8e059079db1850c2dce702c",
+    "logs/0-c2-midi-reserved-control.log": "59622eea6d3df9c5cec5ea35adf635c10d9e3ebe8c761424c4acba72d17db776",
+    "logs/1-c2-midi-reserved-control-test.log": "847ae3a68dea4848b5b068c305ba6be6fa5fadafaa5e09c6cc4b408e15e935fc",
+    "replay/archive-area-unit.py": "45e950cb2d74b8efec0f9deebf97afd0f6018c384db83cfa8a71cbebe2654364",
+    "samples/c2-midi-reserved-control.json": "f9c8a02fd2558043d7a8961e5145136ababd795eefe62dd10b7aa0ef001bbce1",
+    "source/fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+    "source/fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+    "source/fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+    "source/fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+  }
+}

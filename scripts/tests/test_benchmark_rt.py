@@ -337,7 +337,8 @@ class BenchmarkReportTests(unittest.TestCase):
                     mock.patch.object(BENCH.subprocess, "run", side_effect=execute), mock.patch.object(BENCH, "report", return_value=True):
                 self.assertEqual(BENCH.main(), 0)
             self.assertEqual([p for b, p in calls if b == "cpu"], ["stress", *BENCH.PATTERNS])
-            self.assertEqual([p for b, p in calls if b == "fpga-rtl"], ["stress", "grab"])
+            # The two required RTL jobs run concurrently; submission order is not start order.
+            self.assertCountEqual([p for b, p in calls if b == "fpga-rtl"], ["stress", "grab"])
             manifest = json.loads((output / "manifest.json").read_text())
             self.assertEqual(manifest["planned_runs"], 18)
             self.assertEqual(manifest["expected_runs"], 10)

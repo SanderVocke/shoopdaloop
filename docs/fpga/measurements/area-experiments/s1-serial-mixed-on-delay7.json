@@ -1,0 +1,1726 @@
+{
+  "chunk_frames": 32,
+  "compiled_instructions": 835,
+  "ddr_added_delay_clocks": 7,
+  "loops": 64,
+  "maximum_jobs": 1155,
+  "measurements": [
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        1248,
+        128,
+        6528,
+        512
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          32,
+          864,
+          864,
+          128
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 110356,
+      "jobs": 579,
+      "kind": "playback_start",
+      "midi_axi_reads_writes_native_reads_writes": [
+        1399,
+        35,
+        1399,
+        35
+      ],
+      "midi_packets": 5,
+      "position": 0,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 1103.56
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54809,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        140,
+        35,
+        140,
+        35
+      ],
+      "midi_packets": 5,
+      "position": 32,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 548.09
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54809,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        140,
+        35,
+        140,
+        35
+      ],
+      "midi_packets": 5,
+      "position": 64,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 548.09
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54809,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        140,
+        35,
+        140,
+        35
+      ],
+      "midi_packets": 5,
+      "position": 96,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 548.09
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54126,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        110,
+        25,
+        110,
+        25
+      ],
+      "midi_packets": 4,
+      "position": 128,
+      "state_work": {
+        "compared_fields": 3,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 3
+      },
+      "us_at_100mhz": 541.26
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 160,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 192,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 224,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 256,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 288,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 320,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 352,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 384,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 416,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54218,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        112,
+        28,
+        112,
+        28
+      ],
+      "midi_packets": 4,
+      "position": 448,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 542.18
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54719,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        25,
+        145,
+        25
+      ],
+      "midi_packets": 5,
+      "position": 480,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.19
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54719,
+      "jobs": 515,
+      "kind": "warmup",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        25,
+        145,
+        25
+      ],
+      "midi_packets": 5,
+      "position": 512,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.19
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54719,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        25,
+        145,
+        25
+      ],
+      "midi_packets": 5,
+      "position": 544,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.19
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54753,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        27,
+        145,
+        27
+      ],
+      "midi_packets": 5,
+      "position": 576,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.53
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54164,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        115,
+        22,
+        115,
+        22
+      ],
+      "midi_packets": 4,
+      "position": 608,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.64
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 640,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 672,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 704,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 736,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 768,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 800,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 832,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 864,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 896,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54146,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        116,
+        20,
+        116,
+        20
+      ],
+      "midi_packets": 4,
+      "position": 928,
+      "state_work": {
+        "compared_fields": 4,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 4
+      },
+      "us_at_100mhz": 541.46
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54719,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        25,
+        145,
+        25
+      ],
+      "midi_packets": 5,
+      "position": 960,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.19
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54719,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        25,
+        145,
+        25
+      ],
+      "midi_packets": 5,
+      "position": 992,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.19
+    },
+    {
+      "audio_axi_reads_writes_native_reads_writes": [
+        256,
+        0,
+        2048,
+        0
+      ],
+      "audio_metadata_table_reference_stack_hits_misses_fills_writebacks": [
+        [
+          384,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "cycles": 54753,
+      "jobs": 515,
+      "kind": "steady",
+      "midi_axi_reads_writes_native_reads_writes": [
+        145,
+        27,
+        145,
+        27
+      ],
+      "midi_packets": 5,
+      "position": 1024,
+      "state_work": {
+        "compared_fields": 5,
+        "prefix_events": 0,
+        "restored_messages": 0,
+        "tracker_visits": 5
+      },
+      "us_at_100mhz": 547.53
+    }
+  ],
+  "memory": "two independent 64-bit AXI ports, fixed 7-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects",
+  "midi_events_per_loop": 3000,
+  "midi_state_hardware": true,
+  "midi_state_tracking": true,
+  "musical_fixture": false,
+  "preparation": "RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "BLOCK_CHUNKS": "32",
+          "BUFFERS": "512",
+          "CHUNK_FRAMES": "32",
+          "INPUT_PORTS": "2",
+          "JOB_DEPTH": "2048",
+          "MAX_FRAMES": "32",
+          "MEMORY_RESPONSE_CYCLES": "1",
+          "MIDI_AXI_DATA_WIDTH": "64",
+          "MIDI_BLOCKS": "2432",
+          "MIDI_BLOCK_EVENTS": "256",
+          "MIDI_BUFFERS": "256",
+          "MIDI_CURSORS": "64",
+          "MIDI_DESTINATIONS": "8",
+          "MIDI_INPUTS": "1",
+          "MIDI_LOOPS": "64",
+          "MIDI_MAINTENANCE": "64",
+          "MIDI_MAX_EVENTS": "8192",
+          "MIDI_RETIREMENTS": "128",
+          "MIDI_SCRATCH_EVENTS": "131072",
+          "MIDI_STATE_SUPPORTED": "1",
+          "MIDI_VIEWS": "256",
+          "OUTPUT_PORTS": "2",
+          "PHYSICAL_BASE": "16777216",
+          "PROGRAM_DEPTH": "2048",
+          "READ_BUFFERS": "4",
+          "READ_HINT_DEPTH": "256",
+          "RECLAIM_BLOCKS": "0",
+          "RECLAIM_CYCLES": "5000",
+          "RECLAIM_GUARD": "1024",
+          "REF_LINES": "4",
+          "RETIRED_TABLES": "256",
+          "REUSE_VIEWS": "1",
+          "SLOTS": "5763072",
+          "STACK_LINES": "2",
+          "STATE_DEPTH": "256",
+          "TABLE_LINES": "128",
+          "TABLE_PAGES": "16119",
+          "VIEWS": "512",
+          "WRITE_BUFFERS": "4"
+        },
+        "probes": [
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[0].cache.hits"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[0].cache.misses"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[0].cache.fills"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[0].cache.writebacks"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[1].cache.hits"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[1].cache.misses"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[1].cache.fills"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[1].cache.writebacks"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[2].cache.hits"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[2].cache.misses"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[2].cache.fills"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.core.media.metadata.banks[2].cache.writebacks"
+          }
+        ],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv": "c3c718bff994044afc6e933040d8d6cc83be6a0ae2735b9188cfb9340df547ad",
+          "fpga/axi_memory/rtl/media_store_axi.sv": "994218f9c840591aac6c0a72c17a00d5ab4c68d96a5f25f5d556fe150bec8c9d",
+          "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+          "fpga/axi_memory/rtl/word_axi.sv": "384ae7fe56f7303371397bc011e8cf25f4900acecc69aecf3a5e7ae3635b648a",
+          "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "66e8b5a5f1978cfdc89656aef59d74223a69ef0a89aa99f84d5e2bfb202f0d34",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/job_processor/rtl/audio_pipeline.sv": "c266d2ba67a2e09baedc98f564d8d8a201556b5c01f5b3bf885f319b7fe57084",
+          "fpga/job_processor/rtl/job_processor.sv": "ad0bd12587c9e7326fef98746157a87080f515dc29626d4dba25acf63802545a",
+          "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+          "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854",
+          "fpga/media_store/rtl/media_audio_pipeline.sv": "f18a7082b674f4e85436d3e02d221819a29dd8ee007d95160b1dacba9892ece1",
+          "fpga/media_store/rtl/media_metadata.sv": "3e4d4cc417a3b83a6d080f90b48bb4e182dec46b70671b59c564c468523ac964",
+          "fpga/media_store/rtl/media_prefetch_resolver.sv": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e",
+          "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+          "fpga/media_store/rtl/media_reclaimer.sv": "f4d38e13e9d705a8afff6c10bde68483c2e02c5c71dedaa8e6def7db3d224049",
+          "fpga/media_store/rtl/media_store.sv": "b3724656279576498d5c594161bedd83aa3e2d115a02174e3d8fe4b8e19b2753",
+          "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+          "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+          "fpga/midi/rtl/midi_audio_pipeline.sv": "6cd510a926dfd38e7143dd8f9bf48f93c5460a0f1c84270b89b84ae7e75eb151",
+          "fpga/midi/rtl/midi_audio_pipeline_axi.sv": "bc6813db9d54eb64138939d5a80eca8f96adf451e2b311ee5abf8dae5e373e05",
+          "fpga/midi/rtl/midi_data_jobs.sv": "3caefc0714f71746044ed3390ce93ab5748a252e9ef81cd5f2f121cc51ff3e12",
+          "fpga/midi/rtl/midi_expression_state.sv": "445a719d4cb2b8846fa0d942ff795a48cd8ef50d2ab5fbba7f85f4da8b78d20a",
+          "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+          "fpga/midi/rtl/midi_store.sv": "39e81ef2c1780739e2bd212998d6d81384d737cc3d09b4e3e8dc7087ae1065ad",
+          "fpga/state_processor/rtl/sp_engine.sv": "0561c382838f5d465a04e1c2f6e4fc4f538ef4760bf1842e7b9dcbbc90015f6d",
+          "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+          "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+          "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+          "fpga/state_processor/rtl/state_processor.sv": "2da18346a932d753ecc7a6552f3fe5de4528bdd6c462ca92412672a6b7dbda33",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+        },
+        "top": "midi_audio_pipeline_axi"
+      }
+    ],
+    "revision": "e6ce4e675e549b4a44adcf776f6ba89d7b6d5989",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev v5.032",
+    "worktree": ""
+  },
+  "quantum_frames": 32,
+  "rtl_parameters": {
+    "AXI_DATA_WIDTH": "64",
+    "BLOCK_CHUNKS": "32",
+    "BUFFERS": "512",
+    "CHUNK_FRAMES": "32",
+    "INPUT_PORTS": "2",
+    "JOB_DEPTH": "2048",
+    "MAX_FRAMES": "32",
+    "MEMORY_RESPONSE_CYCLES": "1",
+    "MIDI_AXI_DATA_WIDTH": "64",
+    "MIDI_BLOCKS": "2432",
+    "MIDI_BLOCK_EVENTS": "256",
+    "MIDI_BUFFERS": "256",
+    "MIDI_CURSORS": "64",
+    "MIDI_DESTINATIONS": "8",
+    "MIDI_INPUTS": "1",
+    "MIDI_LOOPS": "64",
+    "MIDI_MAINTENANCE": "64",
+    "MIDI_MAX_EVENTS": "8192",
+    "MIDI_RETIREMENTS": "128",
+    "MIDI_SCRATCH_EVENTS": "131072",
+    "MIDI_STATE_SUPPORTED": "1",
+    "MIDI_VIEWS": "256",
+    "OUTPUT_PORTS": "2",
+    "PHYSICAL_BASE": "16777216",
+    "PROGRAM_DEPTH": "2048",
+    "READ_BUFFERS": "4",
+    "READ_HINT_DEPTH": "256",
+    "RECLAIM_BLOCKS": "0",
+    "RECLAIM_CYCLES": "5000",
+    "RECLAIM_GUARD": "1024",
+    "REF_LINES": "4",
+    "RETIRED_TABLES": "256",
+    "REUSE_VIEWS": "1",
+    "SLOTS": "5763072",
+    "STACK_LINES": "2",
+    "STATE_DEPTH": "256",
+    "TABLE_LINES": "128",
+    "TABLE_PAGES": "16119",
+    "VIEWS": "512",
+    "WRITE_BUFFERS": "4"
+  },
+  "sample_rate": 48000,
+  "scenario": "stereo_and_midi",
+  "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+  "sequence_frames": 1440000,
+  "simulation_optimization": 3,
+  "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+  "waveform_instrumentation": false
+}

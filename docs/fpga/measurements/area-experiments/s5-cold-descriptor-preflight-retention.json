@@ -1,0 +1,27 @@
+{
+  "archive": "s5-cold-descriptor-preflight-raw.tar.gz",
+  "archive_sha256": "9e7f4abaa2f8a0367191e829ab3e6ce12c1ccb1bc4ab49d627e34890e029af5a",
+  "members_sha256": {
+    "setup/prepare-cold-descriptor.py": "a82b7964168f59a100bfd2b08c0bf4a3899df3dce4f4ef3b4fdaaca0d3f7e621",
+    "setup/snapshot-candidate.py": "f98c85ebb9646c00e382490ba9768ddfb757536adb44ee5c479075c175f99662",
+    "setup/s5-cold-descriptor-control/midi_store.sv": "f122184818ac82b980a73346ae29d116147a9955a6b8648939de937eb8736d90",
+    "setup/s5-cold-descriptor/midi_store.sv": "15f57fa1c59741c020a4b28fdcf87761bc9525127ab2a1ae516f07fb3c7e0f5b",
+    "setup/s5-cold-descriptor/lint-manifest.json": "df7893fc70ab535e22c69585e99b71f5484c7985cb699d855666907f0b8ac219",
+    "s5-cold-descriptor-focused.log": "c8668e648128950b325b0bfa4fb8d6a79071dcc455e39525f0f6d60749371dbf",
+    "s5-cold-descriptor-controls/manifest.json": "d003bfd616d9f9a174a8cd64092e88a33e76145304d25bd6b467bafd04722c5c",
+    "s5-cold-descriptor-simulation-source/snapshot-provenance.json": "52309273eef218e6dc45d8227bd2c112b978c4246da321e66f7f8f2c813b5ffe",
+    "s5-cold-descriptor-simulation-source/dramsim3-runtime-link.json": "862e10a5fd41342a0964d6fd9e55278c611638eb1d5c73c3c0b7378d0ddc9e6d",
+    "setup/s5-cold-descriptor-control/lint-default-all.log": "ef69fe946708f8d8735e2aec1f960f6ecf7b5d85a4cc5bec4dc0f020279d3fe7",
+    "setup/s5-cold-descriptor-control/lint-connected_primary-all.log": "36d11c5d1caf7111aa2ecb714046756690ac50a03e9ee46855ca6c84b19aa028",
+    "setup/s5-cold-descriptor-control/lint-odd-all.log": "e50cf0e37f5c9a2fced1d934fc1804ff7ed123a688a7730f463d9cff0ddfb604",
+    "setup/s5-cold-descriptor-control/lint-minimum-all.log": "de28f76c06528a35e5ab1acc17605aec02f25f11d7cf98d6fa51797d9bedac7f",
+    "setup/s5-cold-descriptor/lint-default-all.log": "2820ec8a6978ca52e7dab0f81d8067669f3f30d51ec1583be787a6ad76694da3",
+    "setup/s5-cold-descriptor/lint-connected_primary-all.log": "0a7e7e1088ab907281bdd82fdf07fdc2b32966acb2ee5e702851a7a97e2b260b",
+    "setup/s5-cold-descriptor/lint-default-strict.log": "1f63aa383c903844a49a285f7c328749e62acbf2fee20938f7600015ad43d4a4",
+    "setup/s5-cold-descriptor/lint-odd-all.log": "645d9aade2a0e3b92c6e46f0a5d79b672eefc7330a61e69c7c5b4e772d1ef071",
+    "setup/s5-cold-descriptor/lint-odd-strict.log": "5daa00c1df6eef67c25ef6aa7209e6361c247d736487f1c618f9e1e2007c313b",
+    "setup/s5-cold-descriptor/lint-minimum-strict.log": "df118b95eff2736f2471f4d126a62626d54a9fd88305bd8b5f782888e98ee58a",
+    "setup/s5-cold-descriptor/lint-minimum-all.log": "dd36d640723ac340e45d56e61e5635be90aedd5009cae10c0ff4c87afc74d7f4",
+    "setup/s5-cold-descriptor/lint-connected_primary-strict.log": "1a78a86b126f6690fa460f6362521fcf76f4537cf8a66f7aa886a4109e3154e8"
+  }
+}

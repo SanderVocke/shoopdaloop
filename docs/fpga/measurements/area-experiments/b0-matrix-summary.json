@@ -1,0 +1,623 @@
+{
+  "schema_version": 1,
+  "label": "b0-100-matrix",
+  "provenance": {
+    "revision": "f218087511dc28e72a436ec825445f32a722b5e9",
+    "working_tree": false,
+    "stage": "route",
+    "parameter_overrides": {},
+    "clock_mhz": 100.0,
+    "part": "xc7z020clg484-1",
+    "vivado": "2021.1",
+    "uncertainty_ns": 0.2,
+    "loops": 64,
+    "audio_channels_per_loop": 2,
+    "sample_rate": 48000,
+    "storage_seconds": 30,
+    "chunk_frames": 32,
+    "quantum_frames": 32,
+    "parameters": {
+      "EXTERNAL_IO": 1,
+      "LIVE_LOADING": 1,
+      "EXPORT_SYNC_EVENTS": 1,
+      "PROGRAM_DEPTH": 2048,
+      "STATE_DEPTH": 256,
+      "JOB_DEPTH": 2048,
+      "MAX_FRAMES": 32,
+      "BUFFERS": 512,
+      "INPUT_PORTS": 2,
+      "OUTPUT_PORTS": 2,
+      "REUSE_VIEWS": 1,
+      "VIEWS": 512,
+      "SLOTS": 5763072,
+      "CHUNK_FRAMES": 32,
+      "BLOCK_CHUNKS": 32,
+      "RETIRED_TABLES": 256,
+      "TABLE_LINES": 128,
+      "REF_LINES": 4,
+      "STACK_LINES": 2,
+      "READ_BUFFERS": 4,
+      "WRITE_BUFFERS": 4,
+      "BURST_MEMORY": 1,
+      "AXI_DATA_WIDTH": 64,
+      "PHYSICAL_BASE": 16777216,
+      "PHYSICAL_BYTES_LIMIT": 1073741824,
+      "READ_HINT_DEPTH": 256,
+      "MIDI_LOOPS": 64,
+      "MIDI_INPUTS": 1,
+      "MIDI_DESTINATIONS": 8,
+      "MIDI_BLOCK_EVENTS": 256,
+      "MIDI_BLOCKS": 2432,
+      "MIDI_MAX_EVENTS": 8192,
+      "MIDI_VIEWS": 256,
+      "MIDI_RETIREMENTS": 128,
+      "MIDI_MAINTENANCE": 64,
+      "MIDI_STATE_SUPPORTED": 1,
+      "MIDI_AXI_DATA_WIDTH": 64,
+      "MIDI_PHYSICAL_BASE": 805306368,
+      "MIDI_PHYSICAL_BYTES_LIMIT": 67108864,
+      "MIDI_BUFFERS": 256,
+      "MIDI_CURSORS": 64,
+      "MIDI_SCRATCH_EVENTS": 131072
+    },
+    "compiled_instructions": 835,
+    "jobs_per_quantum": 1155,
+    "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+    "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+    "threads": 2
+  },
+  "build_directory": "/workspace/shoopdaloop/work/area-experiments/b0-100",
+  "manifests": {
+    "source-manifest.json": "0bcca38d871707ad0daa0966c0e0e7a8e40b5fad80e9cbe843e0a661056b302e",
+    "artifact-manifest.json": "3099eed4014971d4eee262b97c3bf3736b4b3d5316937167dffa54e966f1a6d6"
+  },
+  "outcome": {
+    "stage": "route",
+    "status": "0",
+    "message": "0"
+  },
+  "stages": {
+    "synth": {
+      "lut": 57315,
+      "logic_lut": 56931,
+      "memory_lut": 384,
+      "ff": 34267,
+      "bram36": 77.5,
+      "dsp": 4,
+      "carry4": 5716,
+      "muxf7": 1574,
+      "muxf8": 576,
+      "slices": null,
+      "timing": {
+        "wns_ns": -8.226,
+        "whs_ns": 0.002
+      },
+      "control_sets": 559,
+      "timing_met": false
+    },
+    "opt": {
+      "lut": 42706,
+      "logic_lut": 42322,
+      "memory_lut": 384,
+      "ff": 33346,
+      "bram36": 77.5,
+      "dsp": 4,
+      "carry4": 5491,
+      "muxf7": 1572,
+      "muxf8": 576,
+      "slices": null,
+      "timing": {
+        "wns_ns": -5.32,
+        "whs_ns": 0.002
+      },
+      "control_sets": 557,
+      "timing_met": false
+    },
+    "place": {
+      "lut": 41980,
+      "logic_lut": 41640,
+      "memory_lut": 340,
+      "ff": 33441,
+      "bram36": 77.5,
+      "dsp": 4,
+      "carry4": 5491,
+      "muxf7": 1572,
+      "muxf8": 576,
+      "slices": 13205,
+      "timing": {
+        "wns_ns": -5.386,
+        "whs_ns": -0.394
+      },
+      "control_sets": 2215,
+      "timing_met": false
+    },
+    "route": {
+      "lut": 41980,
+      "logic_lut": 41640,
+      "memory_lut": 340,
+      "ff": 33441,
+      "bram36": 77.5,
+      "dsp": 4,
+      "carry4": 5491,
+      "muxf7": 1572,
+      "muxf8": 576,
+      "slices": 13205,
+      "timing": {
+        "wns_ns": -5.429,
+        "whs_ns": 0.008
+      },
+      "control_sets": 2215,
+      "timing_met": false
+    }
+  },
+  "benchmarks": [
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/audio-off-delay0.json",
+      "sha256": "0ca5f23b09d091005d6f143ce6da28a47541f673217c9ce26976d17c64f9e4b6",
+      "scenario": "audio_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 0,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 62550,
+          "median": 62550,
+          "max": 62550
+        },
+        "warmup": {
+          "count": 16,
+          "min": 40220,
+          "median": 40220.0,
+          "max": 40220
+        },
+        "steady": {
+          "count": 16,
+          "min": 40220,
+          "median": 40220.0,
+          "max": 40220
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/audio-off-delay7.json",
+      "sha256": "777f13b9ae3a9ced4f20be178b242b10d1ec109e3be4a592d4a974cd958d8199",
+      "scenario": "audio_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 69651,
+          "median": 69651,
+          "max": 69651
+        },
+        "warmup": {
+          "count": 16,
+          "min": 41184,
+          "median": 41184.0,
+          "max": 41184
+        },
+        "steady": {
+          "count": 16,
+          "min": 41184,
+          "median": 41184.0,
+          "max": 41184
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/audio-on-delay0.json",
+      "sha256": "0ca5f23b09d091005d6f143ce6da28a47541f673217c9ce26976d17c64f9e4b6",
+      "scenario": "audio_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 0,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 62550,
+          "median": 62550,
+          "max": 62550
+        },
+        "warmup": {
+          "count": 16,
+          "min": 40220,
+          "median": 40220.0,
+          "max": 40220
+        },
+        "steady": {
+          "count": 16,
+          "min": 40220,
+          "median": 40220.0,
+          "max": 40220
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/audio-on-delay7.json",
+      "sha256": "ffabf13c3d10124288ee939f3277eb66c60c449bd81b2d63e1d97b97ad238f5f",
+      "scenario": "audio_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 69651,
+          "median": 69651,
+          "max": 69651
+        },
+        "warmup": {
+          "count": 16,
+          "min": 41184,
+          "median": 41184.0,
+          "max": 41184
+        },
+        "steady": {
+          "count": 16,
+          "min": 41184,
+          "median": 41184.0,
+          "max": 41184
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/midi-off-delay0.json",
+      "sha256": "09ea0db618d090bcd1a903039fe22fa8ea83cf6a545ad7c509b4367257acdc2e",
+      "scenario": "midi_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 0,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 26201,
+          "median": 26201,
+          "max": 26201
+        },
+        "warmup": {
+          "count": 16,
+          "min": 12476,
+          "median": 12476.0,
+          "max": 12748
+        },
+        "steady": {
+          "count": 16,
+          "min": 12476,
+          "median": 12476.0,
+          "max": 12748
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/midi-off-delay7.json",
+      "sha256": "75795c3c80f001d42d2bef7256b82118fb1fd20619dd259af621aa2ff893f3ff",
+      "scenario": "midi_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 36029,
+          "median": 36029,
+          "max": 36029
+        },
+        "warmup": {
+          "count": 16,
+          "min": 13288,
+          "median": 13288.0,
+          "max": 13763
+        },
+        "steady": {
+          "count": 16,
+          "min": 13288,
+          "median": 13288.0,
+          "max": 13763
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/midi-on-delay0.json",
+      "sha256": "40f6e8ac81fac6faed60f4e868b3f718ce6a5312d1b16a6e6d4eb52a90de77fb",
+      "scenario": "midi_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 0,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 31371,
+          "median": 31371,
+          "max": 31371
+        },
+        "warmup": {
+          "count": 16,
+          "min": 15915,
+          "median": 15972.0,
+          "max": 16318
+        },
+        "steady": {
+          "count": 16,
+          "min": 15928,
+          "median": 15928.0,
+          "max": 16283
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/midi-on-delay7.json",
+      "sha256": "bee5d23470280a833dd6c4cbd8410545b73e631e6ebbf50990ed7968a58a0fcc",
+      "scenario": "midi_only",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 41409,
+          "median": 41409,
+          "max": 41409
+        },
+        "warmup": {
+          "count": 16,
+          "min": 16860,
+          "median": 16952.0,
+          "max": 17543
+        },
+        "steady": {
+          "count": 16,
+          "min": 16880,
+          "median": 16880.0,
+          "max": 17487
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/mixed-off-delay0.json",
+      "sha256": "a47e1ff30a33fdd27155b16c03459ec417dfd89d5ae7ef21bb7e631063d152b0",
+      "scenario": "stereo_and_midi",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 0,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 87410,
+          "median": 87410,
+          "max": 87410
+        },
+        "warmup": {
+          "count": 16,
+          "min": 48853,
+          "median": 48853.0,
+          "max": 49125
+        },
+        "steady": {
+          "count": 16,
+          "min": 48853,
+          "median": 48853.0,
+          "max": 49125
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/mixed-off-delay7.json",
+      "sha256": "8683fd911e4751c320cd168b321086a9927e258a639f573d37162ce7a00aa77c",
+      "scenario": "stereo_and_midi",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": false,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 98141,
+          "median": 98141,
+          "max": 98141
+        },
+        "warmup": {
+          "count": 16,
+          "min": 50554,
+          "median": 50554.0,
+          "max": 51029
+        },
+        "steady": {
+          "count": 16,
+          "min": 50554,
+          "median": 50554.0,
+          "max": 51029
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/mixed-on-delay0.json",
+      "sha256": "3a6025cdd8776a779bc0ea2ca5d025e71a12552e4f19c8171744773414df1148",
+      "scenario": "stereo_and_midi",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 0,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 92676,
+          "median": 92676,
+          "max": 92676
+        },
+        "warmup": {
+          "count": 16,
+          "min": 52292,
+          "median": 52349.0,
+          "max": 52695
+        },
+        "steady": {
+          "count": 16,
+          "min": 52305,
+          "median": 52305.0,
+          "max": 52660
+        }
+      }
+    },
+    {
+      "file": "docs/fpga/measurements/area-experiments/b0-matrix/mixed-on-delay7.json",
+      "sha256": "d65cd7c490aaeffd3a120cb5cbc9ca5a725cc1e05fd72f56bd747ddee11f7b04",
+      "scenario": "stereo_and_midi",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 110356,
+          "median": 110356,
+          "max": 110356
+        },
+        "warmup": {
+          "count": 16,
+          "min": 54126,
+          "median": 54218.0,
+          "max": 54809
+        },
+        "steady": {
+          "count": 16,
+          "min": 54146,
+          "median": 54146.0,
+          "max": 54753
+        }
+      }
+    }
+  ],
+  "evidence_sha256": {
+    "artifact-manifest.json": "3099eed4014971d4eee262b97c3bf3736b4b3d5316937167dffa54e966f1a6d6",
+    "outcome.txt": "ebf32806ebf1d14e12d868a1dd13ebe0c99080fc5733c3a61ee303922ab5e711",
+    "post_opt.json": "1993837fd5285b1963c1f85433ac6bd5c6dfcdaa78deccd58ce8fb001d698736",
+    "post_opt_audio_utilization.rpt": "cfff72c26cfb3486d0fbc6db12b360eaa8f0f071200e7ff804072784ad4dfc35",
+    "post_opt_check_timing.rpt": "38261e0ad1abcfaa747e0c2d9a536983f2203cb91fb52b82df4c966fe7fb35cc",
+    "post_opt_control_sets.rpt": "4241b231fc5399e267d067b1f4c8803863a86dc7380b89038b865a0f61b3b034",
+    "post_opt_critical_paths.rpt": "73f196dd656c1720403adf0977ef1779dd5c51cc44c2fbdc708b35cc3d6354f3",
+    "post_opt_hierarchical_utilization.rpt": "1e5bc069a441b885d2eac0fc67c5d5e623cd0db096ff46c6839de62499b1db59",
+    "post_opt_jobs_utilization.rpt": "2a4ed30a3c2f70ac9a5da8c6dc913406fcefe09c73da8cc4c7ca1f0788dd4735",
+    "post_opt_midi_from_paths.rpt": "e3e0b4100f327c8148635cf0aaee17547b2b1c092939e6c071c2df0021c66fe9",
+    "post_opt_midi_store_utilization.rpt": "cd082d5fa36f28e2e86f3703ee2f035111c9935835620ee58e3b86492502d43a",
+    "post_opt_midi_timing.json": "6fff070619fbefa7156c8b71c3583fa1f76a241d165fcf4ec960cccc0cf781a4",
+    "post_opt_midi_to_paths.rpt": "b9445cae0a15ca07966bd3b3ad8d7d1416d0f97cbfd7bb3f8d8c0cb10246b401",
+    "post_opt_midi_utilization.rpt": "5d00bae1e380fb234b402a03e5a9b45d8e495b1d592401faf8b11f26ca890cd7",
+    "post_opt_pipeline_utilization.rpt": "01b2cafc0a025b6b11581447161d4178c668d1803dd09e13cc32f8e080edf652",
+    "post_opt_state_utilization.rpt": "ed77d753b9b9261318a87ce164aba1e012313ca1b25777cd69983bbd87918302",
+    "post_opt_timing_summary.rpt": "5c4572e2d0757154c5f1666b2963c2b3c249eb20dbc59bdc5ed8a42f72ad67f3",
+    "post_opt_utilization.rpt": "1b9b3bfe0daff012115c6a4270d614b8331f806152671f508ccc2dda37be9924",
+    "post_place.json": "86ca015bfbbf4159724c56049f466c0755803911cb8ee81cfa95cd226a2ecee9",
+    "post_place_audio_utilization.rpt": "2a5a782e8bd958090fe1e8c83bed1ff3118c148a9eea1dc43a2fc46ae26e583a",
+    "post_place_check_timing.rpt": "403e2cf20fcf24c2732ea9742bd2f974c8adaddfb60d481bd1af7068839f6a6d",
+    "post_place_control_sets.rpt": "cbd2be717572844ce2509304cb7ae020719a34bee3c99becb40a6c3e0b129915",
+    "post_place_critical_paths.rpt": "904a11e6ba9cb13455470a18ade15587e51f64cc519fcd71c4a60d67cd2ba5b4",
+    "post_place_hierarchical_utilization.rpt": "cad3c8c5aae52b500a3dfd6dc443ce54b06e5bcc573df6acb6c9afd39598e529",
+    "post_place_jobs_utilization.rpt": "efe78560eb78c252134b4fdcd89dca24a9430b1ec91e22c48d6af1ab6769d4d8",
+    "post_place_midi_from_paths.rpt": "b36aee7853f5cfb84d91ce5a8b09961f2832315a5146dac3f44c4b332c025868",
+    "post_place_midi_store_utilization.rpt": "971bffebb2bd1d4c664ee35bf93a8822e532711964be1c4278302b2e7d3d7756",
+    "post_place_midi_timing.json": "c7430adf10b74a9449bad24ceb79321ef4af55beea8aab6d7a2bfaf7d5d77bd1",
+    "post_place_midi_to_paths.rpt": "25cfd7e6e503c9793c7d8e411ab2e76de84a1ad2d203c677facd7de264305772",
+    "post_place_midi_utilization.rpt": "b4f14ba7fa6b7da06542f67eab751ab88f2d7d6c9bf1e2041cf13ef5b8d1487f",
+    "post_place_pipeline_utilization.rpt": "eff718e35dfd10fae7b6923bcde0dbb87caa1c2deb0b33b88f541319417acc50",
+    "post_place_state_utilization.rpt": "d5c05d1ef4ae6d2d3173f3ac9b27b793c4c7fc45816c778c09560b56e1917d4b",
+    "post_place_timing_summary.rpt": "179433de926bd16fd485ae41ac7b199691b394f175064a0405b793efd924b7b8",
+    "post_place_utilization.rpt": "096f120d9e96414e6daae284a80750ab4fa005c3f6cd10d688fc6f0e980ed15f",
+    "post_route.json": "1f1313a94c875659a4f6194794bf9a4c46388824f98563cb08ef9d4dc2590d93",
+    "post_route_audio_utilization.rpt": "dd0f756e14e9c21648333f194a68df6da033479944a82c6de1d23d235c5cee3d",
+    "post_route_check_timing.rpt": "419d54948172256027889ad4cd1d04c8da3b7e4378d13986139e38173b39811d",
+    "post_route_control_sets.rpt": "5cddd48965a1fcd41beedec2ffad4ff0c9dfb8ae0fc8baa2950dbbb3a6475ec1",
+    "post_route_critical_paths.rpt": "7c44bf5343e2c7fab8200051383e5a3654494ec20d6842429d1047f5624a1aa1",
+    "post_route_drc.rpt": "80846eee242c1ad694254ec8f2a3b6b219b4d31b267c83aa11742e33685b529a",
+    "post_route_hierarchical_utilization.rpt": "fe6363f379f4bfb402cca28c5fd506b55f9d02c83cd093f20552136d6804f69f",
+    "post_route_jobs_utilization.rpt": "76d527ae8e2bc77f3cad6d534c6e711252a20120e388f8ad1d74c85c47c5ca17",
+    "post_route_midi_from_paths.rpt": "3ba1bcc7b403434718d6a2491b9bfcb07ead64ed0459ff5ef03887df450d0ffc",
+    "post_route_midi_store_utilization.rpt": "a53bccf0f80e451821f2b1d77a9f731816b5e510da927c57d5b2b47c3d2c39d6",
+    "post_route_midi_timing.json": "efc1abfbc572d7021d393f7d3bcaee48c338b218cc89094519bd5e8b487cc88d",
+    "post_route_midi_to_paths.rpt": "a2973e929622e51e3bbd312c64a60c99232c52f57ccb4b6371ef430c7260f387",
+    "post_route_midi_utilization.rpt": "f60a07359041ab4cde2d24d3d654d6d05bfbee812d66b93fcb2b3726105d4071",
+    "post_route_pipeline_utilization.rpt": "a06b57a64f151955bf1b5ea2f93431cdd1c70a39247d7e9837e824bd295c7c0e",
+    "post_route_route_status.rpt": "ba8e4967f9eec13657b4af0f67f24d7cc6b8e514f36eda908401a728b53642b6",
+    "post_route_state_utilization.rpt": "ae4468f8c486df3bd2cd47c7d315c040972ed5705ac846f759b544b060c05e7a",
+    "post_route_timing_summary.rpt": "256aa2853b8d8e120744fa1fd4f2e4f61cf99c6d818f3fc9a5dfcd29d18506e2",
+    "post_route_utilization.rpt": "4f3f7800684ca5b3a506650e9ca45524caa31d25de6d4c8343c61408497aa1f7",
+    "post_synth.json": "ee00fdce74f0e46c390ba7cc453f805c0f9ddeb5639a08c9681f422d7d407541",
+    "post_synth_audio_utilization.rpt": "b473b6908d397e1b999e40dcc3a4a9773905c97891ad2bf983f7adb14393725e",
+    "post_synth_check_timing.rpt": "31f917c5a3ef7bd0ae1be673e2994795b13f64a9a03c9c9d90301fab8f357052",
+    "post_synth_control_sets.rpt": "931652611aa72aa67f9b1f5c38bd72017c6f404cd87293b961b4272d3f2c2525",
+    "post_synth_critical_paths.rpt": "997596f0429a9001f4d2417f8340427d3f26d99df1432905f51c2dc6bcb5bd2b",
+    "post_synth_hierarchical_utilization.rpt": "acaf4b378820ce873bef582ae817daf741c30363ce46fcffc93cab2d86f6752c",
+    "post_synth_jobs_utilization.rpt": "1b51663674c8e367273757f4bcb05ce8fcbac15dc4466873a406ec35261bcd90",
+    "post_synth_midi_from_paths.rpt": "c0e1222f417c5292bcdf93abf5743eec32af3cdbaa0eac17a89adbcd598526d3",
+    "post_synth_midi_store_utilization.rpt": "bf8af1de36287f5e3e83f8d72a0ed4444b38f762c830aaa458d7bebc1ae90253",
+    "post_synth_midi_timing.json": "3f3ab9c1ae5ad38c9b5f0e72d41fd170e74d438ed044fda2121cac18a6a8bbbb",
+    "post_synth_midi_to_paths.rpt": "6afcccebe925efad7d171034608531629d57578435c9651a7ca2d9ca371151ea",
+    "post_synth_midi_utilization.rpt": "62065937caaa39ed05dd390fb62555df03a19be5056d627dd53bfece249afe90",
+    "post_synth_pipeline_utilization.rpt": "1129835be4c05498970e3b9b53fae0ecedb8b56d1c8fb0eba2961782675560b1",
+    "post_synth_state_utilization.rpt": "46f950deaf68e3ece75543a092ae0757ce57da9ca9ebe3afbefd59ee772c33b5",
+    "post_synth_timing_summary.rpt": "b075c25deea5acc61b968bf587a39a8268fb38dde4fc5d30c17f7f08a72dfaca",
+    "post_synth_utilization.rpt": "f495bac0bc18aa2d928d9bb6d07408dd0cbf72a98350978eb2880299490fe08b",
+    "provenance.json": "2d2ea81ff56ebedb089e927af229adebfacb77b375ffb38d2379c44fdd61d488",
+    "source-manifest.json": "0bcca38d871707ad0daa0966c0e0e7a8e40b5fad80e9cbe843e0a661056b302e"
+  }
+}

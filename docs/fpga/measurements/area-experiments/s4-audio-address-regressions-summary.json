@@ -1,0 +1,30 @@
+{
+  "candidate_revision": "938436956dc36a7c8dde82b014626e21eb209b1a",
+  "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+  "command": "CARGO_INCREMENTAL=0 SHOOP_FPGA_SOURCE_ROOT=work/area-experiments/s4-audio-address-simulation-source cargo test --locked -p rt_fpga_testbench --features sim --test metadata --test metadata_validity --test media --test ownership --test deferred -- --test-threads=1",
+  "environment": "Rust1.100.0 Verilator5.032 RUSTFLAGS=-D warnings; pinnedDRAMsim3runtime linkedunder snapshot/work; walltimes includecompilation",
+  "suites": {
+    "deferred": {
+      "passed": 1,
+      "seconds": 62.95
+    },
+    "media": {
+      "passed": 1,
+      "seconds": 370.55
+    },
+    "metadata": {
+      "passed": 6,
+      "seconds": 280.34
+    },
+    "metadata_validity": {
+      "passed": 1,
+      "seconds": 55.45
+    },
+    "ownership": {
+      "passed": 2,
+      "seconds": 345.9
+    }
+  },
+  "initial_failure": "Instant/Fixeddeferred cases passed, then missingDRAMsim3sharedlibrary undernewSourceRoot. Samecommand rerunafterlinkingexistingpinnedruntime; noHDL/test/clock/config changes.",
+  "retention": "s4-audio-address-regressions-retention.json"
+}

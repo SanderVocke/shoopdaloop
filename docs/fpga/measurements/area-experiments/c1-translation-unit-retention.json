@@ -1,0 +1,24 @@
+{
+  "archive": "c1-translation-unit-raw.tar.gz",
+  "archive_sha256": "b07206af5ae3631031695fb02056e03b4f7865e81b26d3187b1622a3908e2b42",
+  "members_sha256": {
+    "fixture/src/rust/rt_fpga_testbench/examples/metadata_translation_area.rs": "eddde8a6d04f9efaa98e4a1e03d98b56d62bb29909d18f7a74cb706a12637ba6",
+    "fixture/src/rust/rt_fpga_testbench/src/suites/metadata.rs": "520d7f94612537877f92157c4ea5fd7c3042d6b77b8fcf08e95910dcc82c8210",
+    "replay/archive-translation-unit.py": "ae435afde310ee2bf1a213720eb023c5ae9369a4bc54e45e9c9c37e097b4b069",
+    "samples/axi32.json": "6fdf59e6448fa092b12cc009a15074d58696928caf0185180326a6e56098b699",
+    "samples/axi64.json": "365dd8905d119413adb7a592e99bfce0c24a75e8051cc66dd9dacf5b0c653f1c",
+    "source/fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+    "source/fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+    "source/fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+    "source/fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+    "source/fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+    "source/fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+    "source/fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+    "source/fpga/media_store/rtl/media_metadata.sv": "3e4d4cc417a3b83a6d080f90b48bb4e182dec46b70671b59c564c468523ac964",
+    "source/fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+    "source/fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+    "source/fpga/media_store/tests/media_metadata_tb.sv": "45b271d3021c5e031197ca2023edd1ffbc8136c77f038f2ea3f9819cfab2e8e8",
+    "source/fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+    "source/fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+  }
+}

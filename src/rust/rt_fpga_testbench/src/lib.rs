@@ -21,10 +21,7 @@ pub use rt_fpga_rtl::toolchain;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub fn root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .unwrap()
+    rt_fpga_rtl::root()
 }
 pub fn artifact_directory(component: &str) -> std::path::PathBuf {
     report::directory(component)

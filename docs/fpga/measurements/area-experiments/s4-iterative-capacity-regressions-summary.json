@@ -1,0 +1,100 @@
+{
+  "candidate_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+  "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+  "command": "CARGO_INCREMENTAL=0 SHOOP_FPGA_SOURCE_ROOT=/workspace/shoopdaloop/work/area-experiments/s4-iterative-capacity-simulation-source cargo test --locked -p rt_fpga_testbench --features sim --test metadata --test metadata_validity --test media --test ownership --test deferred -- --test-threads=1",
+  "suites": {
+    "deferred": {
+      "passed": 1,
+      "seconds": 102.13
+    },
+    "media": {
+      "passed": 1,
+      "seconds": 373.57
+    },
+    "metadata": {
+      "passed": 6,
+      "seconds": 270.8
+    },
+    "metadata_validity": {
+      "passed": 1,
+      "seconds": 49.27
+    },
+    "ownership": {
+      "passed": 2,
+      "seconds": 397.92
+    }
+  },
+  "environment": "Rust1.100.0 Verilator5.032 RUSTFLAGS=-D warnings; pinned DRAMsim3 runtime linked under snapshot/work; walltimes include compilation",
+  "source_snapshot": {
+    "revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+    "sha256": {
+      "fpga/audio_io/rtl/audio_io.sv": "8ae66bc31544852249bbedd9e8d5a01562cc6bd87b145e2e57ef2d4a6db4454c",
+      "fpga/audio_io/rtl/audio_lane_ram.sv": "5c510e4d595320304fde4dd64ac8b79c6f4d6e6025a2adb96574e72a55d86beb",
+      "fpga/audio_io/rtl/i2s_duplex.sv": "310781014d12e01a1fa5734f8032532955343f5579bf1f4ae26c87e46ef9a266",
+      "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+      "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+      "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+      "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+      "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+      "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv": "c3c718bff994044afc6e933040d8d6cc83be6a0ae2735b9188cfb9340df547ad",
+      "fpga/axi_memory/rtl/media_store_axi.sv": "994218f9c840591aac6c0a72c17a00d5ab4c68d96a5f25f5d556fe150bec8c9d",
+      "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+      "fpga/axi_memory/rtl/word_axi.sv": "384ae7fe56f7303371397bc011e8cf25f4900acecc69aecf3a5e7ae3635b648a",
+      "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+      "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+      "fpga/chunk_memory/rtl/chunk_memory.sv": "66e8b5a5f1978cfdc89656aef59d74223a69ef0a89aa99f84d5e2bfb202f0d34",
+      "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+      "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+      "fpga/host_bridge/rtl/host_dispatch.sv": "0bd2fecbc93bfa2c1db1a5eb2ed567362a5a688b807df9dff7e89db89acfbcd2",
+      "fpga/host_bridge/rtl/host_mailbox.sv": "3037de537ac1af8d2b6da83460eb1ba5b64af2987c10c5449996893ebacdb056",
+      "fpga/host_bridge/rtl/host_pipeline_axi.sv": "ace790423947cececf6f0671b01422a6edcc08a4114793ccbd3f3ca8e729a4d0",
+      "fpga/host_bridge/rtl/host_registers.sv": "82923ea6a1e7fd9f200a87190779be36c6b3ca3d976f98d3d106755261e1888e",
+      "fpga/host_bridge/rtl/native_audio_mmio.sv": "acd83c2b64d19b4afa1d6b740afd071a4358b369d89115c4ff6eafe0e7ad2665",
+      "fpga/host_bridge/rtl/native_audio_registers.sv": "2dfa75007c48265679779e42ca2fb8b563c674dbd199383d24fe22d0bfc0963f",
+      "fpga/job_processor/rtl/audio_pipeline.sv": "c266d2ba67a2e09baedc98f564d8d8a201556b5c01f5b3bf885f319b7fe57084",
+      "fpga/job_processor/rtl/job_processor.sv": "ad0bd12587c9e7326fef98746157a87080f515dc29626d4dba25acf63802545a",
+      "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+      "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854",
+      "fpga/media_store/rtl/media_audio_pipeline.sv": "f18a7082b674f4e85436d3e02d221819a29dd8ee007d95160b1dacba9892ece1",
+      "fpga/media_store/rtl/media_metadata.sv": "823b6ad4ee796ce5c4c00cef9e9f19f387b9b6cc6d4b0b1903c4592e4dd8caa9",
+      "fpga/media_store/rtl/media_prefetch_resolver.sv": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e",
+      "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+      "fpga/media_store/rtl/media_reclaimer.sv": "f4d38e13e9d705a8afff6c10bde68483c2e02c5c71dedaa8e6def7db3d224049",
+      "fpga/media_store/rtl/media_store.sv": "b3724656279576498d5c594161bedd83aa3e2d115a02174e3d8fe4b8e19b2753",
+      "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+      "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+      "fpga/media_store/tests/media_metadata_tb.sv": "633edad47c4f2ef66ea295c19617edf65645a7b70e939e3b023d53e48bf5cc11",
+      "fpga/media_store/tests/metadata_cache_tb.sv": "d3798ebe306ab22c75a420080101113329a9fdf6a2eb8e65f2f05280da18b4a1",
+      "fpga/midi/program/midi_content_control.sv": "89a41ee63f5bc9dbe94363485015917930ea235afd515b1cad617a0c681af683",
+      "fpga/midi/rtl/midi_audio_pipeline.sv": "6cd510a926dfd38e7143dd8f9bf48f93c5460a0f1c84270b89b84ae7e75eb151",
+      "fpga/midi/rtl/midi_audio_pipeline_axi.sv": "bc6813db9d54eb64138939d5a80eca8f96adf451e2b311ee5abf8dae5e373e05",
+      "fpga/midi/rtl/midi_data_jobs.sv": "3caefc0714f71746044ed3390ce93ab5748a252e9ef81cd5f2f121cc51ff3e12",
+      "fpga/midi/rtl/midi_data_jobs_axi.sv": "c038584742fb88d86717f46bc135dbc5e44eb7568ff792782738bfe4e8595921",
+      "fpga/midi/rtl/midi_expression_state.sv": "445a719d4cb2b8846fa0d942ff795a48cd8ef50d2ab5fbba7f85f4da8b78d20a",
+      "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+      "fpga/midi/rtl/midi_store.sv": "f122184818ac82b980a73346ae29d116147a9955a6b8648939de937eb8736d90",
+      "fpga/state_processor/rtl/sp_engine.sv": "0561c382838f5d465a04e1c2f6e4fc4f538ef4760bf1842e7b9dcbbc90015f6d",
+      "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+      "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+      "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+      "fpga/state_processor/rtl/state_processor.sv": "2da18346a932d753ecc7a6552f3fe5de4528bdd6c462ca92412672a6b7dbda33",
+      "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e",
+      "fpga/synthesis/measurements/selected/registered_core_context.sv": "c94192e6ea49d2ca49a9c4f1c06e00adfe790f9fa17a98e4f3d3d1c1ac23b0cd",
+      "fpga/synthesis/measurements/zedboard-150mhz/job/context.sv": "5d6253e805c2d0532fc3eb2c0a33bf009ebca7370e86b388691e370377e43de4",
+      "fpga/synthesis/measurements/zedboard-150mhz/memory/context.sv": "c256356d3eb1d059615fef14d5eefb5e307e5ce679f5d5b365778c4358bdae50",
+      "fpga/synthesis/measurements/zedboard-150mhz/memory/placement/context.sv": "c256356d3eb1d059615fef14d5eefb5e307e5ce679f5d5b365778c4358bdae50",
+      "fpga/synthesis/measurements/zedboard-150mhz/state/context.sv": "6d3f5e095009eecb65d6aa264258c3b254e8fa03d301bf44691dd802f2cca749"
+    }
+  },
+  "retention": "s4-iterative-capacity-regressions-retention.json",
+  "runtime_identity": {
+    "actual_snapshot_link": "/workspace/shoopdaloop/work/area-experiments/s4-iterative-capacity-simulation-source/work/dramsim3",
+    "resolved_target": "/workspace/shoopdaloop/work/dramsim3",
+    "libraries_sha256": {
+      "/workspace/shoopdaloop/work/dramsim3/build/libshoop_dram.so": "7c4bf7a0b6ebdafb5b70c6e20b8fb91ccfa7427930c1fc9233e11169a3e28caa",
+      "/workspace/shoopdaloop/work/dramsim3/build/libdramsim3.so": "90909399537a99c10dc81db8e080fe941fbee4dca0070f654241bb72adc4f052"
+    },
+    "config_sha256": "629ccabea75c16ca2faedc921675986ebe878a9e3b2a75872582fe7cc42b640e",
+    "scope": "Same pinned runtime as retained audio-address identity record; current snapshot links to it from creation, no missing-library run. Unchanged Zynq7010 simulation config is not Zynq7020 board timing evidence."
+  }
+}

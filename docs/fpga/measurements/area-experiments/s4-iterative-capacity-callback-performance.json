@@ -1,0 +1,33 @@
+{
+  "control": "C4 10cddabd/measured7d2d7cd7",
+  "candidate": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+  "rows": 33,
+  "all_measurement_fields_exact_including_cycles": true,
+  "final_memory_exact": true,
+  "preparation": {
+    "control": "RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
+    "candidate": "RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads"
+  },
+  "cycles": {
+    "playback_start": {
+      "count": 1,
+      "min": 92745,
+      "median": 92745,
+      "max": 92745
+    },
+    "warmup": {
+      "count": 16,
+      "min": 53238,
+      "median": 53330.0,
+      "max": 53987
+    },
+    "steady": {
+      "count": 16,
+      "min": 53258,
+      "median": 53258.0,
+      "max": 53947
+    }
+  },
+  "timing_qualified": false,
+  "scope": "Original short33row mixed-state-on delay7 fixture; deep growth/setup costs retained separately. No universal deadline claim."
+}
