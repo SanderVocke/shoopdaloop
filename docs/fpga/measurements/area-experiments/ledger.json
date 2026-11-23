@@ -1187,7 +1187,7 @@
     {
       "label": "s4-midi-scratch",
       "stage": 4,
-      "status": "in_progress",
+      "status": "rejected",
       "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
       "control_summary": "s4-midi-address-repeat-100-summary.json",
       "rtl_source_revision": "1c73f3fac2854124c8a90a8f529aaea92c033554",
@@ -1195,14 +1195,30 @@
       "validation": [
         "Focused dense-recording/merge/repeat/stop test passes18.87sec; modelcompile9.10sec included",
         "Primarylint passes withsamecontrolunusedsignal/parameter/pin categoriesexcluded; newarithmeticwidthwarningsremainfatal",
-        "C4selectedmergeall38HDLhashes verifiedagainstmeasured7d2d7cd7 source"
+        "C4selectedmergeall38HDLhashes verifiedagainstmeasured7d2d7cd7 source",
+        "All16MIDIregressionspassed; bothAXIwidths/faults/stalls/fullpool checks included",
+        "All33mixed and40musicalrows exactC4innoncyclefields; mixedmedian+72/max+90/cold+90; musicalseek+72 clocks"
       ],
       "pending": [
-        "FullMIDI/expression/reservedregressions",
-        "ShortconnectedcomparisonagainstC4",
-        "Optimizedscreen thenrouteifviable",
-        "Musicalcomparisonifcandidateviable"
-      ]
+        "Remaining5expression+2reservedtests alreadyrunning; retaincompletedresultsbeforestartingnextcandidate"
+      ],
+      "selected": false,
+      "optimized_summary": "s4-midi-scratch-opt-summary.json",
+      "optimized_deltas_vs_c4": {
+        "lut": 254,
+        "logic_lut": 254,
+        "memory_lut": 0,
+        "ff": 28,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -32,
+        "muxf7": 105,
+        "muxf8": 2,
+        "control_sets": 2
+      },
+      "performance_summary": "s4-midi-scratch-performance.json",
+      "routed_slices": null,
+      "decision": "Reject at mapped screening: +254LUT/+28FF/+105MUXF7/+2MUXF8/+2controlsets for only32fewerCARRY4, unchangedBRAM/DSP. All73connected/musicalnoncyclefields exact butcyclesincrease. Addedoperand/staging muxcost outweighs sharing; do notspendroute/repeat onthisarea-negativecandidate."
     }
   ],
   "provisioning": {

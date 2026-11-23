@@ -473,3 +473,13 @@ these are measured cumulative savings. The selected small area gain costs
 174 FFs and 44 physical control sets against C3. The limiting path still runs
 through audio metadata node counting. The remaining Stage 4 arithmetic siblings
 have not yet been measured.
+
+The separate MIDI scratch/input-record address unit (`1c73f3fa`) is rejected at
+optimization screening. Against C4 it adds 254 LUTs, 28 FFs, 105 F7 muxes, two
+F8 muxes and two control sets to remove 32 carries; BRAM/DSP counts are unchanged.
+The explicit operand and staging muxes outweigh the shared arithmetic. All 33
+mixed and 40 musical rows match C4 in non-cycle fields, but mixed steady median
+rises by 72 clocks and cold by 90; musical prefix restoration adds 72 clocks.
+All 16 MIDI regressions pass; the remaining expression tests are finishing.
+Routed slices are unavailable because the candidate is rejected at screening.
+C4 remains selected; see `s4-midi-scratch-opt-*` and its performance summary.
