@@ -213,6 +213,10 @@ are ready; no Stage 5 implementation has been measured.
 
 Depends on stage 4's decision. Start with the MIDI store descriptor staging bank.
 
+Execution status: C5 is frozen as the first control. The separate
+[working-state contracts](measurements/area-experiments/stage5-state-contracts.md)
+are prepared; the cold descriptor RAM trial is starting.
+
 - [ ] Keep hot descriptor fields in registers and move colder working fields to
   synchronous RAM. Separately test reuse of registers with disjoint lifetimes;
   account for extra reads/writes and verify actual RAM inference.
