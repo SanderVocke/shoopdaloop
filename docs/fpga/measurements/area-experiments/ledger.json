@@ -1363,14 +1363,22 @@
       "validation": [
         "All38productionC5HDL hashes verified before edit",
         "Default/minimum/odd/connected-primary lint pass; allreportedwarnings exactlymatchcontrol (onlybaselineUNUSEDSIGNAL), no newwidth/otherwarnings.",
-        "Both originalreserved/reuse/reset andhigh/wrappingbase tests pass11.33sec; no semantic orcycle conclusion untilmatchedraw rows."
+        "Both originalreserved/reuse/reset andhigh/wrappingbase tests pass11.33sec; no semantic orcycle conclusion untilmatchedraw rows.",
+        "All10311boundary+54reserved+108relocated raw rows EXACT including cycles/traffic; isolatedcontrolHDLinputs verified C5. All40C5musicalbaseline rows exactC4,includingcycles/work/traffic."
       ],
       "pending": [
-        "All23MIDI/expression/reserved regressions andraw10311+54+108rows",
-        "C5musicalcontrol calibration then mixed/musical candidatecomparison",
-        "Pinned completeconnected optscreen,route/repeat if viable"
+        "All23MIDI/expression/reserved regressions (running)",
+        "Mixed/musical candidatecomparison against calibratedC5",
+        "Pinnedconnected optscreen;inspect actualRAM/workingregister inference,route/repeat ifviable"
       ],
-      "rtl_source_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b"
+      "rtl_source_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+      "unit_performance": "s5-cold-descriptor-unit-performance.json",
+      "unit_summaries": [
+        "s5-cold-descriptor-boundaries-summary.json",
+        "s5-cold-descriptor-reserved-summary.json",
+        "s5-cold-descriptor-relocated-summary.json"
+      ],
+      "preflight_retention": "s5-cold-descriptor-preflight-retention.json"
     }
   ],
   "provisioning": {
@@ -1554,6 +1562,7 @@
     "connected": "All1041extended rows exactC4 includingcycles/traffic/work;1024steady median53258/max59776,cold92745. Growth-onlysetup penalty measured separately.",
     "selection_branch": "feat/backend-replacement-area-selected",
     "branch_promotion": "complete; all38productionHDL hashes match measured0e624700",
-    "selection_commit": "35670057009af545eb8eed86074199722f429b27"
+    "selection_commit": "35670057009af545eb8eed86074199722f429b27",
+    "musical_summary": "c5-musical-100-summary.json"
   }
 }
