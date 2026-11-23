@@ -480,6 +480,7 @@ F8 muxes and two control sets to remove 32 carries; BRAM/DSP counts are unchange
 The explicit operand and staging muxes outweigh the shared arithmetic. All 33
 mixed and 40 musical rows match C4 in non-cycle fields, but mixed steady median
 rises by 72 clocks and cold by 90; musical prefix restoration adds 72 clocks.
-All 16 MIDI regressions pass; the remaining expression tests are finishing.
+All 23 affected tests pass: 16 MIDI, five expression and two descriptor/relocation
+checks, including supported quanta and both AXI widths.
 Routed slices are unavailable because the candidate is rejected at screening.
 C4 remains selected; see `s4-midi-scratch-opt-*` and its performance summary.

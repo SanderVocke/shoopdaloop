@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4MIDIstoreaddress selectedasC4; separateMIDI scratchaddress candidate1c73f3fa inmeasurement. Audioaddress/node siblings andStages5\u201311 unexecuted.",
+  "status": "Stages0\u20133 complete; Stage4storeaddress selectedC4, scratchaddress rejected withcomplete23test/73callback evidence. Audioaddress/node siblings andStages5\u201311 unexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1197,11 +1197,10 @@
         "Primarylint passes withsamecontrolunusedsignal/parameter/pin categoriesexcluded; newarithmeticwidthwarningsremainfatal",
         "C4selectedmergeall38HDLhashes verifiedagainstmeasured7d2d7cd7 source",
         "All16MIDIregressionspassed; bothAXIwidths/faults/stalls/fullpool checks included",
-        "All33mixed and40musicalrows exactC4innoncyclefields; mixedmedian+72/max+90/cold+90; musicalseek+72 clocks"
+        "All33mixed and40musicalrows exactC4innoncyclefields; mixedmedian+72/max+90/cold+90; musicalseek+72 clocks",
+        "All23affectedtests pass:16MIDI633.72sec,5expression428.52sec,2reserved12.66sec; source/recipe/loghashesretained"
       ],
-      "pending": [
-        "Remaining5expression+2reservedtests alreadyrunning; retaincompletedresultsbeforestartingnextcandidate"
-      ],
+      "pending": [],
       "selected": false,
       "optimized_summary": "s4-midi-scratch-opt-summary.json",
       "optimized_deltas_vs_c4": {
@@ -1218,7 +1217,8 @@
       },
       "performance_summary": "s4-midi-scratch-performance.json",
       "routed_slices": null,
-      "decision": "Reject at mapped screening: +254LUT/+28FF/+105MUXF7/+2MUXF8/+2controlsets for only32fewerCARRY4, unchangedBRAM/DSP. All73connected/musicalnoncyclefields exact butcyclesincrease. Addedoperand/staging muxcost outweighs sharing; do notspendroute/repeat onthisarea-negativecandidate."
+      "decision": "Reject at mapped screening: +254LUT/+28FF/+105MUXF7/+2MUXF8/+2controlsets for only32fewerCARRY4, unchangedBRAM/DSP. All73connected/musicalnoncyclefields exact butcyclesincrease. Addedoperand/staging muxcost outweighs sharing; do notspendroute/repeat onthisarea-negativecandidate.",
+      "regression_summary": "s4-midi-scratch-regressions-summary.json"
     }
   ],
   "provisioning": {

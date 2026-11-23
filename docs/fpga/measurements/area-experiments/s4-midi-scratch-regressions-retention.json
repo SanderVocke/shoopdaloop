@@ -1,0 +1,11 @@
+{
+  "archive": "s4-midi-scratch-regressions-raw.tar.gz",
+  "archive_sha256": "0822c4eaa90fd8e8bdb24b38edfbdac04647aef6de61f906f6f8a9a9e467d608",
+  "members_sha256": {
+    "logs/s4-midi-scratch-regressions.log": "9147957601b113b9381a5458484ffcffec721b03b0b671888004db5ea642a99d",
+    "snapshot-provenance.json": "b04430e0f793ded200d13015592f13d93830345bc1a6b865ee3d87a9770b739d",
+    "recipe.json": "6c961e92dc7932c6b90f75fb3c199eb322d9b2ce5db7837138b1a9cdca5c044e",
+    "musical-cli.log": "ed1bf35c3359d182c94854decc62dd4a522641a0349f7179ae50b8cdd383008d",
+    "focused.log": "a98c5fb4896a114b2a1452d5712656ea84bb5d84531d38c861c285d45e43ef72"
+  }
+}
