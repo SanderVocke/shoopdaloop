@@ -250,7 +250,10 @@ recording can start. See the admission rule under
   playing with what should play next. Continuing children keep their place.
   The edit can drop a child from the schedule while leaving the loop and its
   audio in the session. A child still playing at the end of the old pass needs
-  one extra program row so SP can stop it. If the row cannot fit, a wait for a
+  one extra program row so SP can stop it. When that child is a composite,
+  its schedule also releases its own children. A direct play command for
+  the removed branch can keep it running at the switch. If the row cannot fit,
+  a wait for a
   sync clock can give the old schedule time to release its children. The
   clock can be a primitive, a composite, or a chain of loops that sync to
   one another. The chain keeps the same links and schedules during the edit,

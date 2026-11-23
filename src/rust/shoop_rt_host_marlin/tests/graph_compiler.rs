@@ -646,6 +646,7 @@ enum NestedBoundary {
     CompatibleFinish,
     ParentReentry,
     Wrapped,
+    RemovedBranch { direct_play: bool },
 }
 
 fn edit_nested_child<E: Endpoint>(
@@ -692,14 +693,16 @@ fn edit_nested_child<E: Endpoint>(
     } else {
         CompositeKind::Regular
     };
+    let removed_branch = matches!(boundary, NestedBoundary::RemovedBranch { .. });
+    let old_target = if removed_branch { 123 } else { 100 };
     child.composite = Some(program(
         kind,
         child_length,
-        vec![span(100, child_length, 0)],
+        vec![span(old_target, child_length, 0)],
     ));
     let mut parent = child.clone();
     parent.id = id(121);
-    let wraps = matches!(boundary, NestedBoundary::Wrapped);
+    let wraps = matches!(boundary, NestedBoundary::Wrapped) || removed_branch;
     let reenters = matches!(boundary, NestedBoundary::ParentReentry);
     let parent_length = if reenters { 24 } else { 96 };
     let occurrence_end = if wraps || reenters { parent_length } else { 32 };
@@ -715,6 +718,17 @@ fn edit_nested_child<E: Endpoint>(
         grandparent.id = id(122);
         grandparent.composite = Some(program(CompositeKind::Regular, 48, vec![span(121, 48, 0)]));
         graph.loops.push(grandparent);
+    }
+    if removed_branch {
+        let mut branch = graph.loops[child_index].clone();
+        branch.id = id(123);
+        branch.sync_source = Some(id(120));
+        branch.composite = Some(program(
+            CompositeKind::Regular,
+            child_length,
+            vec![span(100, child_length, 0)],
+        ));
+        graph.loops.push(branch);
     }
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
@@ -741,6 +755,30 @@ fn edit_nested_child<E: Endpoint>(
         .unwrap();
     let started = response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0.375, 0.375]);
+    let direct_play = matches!(
+        boundary,
+        NestedBoundary::RemovedBranch { direct_play: true }
+    );
+    if direct_play {
+        let play_on_wrap = Command::Transition(
+            123,
+            TransitionPlan {
+                now: None,
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Playing,
+                    skip: 0,
+                }),
+                second: None,
+            },
+        );
+        client
+            .immediate(Batch::new(1, 1, &[play_on_wrap]).unwrap())
+            .unwrap();
+        assert_eq!(
+            wait_response(&mut client, &mut renderer).records()[0].code(),
+            Code::Scheduled
+        );
+    }
 
     let revised = graph.loops[child_index].composite.as_mut().unwrap();
     revised.version += 1;
@@ -760,7 +798,8 @@ fn edit_nested_child<E: Endpoint>(
         NestedBoundary::Finished => 25,
         NestedBoundary::CompatibleFinish
         | NestedBoundary::ParentReentry
-        | NestedBoundary::Wrapped => 24,
+        | NestedBoundary::Wrapped
+        | NestedBoundary::RemovedBranch { .. } => 24,
     };
     assert_eq!(
         upload(&mut client, &mut renderer, &graph, 1),
@@ -770,7 +809,9 @@ fn edit_nested_child<E: Endpoint>(
         let first = started + (switch_at + 1) * quantum;
         assert_eq!(renderer.next_frame().0, first);
         for tick in 0..96 {
-            let sample = if tick % 40 < 16 { 0.3125 } else { 0.25 };
+            let replacement = if tick % 40 < 16 { 0.0625 } else { 0.0 };
+            let retained = if direct_play { 0.125 } else { 0.0 };
+            let sample = 0.25 + replacement + retained;
             assert_eq!(step(&mut renderer), [sample, sample], "child tick {tick}");
         }
         return;
@@ -816,6 +857,8 @@ fn a_nested_edit_can_wait_for_its_own_boundary_under_a_playing_parent() {
         NestedBoundary::CompatibleFinish,
         NestedBoundary::ParentReentry,
         NestedBoundary::Wrapped,
+        NestedBoundary::RemovedBranch { direct_play: false },
+        NestedBoundary::RemovedBranch { direct_play: true },
     ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
         edit_nested_child(rust.endpoint, rust.renderer, boundary);
