@@ -1,0 +1,565 @@
+{
+  "cases": [
+    {
+      "block_events": 1,
+      "blocks": 1,
+      "events_per_view": 1,
+      "retirements": 1,
+      "views": 1,
+      "measurement_count": 54,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 162,
+          "median": 164.0,
+          "max": 166,
+          "memory_transactions": 36
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 16,
+          "median": 16,
+          "max": 16,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 4,
+          "min": 173,
+          "median": 177.5,
+          "max": 186,
+          "memory_transactions": 76
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 31,
+          "median": 31,
+          "max": 38,
+          "memory_transactions": 9
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 31,
+          "median": 31,
+          "max": 31,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 3,
+          "min": 208,
+          "median": 214,
+          "max": 221,
+          "memory_transactions": 69
+        },
+        "opcode5/expected_error3": {
+          "count": 1,
+          "min": 154,
+          "median": 154,
+          "max": 154,
+          "memory_transactions": 16
+        },
+        "opcode6/expected_error0": {
+          "count": 2,
+          "min": 196,
+          "median": 197.5,
+          "max": 199,
+          "memory_transactions": 42
+        },
+        "opcode6/expected_error8": {
+          "count": 1,
+          "min": 8,
+          "median": 8,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 2,
+          "min": 138,
+          "median": 142.5,
+          "max": 147,
+          "memory_transactions": 32
+        },
+        "opcode9/expected_error0": {
+          "count": 5,
+          "min": 151,
+          "median": 307,
+          "max": 319,
+          "memory_transactions": 134
+        },
+        "opcode10/expected_error0": {
+          "count": 6,
+          "min": 7,
+          "median": 25.0,
+          "max": 199,
+          "memory_transactions": 29
+        },
+        "opcode11/expected_error0": {
+          "count": 6,
+          "min": 304,
+          "median": 332.5,
+          "max": 349,
+          "memory_transactions": 216
+        },
+        "opcode12/expected_error4": {
+          "count": 15,
+          "min": 6,
+          "median": 6,
+          "max": 160,
+          "memory_transactions": 80
+        }
+      }
+    },
+    {
+      "block_events": 1,
+      "blocks": 9,
+      "events_per_view": 3,
+      "retirements": 1,
+      "views": 3,
+      "measurement_count": 202,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 588,
+          "median": 592.5,
+          "max": 597,
+          "memory_transactions": 132
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 14,
+          "median": 14,
+          "max": 14,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 10,
+          "min": 171,
+          "median": 196.0,
+          "max": 235,
+          "memory_transactions": 217
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 72,
+          "median": 78,
+          "max": 84,
+          "memory_transactions": 27
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 33,
+          "median": 33,
+          "max": 33,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 27,
+          "min": 210,
+          "median": 265,
+          "max": 285,
+          "memory_transactions": 711
+        },
+        "opcode5/expected_error3": {
+          "count": 3,
+          "min": 149,
+          "median": 153,
+          "max": 159,
+          "memory_transactions": 48
+        },
+        "opcode6/expected_error0": {
+          "count": 6,
+          "min": 195,
+          "median": 199.0,
+          "max": 206,
+          "memory_transactions": 126
+        },
+        "opcode6/expected_error8": {
+          "count": 3,
+          "min": 8,
+          "median": 8,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 6,
+          "min": 146,
+          "median": 152.5,
+          "max": 155,
+          "memory_transactions": 96
+        },
+        "opcode9/expected_error0": {
+          "count": 15,
+          "min": 146,
+          "median": 308,
+          "max": 324,
+          "memory_transactions": 402
+        },
+        "opcode9/expected_error3": {
+          "count": 24,
+          "min": 143,
+          "median": 150.0,
+          "max": 160,
+          "memory_transactions": 384
+        },
+        "opcode10/expected_error0": {
+          "count": 36,
+          "min": 7,
+          "median": 53.5,
+          "max": 198,
+          "memory_transactions": 183
+        },
+        "opcode11/expected_error0": {
+          "count": 36,
+          "min": 307,
+          "median": 348.5,
+          "max": 366,
+          "memory_transactions": 1332
+        },
+        "opcode12/expected_error4": {
+          "count": 27,
+          "min": 6,
+          "median": 149,
+          "max": 160,
+          "memory_transactions": 288
+        }
+      }
+    },
+    {
+      "block_events": 1,
+      "blocks": 15,
+      "events_per_view": 3,
+      "retirements": 3,
+      "views": 5,
+      "measurement_count": 308,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 967,
+          "median": 981.0,
+          "max": 995,
+          "memory_transactions": 220
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 14,
+          "median": 14,
+          "max": 14,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 16,
+          "min": 173,
+          "median": 225.5,
+          "max": 281,
+          "memory_transactions": 394
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 124,
+          "median": 133,
+          "max": 142,
+          "memory_transactions": 45
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 27,
+          "median": 27,
+          "max": 27,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 45,
+          "min": 207,
+          "median": 262,
+          "max": 280,
+          "memory_transactions": 1185
+        },
+        "opcode5/expected_error3": {
+          "count": 5,
+          "min": 144,
+          "median": 155,
+          "max": 156,
+          "memory_transactions": 80
+        },
+        "opcode6/expected_error0": {
+          "count": 10,
+          "min": 189,
+          "median": 200.0,
+          "max": 203,
+          "memory_transactions": 210
+        },
+        "opcode6/expected_error8": {
+          "count": 5,
+          "min": 8,
+          "median": 8,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 10,
+          "min": 152,
+          "median": 156.5,
+          "max": 163,
+          "memory_transactions": 160
+        },
+        "opcode9/expected_error0": {
+          "count": 25,
+          "min": 145,
+          "median": 303,
+          "max": 325,
+          "memory_transactions": 670
+        },
+        "opcode9/expected_error3": {
+          "count": 24,
+          "min": 141,
+          "median": 149.0,
+          "max": 159,
+          "memory_transactions": 384
+        },
+        "opcode10/expected_error0": {
+          "count": 60,
+          "min": 7,
+          "median": 54.0,
+          "max": 201,
+          "memory_transactions": 305
+        },
+        "opcode11/expected_error0": {
+          "count": 60,
+          "min": 300,
+          "median": 345.0,
+          "max": 366,
+          "memory_transactions": 2220
+        },
+        "opcode12/expected_error4": {
+          "count": 39,
+          "min": 6,
+          "median": 148,
+          "max": 159,
+          "memory_transactions": 480
+        }
+      }
+    },
+    {
+      "block_events": 256,
+      "blocks": 2432,
+      "events_per_view": 1,
+      "retirements": 128,
+      "views": 256,
+      "measurement_count": 9747,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 80608,
+          "median": 80696.0,
+          "max": 80784,
+          "memory_transactions": 17920
+        },
+        "opcode0/expected_error7": {
+          "count": 1,
+          "min": 13,
+          "median": 13,
+          "max": 13,
+          "memory_transactions": 1
+        },
+        "opcode4/expected_error0": {
+          "count": 769,
+          "min": 172,
+          "median": 3351,
+          "max": 6646,
+          "memory_transactions": 308371
+        },
+        "opcode4/expected_error3": {
+          "count": 3,
+          "min": 6353,
+          "median": 6385,
+          "max": 6385,
+          "memory_transactions": 2304
+        },
+        "opcode4/expected_error4": {
+          "count": 2,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error6": {
+          "count": 1,
+          "min": 28,
+          "median": 28,
+          "max": 28,
+          "memory_transactions": 3
+        },
+        "opcode5/expected_error0": {
+          "count": 768,
+          "min": 194,
+          "median": 217.0,
+          "max": 245,
+          "memory_transactions": 17664
+        },
+        "opcode5/expected_error3": {
+          "count": 256,
+          "min": 138,
+          "median": 151.0,
+          "max": 171,
+          "memory_transactions": 4096
+        },
+        "opcode6/expected_error0": {
+          "count": 512,
+          "min": 186,
+          "median": 201.0,
+          "max": 219,
+          "memory_transactions": 10752
+        },
+        "opcode6/expected_error8": {
+          "count": 256,
+          "min": 8,
+          "median": 8.0,
+          "max": 8,
+          "memory_transactions": 0
+        },
+        "opcode8/expected_error0": {
+          "count": 512,
+          "min": 133,
+          "median": 152.0,
+          "max": 169,
+          "memory_transactions": 8192
+        },
+        "opcode9/expected_error0": {
+          "count": 1280,
+          "min": 137,
+          "median": 305.0,
+          "max": 340,
+          "memory_transactions": 34304
+        },
+        "opcode9/expected_error3": {
+          "count": 768,
+          "min": 136,
+          "median": 152.0,
+          "max": 172,
+          "memory_transactions": 12288
+        },
+        "opcode10/expected_error0": {
+          "count": 1536,
+          "min": 7,
+          "median": 24.0,
+          "max": 219,
+          "memory_transactions": 7424
+        },
+        "opcode11/expected_error0": {
+          "count": 1536,
+          "min": 293,
+          "median": 331.5,
+          "max": 374,
+          "memory_transactions": 55296
+        },
+        "opcode12/expected_error4": {
+          "count": 1545,
+          "min": 6,
+          "median": 151,
+          "max": 172,
+          "memory_transactions": 24576
+        }
+      }
+    }
+  ],
+  "scope": "standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps; fourth case has primary256-view/128-retirement/2432-block indices and256-event blocks with an explicit reduced one-event view limit",
+  "validation": "exact ContentStore record/frame/packet and usage agreement; high-bit invalid handles, max-plus-one refusal, generation overflow, poisoned accepted command inputs, held responses, memory faults and stale-RAM reset",
+  "label": "s5-payload-lifetime-boundaries",
+  "fixture_revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
+  "models": [
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "1",
+        "BLOCK_EVENTS": "1",
+        "MAX_EVENTS": "1",
+        "RETIREMENTS": "1",
+        "VIEWS": "1"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "795c689492450b17ed2615758f458f3812aee9cdec3d2b4b089728795b890149",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "9",
+        "BLOCK_EVENTS": "1",
+        "MAX_EVENTS": "3",
+        "RETIREMENTS": "1",
+        "VIEWS": "3"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "795c689492450b17ed2615758f458f3812aee9cdec3d2b4b089728795b890149",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "15",
+        "BLOCK_EVENTS": "1",
+        "MAX_EVENTS": "3",
+        "RETIREMENTS": "3",
+        "VIEWS": "5"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "795c689492450b17ed2615758f458f3812aee9cdec3d2b4b089728795b890149",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "2432",
+        "BLOCK_EVENTS": "256",
+        "MAX_EVENTS": "1",
+        "RETIREMENTS": "128",
+        "VIEWS": "256"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "795c689492450b17ed2615758f458f3812aee9cdec3d2b4b089728795b890149",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    }
+  ],
+  "retention": "s5-payload-lifetime-boundaries-retention.json",
+  "per_request_samples": "s5-payload-lifetime-boundaries-raw.tar.gz"
+}
