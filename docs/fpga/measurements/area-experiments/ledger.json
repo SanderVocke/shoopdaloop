@@ -1362,11 +1362,10 @@
       "changed_contract": "No intended public orcycle change. Hot13wordbank plus3opaque reservedwords in4x32 synchronous distributedRAM; one sharedread/writeaddress,prefetch within existingSAVED_VIEW clocks,3validbits forreset/create. Actual inference/behavior/cycles unmeasured.",
       "validation": [
         "All38productionC5HDL hashes verified before edit",
-        "Default/minimum/odd/connected-primary lint pass; allreportedwarnings exactlymatchcontrol (onlybaselineUNUSEDSIGNAL), no newwidth/otherwarnings."
+        "Default/minimum/odd/connected-primary lint pass; allreportedwarnings exactlymatchcontrol (onlybaselineUNUSEDSIGNAL), no newwidth/otherwarnings.",
+        "Both originalreserved/reuse/reset andhigh/wrappingbase tests pass11.33sec; no semantic orcycle conclusion untilmatchedraw rows."
       ],
       "pending": [
-        "Strictlint bothcontrol/candidate min/odd/primary, noadditionalwarnings",
-        "Reserved-word/reuse/reset/relocated control tests",
         "All23MIDI/expression/reserved regressions andraw10311+54+108rows",
         "C5musicalcontrol calibration then mixed/musical candidatecomparison",
         "Pinned completeconnected optscreen,route/repeat if viable"
