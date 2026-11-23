@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4C4selected, scratch/audioaddress siblings unselected; iterative node/capacity experiment in progress. Stages5\u201311 unexecuted.",
+  "status": "Stages0\u20133 complete; Stage4C4selected, three siblings behavior/area measured; iterative candidate full11regressions passed, physical/extended qualification in progress. Stages5\u201311 unexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1305,8 +1305,8 @@
         "All11affected tests passed:deferred1/102.13sec,media1/373.57sec,metadata6/270.80sec,validity1/49.27sec,ownership2/397.92sec. Runtime linked from snapshot creation; no environmental failure. Connected-primary lint verified metadata180096blocks/1024frames/16119pages/512views."
       ],
       "pending": [
-        "Route100MHz forpacking/timing;repeat if selected",
-        "1024-quantum extended callback boundary run"
+        "Complete route100 and clean source-through-route repeat for packing/timing decision",
+        "Complete1024-quantum extended boundary callback run"
       ],
       "contract": "stage4-iterative-capacity-contract.md",
       "unit_performance": "s4-iterative-capacity-unit-performance.json",
@@ -1331,7 +1331,8 @@
         "muxf8": -9,
         "control_sets": 8
       },
-      "regression_summary": "s4-iterative-capacity-regressions-summary.json"
+      "regression_summary": "s4-iterative-capacity-regressions-summary.json",
+      "repeat_build": "work/area-experiments/s4-iterative-capacity-repeat-route100"
     }
   ],
   "provisioning": {

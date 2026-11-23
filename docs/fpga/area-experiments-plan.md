@@ -197,16 +197,18 @@ screening: 254 more LUTs, 28 more FFs and 107 more F7/F8 muxes for 32 fewer
 carries. All 23 affected tests and 73 matched callback rows pass. Audio metadata sharing (`93843695`) is also complete/unselected: all 11 affected
 tests pass, but routing costs 56 more slices and 86 more control sets for 68 fewer
 LUTs/33 fewer carries, with extra cold traffic. C4 remains selected. Iterative
-node/capacity arithmetic is now in simulation and synthesis screening. The
-focused boundary/malformed-queue check passes; full regression and raw setup/
-callback measurements remain pending.
+node/capacity arithmetic passes all 11 affected tests and raw both-width/deep/
+public-store controls. All 33 short mixed callback rows match C4 including
+cycles and traffic. It saves 71 mapped LUTs and 111 carries, costing 36 FFs and
+eight control sets; growth setup is slower. Routing, a clean full physical
+repeat and 1,024-quantum boundary run are in progress before selection.
 Stage 5 has an original-RTL validity control ready; its
 implementation remains unexecuted.
 
 - [x] Replace repeated MIDI store address expressions with a shared region/index/
   field request datapath. Measure before separately sharing the remaining MIDI
   scratch address paths and audio metadata address calculations.
-- [ ] Trial iterative metadata node/capacity calculations using the same bounded
+- [x] Trial iterative metadata node/capacity calculations using the same bounded
   arithmetic unit. Keep per-sample throughput changes separate from setup costs.
 - [ ] Verify every region boundary, 32/64-bit AXI mode, backpressure, faults, and
   latched command operands. Run affected MIDI/metadata/AXI tests; measure request
