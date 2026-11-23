@@ -138,10 +138,11 @@ pub fn composite_cut_status(
             cut_loop_valid(source, words) && (clock.mode != Mode::Playing || clock.at_end())
         })
     });
+    let waited = words[1] & (1 << 42) != 0;
     match (words[0] >> 33) & 3 {
         0 => Code::Applied,
-        1 if cut.allows_playing(words[2], words[3], restart_ready) => Code::Applied,
-        1 if cut.waits_for_restart(words[2], words[3], restart_ready) => Code::Scheduled,
+        1 if cut.allows_playing(words[2], words[3], restart_ready, waited) => Code::Applied,
+        1 if cut.waits_for_restart(words[2], words[3], restart_ready, waited) => Code::Scheduled,
         _ => Code::CannotApply,
     }
 }

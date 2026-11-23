@@ -114,6 +114,7 @@ impl Pipeline {
                         slot.state.position,
                         slot.state.content_length,
                         self.state.composite_restart_ready(*cut, slot),
+                        slot.composite_wait,
                     ));
             if !ready
                 || slot.planned.iter().any(Option::is_some)

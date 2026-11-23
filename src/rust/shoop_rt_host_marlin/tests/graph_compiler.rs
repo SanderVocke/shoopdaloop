@@ -592,14 +592,16 @@ fn edit_at_clock_restart<E: Endpoint>(
     mut renderer: impl Renderer,
     iterations: u64,
     unit_quanta: u64,
+    change_ending: bool,
 ) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
     while client.poll().is_some() {}
     let mut graph = stereo_graph();
-    graph.loops.truncate(2);
+    graph.loops.truncate(if change_ending { 3 } else { 2 });
     graph.loops[1].gain = 0.;
+    let parent_index = graph.loops.len();
     let mut parent = graph.loops[0].clone();
     parent.id = id(120);
     parent.strip = None;
@@ -625,15 +627,19 @@ fn edit_at_clock_restart<E: Endpoint>(
     graph.loops.push(parent);
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
-    let record = [
-        transition(100, TransitionMode::Recording),
-        transition(101, TransitionMode::Recording),
-    ];
+    let recorded = [(100, 4)]
+        .into_iter()
+        .chain(change_ending.then_some((102, 0)))
+        .chain([(101, 96)]);
+    let record = recorded
+        .clone()
+        .map(|(slot, _)| transition(slot, TransitionMode::Recording))
+        .collect::<Vec<_>>();
     client
         .immediate(Batch::new(1, 1, &record).unwrap())
         .unwrap();
     let capture_start = response(&mut client, &mut renderer);
-    for (slot, ticks) in [(100, 4), (101, 96)] {
+    for (slot, ticks) in recorded {
         for _ in 0..ticks {
             assert_eq!(step(&mut renderer), [0., 0.]);
         }
@@ -641,7 +647,7 @@ fn edit_at_clock_restart<E: Endpoint>(
             .immediate(Batch::new(1, 1, &[transition(slot, TransitionMode::Stopped)]).unwrap())
             .unwrap();
         // The clock’s capture length is fixed when its Stop takes effect.
-        if slot == 100 {
+        if slot != 101 {
             response(&mut client, &mut renderer);
         }
     }
@@ -658,14 +664,28 @@ fn edit_at_clock_restart<E: Endpoint>(
     }
     assert_eq!(step(&mut renderer), [0., 0.]);
 
-    let edit = graph.loops[2].composite.as_mut().unwrap();
+    let edit = graph.loops[parent_index].composite.as_mut().unwrap();
     edit.version = 2;
     edit.iterations = iterations;
     edit.unit_frames = unit_quanta * Q as u64;
     let span = &mut edit.spans.to_mut()[0];
     span.start = 4;
     span.occurrence_start = 4;
-    span.end = iterations;
+    span.end = if change_ending {
+        iterations - 2
+    } else {
+        iterations
+    };
+    if change_ending {
+        edit.spans.to_mut().push(CompositeSpan {
+            target: id(102),
+            start: 6,
+            end: iterations,
+            occurrence_start: 6,
+            ordinal: 1,
+            mode: LoopMode::Playing,
+        });
+    }
     let key = 41;
     let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, key).unwrap();
     for (index, batch) in batches.iter().enumerate() {
@@ -699,11 +719,23 @@ fn edit_at_clock_restart<E: Endpoint>(
     assert!(renderer.next_frame().0 < starts);
     while renderer.next_frame().0 <= stops {
         let frame = renderer.next_frame().0;
-        let sample = if (starts..stops).contains(&frame) {
+        let unit = unit_quanta * Q as u64;
+        let first_end = if change_ending {
+            stops - 2 * unit
+        } else {
+            stops
+        };
+        let first = if (starts..first_end).contains(&frame) {
             0.125
         } else {
             0.
         };
+        let second = if change_ending && (audible_restart + 6 * unit..stops).contains(&frame) {
+            0.25
+        } else {
+            0.
+        };
+        let sample = first + second;
         assert_eq!(step(&mut renderer), [sample, sample], "frame {frame}");
     }
 }
@@ -716,11 +748,28 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for (iterations, unit_quanta) in [(16, 1), (24, 1), (12, 2)] {
+    for (iterations, unit_quanta, change_ending) in [
+        (16, 1, false),
+        (24, 1, false),
+        (12, 2, false),
+        (24, 1, true),
+    ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-        edit_at_clock_restart(rust.endpoint, rust.renderer, iterations, unit_quanta);
+        edit_at_clock_restart(
+            rust.endpoint,
+            rust.renderer,
+            iterations,
+            unit_quanta,
+            change_ending,
+        );
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-        edit_at_clock_restart(rtl.endpoint, rtl.renderer, iterations, unit_quanta);
+        edit_at_clock_restart(
+            rtl.endpoint,
+            rtl.renderer,
+            iterations,
+            unit_quanta,
+            change_ending,
+        );
     }
 }
 

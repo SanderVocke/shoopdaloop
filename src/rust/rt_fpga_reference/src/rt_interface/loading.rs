@@ -270,6 +270,7 @@ impl Engine {
                         slot.state.position,
                         slot.state.content_length,
                         state.composite_restart_ready(*cut, slot),
+                        slot.composite_wait,
                     )
             })
     }

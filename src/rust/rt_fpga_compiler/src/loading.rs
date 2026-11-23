@@ -49,6 +49,8 @@ pub struct CompositeCut {
     pub require_empty: bool,
     pub allow_restart: bool,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub require_repeat_wait: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub restart_source: Option<Identity>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub restart_slot: Option<Identity>,
@@ -65,19 +67,36 @@ impl CompositeCut {
         }
     }
 
-    pub fn allows_playing(self, position: u64, length: u64, restart_ready: bool) -> bool {
-        (self.allow_restart && restart_ready && length != 0 && position == length)
+    pub fn allows_playing(
+        self,
+        position: u64,
+        length: u64,
+        restart_ready: bool,
+        waited: bool,
+    ) -> bool {
+        (self.allow_restart
+            && restart_ready
+            && length != 0
+            && position == length
+            && (!self.require_repeat_wait || waited))
             || (position < length
                 && self
                     .future_before
                     .is_some_and(|frame| position < u64::from(frame)))
     }
 
-    pub fn waits_for_restart(self, position: u64, length: u64, restart_ready: bool) -> bool {
+    pub fn waits_for_restart(
+        self,
+        position: u64,
+        length: u64,
+        restart_ready: bool,
+        waited: bool,
+    ) -> bool {
         self.allow_restart
             && length != 0
             && position <= length
-            && !self.allows_playing(position, length, restart_ready)
+            && (position < length || !restart_ready)
+            && !self.allows_playing(position, length, restart_ready, waited)
     }
 }
 
@@ -85,6 +104,18 @@ impl CompositeSchedule {
     fn same_timing(&self, candidate: &Self) -> bool {
         (self.unit_frames, self.length, self.explicit)
             == (candidate.unit_frames, candidate.length, candidate.explicit)
+    }
+
+    fn ending_children(&self) -> impl Iterator<Item = Identity> + '_ {
+        self.children
+            .iter()
+            .filter(|child| {
+                child
+                    .spans
+                    .last()
+                    .is_some_and(|span| span.end == self.length)
+            })
+            .map(|child| child.id)
     }
 
     fn future_edit_before(&self, candidate: &Self) -> Option<u32> {
@@ -498,24 +529,22 @@ impl Allocator {
                         .loops
                         .iter()
                         .any(|l| l.id == row.logical && l.sync_source == row.sync_source);
+                    let require_repeat_wait = before.zip(after).is_some_and(|(before, after)| {
+                        !before.ending_children().eq(after.ending_children())
+                    });
                     let allow_restart = changed_composites.contains(&row.logical)
                         && independent
                         && same_source
                         && (external_source.is_none() || restart_source.is_some())
                         && before.zip(after).is_some_and(|(before, after)| {
-                            let tail = |s: &CompositeSchedule| -> Vec<Identity> {
-                                s.children
-                                    .iter()
-                                    .filter(|child| {
-                                        child.spans.last().is_some_and(|span| span.end == s.length)
-                                    })
-                                    .map(|child| child.id)
-                                    .collect()
-                            };
                             !before.explicit
                                 && !after.explicit
                                 && after.length != 0
-                                && tail(before) == tail(after)
+                                && (!require_repeat_wait
+                                    || (restart_source.is_some()
+                                        && before.children.iter().all(|old| {
+                                            after.children.iter().any(|child| child.id == old.id)
+                                        })))
                         });
                     let future_before = nested_future
                         .filter(|(id, _)| *id == row.logical)
@@ -537,6 +566,7 @@ impl Allocator {
                             old_slot: row.physical,
                             require_empty: before.is_none(),
                             allow_restart,
+                            require_repeat_wait,
                             restart_source,
                             restart_slot: None,
                             future_before,

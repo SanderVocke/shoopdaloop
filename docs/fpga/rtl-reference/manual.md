@@ -237,11 +237,13 @@ recording can start. See the admission rule under
   to other composites.
   An independent repeating composite can pick up an edit at its next restart,
   including changes to the length of an iteration or the whole pass. Both plans
-  use the same sync source and end with the same children playing. Changing
-  the timing needs one free loop record while the new program is staged.
-  When a composite is holding at the end of a pass for an independent primitive
-  clock, the edit can take effect on the clock's wrap pulse. Other changes
-  require the affected composite loops to stop.
+  use the same sync source. An uninterrupted restart needs the same children
+  playing at the end of both plans. A wait for an independent primitive clock
+  gives the old schedule time to release those children. In that case, the edit
+  can change which children finish the pass and take effect on the clock's
+  wrap pulse, provided those children remain in the schedule. Changing the
+  timing needs one free loop record while the new program is staged. Other
+  changes require the affected composite loops to stop.
   Ordinary playback controls can run while an edit waits for a restart.
   Cancelling an edit that still waits leaves the active version in place. If
   the edit reaches the handoff first, the application reports the version that
