@@ -455,3 +455,21 @@ clocks after an accepted invalidation discards all old extents despite stale
 RAM. The direct Instant memory adapter is used; this is not a fixed-latency DDR
 measurement. All six cases pass on C3 in 69.21 seconds. Existing fixtures are
 unchanged; no Stage 5 implementation has been applied.
+
+The shared MIDI-store address trial is selected as **C4** (`7d2d7cd7`) after
+an exact four-stage physical repeat and all 23 affected tests. All 1,041 extended
+mixed callback rows match C3 in every non-cycle field. Across 1,024 steady
+quanta the median is 53,258 clocks and the maximum 59,776, versus C3's
+52,994/59,446. Cold start is 92,745 versus 88,446. All 40 musical transition rows
+retain exact outputs, state work and traffic counts; MIDI steady median rises
+1.56%, while prefix restoration rises from 365,340 to 410,865 clocks (12.46%).
+C3 remains the faster alternative. Both builds fail physical setup timing, and
+both prefix-restoration measurements exceed the nominal 100 MHz Q32 budget.
+
+C4 uses **35,299 LUTs, 28,888 FFs, 11,878 slices, 78 BRAM tiles, four DSPs and
+3,205 CARRY4s**. Its setup/hold slack is -3.668/+0.006 ns, with no routing
+errors. Against B0 it saves 6,681 LUTs, 1,327 slices, 4,553 FFs and 2,286 carries;
+these are measured cumulative savings. The selected small area gain costs
+174 FFs and 44 physical control sets against C3. The limiting path still runs
+through audio metadata node counting. The remaining Stage 4 arithmetic siblings
+have not yet been measured.

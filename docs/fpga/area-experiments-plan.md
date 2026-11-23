@@ -188,14 +188,14 @@ C2, unchanged measured cycles/BRAM, and 13 more carries. Timing still fails.
 
 Depends on stage 3's decision; use explicit registered operand selection.
 
-Execution status: the shared MIDI-store address candidate passes all 23 affected
-tests and its full physical repeat reproduces every stage exactly. Routing
-saves 108 LUTs and 54 slices against C3, costing 174 FFs; ordinary mixed steady
-cycles rise 0.5%, musical prefix restoration 12.5%. Its extended comparison is
-still running before selection. MIDI scratch sharing, audio metadata sharing
-and iterative node counting have prepared drafts but have not been applied or
-measured. A separate original-RTL validity control is ready for Stage 5; that
-implementation stage remains unexecuted.
+Execution status: shared MIDI-store address sharing is selected as C4 after
+23 affected tests, 1,041 exact non-cycle extended rows, 40 musical-transition
+rows and an exact four-stage physical repeat. It saves 108 LUTs/54 slices against
+C3, costing 174 FFs and 0.5% ordinary mixed median cycles; musical prefix
+restoration costs 12.5% more. C3 remains the faster alternative. MIDI scratch
+sharing, audio metadata sharing and iterative node counting have prepared drafts
+but remain unexecuted. Stage 5 has an original-RTL validity control ready; its
+implementation remains unexecuted.
 
 - [ ] Replace repeated MIDI store address expressions with a shared region/index/
   field request datapath. Measure before separately sharing the remaining MIDI
