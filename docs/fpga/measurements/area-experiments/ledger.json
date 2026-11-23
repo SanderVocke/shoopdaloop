@@ -41,7 +41,8 @@
     "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec",
     "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification.",
     "C3extended1041callbackrows matchC2exactly, includingboth16,384-frameleafspans: steady1024 median52994/max59446; cold88446. Frozenbinary8c51 andimmutablefe2184ea source.",
-    "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
+    "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged.",
+    "C6validity rawcontrol establishedbothAXIwidths; allstandaloneHDLinputhashesexactC6 althoughreused0e/C5immutablemodelroot. Two8988-row-equivalentcontrolpopulations retainedwithactualbinary/fixture/sourceidentity before reset/validitytrials."
   ],
   "pending": [
     "FinishStage5 payload-lifetime/reset-elision/validityfolding experiments",
@@ -66,6 +67,10 @@
     "c3_metadata_validity_controls": [
       "c3-metadata-validity-axi32-summary.json",
       "c3-metadata-validity-axi64-summary.json"
+    ],
+    "c6_metadata_validity_controls": [
+      "s5-c6-validity-axi32-summary.json",
+      "s5-c6-validity-axi64-summary.json"
     ]
   },
   "experiments": [

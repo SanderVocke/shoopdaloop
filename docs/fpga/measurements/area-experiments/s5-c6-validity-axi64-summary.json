@@ -1,0 +1,276 @@
+{
+  "axi_data_width": 64,
+  "cases": [
+    {
+      "aborted_invalidation": 256,
+      "completed_invalidations": 512,
+      "live_views": [
+        0
+      ],
+      "reset_during_accepted_invalidation_after_clocks": 5,
+      "resets": [
+        {
+          "pass": 0,
+          "ready_wait_cycles": 0
+        },
+        {
+          "pass": 1,
+          "ready_wait_cycles": 0
+        }
+      ],
+      "slots": 1,
+      "views": 1,
+      "measurement_count": 1086,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 512,
+          "min": 9,
+          "median": 52.0,
+          "max": 52
+        },
+        "opcode0/expected_error1": {
+          "count": 2,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode1/expected_error0": {
+          "count": 42,
+          "min": 47,
+          "median": 54.0,
+          "max": 54
+        },
+        "opcode6/expected_error1": {
+          "count": 18,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode9/expected_error0": {
+          "count": 512,
+          "min": 33,
+          "median": 33.0,
+          "max": 76
+        }
+      }
+    },
+    {
+      "aborted_invalidation": 256,
+      "completed_invalidations": 512,
+      "live_views": [
+        0,
+        1,
+        4
+      ],
+      "reset_during_accepted_invalidation_after_clocks": 5,
+      "resets": [
+        {
+          "pass": 0,
+          "ready_wait_cycles": 0
+        },
+        {
+          "pass": 1,
+          "ready_wait_cycles": 0
+        }
+      ],
+      "slots": 512,
+      "views": 5,
+      "measurement_count": 1704,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 1026,
+          "min": 9,
+          "median": 138.0,
+          "max": 138
+        },
+        "opcode0/expected_error1": {
+          "count": 6,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode1/expected_error0": {
+          "count": 142,
+          "min": 34,
+          "median": 34.0,
+          "max": 254
+        },
+        "opcode6/expected_error1": {
+          "count": 18,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode9/expected_error0": {
+          "count": 512,
+          "min": 33,
+          "median": 33.0,
+          "max": 377
+        }
+      }
+    },
+    {
+      "aborted_invalidation": 256,
+      "completed_invalidations": 512,
+      "live_views": [
+        0,
+        1,
+        511
+      ],
+      "reset_during_accepted_invalidation_after_clocks": 5,
+      "resets": [
+        {
+          "pass": 0,
+          "ready_wait_cycles": 0
+        },
+        {
+          "pass": 1,
+          "ready_wait_cycles": 0
+        }
+      ],
+      "slots": 512,
+      "views": 512,
+      "measurement_count": 1704,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 1026,
+          "min": 9,
+          "median": 138.0,
+          "max": 138
+        },
+        "opcode0/expected_error1": {
+          "count": 6,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode1/expected_error0": {
+          "count": 142,
+          "min": 34,
+          "median": 34.0,
+          "max": 254
+        },
+        "opcode6/expected_error1": {
+          "count": 18,
+          "min": 9,
+          "median": 9.0,
+          "max": 9
+        },
+        "opcode9/expected_error0": {
+          "count": 512,
+          "min": 33,
+          "median": 33.0,
+          "max": 377
+        }
+      }
+    }
+  ],
+  "scope": "metadata/cache/AXI with direct Instant memory and randomized bus stalls; request assertion through held response acceptance; initialization measured separately",
+  "seed": 19307,
+  "validation": "independent live-view values survive512completed invalidations, high invalid trims and rewrites; a sleeping view must reload after256invalidations; accepted invalidation abort/reset clears every old extent despite stale RAM; reset admission is awaited",
+  "label": "s5-c6-validity-axi64",
+  "fixture_revision": "5ea0bd6049042e103ad31b7fc36fdcbc973750db",
+  "models": [
+    {
+      "native_memory": {
+        "embedded": false,
+        "physical_base": null,
+        "words": 8192
+      },
+      "parameters": {
+        "DATA_WIDTH": "64",
+        "LARGE": "0",
+        "LINE_WORDS": "16",
+        "SLOTS": "1",
+        "TABLE_LINES": "8",
+        "TABLE_PAGES": "128",
+        "VIEWS": "1"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+        "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+        "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+        "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+        "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+        "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+        "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+        "fpga/media_store/rtl/media_metadata.sv": "823b6ad4ee796ce5c4c00cef9e9f19f387b9b6cc6d4b0b1903c4592e4dd8caa9",
+        "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+        "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+        "fpga/media_store/tests/media_metadata_tb.sv": "633edad47c4f2ef66ea295c19617edf65645a7b70e939e3b023d53e48bf5cc11",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "media_metadata_tb"
+    },
+    {
+      "native_memory": {
+        "embedded": false,
+        "physical_base": null,
+        "words": 8192
+      },
+      "parameters": {
+        "DATA_WIDTH": "64",
+        "LARGE": "0",
+        "LINE_WORDS": "16",
+        "SLOTS": "512",
+        "TABLE_LINES": "8",
+        "TABLE_PAGES": "128",
+        "VIEWS": "5"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+        "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+        "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+        "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+        "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+        "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+        "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+        "fpga/media_store/rtl/media_metadata.sv": "823b6ad4ee796ce5c4c00cef9e9f19f387b9b6cc6d4b0b1903c4592e4dd8caa9",
+        "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+        "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+        "fpga/media_store/tests/media_metadata_tb.sv": "633edad47c4f2ef66ea295c19617edf65645a7b70e939e3b023d53e48bf5cc11",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "media_metadata_tb"
+    },
+    {
+      "native_memory": {
+        "embedded": false,
+        "physical_base": null,
+        "words": 8192
+      },
+      "parameters": {
+        "DATA_WIDTH": "64",
+        "LARGE": "0",
+        "LINE_WORDS": "16",
+        "SLOTS": "512",
+        "TABLE_LINES": "8",
+        "TABLE_PAGES": "128",
+        "VIEWS": "512"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+        "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+        "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+        "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+        "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+        "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+        "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+        "fpga/media_store/rtl/media_metadata.sv": "823b6ad4ee796ce5c4c00cef9e9f19f387b9b6cc6d4b0b1903c4592e4dd8caa9",
+        "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+        "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+        "fpga/media_store/tests/media_metadata_tb.sv": "633edad47c4f2ef66ea295c19617edf65645a7b70e939e3b023d53e48bf5cc11",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "media_metadata_tb"
+    }
+  ],
+  "retention": "s5-c6-validity-axi64-retention.json",
+  "per_request_samples": "s5-c6-validity-axi64-raw.tar.gz"
+}
