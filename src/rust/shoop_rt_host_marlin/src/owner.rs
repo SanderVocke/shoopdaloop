@@ -549,6 +549,16 @@ impl Owner<'_> {
         {
             return Ok(false);
         }
+        if let Some(slot) = upload.upload.image.layout.retiring_composite() {
+            let mut words = self.loop_words(slot)?;
+            let code = rt_fpga_rtl::host::control::prepare_composite_retirement(
+                slot, &mut words, self.frame,
+            );
+            if code == Code::Scheduled {
+                self.store_loop(slot, &words)?;
+            }
+            return Ok(code == Code::Scheduled);
+        }
         let [cut] = upload.upload.image.layout.composite_cuts() else {
             return Ok(false);
         };

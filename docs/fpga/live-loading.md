@@ -67,6 +67,11 @@ An admitted switch also settles if the application connection closes. The
 loader uses the result to settle program ownership. After reconnecting, the
 client can read the current revision through its usual snapshot subscription.
 
+When an ordinary graph activation removes one composite with no parent, the
+host can stop the departing loop after the replacement is ready. One run
+with the old program releases its children and completes their authored audio
+recordings. The next boundary can switch programs and retire the old slot.
+
 At each quantum boundary, complete command groups execute in FIFO order within
 each queue. A switch changes the program, plan metadata, run parameters, control bindings and
 revision without replacing the persistent state pool. Public application loop

@@ -742,7 +742,13 @@ impl<L: ProgramLoader> Endpoint<L> {
         batch: Batch,
         logical: rt_fpga_compiler::LogicalStateProgram,
     ) -> Result<()> {
-        let layout = self.allocator.stage(&logical)?;
+        let cancel_key = match batch.commands().last() {
+            Some(Command::ActivateCompositeGraph(key)) => Some(*key),
+            _ => None,
+        };
+        let layout = self
+            .allocator
+            .stage_with_composite_retirement(&logical, cancel_key.is_none())?;
         let revision = layout.revision;
         let staged = self.programs.stage_program(&logical, layout);
         match staged {
@@ -752,10 +758,7 @@ impl<L: ProgramLoader> Endpoint<L> {
                     descriptor,
                     ready: None,
                     published: false,
-                    cancel_key: match batch.commands().last() {
-                        Some(Command::ActivateCompositeGraph(key)) => Some(*key),
-                        _ => None,
-                    },
+                    cancel_key,
                     cancel_requested: false,
                     notify: true,
                     usage: ProgramUsage {

@@ -735,4 +735,42 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
             assert_eq!(passes[..2], [2, 0]);
         }
     }
+
+    let voice = session.active().unwrap().layout.loop_id(identity).unwrap();
+    graph.loops.pop();
+    let program = compile_composites(&graph, context, 32).unwrap();
+    let layout = allocator
+        .stage_with_composite_retirement(&program, true)
+        .unwrap();
+    let departing = layout.retiring_composite().unwrap();
+    let media = layout.media_views(&program);
+    let image = RtlTarget {
+        capacities: limits,
+        media_views: &media,
+        state_base: 0,
+    }
+    .build_image(&program, layout)
+    .unwrap();
+    let requested = stage(&mut session, Upload::new(image, limits.instructions));
+    allocator.publish(5).unwrap();
+    let mut window = ControlWindow::begin(session.client(), 4, timeout()).unwrap();
+    assert_eq!(
+        window.prepare_composite_retirement(departing),
+        Ok(Code::Scheduled)
+    );
+    window.release().unwrap();
+    send(session.client(), Request::run_quantum());
+    let capture = send(session.client(), Request::capture_loop(voice.slot));
+    let state = send(session.client(), Request::read_snapshot(capture[0], 0, 1));
+    assert_eq!((state[1] >> 1) & 3, 0);
+    let (active, retired) = session.activate(requested, timeout()).unwrap();
+    assert_eq!(
+        active,
+        ActiveProgram {
+            frame: 12 * quantum,
+            revision: 5
+        }
+    );
+    assert_eq!(retired.unwrap().image.layout.revision, 4);
+    allocator.complete(5).unwrap();
 }

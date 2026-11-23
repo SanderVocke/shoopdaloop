@@ -476,18 +476,27 @@ where
             return Ok(Some((frame, Code::DeadlineMissed)));
         }
         if switching.is_some() {
-            let cuts = staged.unwrap().layout.composite_cuts();
-            for &cut in cuts {
-                let status =
-                    device_result(window.prepare_composite_cut(cut, self.geometry.quantum))?;
-                if status != Code::Applied {
-                    device_result(window.release())?;
-                    if status == Code::Scheduled && cuts.len() == 1 && records.len() == 1 {
-                        self.retry_switch_after = Some(frame);
-                        return Ok(None);
+            let layout = &staged.unwrap().layout;
+            let cuts = layout.composite_cuts();
+            let mut status = Code::Applied;
+            if let Some(slot) = layout.retiring_composite() {
+                status = device_result(window.prepare_composite_retirement(slot))?;
+            } else {
+                for &cut in cuts {
+                    status =
+                        device_result(window.prepare_composite_cut(cut, self.geometry.quantum))?;
+                    if status != Code::Applied {
+                        break;
                     }
-                    return Ok(Some((frame, Code::CannotApply)));
                 }
+            }
+            if status != Code::Applied {
+                device_result(window.release())?;
+                if status == Code::Scheduled && cuts.len() == 1 && records.len() == 1 {
+                    self.retry_switch_after = Some(frame);
+                    return Ok(None);
+                }
+                return Ok(Some((frame, Code::CannotApply)));
             }
         }
         for record in records {

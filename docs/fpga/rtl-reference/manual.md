@@ -222,7 +222,10 @@ recording can start. See the admission rule under
   running.
 - **Application edits.** After the initial layout is installed, the application
   can create a composite, convert an empty stopped loop, edit its plan, and
-  clear or remove a stopped composite. The host compiles each proposed plan
+  clear or remove a composite. For a single composite with no parent, the
+  host can stop it as part of the clear or removal. The old schedule runs
+  for that quantum so its children stop and any take it started can finish.
+  The host compiles each proposed plan
   into the unused program region. It reports the new version once the region
   has taken over and the state snapshot shows that version. If a primitive
   begins recording before conversion takes over, the handoff refuses the

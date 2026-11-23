@@ -168,10 +168,27 @@ pub fn prepare_composite_restart(
     Code::Applied
 }
 
+pub fn prepare_composite_retirement(id: Identity, words: &mut [u64; 16], frame: u64) -> Code {
+    let mode = (words[0] >> 33) & 3;
+    if !loop_identity_valid(id, words) || words[1] & COMPOSITE_LOOP == 0 || mode > 1 {
+        return Code::CannotApply;
+    }
+    if mode == 0 && cut_loop_valid(id, words) {
+        return Code::Applied;
+    }
+    let state = loop_state(id, words, None);
+    match apply_plan(words, state, None, frame, TransitionMode::Stopped.into()) {
+        Ok(_) => Code::Scheduled,
+        Err(code) => code,
+    }
+}
+
 fn cut_loop_valid(slot: Identity, words: &[u64; 16]) -> bool {
-    words[0] & 1 != 0
-        && (words[0] >> 1) as u32 == slot.generation
-        && words[1] & ((1 << 32) | (1 << 37)) == 0
+    loop_identity_valid(slot, words) && words[1] & ((1 << 32) | (1 << 37)) == 0
+}
+
+fn loop_identity_valid(slot: Identity, words: &[u64; 16]) -> bool {
+    words[0] & 1 != 0 && (words[0] >> 1) as u32 == slot.generation
 }
 
 pub fn loop_plan(words: &[u64; 16]) -> TransitionPlan {

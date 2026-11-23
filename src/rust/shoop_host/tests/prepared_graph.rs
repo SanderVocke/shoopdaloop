@@ -309,15 +309,48 @@ fn composite_layout(
     wait(&mut backend, &|s| {
         s.composites[&parent].mode == BackendLoopMode::Stopped
     });
+    backend
+        .transition_composite_loop(parent, BackendLoopMode::Playing, None, None)
+        .unwrap();
+    let playing = wait(&mut backend, &|s| {
+        s.composites[&parent].mode == BackendLoopMode::Playing
+            && s.loops[child].mode == BackendLoopMode::Playing
+    });
+    let child_length = playing.loops[child].length;
     let clear = backend.clear_composite_loop(parent).unwrap();
     let cleared = wait(&mut backend, &|s| s.removed_composites.contains(&parent));
     assert_eq!(cleared.loops[&clear].mode, BackendLoopMode::Stopped);
+    assert_eq!(cleared.loops[child].mode, BackendLoopMode::Stopped);
+    assert_eq!(cleared.loops[child].length, child_length);
+
     let standalone = backend.create_composite_loop().unwrap();
     wait(&mut backend, &|s| s.composites.contains_key(&standalone));
-    backend.remove_composite_loop(standalone).unwrap();
+    let mut capture = repeat;
+    capture.kind = BackendCompositeKind::Script;
+    capture.spans[0].mode = BackendLoopMode::Recording;
+    let version = backend
+        .configure_prepared_composite_loop(standalone, &capture)
+        .unwrap();
     wait(&mut backend, &|s| {
+        s.composites[&standalone].active_plan_version == version
+    });
+    backend
+        .transition_loop(clear, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend
+        .transition_composite_loop(standalone, BackendLoopMode::Playing, None, None)
+        .unwrap();
+    wait(&mut backend, &|s| {
+        s.loops[child].mode == BackendLoopMode::Recording
+            && s.loops[&clear].mode == BackendLoopMode::Recording
+    });
+    backend.remove_composite_loop(standalone).unwrap();
+    let removed = wait(&mut backend, &|s| {
         s.removed_composites.contains(&standalone)
     });
+    assert_eq!(removed.loops[child].mode, BackendLoopMode::Stopped);
+    assert!(removed.loops[child].length > 0);
+    assert_eq!(removed.loops[&clear].mode, BackendLoopMode::Recording);
 }
 
 #[shoop_test]

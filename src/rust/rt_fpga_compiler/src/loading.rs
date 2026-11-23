@@ -146,6 +146,8 @@ pub struct Layout {
     composites: Vec<CompositeSchedule>,
     #[cfg_attr(feature = "serde", serde(default))]
     composite_cuts: Vec<CompositeCut>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    retiring_composite: Option<Identity>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -222,6 +224,9 @@ impl Layout {
     }
     pub fn composite_cuts(&self) -> &[CompositeCut] {
         &self.composite_cuts
+    }
+    pub fn retiring_composite(&self) -> Option<Identity> {
+        self.retiring_composite
     }
     pub fn composite_schedule(&self, logical: Identity) -> Option<&CompositeSchedule> {
         self.composites
@@ -377,6 +382,14 @@ impl Allocator {
         self.current.as_ref().map_or(0, |l| l.revision)
     }
     pub fn stage(&mut self, program: &LogicalStateProgram) -> Result<Layout, LoadError> {
+        self.stage_with_composite_retirement(program, false)
+    }
+
+    pub fn stage_with_composite_retirement(
+        &mut self,
+        program: &LogicalStateProgram,
+        allow_retirement: bool,
+    ) -> Result<Layout, LoadError> {
         if self.pending.is_some() {
             return Err(LoadError::Busy);
         }
@@ -648,6 +661,19 @@ impl Allocator {
             }
         }
         self.serial = self.serial.checked_add(1).ok_or(LoadError::Exhausted)?;
+        let retiring_composite = match composite_cuts.as_slice() {
+            [(logical, cut)]
+                if allow_retirement
+                    && !cut.require_empty
+                    && !program
+                        .composites
+                        .iter()
+                        .any(|schedule| schedule.id == *logical) =>
+            {
+                Some(cut.old_slot)
+            }
+            _ => None,
+        };
         let composite_cuts = composite_cuts
             .into_iter()
             .map(|(logical, mut cut)| {
@@ -672,6 +698,7 @@ impl Allocator {
             chunk_frames: program.chunk_frames,
             composites: program.composites.clone(),
             composite_cuts,
+            retiring_composite,
         };
         layout.relocate(program)?.validate(self.limits)?;
         self.pending = Some(layout.clone());

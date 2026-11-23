@@ -131,6 +131,18 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         Ok(code)
     }
 
+    pub fn prepare_composite_retirement(&mut self, id: Identity) -> Result<Code, Error<B::Error>> {
+        let (base, Some(original)) = self.read_loop(id)? else {
+            return Ok(Code::CannotApply);
+        };
+        let mut updated = original;
+        let code = super::prepare_composite_retirement(id, &mut updated, self.frame);
+        if code == Code::Scheduled {
+            self.update_loop(base, original, updated)?;
+        }
+        Ok(code)
+    }
+
     pub fn clear_transitions(
         &mut self,
         id: Identity,

@@ -233,7 +233,27 @@ impl Processor {
     }
 }
 impl Engine {
-    pub(super) fn waits_for_composite_cut(&self, image: &PreparedProgram) -> bool {
+    pub(super) fn waits_for_composite_cut(&mut self, image: &PreparedProgram) -> bool {
+        if let Some(slot) = image.image.layout.retiring_composite() {
+            let id = LoopId {
+                slot: slot.slot,
+                generation: slot.generation,
+            };
+            if self.pipeline.state().loop_state(id).is_ok_and(|slot| {
+                slot.state.mode == Mode::Playing || slot.planned.iter().any(Option::is_some)
+            }) {
+                return self
+                    .pipeline
+                    .write_mode_plan(
+                        id,
+                        ModePlan {
+                            now: Some(Mode::Stopped),
+                            ..ModePlan::default()
+                        },
+                    )
+                    .is_ok();
+            }
+        }
         let [cut] = image.image.layout.composite_cuts() else {
             return false;
         };
