@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 5,
-  "status": "Stages0\u20134complete; Stage5coldRAM selectedC6. Payloadlifetime bbfaa8ad raw/focused pass; full/callback/opt running. Resetelision/validity andStages6\u201311 pending.",
+  "status": "Stages0\u20134complete; C6 selected. Payloadlifetime raw/73callbacks/16mainMIDItests pass, opt-21LUT-37FF; route/restorationrunning. RemainingStage5and6\u201311pending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1430,12 +1430,12 @@
         "Read-onlyC6DCP query confirmsallfourpayloadwordseach32FF (128total),soeliminatedcopyexistsinmappedcontrol",
         "StrictVerilatorlint default/minimum/odd/connected-primary passes; allreportedwarnings identical C6.",
         "Both reserved/relocation tests and dense record/merge/read/stop focused test pass",
-        "All10311boundary+54reserved+108relocated rows exactly match C6, including cycles and memory traffic"
+        "All10311boundary+54reserved+108relocated rows exactly match C6, including cycles and memory traffic",
+        "All33mixed+40musical rows exactC6 including cycles/traffic/work/state/finalmixedmemory; all16mainMIDItests passonspace-corrected rerun, expression/reserved running"
       ],
       "pending": [
-        "Raw10311+54+108MIDIrows and73mixed/musicalcallbackrows matchedC6",
-        "All23affectedMIDI/expression/reserved regressions",
-        "Connectedopt/route/repeat asviable;verifyactualFF/mux/register removal"
+        "Finish all23affectedMIDI/expression/reserved regressions",
+        "Connectedrouteandrepeat ifretained; actualpayloadregister query"
       ],
       "rtl_source_revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
       "raw_unit_summaries": [
@@ -1443,7 +1443,10 @@
         "s5-payload-lifetime-reserved-summary.json",
         "s5-payload-lifetime-relocated-summary.json"
       ],
-      "environment_retry": "First full suite:8pass8failure, eachfailureStorageFull(os28), not RTLassertion. Initiallog retained; nativeRustcaches reclaimed andexactcommand/source rerunningwith3GBheadroom."
+      "environment_retry": "First full suite:8pass8failure, eachfailureStorageFull(os28), not RTLassertion. Initiallog retained; nativeRustcaches reclaimed andexactcommand/source rerunningwith3GBheadroom.",
+      "opt_summary": "s5-payload-lifetime-opt-summary.json",
+      "callback_performance": "s5-payload-lifetime-callback-performance.json",
+      "mapped_screen": "-21LUT/-37FF/+13MUXF7/-2controlsets vsC6; BRAM/DSP/carry unchanged. OptWNS-0.151ns vs+.412control; physicalroutepending."
     }
   ],
   "provisioning": {
