@@ -588,12 +588,19 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ending {
+    Same,
+    AddSecond,
+    ReplaceFirst,
+}
+
 fn edit_at_clock_restart<E: Endpoint>(
     endpoint: E,
     mut renderer: impl Renderer,
     iterations: u64,
     unit_quanta: u64,
-    change_ending: bool,
+    ending: Ending,
     composite_clock_pass: Option<u64>,
 ) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
@@ -601,7 +608,9 @@ fn edit_at_clock_restart<E: Endpoint>(
     client.connect().unwrap();
     while client.poll().is_some() {}
     let mut graph = stereo_graph();
-    graph.loops.truncate(if change_ending { 3 } else { 2 });
+    graph
+        .loops
+        .truncate(if ending == Ending::Same { 2 } else { 3 });
     graph.loops[1].gain = 0.;
     let parent_index = graph.loops.len();
     let clock_slot = if composite_clock_pass.is_some() {
@@ -654,7 +663,7 @@ fn edit_at_clock_restart<E: Endpoint>(
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
     let recorded = [(100, 4)]
         .into_iter()
-        .chain(change_ending.then_some((102, 0)))
+        .chain((ending != Ending::Same).then_some((102, 0)))
         .chain([(101, 96)]);
     let record = recorded
         .clone()
@@ -694,15 +703,19 @@ fn edit_at_clock_restart<E: Endpoint>(
     edit.version = 2;
     edit.iterations = iterations;
     edit.unit_frames = unit_quanta * Q as u64;
-    let span = &mut edit.spans.to_mut()[0];
-    span.start = 4;
-    span.occurrence_start = 4;
-    span.end = if change_ending {
-        iterations - 2
+    if ending == Ending::ReplaceFirst {
+        edit.spans.to_mut().clear();
     } else {
-        iterations
-    };
-    if change_ending {
+        let span = &mut edit.spans.to_mut()[0];
+        span.start = 4;
+        span.occurrence_start = 4;
+        span.end = if ending == Ending::AddSecond {
+            iterations - 2
+        } else {
+            iterations
+        };
+    }
+    if ending != Ending::Same {
         edit.spans.to_mut().push(CompositeSpan {
             target: id(102),
             start: 6,
@@ -746,23 +759,31 @@ fn edit_at_clock_restart<E: Endpoint>(
     while renderer.next_frame().0 <= stops {
         let frame = renderer.next_frame().0;
         let unit = unit_quanta * Q as u64;
-        let first_end = if change_ending {
+        let first_end = if ending == Ending::AddSecond {
             stops - 2 * unit
         } else {
             stops
         };
-        let first = if (starts..first_end).contains(&frame) {
+        let first = if ending != Ending::ReplaceFirst && (starts..first_end).contains(&frame) {
             0.125
         } else {
             0.
         };
-        let second = if change_ending && (audible_restart + 6 * unit..stops).contains(&frame) {
-            0.25
-        } else {
-            0.
-        };
+        let second =
+            if ending != Ending::Same && (audible_restart + 6 * unit..stops).contains(&frame) {
+                0.25
+            } else {
+                0.
+            };
         let sample = first + second;
         assert_eq!(step(&mut renderer), [sample, sample], "frame {frame}");
+    }
+    if ending == Ending::ReplaceFirst {
+        client
+            .immediate(Batch::new(2, 2, &[transition(100, TransitionMode::Playing)]).unwrap())
+            .unwrap();
+        response(&mut client, &mut renderer);
+        assert_eq!(step(&mut renderer), [0.125, 0.125]);
     }
 }
 
@@ -774,12 +795,14 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for (iterations, unit_quanta, change_ending, composite_clock_pass) in [
-        (16, 1, false, None),
-        (24, 1, false, None),
-        (12, 2, false, None),
-        (24, 1, true, None),
-        (24, 1, false, Some(100)),
+    for (iterations, unit_quanta, ending, composite_clock_pass) in [
+        (16, 1, Ending::Same, None),
+        (24, 1, Ending::Same, None),
+        (12, 2, Ending::Same, None),
+        (24, 1, Ending::AddSecond, None),
+        (16, 1, Ending::ReplaceFirst, None),
+        (24, 1, Ending::Same, Some(100)),
+        (24, 1, Ending::ReplaceFirst, Some(100)),
     ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
         edit_at_clock_restart(
@@ -787,7 +810,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             rust.renderer,
             iterations,
             unit_quanta,
-            change_ending,
+            ending,
             composite_clock_pass,
         );
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
@@ -796,7 +819,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             rtl.renderer,
             iterations,
             unit_quanta,
-            change_ending,
+            ending,
             composite_clock_pass,
         );
     }

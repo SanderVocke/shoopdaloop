@@ -241,11 +241,11 @@ recording can start. See the admission rule under
   playing at the end of both plans. A wait for an independent clock gives
   the old schedule time to release those children. The clock can be a primitive
   or a composite that plays on its own. The edit can then change which children
-  finish the pass and take effect on the clock's wrap pulse, provided every old
-  child still appears somewhere in the new schedule. Changing the
-  timing needs one free loop record while the new program is staged. An
-  independent one-pass composite can finish its current run before taking up an
-  edit. The replacement stays stopped until it is started. Other changes
+  finish the pass and take effect on the clock's wrap pulse. It can also drop a
+  child from the schedule while leaving the loop and its audio in the session.
+  A timing change needs one free loop record while the new program is staged.
+  An independent one-pass composite can finish its current run before taking up
+  an edit. The replacement stays stopped until it is started. Other changes
   require the affected composite loops to stop.
   Ordinary playback controls can run while an edit waits.
   Cancelling an edit that still waits leaves the active version in place. If

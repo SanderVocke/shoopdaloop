@@ -535,6 +535,8 @@ impl Allocator {
                     let require_repeat_wait = before.zip(after).is_some_and(|(before, after)| {
                         !before.ending_children().eq(after.ending_children())
                     });
+                    // A held pass has already released its children. A plan edit can
+                    // drop their spans while the graph keeps their state and media.
                     let allow_restart = changed_composites.contains(&row.logical)
                         && independent
                         && same_source
@@ -546,7 +548,7 @@ impl Allocator {
                                 && (!require_repeat_wait
                                     || (restart_source.is_some()
                                         && before.children.iter().all(|old| {
-                                            after.children.iter().any(|child| child.id == old.id)
+                                            program.loops.iter().any(|child| child.id == old.id)
                                         })))
                         });
                     let wait_for_finish = changed_composites.contains(&row.logical)
