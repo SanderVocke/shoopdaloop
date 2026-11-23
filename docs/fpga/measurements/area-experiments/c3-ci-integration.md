@@ -39,3 +39,14 @@ uses dynamic providers; driver-switch recovery expects refusal for an oversized
 period that the new provider clamps. Preserve these failures for integration
 review. No FPGA experiment changes those contracts, and this branch does not
 weaken their assertions or apply an unproven host timing fix.
+
+The same integration failures persist on selected C4's tested merge. A pinned
+Linux Carla component from successful C2 CI artifact14773879496 was verified
+against the current runtime lock and all 430 file hashes. With the real runtime
+required, the first companion test reproduces the obsolete preallocated-count
+assertion exactly. Updating its startup assertions to on-demand availability,
+zero preallocated chains and zero startup reservation preserves every existing
+real audio/MIDI/state/recovery assertion. Both hosting modes pass (15.71 seconds).
+Formatting, test-attribute policy and a warning-denying companion build pass.
+See `c4-ci-carla-on-demand-*`. The wide-chain and driver-period legacy expectations
+remain unresolved; this is not a claim of green CI or completed integration.

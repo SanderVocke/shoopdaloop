@@ -96,8 +96,9 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             shoop_rt_backend::RtBackend::connect(client, shoop_rt_backend::Sleep::default())
                 .unwrap();
         let limits = backend.processor_limits().unwrap();
-        assert_eq!(limits.effective.carla.rack_instances, 1, "{limits:?}");
-        assert_eq!(limits.effective.carla.patchbay_instances, 1, "{limits:?}");
+        assert!(limits.dynamic_carla, "{limits:?}");
+        assert_eq!(limits.effective.carla.instances(), 0, "{limits:?}");
+        assert_eq!(limits.reserved_bytes, 0, "{limits:?}");
         assert_eq!(limits.carla_latency_frames, 768);
         let descriptors = backend.track_processor_catalog().unwrap();
         let rack = descriptors

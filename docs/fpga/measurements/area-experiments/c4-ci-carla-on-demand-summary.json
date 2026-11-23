@@ -1,0 +1,22 @@
+{
+  "scope": "Independent new-backend-base CI repair only; no FPGA HDL or measured source changed",
+  "integration_parent": "4749afb497bfc44be4108d440e2bc089f8682593",
+  "upstream_base": "34f04abde81f1e49f0b22a5b2f82890c5dad610c",
+  "runtime_artifact": 14773879496,
+  "runtime_component_verification": "passed current runtime lock, all430files hash-verified",
+  "source_test_sha256": "ac2ddf00f27c0e3980d3374d2f1874654364471a9982f199fc936747cb4b1771",
+  "original": "ExactCI failure reproduced atcarla_worker.rs99: legacy preallocatedcount1 versusactual0,dynamic_carla=true,reserved_bytes0. FirstsandboxattemptdeniedlocalIPC; unchangedtestreproducedafterallowinglocalIPC.",
+  "change": "AssertdynamiclocalCarlaenabled,zero preallocatedinstances andzero startupreservation. Preserve alloriginaltwo-hosting-mode audio,MIDI,state,recovery andsubprocess operations.",
+  "targeted_result": "1passed15.71sec,6filtered;SHOOP_REQUIRE_CARLA_TESTS=1 prevents skipping",
+  "validation": [
+    "cargo fmt --all",
+    "python3 scripts/check_shoop_test_usage.py passed",
+    "RUSTFLAGS=-Dwarnings cargo build --locked -p shoop_rt_host_process --features carla-worker passed1m18s"
+  ],
+  "command": "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/workspace/shoopdaloop/target SHOOP_REQUIRE_CARLA_TESTS=1 SHOOP_CARLA_NATIVE_LIBRARY=/workspace/shoopdaloop/work/area-experiments/setup/carla-runtime-c2/lib/libcarla_native-plugin.so SHOOP_CARLA_RESOURCE_DIR=/workspace/shoopdaloop/work/area-experiments/setup/carla-runtime-c2/resources cargo test --locked -p shoop_rt_host_process --features carla-worker --test carla_worker companion_installs_real_carla_track_and_bus_banks -- --test-threads=1",
+  "pending": [
+    "Wide16xlegacytest compatibility anddriverperiod expectation",
+    "Fullintegrationregressions andfreshselectedPRCI"
+  ],
+  "retention": "c4-ci-carla-on-demand-retention.json"
+}

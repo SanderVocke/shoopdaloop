@@ -1,0 +1,18 @@
+{
+  "archive": "c4-ci-carla-on-demand-raw.tar.gz",
+  "archive_sha256": "a5296e5ef8773be16b09ea53e819f9586f6426d1f257359614777966da30a460",
+  "members_sha256": {
+    "logs/integration-c4-carla-original.log": "e1fd0bc2d1d9ff2011fba418d089b52d71bb0ef97f17f34eaf5407bd4b9d9774",
+    "logs/integration-c4-carla-original-2.log": "8dba281d85f5d6a8e0ac51aeed7b24124802168ec93000fb7b8ef769c61be1c1",
+    "logs/integration-c4-carla-on-demand.log": "07e5af9eed7f1cd1757756e2ffdcc696fbbd7f00a1de2485c2e1580b93ea8ad8",
+    "logs/integration-c4-carla-build.log": "a098780213370d0587468df0d12a16fc1d55b4d2410761a5cd0ca47fa65cbfe8",
+    "logs/carla-runtime-c2-provenance.json": "37ec6e523d4985c030a840c89dc5f6bcb541f6a607fc072354ee215934548cfd",
+    "logs/carla-runtime-c2-verify.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source/src/rust/shoop_rt_host_process/tests/carla_worker.rs": "ac2ddf00f27c0e3980d3374d2f1874654364471a9982f199fc936747cb4b1771",
+    "source/src/rust/shoop_rt_host_native/src/remote_carla.rs": "8871300434c53a8f7b1351b5b8cb7c77c65711b17443be201c98bc6e37571338",
+    "source/src/rust/shoop_rt_host_native/src/lib.rs": "d08e5525216b6b21a0f53197f0b791da4032093cf3d92a1709faaf0045011ca6",
+    "source/third_party/carla/runtime-lock.json": "c82c8d79302191b86f43ffc8c5e2cebd32b8db60c928f54c0e2a19b7a0347527",
+    "runtime/manifest.json": "a112516aa7ffdbfa1fad29f934d77ed22584ea79687ed3a7513c9bea6ebc27b8",
+    "runtime/runtime-lock.json": "c82c8d79302191b86f43ffc8c5e2cebd32b8db60c928f54c0e2a19b7a0347527"
+  }
+}
