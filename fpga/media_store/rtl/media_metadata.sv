@@ -42,7 +42,7 @@ module media_metadata #(
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
         TRIM_COUNT, TRIM_CHECK, TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
         CHECK_TREE, COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
-        GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT, ADDRESS_CALCULATE} phase_t;
+        GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT} phase_t;
     (* fsm_encoding = "one_hot" *) phase_t phase;
     phase_t resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
@@ -95,6 +95,8 @@ module media_metadata #(
     end
     reg [3:0] path_index [0:LEVELS-1];
     wire [LEVEL_BITS-1:0] saved_path_level = phase == CHILD ? level : LEVEL_BITS'(32'(level)+1);
+    wire [63:0] saved_page_address = page_address(path_page[saved_path_level]);
+    wire [63:0] saved_path_address = {saved_page_address[63:6],path_index[saved_path_level],2'b0};
     reg [31:0] trim_count, trim_start;
     reg [31:0] trim_used_pages, trim_requested_pages;
     reg trim_finished;
@@ -123,6 +125,9 @@ module media_metadata #(
     assign memory_write_valid = bank < 3 && bus_write_valid[bank];
     assign memory_read_ready = bank < 3 && bus_read_ready[bank];
     assign memory_response_ready = bank < 3 && bus_response_ready[bank];
+    function automatic [63:0] page_address(input [31:0] id);
+        page_address = (PAGE_BASE-64)+64'(id)*64;
+    endfunction
     function automatic [63:0] nodes(input [31:0] count);
         reg [63:0] n, total;
         begin
@@ -131,19 +136,7 @@ module media_metadata #(
             nodes = total;
         end
     endfunction
-    localparam [2:0] ADDRESS_PAGE=0, ADDRESS_REF=1, ADDRESS_STACK=2,
-        ADDRESS_QUEUE_RECORD=3, ADDRESS_QUEUE_WORD=4;
-    reg [2:0] address_region;
-    reg [31:0] address_index;
-    reg [3:0] address_field;
-    reg address_parent;
-    wire [RELATIVE_BITS-1:0] address_base = address_region==ADDRESS_PAGE ? RELATIVE_BITS'(PAGE_BASE-64)
-        : address_region==ADDRESS_REF ? RELATIVE_BITS'(REF_BASE)
-        : address_region==ADDRESS_STACK ? RELATIVE_BITS'(STACK_BASE) : RELATIVE_BITS'(QUEUE_BASE);
-    wire [RELATIVE_BITS-1:0] address_offset = address_region==ADDRESS_PAGE || address_region==ADDRESS_QUEUE_RECORD
-        ? RELATIVE_BITS'({address_index,address_field,2'b0}) : RELATIVE_BITS'({address_index,2'b0});
-    wire [RELATIVE_BITS-1:0] address_sum = address_base+address_offset;
-    wire [3:0] entry_field = 4'(ordinal >> (32'(level)*4));
+    wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (32'(level)*4)) & 64'd15)*4;
     wire bad_tree_request = (opcode != 11 && view >= 32'(VIEWS)) || ordinal > 32'(SLOTS)
         || (opcode < 2 && ordinal == 32'(SLOTS));
     media_ram #(.WIDTH(ROOT_BITS),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
@@ -173,17 +166,9 @@ module media_metadata #(
             .memory_response_error(bus_response_error[i]),.memory_read_data(bus_read_data[i*32+:32])
         );
     end endgenerate
-    task automatic access_cache(input [1:0] which, input [1:0] op, input [RELATIVE_BITS-1:0] address,
+    task automatic access_cache(input [1:0] which, input [1:0] op, input [63:0] address,
                                  input [31:0] data, input phase_t next);
         begin bank <= which; cache_opcode <= op; cache_address <= RELATIVE_BITS'(address); cache_data <= data; resume <= next; phase <= CACHE_SEND; end
-    endtask
-    task automatic access_region(input [1:0] which, op, input [2:0] region,
-        input [31:0] index, input [3:0] field, input [31:0] data, input phase_t next);
-        begin
-            bank<=which;cache_opcode<=op;cache_data<=data;resume<=next;
-            address_region<=region;address_index<=index;address_field<=field;
-            address_parent<=0;phase<=ADDRESS_CALCULATE;
-        end
     endtask
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8 || RETIRED_TABLES < 1) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
@@ -198,7 +183,6 @@ module media_metadata #(
             retired_references <= 0; pages_freed <= 0; gc_root <= 0; gc_used <= 0; gc_loaded <= 0;
             unallocated_pages <= 0; additional <= 0; available <= 0; capacity_grow <= 0; capacity_insufficient <= 0;
             root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
-            address_region<=0;address_index<=0;address_field<=0;address_parent<=0;
             cache_opcode <= 0; cache_address <= 0; cache_data <= 0; value <= 0; cache_invalidate <= 0;
             response_data <= 0; response_error <= 0;
             directory_reads <= 0; table_reads <= 0;
@@ -232,7 +216,7 @@ module media_metadata #(
                         else phase <= DETACH_ROOT;
                     end else if (opcode == 11) begin
                         if (retired_count == 0 || gc_loaded) begin response_error <= 2; phase <= RESPONSE; end
-                        else access_region(0,0,ADDRESS_QUEUE_RECORD,retired_head,0,0,GC_ROOT);
+                        else access_cache(0,0,QUEUE_BASE+64'(retired_head)*64,0,GC_ROOT);
                     end else if (opcode == 12) begin
                         if (!gc_loaded || gc_used == 0) begin response_error <= 2; phase <= RESPONSE; end
                         else begin
@@ -241,7 +225,7 @@ module media_metadata #(
                         end
                     end else if (opcode == 13) begin
                         if (ordinal >= 32'(RETIRED_TABLES)*16) begin response_error <= 1; phase <= RESPONSE; end
-                        else access_region(0,0,ADDRESS_QUEUE_WORD,ordinal,0,0,ACCESS_DONE);
+                        else access_cache(0,0,QUEUE_BASE+64'(ordinal)*4,0,ACCESS_DONE);
                     end else if (opcode == 14) begin
                         case (ordinal)
                             0: response_data <= high_water;
@@ -255,8 +239,8 @@ module media_metadata #(
                     else if (opcode == 15) begin response_error <= 2; phase <= RESPONSE; end
                     else if (opcode >= 2 && opcode <= 5) begin
                         if (ordinal >= 32'(SLOTS)) begin response_error <= 1; phase <= RESPONSE; end
-                        else access_region(opcode < 4 ? 2'd1 : 2'd2, {1'b0,opcode[0]},
-                            opcode < 4 ? ADDRESS_REF : ADDRESS_STACK,ordinal,0,payload,ACCESS_DONE);
+                        else access_cache(opcode < 4 ? 2'd1 : 2'd2, {1'b0,opcode[0]},
+                            (opcode < 4 ? REF_BASE : STACK_BASE)+64'(ordinal)*4,payload,ACCESS_DONE);
                     end else begin
                         level <= LEVEL_BITS'(LEVELS-1); parent_is_root <= 1;
                         page <= root_exists ? root_data[31:0] : 0;
@@ -312,32 +296,31 @@ module media_metadata #(
                         path_page[level] <= page; path_index[level] <= 4'((ordinal >> (32'(level)*4)) & 32'd15);
                         if (level == 0) begin
                             table_reads <= table_reads+64'(opcode == 0);
-                            access_region(0,opcode == 1 ? 2'd1 : 2'd0,ADDRESS_PAGE,page,entry_field,payload,ACCESS_DONE);
+                            access_cache(0,opcode == 1 ? 2'd1 : 2'd0,entry_address,payload,ACCESS_DONE);
                         end else begin
-                            directory_reads <= directory_reads+1; access_region(0,0,ADDRESS_PAGE,page,entry_field,0,CHILD);
+                            directory_reads <= directory_reads+1; access_cache(0,0,entry_address,0,CHILD);
                         end
                     end
                 end
                 CHILD: begin
-                    parent_is_root <= page == 0;
+                    parent_is_root <= page == 0; parent_address <= RELATIVE_BITS'(saved_path_address);
                     level <= level-1'b1; page <= value;
-                    access_region(0,0,ADDRESS_PAGE,page,entry_field,0,WALK);
-                    address_parent<=1;
+                    phase <= WALK;
                 end
                 ALLOCATE: begin
                     if (free_pages != 0) begin
                         allocated <= free_head;
-                        access_region(0,0,ADDRESS_PAGE,free_head,0,0,ALLOCATE_LINK);
+                        access_cache(0,0,page_address(free_head),0,ALLOCATE_LINK);
                     end else if (high_water < 32'(TABLE_PAGES)) begin
                         allocated <= high_water+1; high_water <= high_water+1; phase <= ALLOCATE_ZERO;
                     end else begin response_error <= 3; phase <= RESPONSE; end
                 end
                 ALLOCATE_LINK: begin free_head <= value; free_pages <= free_pages-1; phase <= ALLOCATE_ZERO; end
-                ALLOCATE_ZERO: access_region(0,2,ADDRESS_PAGE,allocated,0,0,ALLOCATE_ATTACH);
+                ALLOCATE_ZERO: access_cache(0,2,page_address(allocated),0,ALLOCATE_ATTACH);
                 ALLOCATE_ATTACH: begin
                     page <= allocated;
                     if (parent_is_root) begin root <= allocated; phase <= WALK; end
-                    else access_cache(0,1,parent_address,allocated,WALK);
+                    else access_cache(0,1,64'(parent_address),allocated,WALK);
                 end
                 ACCESS_DONE: begin
                     response_data <= value;
@@ -355,8 +338,8 @@ module media_metadata #(
                         leaf_valid[VIEW_BITS'(view)] <= opcode < 2; phase <= RESPONSE;
                     end
                 end
-                DETACH_ROOT: access_region(0,1,ADDRESS_QUEUE_RECORD,retired_tail,0,root,DETACH_COUNT);
-                DETACH_COUNT: access_region(0,1,ADDRESS_QUEUE_RECORD,retired_tail,1,used,DETACH_COMMIT);
+                DETACH_ROOT: access_cache(0,1,QUEUE_BASE+64'(retired_tail)*64,root,DETACH_COUNT);
+                DETACH_COUNT: access_cache(0,1,QUEUE_BASE+64'(retired_tail)*64+4,used,DETACH_COMMIT);
                 DETACH_COMMIT: begin
                     response_data <= used;
                     retired_references <= retired_references+{32'b0,used};
@@ -365,7 +348,7 @@ module media_metadata #(
                     retired_tail_index <= RETIRED_INDEX_BITS'(retired_tail+1 == 32'(RETIRED_TABLES) ? 0 : retired_tail+1);
                     root <= 0; used <= 0; cached_leaf <= 0; phase <= PUBLISH;
                 end
-                GC_ROOT: begin gc_root <= value; access_region(0,0,ADDRESS_QUEUE_RECORD,retired_head,1,0,GC_COUNT); end
+                GC_ROOT: begin gc_root <= value; access_cache(0,0,QUEUE_BASE+64'(retired_head)*64+4,0,GC_COUNT); end
                 GC_COUNT: begin
                     gc_used <= value; used <= value; root <= gc_root;
                     if (value == 0 || value > 32'(SLOTS) || gc_root == 0) begin response_error <= 2; phase <= RESPONSE; end
@@ -374,8 +357,8 @@ module media_metadata #(
                         level <= LEVEL_BITS'(LEVELS-1); page <= gc_root; phase <= GC_WALK;
                     end
                 end
-                GC_SAVE_ROOT: access_region(0,1,ADDRESS_QUEUE_RECORD,retired_head,0,root,GC_SAVE_COUNT);
-                GC_SAVE_COUNT: access_region(0,1,ADDRESS_QUEUE_RECORD,retired_head,1,used,GC_COMMIT);
+                GC_SAVE_ROOT: access_cache(0,1,QUEUE_BASE+64'(retired_head)*64,root,GC_SAVE_COUNT);
+                GC_SAVE_COUNT: access_cache(0,1,QUEUE_BASE+64'(retired_head)*64+4,used,GC_COMMIT);
                 GC_COMMIT: begin
                     gc_loaded <= 0; gc_root <= root; gc_used <= used;
                     retired_references <= retired_references-1;
@@ -386,10 +369,6 @@ module media_metadata #(
                     response_data <= used; phase <= RESPONSE;
                 end
                 RESPONSE: if (response_ready) phase <= IDLE;
-                ADDRESS_CALCULATE: begin
-                    if(address_parent) begin parent_address<=address_sum;phase<=resume;end
-                    else begin cache_address<=address_sum;phase<=CACHE_SEND;end
-                end
                 CACHE_SEND: if (cache_ready[bank]) phase <= CACHE_WAIT;
                 CACHE_WAIT: if (cache_valid[bank]) begin
                     value <= cache_result[bank*32+:32];
@@ -412,17 +391,17 @@ module media_metadata #(
                 SCAN_START: begin
                     path_page[level] <= page; path_index[level] <= 4'((ordinal >> (32'(level)*4)) & 32'd15);
                     if (level == 0) phase <= FREE_PAGE;
-                    else access_region(0,0,ADDRESS_PAGE,page,entry_field,0,SCAN_WORD);
+                    else access_cache(0,0,entry_address,0,SCAN_WORD);
                 end
                 SCAN_WORD: begin page <= value; level <= level-1'b1; phase <= SCAN_START; end
-                FREE_PAGE: access_region(0,1,ADDRESS_PAGE,page,0,free_head,FREE_LINK);
+                FREE_PAGE: access_cache(0,1,page_address(page),free_head,FREE_LINK);
                 FREE_LINK: begin
                     free_head <= page; free_pages <= free_pages+1; pages_freed <= pages_freed+1;
                     if (32'(level)+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_COUNT; end
                     else begin
                         page <= path_page[32'(level)+1]; level <= level+1'b1;
                         if (((ordinal >> ((32'(level)+1)*4)) & 15) == 0) phase <= FREE_PAGE;
-                        else access_region(0,1,ADDRESS_PAGE,path_page[saved_path_level],path_index[saved_path_level],0,SCAN_RESULT);
+                        else access_cache(0,1,saved_path_address,0,SCAN_RESULT);
                     end
                 end
                 SCAN_RESULT: begin used <= trim_start; phase <= TRIM_COUNT; end
