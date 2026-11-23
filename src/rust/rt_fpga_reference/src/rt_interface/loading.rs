@@ -264,8 +264,10 @@ impl Engine {
                 generation: cut.old_slot.generation,
             })
             .is_ok_and(|slot| {
+                if slot.planned.iter().any(Option::is_some) {
+                    return cut.waits_for_control();
+                }
                 slot.state.mode == Mode::Playing
-                    && slot.planned.iter().all(Option::is_none)
                     && cut.waits_for_boundary(
                         slot.state.position,
                         slot.state.content_length,

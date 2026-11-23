@@ -129,8 +129,15 @@ pub fn composite_cut_status(
     words: &[u64; 16],
     source_words: Option<&[u64; 16]>,
 ) -> Code {
-    if !cut_loop_valid(cut.old_slot, words) || (cut.require_empty && words[3] != 0) {
+    if !loop_identity_valid(cut.old_slot, words) || (cut.require_empty && words[3] != 0) {
         return Code::CannotApply;
+    }
+    if has_loop_plan(words) {
+        return if cut.waits_for_control() {
+            Code::Scheduled
+        } else {
+            Code::CannotApply
+        };
     }
     let restart_ready = composite_cut_source(cut, words).is_none_or(|source| {
         source_words.is_some_and(|words| {
@@ -185,7 +192,11 @@ pub fn prepare_composite_retirement(id: Identity, words: &mut [u64; 16], frame: 
 }
 
 fn cut_loop_valid(slot: Identity, words: &[u64; 16]) -> bool {
-    loop_identity_valid(slot, words) && words[1] & ((1 << 32) | (1 << 37)) == 0
+    loop_identity_valid(slot, words) && !has_loop_plan(words)
+}
+
+fn has_loop_plan(words: &[u64; 16]) -> bool {
+    words[1] & ((1 << 32) | (1 << 37)) != 0
 }
 
 fn loop_identity_valid(slot: Identity, words: &[u64; 16]) -> bool {

@@ -563,6 +563,9 @@ impl Owner<'_> {
             return Ok(false);
         };
         let cut = *cut;
+        if !cut.waits_for_control() {
+            return Ok(false);
+        }
         let words = self.loop_words(cut.old_slot)?;
         Ok(self.composite_cut_status(cut, &words)? == Code::Scheduled)
     }

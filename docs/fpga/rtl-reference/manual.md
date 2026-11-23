@@ -244,10 +244,12 @@ recording can start. See the admission rule under
   finish the pass and take effect on the clock's wrap pulse. It can also drop a
   child from the schedule while leaving the loop and its audio in the session.
   A timing change needs one free loop record while the new program is staged.
-  An independent one-pass composite can finish its current run before taking up
-  an edit. The replacement stays stopped until it is started. Other changes
-  require the affected composite loops to stop.
-  Ordinary playback controls can run while an edit waits.
+  An independent one-pass composite can finish its current run. The edit takes
+  effect one quantum after the old run ends, and playback stays stopped until
+  the loop is started again. Other changes require the affected composite loops
+  to stop.
+  Playback controls still run while an edit waits. If a scheduled stop is
+  pending, it takes effect first and the edit can apply once the loop stops.
   Cancelling an edit that still waits leaves the active version in place. If
   the edit reaches the handoff first, the application reports the version that
   took over.

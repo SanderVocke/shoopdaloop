@@ -602,6 +602,7 @@ fn edit_at_clock_restart<E: Endpoint>(
     unit_quanta: u64,
     ending: Ending,
     composite_clock_pass: Option<u64>,
+    stop_at_pulse: bool,
 ) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
@@ -742,6 +743,31 @@ fn edit_at_clock_restart<E: Endpoint>(
             );
         }
     }
+    if stop_at_pulse {
+        let stop = Command::Transition(
+            120,
+            TransitionPlan {
+                now: None,
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Stopped,
+                    skip: 0,
+                }),
+                second: None,
+            },
+        );
+        client
+            .immediate(Batch::new(1, 1, &[stop]).unwrap())
+            .unwrap();
+        let accepted = wait_response(&mut client, &mut renderer);
+        assert_eq!(accepted.records()[0].command(), stop);
+        assert_eq!(accepted.records()[0].code(), Code::Scheduled);
+        let switched = response(&mut client, &mut renderer);
+        assert_eq!(switched, started + clock_length + Q as u64);
+        for _ in 0..16 {
+            assert_eq!(step(&mut renderer), [0., 0.]);
+        }
+        return;
+    }
     let switched = response(&mut client, &mut renderer);
     assert_eq!(switched, started + clock_length);
     let cancel = Command::CancelCompositeGraph(key);
@@ -795,14 +821,15 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for (iterations, unit_quanta, ending, composite_clock_pass) in [
-        (16, 1, Ending::Same, None),
-        (24, 1, Ending::Same, None),
-        (12, 2, Ending::Same, None),
-        (24, 1, Ending::AddSecond, None),
-        (16, 1, Ending::ReplaceFirst, None),
-        (24, 1, Ending::Same, Some(100)),
-        (24, 1, Ending::ReplaceFirst, Some(100)),
+    for (iterations, unit_quanta, ending, composite_clock_pass, stop_at_pulse) in [
+        (16, 1, Ending::Same, None, false),
+        (24, 1, Ending::Same, None, false),
+        (12, 2, Ending::Same, None, false),
+        (24, 1, Ending::AddSecond, None, false),
+        (16, 1, Ending::ReplaceFirst, None, false),
+        (24, 1, Ending::Same, Some(100), false),
+        (24, 1, Ending::ReplaceFirst, Some(100), false),
+        (24, 1, Ending::Same, None, true),
     ] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
         edit_at_clock_restart(
@@ -812,6 +839,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             unit_quanta,
             ending,
             composite_clock_pass,
+            stop_at_pulse,
         );
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
         edit_at_clock_restart(
@@ -821,6 +849,7 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             unit_quanta,
             ending,
             composite_clock_pass,
+            stop_at_pulse,
         );
     }
 }

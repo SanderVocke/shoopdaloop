@@ -100,6 +100,10 @@ impl CompositeCut {
                 || (self.allow_restart && (position < length || !restart_ready)))
             && !self.allows_playing(position, length, restart_ready, waited)
     }
+
+    pub fn waits_for_control(self) -> bool {
+        self.allow_restart || self.wait_for_finish
+    }
 }
 
 impl CompositeSchedule {
