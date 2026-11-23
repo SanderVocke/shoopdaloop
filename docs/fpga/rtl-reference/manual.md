@@ -229,7 +229,10 @@ recording can start. See the admission rule under
   conversion and the primitive keeps its take.
 - **Editing during playback.** The prepared hosts can apply compatible
   future changes, such as adding another child later in the current pass.
-  They can also wait for the restart of an independent repeating loop with
+  A parent can keep playing while an edit changes a later part of a nested
+  composite. The nested composite keeps its timing, sync source, and links
+  to other composites.
+  The hosts can also wait for the restart of an independent repeating loop with
   compatible timing. When that loop is holding at the end of a pass for an
   independent primitive clock, the edit can take effect on the clock's wrap
   pulse. Other changes require the affected composite loops to stop.

@@ -495,7 +495,7 @@ fn composite_conversion<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     assert_eq!(step(&mut renderer), [0.125, 0.125]);
 }
 
-fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, nested: bool) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
@@ -523,6 +523,15 @@ fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer)
         spans: vec![play(100, 0, 0)].into(),
     });
     graph.loops.push(parent);
+    let playing = if nested {
+        let mut outer = graph.loops[2].clone();
+        outer.id = id(121);
+        outer.composite.as_mut().unwrap().spans = vec![play(120, 0, 0)].into();
+        graph.loops.push(outer);
+        121
+    } else {
+        120
+    };
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
     for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
@@ -534,7 +543,7 @@ fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer)
         step(&mut renderer);
     }
     client
-        .immediate(Batch::new(1, 1, &[transition(120, TransitionMode::Playing)]).unwrap())
+        .immediate(Batch::new(1, 1, &[transition(playing, TransitionMode::Playing)]).unwrap())
         .unwrap();
     let started = response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0.125, 0.125]);
@@ -570,10 +579,12 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-    future_composite_child(rust.endpoint, rust.renderer);
-    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-    future_composite_child(rtl.endpoint, rtl.renderer);
+    for nested in [false, true] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        future_composite_child(rust.endpoint, rust.renderer, nested);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        future_composite_child(rtl.endpoint, rtl.renderer, nested);
+    }
 }
 
 fn edit_at_clock_restart<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {

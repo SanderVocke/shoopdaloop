@@ -71,6 +71,11 @@ impl CompositeCut {
 }
 
 impl CompositeSchedule {
+    fn same_timing(&self, candidate: &Self) -> bool {
+        (self.unit_frames, self.length, self.explicit)
+            == (candidate.unit_frames, candidate.length, candidate.explicit)
+    }
+
     fn future_edit_before(&self, candidate: &Self) -> Option<u32> {
         let mut schedules = BTreeMap::<Identity, [&[FrameSpan]; 2]>::new();
         for (version, children) in [&self.children, &candidate.children]
@@ -211,6 +216,30 @@ impl Layout {
         self.composites
             .iter()
             .find(|schedule| schedule.id == logical)
+    }
+    fn nested_future_cut(&self, program: &LogicalStateProgram, id: Identity) -> Option<u32> {
+        let before = self.composite_schedule(id)?;
+        let after = program
+            .composites
+            .iter()
+            .find(|schedule| schedule.id == id)?;
+        let old_source = self.loops.iter().find(|row| row.logical == id)?.sync_source;
+        let new_source = program.loops.iter().find(|row| row.id == id)?.sync_source;
+        let composite_targets = |schedule: &CompositeSchedule| {
+            schedule
+                .children
+                .iter()
+                .map(|child| child.id)
+                .filter(|&child| self.composite_schedule(child).is_some())
+                .collect::<BTreeSet<_>>()
+        };
+        if !before.same_timing(after)
+            || old_source != new_source
+            || composite_targets(before) != composite_targets(after)
+        {
+            return None;
+        }
+        before.future_edit_before(after)
     }
     pub fn new_loops(&self) -> impl Iterator<Item = Identity> + '_ {
         self.loops.iter().filter(|l| l.fresh).map(|l| l.physical)
@@ -369,6 +398,14 @@ impl Allocator {
                     changed_composites.insert(schedule.id);
                 }
             }
+            // With a single compatible edit, ancestor schedules retain the same
+            // bindings and the edited child can validate its own playhead.
+            let nested_future = if changed_composites.len() == 1 {
+                let id = *changed_composites.first().unwrap();
+                old.nested_future_cut(program, id).map(|frame| (id, frame))
+            } else {
+                None
+            };
             // A primitive-to-composite conversion gives the public slot a new
             // generation. Fence the departing primitive before its take can be
             // retired, just as for a conversion that keeps the logical ID.
@@ -389,11 +426,10 @@ impl Allocator {
             loop {
                 let count = stopped.len();
                 for schedule in &old.composites {
-                    if schedule
-                        .children
-                        .iter()
-                        .any(|child| stopped.contains(&child.id))
-                    {
+                    if schedule.children.iter().any(|child| {
+                        stopped.contains(&child.id)
+                            && nested_future.is_none_or(|(id, _)| id != child.id)
+                    }) {
                         stopped.insert(schedule.id);
                     }
                 }
@@ -405,10 +441,9 @@ impl Allocator {
                 if stopped.contains(&row.logical) {
                     let before = old.composites.iter().find(|s| s.id == row.logical);
                     let after = program.composites.iter().find(|s| s.id == row.logical);
-                    let continuing = before.zip(after).filter(|(before, after)| {
-                        (before.unit_frames, before.length, before.explicit)
-                            == (after.unit_frames, after.length, after.explicit)
-                    });
+                    let continuing = before
+                        .zip(after)
+                        .filter(|(before, after)| before.same_timing(after));
                     if continuing.is_none() && changed_composites.contains(&row.logical) {
                         replaced_slots.insert(row.logical);
                     }
@@ -455,14 +490,20 @@ impl Allocator {
                             };
                             !before.explicit && tail(before) == tail(after)
                         });
-                    let future_before = if changed_composites.contains(&row.logical)
-                        && independent
-                        && same_source
-                    {
-                        continuing.and_then(|(before, after)| before.future_edit_before(after))
-                    } else {
-                        None
-                    };
+                    let future_before = nested_future
+                        .filter(|(id, _)| *id == row.logical)
+                        .map(|(_, frame)| frame)
+                        .or_else(|| {
+                            if changed_composites.contains(&row.logical)
+                                && independent
+                                && same_source
+                            {
+                                continuing
+                                    .and_then(|(before, after)| before.future_edit_before(after))
+                            } else {
+                                None
+                            }
+                        });
                     composite_cuts.push(CompositeCut {
                         old_slot: row.physical,
                         require_empty: before.is_none(),
