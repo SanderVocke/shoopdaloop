@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 5,
-  "status": "Stages0\u20134complete; Stage5coldRAM selectedC6/pushedwithpassing100MHzcontext andexactrepeat. Payloadlifetime trialprepared;reset/validity andStages6\u201311 unexecuted.",
+  "status": "Stages0\u20134complete; Stage5coldRAM selectedC6. Payloadlifetime bbfaa8ad applied, focusedtests running. Resetelision/validity andStages6\u201311 pending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1419,7 +1419,7 @@
     {
       "label": "s5-payload-lifetime",
       "stage": 5,
-      "status": "prepared",
+      "status": "in progress",
       "control_revision": "5ea0bd6049042e103ad31b7fc36fdcbc973750db",
       "control_rtl_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
       "control_summary": "s5-cold-descriptor-100-summary.json",
@@ -1427,15 +1427,16 @@
       "changed_contract": "No intended public orcycle change. Remove fourthpayloadwordstorage: readword3 returned directlyalready; appendword3 formedfromacceptedpacket/length whichstayfixeduntilwritecompleted. Keepthreeframe/orderwords andalladdressformatter sampling/hold behavior.",
       "validation": [
         "All38C6productionHDLhashes verifiedbefore edit",
-        "Read-onlyC6DCP query confirmsallfourpayloadwordseach32FF (128total),soeliminatedcopyexistsinmappedcontrol"
+        "Read-onlyC6DCP query confirmsallfourpayloadwordseach32FF (128total),soeliminatedcopyexistsinmappedcontrol",
+        "StrictVerilatorlint default/minimum/odd/connected-primary passes; allreportedwarnings identical C6."
       ],
       "pending": [
-        "Strictlint default/minimum/odd/primary versus C6",
         "Focused storage/reserved/relocation tests",
         "Raw10311+54+108MIDIrows and73mixed/musicalcallbackrows matchedC6",
         "All23affectedMIDI/expression/reserved regressions",
         "Connectedopt/route/repeat asviable;verifyactualFF/mux/register removal"
-      ]
+      ],
+      "rtl_source_revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1"
     }
   ],
   "provisioning": {
