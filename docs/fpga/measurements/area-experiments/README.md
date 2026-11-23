@@ -537,3 +537,20 @@ half a BRAM tile more and 742 fewer physical control sets. DSP use stays four.
 Timing still fails at 100 MHz; no board or deadline qualification is implied.
 Stages 0–4 are complete. Stage 5's four separate contracts are in
 [stage5-state-contracts.md](stage5-state-contracts.md); its actual trials follow.
+
+Stage 5's cold MIDI descriptor prototype (`7eba4933`) moves three opaque words
+into 32 distributed RAM cells. The actual working bank falls from 512 FFs to
+416 hot-word FFs, 32 read-data FFs and three validity bits: 61 fewer in that
+bank. All 23 affected tests pass. All 10,311 boundary, 54 reserved and 108
+relocated rows match C5 exactly, including clocks/transfers. All 33 mixed and
+40 musical rows also match exactly. Synchronous read-ahead uses existing states.
+
+The first route uses **35,220 LUTs, 28,785 FFs, 11,741 slices, 78 BRAM tiles,
+four DSPs and 3,094 carries**. Against C5 that trades 13 more LUTs and 159 more
+physical control sets for 31 fewer slices, 62 fewer FFs and 16 fewer F7 muxes.
+Setup/hold slack is **+0.142/+0.006 ns**, with no routing/DRC errors: this
+registered context passes at 100 MHz. The small area win and timing margin
+require a full clean repeat and extended workload before selection. Fifteen
+noncritical Vivado forward-declaration warnings in the prototype are recorded;
+cleanup and final-source qualification remain necessary before integration.
+C5 remains selected while the repeat and extended run execute.
