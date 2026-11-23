@@ -1131,11 +1131,12 @@
         "All10311rawstore +54reserved +108relocated rows match control in every non-cycle field; same transfer counts and logical replies",
         "All33mixed/on/delay7connected rows match control in every non-cycle field; cold92745 vs88446, steady median53258 vs52994 and max53947 vs53617 clocks",
         "All16MIDIregressionspass931.50sec; bothAXIwidths/DDRstalls/faults/full3000events/publicationprogress included",
-        "All5expression/restoration/quanta/AXI32/64stalltests pass883.11sec; tworeserved/relocationtests pass1.87sec; all23affectedtests passed"
+        "All5expression/restoration/quanta/AXI32/64stalltests pass883.11sec; tworeserved/relocationtests pass1.87sec; all23affectedtests passed",
+        "All40MIDI-onlymusicaltransitionrowsmatchC3noncyclefields/sourceparameters; steady16880->17144(+1.56%), seek_prefix365340->410865(+45525clocks,+12.46%). BothseekrowsfailnominalQ32budget andtimingstillfails; largerrestorationcostincludedinselectiondecision.",
+        "Fullsource-to-route physicalrepeat exactlymatchesall4stageresource/timing/controlsets; all38HDLhashes andcontextSV/XDChashesexact. Artifactmanifestdiffersbyfullflowvscheckpoint-resumeTcl/inputDCP entries, expected andretained."
       ],
       "pending": [
-        "Fullphysicalrepeat7d2d7cd7 before selecting small54slicewin",
-        "Extended1024steadycallbackcomparisonagainstC3"
+        "Extended1024steadycallbackcomparisonagainstC3 andfinaldefault/tradeoffdecision"
       ],
       "unit_summaries": [
         "s4-midi-address-boundaries-summary.json",
@@ -1176,7 +1177,9 @@
         "whs_ns": 0.006
       },
       "timing_met": false,
-      "provisional_decision": "Routedwin54slices108LUT151carry at+174FF/+44controlsets and+0.5%ordinarymedian clocks; fullrepeat andextendedcomparison running before finalselection."
+      "provisional_decision": "Routedwin54slices108LUT151carry at+174FF/+44controlsets and+0.5%ordinarymedian clocks; fullrepeat andextendedcomparison running before finalselection.",
+      "musical_summary": "s4-musical-comparison-summary.json",
+      "physical_repeat_summary": "s4-midi-address-repeat-100-summary.json"
     }
   ],
   "provisioning": {
