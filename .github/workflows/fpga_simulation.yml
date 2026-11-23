@@ -9,7 +9,7 @@ on:
         type: choice
         required: true
         default: tiny
-        options: [tiny, quick, full, rtl-audio-ddr, rtl-midi-ddr]
+        options: [tiny, sparse, quick, full, rtl-audio-ddr, rtl-midi-ddr]
 
 permissions:
   contents: read
@@ -55,11 +55,13 @@ jobs:
       - name: Select Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
       - name: Cache DRAMsim3 source
+        if: inputs.variant != 'sparse'
         uses: actions/cache@v4
         with:
           path: work/dramsim3/source
           key: rt-benchmark-dramsim3-${{ runner.os }}-${{ hashFiles('fpga/axi_memory/dramsim3.lock') }}
       - name: Build DRAMsim3
+        if: inputs.variant != 'sparse'
         run: python3 fpga/axi_memory/build_dramsim3.py
       - name: Cache compiled RTL models
         uses: actions/cache@v4
@@ -70,6 +72,16 @@ jobs:
       - name: Run selected benchmark and generate PDF
         run: |
           set -o pipefail
+          if [[ "$BENCH_VARIANT" == sparse ]]; then
+            mkdir -p work/rt-report
+            for delay in 0 7; do
+              cargo run --locked --release -p rt_fpga_testbench --features sim \
+                --example midi_data_quantum_64 -- --profile sparse --scenario mixed \
+                --ddr-delay "$delay" --output "work/rt-report/mixed-${delay}.json" \
+                2>&1 | tee -a work/rt-benchmark.log
+            done
+            exit 0
+          fi
           case "$BENCH_VARIANT" in
             rtl-audio-ddr) command=(python3 scripts/benchmark_rt_ddr.py --media audio) ;;
             rtl-midi-ddr) command=(python3 scripts/benchmark_rt_ddr.py --media midi) ;;
@@ -107,6 +119,12 @@ jobs:
 
           lines = [f"## RT benchmark: {os.environ['BENCH_VARIANT']}", ""]
           url = os.environ.get('PDF_URL')
+          if os.environ['BENCH_VARIANT'] == 'sparse':
+              lines += ["64-loop mixed playback with staggered MIDI, at zero and seven clocks of added DDR delay.",
+                        "The data artifact has per-quantum timing and AXI traffic in JSON. Timings assume 100 MHz."]
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+                  stream.write('\n'.join(lines) + '\n')
+              raise SystemExit(0)
           lines += [f"[Download the PDF report]({url})" if url else "PDF unavailable; inspect the data artifact and logs.", ""]
           lines += ["The data artifact includes JSON, callback CSV, host-phase timings and logs.",
                     "FPGA times use simulated fabric cycles at 150 MHz. Host runtime is recorded separately.", ""]
