@@ -22,13 +22,17 @@ use std::time::{Duration, Instant};
 use support::*;
 const Q: usize = 32;
 fn step(r: &mut impl Renderer) -> [f32; 2] {
+    step_with_input(r, 0.25)
+}
+
+fn step_with_input(r: &mut impl Renderer, input: f32) -> [f32; 2] {
     let mut a = [0.; Q];
     let mut b = a;
     r.process(
         AudioBlock {
             frame: r.next_frame(),
             frames: Q,
-            inputs: &[&[0.25; Q]],
+            inputs: &[&[input; Q]],
             outputs: &mut [&mut a, &mut b],
         },
         MidiBlock {
@@ -885,6 +889,108 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
             stop_at_pulse,
         );
     }
+}
+
+fn retime_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(1);
+    let mut parent = graph.loops[0].clone();
+    parent.id = id(120);
+    parent.strip = None;
+    let old_length = 64;
+    parent.composite = Some(CompositeView {
+        kind: CompositeKind::Explicit,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: old_length,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![CompositeSpan {
+            target: id(100),
+            start: 0,
+            end: old_length,
+            occurrence_start: 0,
+            ordinal: 0,
+            mode: LoopMode::Recording,
+        }]
+        .into(),
+    });
+    graph.loops.push(parent);
+    upload(&mut client, &mut renderer, &graph, 0);
+    let play = |slot| Command::Transition(slot, TransitionMode::Playing.into());
+    client
+        .immediate(Batch::new(1, 1, &[play(120)]).unwrap())
+        .unwrap();
+    let started = response(&mut client, &mut renderer);
+    let end_frame = started + old_length * Q as u64;
+    let louder = 48;
+    let edited = graph.loops[1].composite.as_mut().unwrap();
+    edited.version = 2;
+    edited.iterations = 24;
+    let span = &mut edited.spans.to_mut()[0];
+    span.start = 4;
+    span.occurrence_start = 4;
+    span.end = edited.iterations;
+    let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, 43).unwrap();
+    for (index, batch) in batches.iter().enumerate() {
+        client.immediate(*batch).unwrap();
+        if index + 1 < batches.len() {
+            response(&mut client, &mut renderer);
+        }
+    }
+    assert!(renderer.next_frame().0 < started + louder * Q as u64);
+    while renderer.next_frame().0 < end_frame {
+        let frame = renderer.next_frame().0;
+        let input = if frame >= started + louder * Q as u64 {
+            0.5
+        } else {
+            0.25
+        };
+        assert_eq!(step_with_input(&mut renderer, input), [0., 0.]);
+        while let Some(message) = client.poll() {
+            assert!(
+                !matches!(message, EngineMessage::ImmediateResponse(_)),
+                "edit applied before the take finished"
+            );
+        }
+    }
+    assert_eq!(response(&mut client, &mut renderer), end_frame);
+    assert_eq!(step(&mut renderer), [0., 0.]);
+
+    client
+        .immediate(Batch::new(2, 2, &[play(100)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    for iteration in 0..=old_length {
+        let sample = if (louder..old_length).contains(&iteration) {
+            0.25
+        } else {
+            0.125
+        };
+        assert_eq!(
+            step(&mut renderer),
+            [sample, sample],
+            "take iteration {iteration}"
+        );
+    }
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn a_compatible_one_shot_edit_applies_as_the_old_take_finishes() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    retime_one_shot(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    retime_one_shot(rtl.endpoint, rtl.renderer);
 }
 
 fn edit_at_continuous_wrap<E: Endpoint>(

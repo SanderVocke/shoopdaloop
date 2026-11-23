@@ -51,6 +51,8 @@ pub struct CompositeCut {
     #[cfg_attr(feature = "serde", serde(default))]
     pub wait_for_finish: bool,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub finish_at_boundary: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub require_repeat_wait: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub reconcile_ending: bool,
@@ -87,11 +89,10 @@ impl CompositeCut {
         restart_ready: bool,
         waited: bool,
     ) -> bool {
-        (self.allow_restart
-            && restart_ready
-            && length != 0
+        (length != 0
             && position == length
-            && (!self.require_repeat_wait || waited))
+            && (self.finish_at_boundary
+                || (self.allow_restart && restart_ready && (!self.require_repeat_wait || waited))))
             || (position < length
                 && self
                     .future_before
@@ -163,15 +164,14 @@ impl CompositeSchedule {
     }
 
     fn ending_children(&self) -> impl Iterator<Item = Identity> + '_ {
-        self.children
-            .iter()
-            .filter(|child| {
-                child
-                    .spans
-                    .last()
-                    .is_some_and(|span| span.end == self.length)
-            })
-            .map(|child| child.id)
+        self.ending_modes().map(|(id, _)| id)
+    }
+
+    fn ending_modes(&self) -> impl Iterator<Item = (Identity, SpanMode)> + '_ {
+        self.children.iter().filter_map(|child| {
+            let span = child.spans.last().filter(|span| span.end == self.length)?;
+            Some((child.id, span.mode))
+        })
     }
 
     fn future_edit_before(&self, candidate: &Self) -> Option<u32> {
@@ -724,6 +724,13 @@ impl Allocator {
                         && independent
                         && before.is_some_and(|schedule| schedule.explicit)
                         && after.is_some();
+                    let finish_at_boundary = wait_for_finish
+                        && same_source
+                        && before.zip(after).is_some_and(|(before, after)| {
+                            after.explicit
+                                && after.length != 0
+                                && before.ending_modes().eq(after.ending_modes())
+                        });
                     let future_before = nested_future
                         .filter(|(id, _)| *id == row.logical)
                         .map(|(_, frame)| frame)
@@ -745,6 +752,7 @@ impl Allocator {
                             require_empty: before.is_none(),
                             allow_restart,
                             wait_for_finish,
+                            finish_at_boundary,
                             require_repeat_wait,
                             reconcile_ending,
                             restart_source,
@@ -888,7 +896,9 @@ impl Allocator {
         let composite_cuts = composite_cuts
             .into_iter()
             .map(|(logical, mut cut)| {
-                if cut.allow_restart && replaced_slots.contains(&logical) {
+                if (cut.allow_restart || cut.finish_at_boundary)
+                    && replaced_slots.contains(&logical)
+                {
                     let replacement = loops.iter().find(|slot| slot.logical == logical).unwrap();
                     cut.restart_slot = Some(replacement.physical);
                 }
