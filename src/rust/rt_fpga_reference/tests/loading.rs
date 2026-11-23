@@ -522,6 +522,11 @@ fn composite_image_switch_waits_for_a_compatible_restart() {
         16
     );
     assert_no_heap(|| pipeline.switch_image(&mut candidate)).unwrap();
+    allocator.publish(candidate.layout.revision).unwrap();
+    allocator.complete(candidate.layout.revision).unwrap();
+    let mut replacement = image(&mut allocator, &future, &[]);
+    assert!(replacement.layout.composite_cuts().is_empty());
+    assert_no_heap(|| pipeline.switch_image(&mut replacement)).unwrap();
     pipeline
         .process(&mut jobs, &mut media, &[], &mut [])
         .unwrap();

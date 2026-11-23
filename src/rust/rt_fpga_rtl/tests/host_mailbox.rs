@@ -672,7 +672,7 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
     let parent_id = parent.id;
     graph.loops.push(parent);
     let quantum = u64::from(limits.quantum);
-    for (revision, iterations) in [(3, 2), (4, 3)] {
+    for (revision, iterations) in [(3, 2), (4, 5)] {
         graph.loops[2].composite = Some(CompositeView {
             kind: CompositeKind::Regular,
             version: revision - 2,
@@ -683,7 +683,7 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
             spans: vec![CompositeSpan {
                 target: identity,
                 start: 0,
-                end: 2,
+                end: if revision == 3 { 2 } else { 3 },
                 occurrence_start: 0,
                 ordinal: 0,
                 mode: LoopMode::Playing,
@@ -722,37 +722,44 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
                 send(session.client(), Request::run_quantum());
             }
         } else {
-            let layout = allocator.stage(&program).unwrap();
-            assert!(layout.composite_cuts().is_empty());
-            let media = layout.media_views(&program);
-            let image = RtlTarget {
-                capacities: limits,
-                media_views: &media,
-                state_base: 0,
+            let edited = graph.loops[2].composite.as_mut().unwrap();
+            edited.version += 1;
+            edited.spans.to_mut()[0].end = iterations;
+            let future = compile_composites(&graph, context, 32).unwrap();
+            for revision in [5, 6] {
+                let layout = allocator.stage(&future).unwrap();
+                let media = layout.media_views(&future);
+                let image = RtlTarget {
+                    capacities: limits,
+                    media_views: &media,
+                    state_base: 0,
+                }
+                .build_image(&future, layout)
+                .unwrap();
+                let replacement = stage(&mut session, Upload::new(image, limits.instructions));
+                allocator.publish(revision).unwrap();
+                if revision == 5 {
+                    assert!(matches!(
+                        session.activate(replacement, timeout()),
+                        Err(Error::Rejected(RESULT_REJECTED))
+                    ));
+                    send(session.client(), Request::run_quantum());
+                    let capture = send(session.client(), Request::capture_loop(parent.slot));
+                    let state = send(session.client(), Request::read_snapshot(capture[0], 0, 4));
+                    assert_eq!((state[1] >> 1) & 3, 1);
+                    assert_eq!(u64::from(state[4]) | (u64::from(state[5]) << 32), quantum);
+                    assert_eq!(
+                        u64::from(state[6]) | (u64::from(state[7]) << 32),
+                        iterations * quantum
+                    );
+                    let passes = send(session.client(), Request::read_snapshot(capture[0], 5, 1));
+                    assert_eq!(passes[..2], [2, 0]);
+                }
+                let (active, retired) = session.activate(replacement, timeout()).unwrap();
+                assert_eq!(active.frame, 11 * quantum);
+                assert_eq!(retired.unwrap().image.layout.revision, revision - 1);
+                allocator.complete(revision).unwrap();
             }
-            .build_image(&program, layout)
-            .unwrap();
-            let replacement = stage(&mut session, Upload::new(image, limits.instructions));
-            allocator.publish(5).unwrap();
-            assert!(matches!(
-                session.activate(replacement, timeout()),
-                Err(Error::Rejected(RESULT_REJECTED))
-            ));
-            send(session.client(), Request::run_quantum());
-            let capture = send(session.client(), Request::capture_loop(parent.slot));
-            let state = send(session.client(), Request::read_snapshot(capture[0], 0, 4));
-            assert_eq!((state[1] >> 1) & 3, 1);
-            assert_eq!(u64::from(state[4]) | (u64::from(state[5]) << 32), quantum);
-            assert_eq!(
-                u64::from(state[6]) | (u64::from(state[7]) << 32),
-                iterations * quantum
-            );
-            let passes = send(session.client(), Request::read_snapshot(capture[0], 5, 1));
-            assert_eq!(passes[..2], [2, 0]);
-            let (active, retired) = session.activate(replacement, timeout()).unwrap();
-            assert_eq!(active.frame, 11 * quantum);
-            assert_eq!(retired.unwrap().image.layout.revision, 4);
-            allocator.complete(5).unwrap();
         }
     }
 
@@ -772,8 +779,8 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
     .build_image(&program, layout)
     .unwrap();
     let requested = stage(&mut session, Upload::new(image, limits.instructions));
-    allocator.publish(6).unwrap();
-    let mut window = ControlWindow::begin(session.client(), 5, timeout()).unwrap();
+    allocator.publish(7).unwrap();
+    let mut window = ControlWindow::begin(session.client(), 6, timeout()).unwrap();
     assert_eq!(
         window.prepare_composite_retirement(departing),
         Ok(Code::Scheduled)
@@ -788,9 +795,9 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
         active,
         ActiveProgram {
             frame: 12 * quantum,
-            revision: 6
+            revision: 7
         }
     );
-    assert_eq!(retired.unwrap().image.layout.revision, 5);
-    allocator.complete(6).unwrap();
+    assert_eq!(retired.unwrap().image.layout.revision, 6);
+    allocator.complete(7).unwrap();
 }

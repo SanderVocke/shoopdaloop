@@ -15,12 +15,18 @@ pub struct ActiveProgram {
 pub struct FencedSwitch {
     requested: SwitchProgram,
     selected: ActiveProgram,
+    composite_wrap: bool,
 }
 impl FencedSwitch {
-    pub(super) fn new(requested: SwitchProgram, words: [u32; HOST_PAYLOAD_WORDS]) -> Self {
+    pub(super) fn new(
+        requested: SwitchProgram,
+        words: [u32; HOST_PAYLOAD_WORDS],
+        composite_wrap: bool,
+    ) -> Self {
         let join = |low, high| u64::from(low) | u64::from(high) << 32;
         Self {
             requested,
+            composite_wrap,
             selected: ActiveProgram {
                 frame: join(words[0], words[1]),
                 revision: join(words[2], words[3]),
@@ -181,7 +187,7 @@ impl<B: RegisterBus> ProgramSession<B> {
             )),
             time_left,
         )?;
-        self.accept_fence(FencedSwitch::new(requested, response))
+        self.accept_fence(FencedSwitch::new(requested, response, false))
     }
 
     pub fn accept_fence(
@@ -198,11 +204,7 @@ impl<B: RegisterBus> ProgramSession<B> {
             return Err(Error::UnexpectedResponse);
         }
         let staged = self.staged.take().unwrap();
-        self.composite_wrap_frame = staged
-            .image
-            .layout
-            .reconciles_composite_wrap()
-            .then_some(fence.selected.frame);
+        self.composite_wrap_frame = fence.composite_wrap.then_some(fence.selected.frame);
         self.uploaded = false;
         Ok((fence.selected, self.active.replace(staged)))
     }

@@ -261,7 +261,7 @@ fn a_dropped_child_at_wrap_uses_one_optional_instruction_row() {
         allocator.complete(first.revision).unwrap();
         let next = allocator.stage(&after).unwrap();
         assert_eq!(next.composite_cuts()[0].allow_restart, extra == 1);
-        assert_eq!(next.reconciles_composite_wrap(), extra == 1);
+        assert_eq!(next.composite_cuts()[0].reconcile_ending, extra == 1);
         let bound = next.relocate(&after).unwrap();
         bound.validate(capacity).unwrap();
         let child = next.loop_id(dropped).unwrap();

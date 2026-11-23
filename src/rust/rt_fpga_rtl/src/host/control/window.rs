@@ -16,6 +16,7 @@ pub struct ControlWindow<'a, B, F> {
     time_left: F,
     frame: u64,
     revision: u64,
+    composite_wrap: bool,
 }
 
 impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
@@ -29,6 +30,7 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
             time_left,
             frame: 0,
             revision,
+            composite_wrap: false,
         };
         let data = window.send(Request::begin_control(revision))?;
         window.frame = join(data[0], data[1]);
@@ -51,7 +53,7 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         program: SwitchProgram,
     ) -> Result<FencedSwitch, Error<B::Error>> {
         let words = self.send(Request::switch_program(self.revision, program))?;
-        let fence = FencedSwitch::new(program, words);
+        let fence = FencedSwitch::new(program, words, self.composite_wrap);
         if fence.frame() != self.frame {
             return Err(Error::UnexpectedResponse);
         }
@@ -93,21 +95,25 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
             None => None,
         };
         let status = super::composite_cut_status(cut, &words, source.as_ref());
-        if status != Code::Applied || (words[0] >> 33) & 3 == 0 {
+        if status != Code::Applied || (words[0] >> 33) & 3 != 1 {
             return Ok(status);
         }
-        let Some((next, quantum)) = cut.restart_slot.zip(quantum) else {
+        let Some(quantum) = quantum else {
             return Ok(status);
         };
-        let (base, Some(original)) = self.read_loop(next)? else {
-            return Ok(Code::CannotApply);
-        };
-        let mut updated = original;
-        let code = super::prepare_composite_restart(next, &words, &mut updated, quantum);
-        if code == Code::Applied {
+        if let Some(next) = cut.restart_slot {
+            let (base, Some(original)) = self.read_loop(next)? else {
+                return Ok(Code::CannotApply);
+            };
+            let mut updated = original;
+            let code = super::prepare_composite_restart(next, &words, &mut updated, quantum);
+            if code != Code::Applied {
+                return Ok(code);
+            }
             self.update_loop(base, original, updated)?;
         }
-        Ok(code)
+        self.composite_wrap |= cut.reconciles_wrap(words[2], words[3], words[1] & (1 << 42) != 0);
+        Ok(status)
     }
 
     pub fn apply_transition(

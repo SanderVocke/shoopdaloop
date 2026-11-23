@@ -53,6 +53,8 @@ pub struct CompositeCut {
     #[cfg_attr(feature = "serde", serde(default))]
     pub require_repeat_wait: bool,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub reconcile_ending: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub restart_source: Option<Identity>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub restart_slot: Option<Identity>,
@@ -103,6 +105,10 @@ impl CompositeCut {
 
     pub fn waits_for_control(self) -> bool {
         self.allow_restart || self.wait_for_finish
+    }
+
+    pub fn reconciles_wrap(self, position: u64, length: u64, waited: bool) -> bool {
+        self.reconcile_ending && length != 0 && position == length && !waited
     }
 }
 
@@ -328,9 +334,6 @@ impl Layout {
     }
     pub fn composite_cuts(&self) -> &[CompositeCut] {
         &self.composite_cuts
-    }
-    pub fn reconciles_composite_wrap(&self) -> bool {
-        !self.previous_wrap_children.is_empty()
     }
     pub fn retiring_composite(&self) -> Option<Identity> {
         self.retiring_composite
@@ -641,15 +644,16 @@ impl Allocator {
                         && before.zip(after).is_some_and(|(before, after)| {
                             !before.explicit && !after.explicit && after.length != 0
                         });
-                    let require_repeat_wait = compatible_restart
+                    let reconcile_ending = compatible_restart
                         && changed_ending.is_some_and(|(before, _)| {
-                            !keep_wrap_ending(
+                            keep_wrap_ending(
                                 program,
                                 &mut previous_wrap_children,
                                 before,
                                 self.limits.instructions,
                             )
                         });
+                    let require_repeat_wait = changed_ending.is_some() && !reconcile_ending;
                     // The old pass releases its children during a hold, even
                     // when there is no room for a handoff-only row.
                     let allow_restart = compatible_restart
@@ -686,6 +690,7 @@ impl Allocator {
                             allow_restart,
                             wait_for_finish,
                             require_repeat_wait,
+                            reconcile_ending,
                             restart_source,
                             restart_slot: None,
                             future_before,

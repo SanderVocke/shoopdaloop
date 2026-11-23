@@ -275,10 +275,8 @@ impl StateProcessor {
         use rt_fpga_compiler::loading::CompositeCut;
 
         let loops = self.loops.as_mut().expect("prepared loop pool");
+        let mut wrap_pending = false;
         for cut in image.layout.composite_cuts() {
-            let Some(destination) = cut.restart_slot else {
-                continue;
-            };
             let old = loops
                 .slot(LoopId {
                     slot: cut.old_slot.slot,
@@ -288,6 +286,14 @@ impl StateProcessor {
             if old.state.mode != crate::transitions::Mode::Playing {
                 continue;
             }
+            wrap_pending |= cut.reconciles_wrap(
+                old.state.position,
+                old.state.content_length,
+                old.composite_wait,
+            );
+            let Some(destination) = cut.restart_slot else {
+                continue;
+            };
             let slot = image
                 .new_loops
                 .iter_mut()
@@ -327,7 +333,7 @@ impl StateProcessor {
             }
         }
         core::mem::swap(&mut loops.plan, &mut image.compiled.plan);
-        loops.program_changed = image.layout.reconciles_composite_wrap();
+        loops.program_changed = wrap_pending;
         Ok(())
     }
     pub(crate) fn composite_wrap_pending(&self) -> bool {
