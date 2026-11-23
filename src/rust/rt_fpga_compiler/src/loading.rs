@@ -61,6 +61,8 @@ pub struct CompositeCut {
     #[cfg_attr(feature = "serde", serde(default))]
     pub restart_ancestors: Vec<Identity>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub parent_guards: Vec<Identity>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub restart_slot: Option<Identity>,
     pub future_before: Option<u32>,
 }
@@ -131,7 +133,15 @@ impl CompositeCut {
         at_end: bool,
         mut read_clock: impl FnMut(Identity) -> Result<Option<ClockState>, E>,
     ) -> Result<bool, E> {
-        if !self.allow_restart || !repeat_sync || !at_end {
+        if !self.allow_restart || !at_end {
+            return Ok(true);
+        }
+        for &parent in &self.parent_guards {
+            if read_clock(parent)?.is_none() {
+                return Ok(false);
+            }
+        }
+        if !repeat_sync {
             return Ok(true);
         }
         let mut needs_pulse = false;
@@ -440,6 +450,20 @@ impl Layout {
         }
         before.future_edit_before(after)
     }
+
+    fn composite_ancestors(&self, child: Identity) -> Result<Vec<Identity>, CompileError> {
+        let mut pending = vec![child];
+        let mut ancestors = BTreeSet::new();
+        while let Some(child) = pending.pop() {
+            for parent in &self.composites {
+                if parent.children.iter().any(|row| row.id == child) && ancestors.insert(parent.id)
+                {
+                    pending.push(parent.id);
+                }
+            }
+        }
+        ancestors.into_iter().map(|id| self.loop_id(id)).collect()
+    }
     pub fn new_loops(&self) -> impl Iterator<Item = Identity> + '_ {
         self.loops.iter().filter(|l| l.fresh).map(|l| l.physical)
     }
@@ -698,7 +722,7 @@ impl Allocator {
                         !before.ending_children().eq(after.ending_children())
                     });
                     let compatible_restart = changed_composites.contains(&row.logical)
-                        && independent
+                        && (independent || single_edit == Some(row.logical))
                         && same_source
                         && (external_source.is_none() || restart_source.is_some())
                         && before.zip(after).is_some_and(|(before, after)| {
@@ -724,6 +748,12 @@ impl Allocator {
                                         program.loops.iter().any(|child| child.id == old.id)
                                     })
                                 })));
+                    // A seek on an ancestor can enter the child at a nonzero offset.
+                    let parent_guards = if allow_restart && !independent {
+                        old.composite_ancestors(row.logical)?
+                    } else {
+                        Vec::new()
+                    };
                     let wait_for_finish = if independent {
                         changed_composites.contains(&row.logical)
                             && before.is_some_and(|schedule| schedule.explicit)
@@ -765,6 +795,7 @@ impl Allocator {
                             reconcile_ending,
                             restart_source,
                             restart_ancestors,
+                            parent_guards,
                             restart_slot: None,
                             future_before,
                         },

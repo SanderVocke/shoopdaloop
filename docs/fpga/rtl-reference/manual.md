@@ -238,6 +238,9 @@ recording can start. See the admission rule under
   composite can also wait until the child stops, either by finishing its own
   run or when its parent releases it. Unchanged parents keep playing and use
   the new plan the next time they start the child.
+  A repeating child can also pick up a compatible edit at its own restart
+  while its parents keep playing. An ancestor command that could change the
+  child's entry point makes the edit wait for a safe boundary.
   An independent repeating composite can pick up an edit at its next restart,
   including changes to the length of an iteration or the whole pass. Both plans
   use the same sync source. At an uninterrupted restart, SP compares what was
