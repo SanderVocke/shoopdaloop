@@ -1,0 +1,14 @@
+{
+  "control": "C5 RTL0e624700",
+  "candidate": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+  "tool": "Vivado2021.1 build3247384, read-only post_opt checkpoint queries",
+  "control_descriptor_ff": 512,
+  "candidate_hot_descriptor_ff": 416,
+  "candidate_read_data_ff": 32,
+  "candidate_validity_ff": 3,
+  "working_bank_ff_delta": -61,
+  "connected_ff_delta": -63,
+  "memory": "32RAM32X1S logicalprimitives, implemented by32RAMS32 children; these are overlapping hierarchy counts, not64physicalRAMs. ConnectedLUTRAM delta32; noBRAMchange.",
+  "scope": "Extraonchip3writes perfull16-wordload and3readsahead per16-wordsave; no added external transfers orclocks inretainedcases. TwoadditionalglobalFFs disappear outside this workingbank; do not attributeall63 to itsstorage.",
+  "retention": "s5-cold-descriptor-cells-retention.json"
+}

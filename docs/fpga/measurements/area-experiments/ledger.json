@@ -1366,12 +1366,12 @@
         "Both originalreserved/reuse/reset andhigh/wrappingbase tests pass11.33sec; no semantic orcycle conclusion untilmatchedraw rows.",
         "All10311boundary+54reserved+108relocated raw rows EXACT including cycles/traffic; isolatedcontrolHDLinputs verified C5. All40C5musicalbaseline rows exactC4,includingcycles/work/traffic.",
         "All33mixed and40musical rows EXACTC5 includingclocks/work/cache/traffic; mixedfinalmemoryexact. Cold92745,mixedsteady53258/max53947,musicalsteady17144,seek410865.",
-        "All16MIDI tests pass529.58sec,includingbothAXIwidths/stalls/faults; fiveexpression andtworeserved testsstillrunning."
+        "All16MIDI tests pass529.58sec,includingbothAXIwidths/stalls/faults; fiveexpression andtworeserved testsstillrunning.",
+        "All23affectedtests pass:16MIDI529.58sec,5expression433.17sec,2reserved1.88sec. ActualDCP:512descFF->416hot+32read+3valid=451,privatebank-61FF;32LUTRAMcells, noBRAM. GlobalFF-63 includes2elsewhere."
       ],
       "pending": [
-        "Complete5expression+2reserved regressions",
-        "InspectactualRAM/workingregister inference",
-        "Complete100MHzroute; repeat if selected"
+        "Complete100MHzroute; repeat if selected",
+        "Clean prototype declarationorder before final integration ifretained"
       ],
       "rtl_source_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
       "unit_performance": "s5-cold-descriptor-unit-performance.json",
@@ -1395,7 +1395,9 @@
         "muxf8": 0,
         "control_sets": -1
       },
-      "prototype_warning": "Vivado adds15 Synth8-6901 warnings forforward declarationsof cursor/data_word; legalSV,strictVerilator passes. Recordandclean declarationorder before final integration if retained, then qualify final source. Noerror/criticalwarning."
+      "prototype_warning": "Vivado adds15 Synth8-6901 warnings forforward declarationsof cursor/data_word; legalSV,strictVerilator passes. Recordandclean declarationorder before final integration if retained, then qualify final source. Noerror/criticalwarning.",
+      "regression_summary": "s5-cold-descriptor-regressions-summary.json",
+      "primitive_summary": "s5-cold-descriptor-cells-summary.json"
     }
   ],
   "provisioning": {
