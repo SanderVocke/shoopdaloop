@@ -473,3 +473,67 @@ these are measured cumulative savings. The selected small area gain costs
 174 FFs and 44 physical control sets against C3. The limiting path still runs
 through audio metadata node counting. The remaining Stage 4 arithmetic siblings
 have not yet been measured.
+
+The separate MIDI scratch/input-record address unit (`1c73f3fa`) is rejected at
+optimization screening. Against C4 it adds 254 LUTs, 28 FFs, 105 F7 muxes, two
+F8 muxes and two control sets to remove 32 carries; BRAM/DSP counts are unchanged.
+The explicit operand and staging muxes outweigh the shared arithmetic. All 33
+mixed and 40 musical rows match C4 in non-cycle fields, but mixed steady median
+rises by 72 clocks and cold by 90; musical prefix restoration adds 72 clocks.
+All 23 affected tests pass: 16 MIDI, five expression and two descriptor/relocation
+checks, including supported quanta and both AXI widths.
+Routed slices are unavailable because the candidate is rejected at screening.
+C4 remains selected; see `s4-midi-scratch-opt-*` and its performance summary.
+
+The shared audio metadata relative-address unit (`93843695`) remains unselected.
+All 11 deferred/media/metadata/validity/ownership tests pass, including both AXI
+widths, DRAMsim3 and legacy memory. The initial missing simulator-library path
+was repaired without changing RTL, tests, memory settings or clocks; both logs
+and runtime hashes are retained. All 187 boundary rows per width, 207 deep rows
+per width and 1,282 public-store rows preserve non-cycle fields against C4's
+identical-audio C3 controls. Deep setup adds 93,444 clocks; the public-store
+fixture adds 21,309. Mixed steady median stays 53,258; worst short quantum adds
+one clock. Cold is 75 clocks faster, but adds 56 AXI reads/448 native reads.
+
+Routing uses **35,231 LUTs, 28,909 FFs, 11,934 slices, 78 BRAM tiles, four DSPs
+and 3,172 carries**. Against C4, 68 fewer LUTs and 33 fewer carries cost 56 more
+slices, 21 more FFs, 86 more control sets and 175 more F7/F8 muxes. Setup/hold
+slack is -3.939/+0.030 ns; setup still fails. The extra mux/packing and cold
+traffic costs outweigh the small LUT gain. C4 remains selected; no physical
+repeat is needed for this unselected tradeoff.
+
+The iterative metadata node/capacity unit (`0e624700`) passes all 11 affected
+regressions, both-width boundary/deep controls and all 1,282 public-store rows.
+All 33 short mixed callback rows match C4 exactly, including clocks and traffic.
+The deep 77,828-write setup grows from 1.810 to 3.523 million clocks on AXI64;
+the 207 requests after setup add only 46 clocks. Public-store operations add
+14,074 clocks in total. No public capacity, precision or ownership change.
+
+Its first route uses **35,207 LUTs, 28,847 FFs, 11,772 slices, 78 BRAM tiles,
+four DSPs and 3,094 carries**: 92 fewer LUTs, 106 fewer slices, 41 fewer FFs and
+111 fewer carries than C4, at a cost of 108 more physical control sets. Setup
+slack improves from -3.668 to **-0.130 ns**, with +0.006 ns hold; setup still
+fails. The node-count critical path is removed; the next limiter is MIDI
+job_reg[68] to store_arg0_reg[3]/CE. A clean source-through-route repeat and
+1,024-quantum callback run are in progress before selection. See
+`s4-iterative-capacity-100-*` and its retained unit/regression archives.
+
+The iterative candidate's extended run is now complete: **all 1,041 rows match
+C4 exactly**, including cycles, cache counters, traffic and state work, with
+identical final memory. Across 1,024 steady quanta the median/max remain
+53,258/59,776 clocks and cold playback 92,745. The primary implementation and
+benchmark parameter comparison is empty. The full physical repeat remains
+pending; no 100 MHz deadline qualification is claimed.
+
+The clean iterative-capacity repeat reproduces **all four physical stages
+exactly**, including utilization, control sets and setup/hold slack. All 38
+production source hashes and both context files match. Its 18 DRC warning
+instances are the same as C4 (DSP pipeline advice, one no-load net and the
+out-of-context PS7 warning); there are no routing/DRC errors. This candidate is
+selected as **C5**, with the explicitly measured growth/setup penalty. C4 remains
+available for faster setup. C5's measured cumulative change from B0 is **6,773
+fewer LUTs, 1,433 fewer slices, 4,594 fewer FFs and 2,397 fewer carries**, with
+half a BRAM tile more and 742 fewer physical control sets. DSP use stays four.
+Timing still fails at 100 MHz; no board or deadline qualification is implied.
+Stages 0–4 are complete. Stage 5's four separate contracts are in
+[stage5-state-contracts.md](stage5-state-contracts.md); its actual trials follow.

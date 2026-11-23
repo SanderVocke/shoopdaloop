@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4firstsharedMIDIstoreaddress trialcomplete, selectedasC4. Scratch/audio/node siblings andStages5\u201311 remain. C4defaultareachoiceincludesexplicitlatencytradeoff; CIintegrationqualificationsstillpending.",
+  "stage": 5,
+  "status": "Stages0\u20134 complete. Iterative node/capacity selected C5 after exactfourstage repeat andallbehavior/performancecontrols. Stage5contracts ready; implementationsunexecuted;Stages6\u201311 pending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -44,9 +44,9 @@
     "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
   ],
   "pending": [
-    "Complete Stage4 shared arithmetic siblings and decide each from measured behavior, cycles and area",
-    "Execute Stages5\u201310 one candidate at a time",
-    "Stage11 full selected-combination physical, regression and CI qualification"
+    "Execute four separate Stage5 working-state/reset/validity trials",
+    "ExecuteStages6\u201310 onecandidateatatime",
+    "Stage11 selected-combination physical/regression/CI qualification; integrationfixesisolated"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -1183,6 +1183,173 @@
       "extended_summary": "s4-midi-address-extended-100-summary.json",
       "decision": "Retain as C4 area control after exact four-stage physical repeat,23affectedtestpasses,1041extendedmixedrows and40musicalrows. Saves108LUT54slices151carry vsC3 with174moreFF44morecontrolsets andunchangedBRAM/DSP. Ordinarymixedmedian+0.50%, boundarymax+0.56%; musicalseek+12.46% andrawstoragemorelatency. User-authorizedcycletradeoff; preserveC3fasteralternative anddo notclaimtiming/deadlinequalification.",
       "routed_limiting_path": "Audio metadata new_count_reg[1] -> required_nodes_reg[29]; repeated unrolled node-count arithmetic remains the setup bottleneck."
+    },
+    {
+      "label": "s4-midi-scratch",
+      "stage": 4,
+      "status": "rejected",
+      "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "control_summary": "s4-midi-address-repeat-100-summary.json",
+      "rtl_source_revision": "1c73f3fac2854124c8a90a8f529aaea92c033554",
+      "changed_contract": "Logical/publiccontractsunchanged; onlymidi_data_jobs changes: one64bit ALU andexistingown_address baseholding;2formatterclocks perlocalwordandrecordsetup. See stage4-midi-scratch-contract.md. C4MIDIstoreformatterremainsunchanged.",
+      "validation": [
+        "Focused dense-recording/merge/repeat/stop test passes18.87sec; modelcompile9.10sec included",
+        "Primarylint passes withsamecontrolunusedsignal/parameter/pin categoriesexcluded; newarithmeticwidthwarningsremainfatal",
+        "C4selectedmergeall38HDLhashes verifiedagainstmeasured7d2d7cd7 source",
+        "All16MIDIregressionspassed; bothAXIwidths/faults/stalls/fullpool checks included",
+        "All33mixed and40musicalrows exactC4innoncyclefields; mixedmedian+72/max+90/cold+90; musicalseek+72 clocks",
+        "All23affectedtests pass:16MIDI633.72sec,5expression428.52sec,2reserved12.66sec; source/recipe/loghashesretained"
+      ],
+      "pending": [],
+      "selected": false,
+      "optimized_summary": "s4-midi-scratch-opt-summary.json",
+      "optimized_deltas_vs_c4": {
+        "lut": 254,
+        "logic_lut": 254,
+        "memory_lut": 0,
+        "ff": 28,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -32,
+        "muxf7": 105,
+        "muxf8": 2,
+        "control_sets": 2
+      },
+      "performance_summary": "s4-midi-scratch-performance.json",
+      "routed_slices": null,
+      "decision": "Reject at mapped screening: +254LUT/+28FF/+105MUXF7/+2MUXF8/+2controlsets for only32fewerCARRY4, unchangedBRAM/DSP. All73connected/musicalnoncyclefields exact butcyclesincrease. Addedoperand/staging muxcost outweighs sharing; do notspendroute/repeat onthisarea-negativecandidate.",
+      "regression_summary": "s4-midi-scratch-regressions-summary.json"
+    },
+    {
+      "label": "s4-audio-address",
+      "stage": 4,
+      "status": "completed",
+      "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "prepared_control_revision": "6b20a007d64d042b688b876fe9e6606fed02b0db",
+      "control_summary": "s4-midi-address-repeat-100-summary.json",
+      "rtl_source_revision": "938436956dc36a7c8dde82b014626e21eb209b1a",
+      "changed_contract": "Logical/publiccontractsunchanged; onlymedia_metadata changes. SharedregisteredrelativeALU adds1clock toformattedcacheaccesses and1CHILDparentsetup clock; rawparent/fence/current-blockfastpaths unchanged. Reusescurrentparentpage/field heldthroughcachewait; full65bitderivedbound/64fallbackkept. See stage4-audio-address-contract.md.",
+      "validation": [
+        "Beforeapplying, restoredrejectedMIDI scratchmodule andverifiedall38HDLhashesexactmeasuredC4",
+        "Preparedsource strict-Walllintpassesdefault/min/odd/primarywithoutwaivers; candidatebyte-identicalto prelinteddraft2",
+        "Focusedbothwidths/minimum-odd-primaryboundarytest passes37.37sec",
+        "All187boundaryrows/width,207deepdirectoryrows/width and1282publicstorerows matchevery noncyclefield of C4audio-identicalC3controls; modelsourcehash equivalenceverified",
+        "Deep setup1810451->1903895(+93444)clocks AXI64; store1282operationstotal1224008->1245317(+21309)clocks",
+        "All33shortmixedcallbacklogical outputs/work/cachecounters exactC4. Steadymedian53258unchanged,max53948vs53947,cold92670vs92745; coldAudioAXIreads694->750/native4016->4464, writesunchanged. Trafficdifference retained, not claimedbitwise-performancematch.",
+        "RerunwithlinkedpinnedDRAMsim3 passes full deferredsuite; media suiteinprogress",
+        "Optimized35868LUT28751FF3172CARRY4: vsC4 -60LUT/+18FF/-33carry/+150F7/+25F8/+4controlsets, unchangedBRAM/DSP; setupstillfails-5.320ns",
+        "Full deferredsuite passes62.95sec afterruntimepathrepair; fullmedia suite passes370.55sec",
+        "All11affectedtests pass afterruntimepathrepair: deferred1/62.95sec,media1/370.55sec,metadata6/280.34sec,validity1/55.45sec,ownership2/345.90sec; bothAXIwidths,DRAMsim3,legacy,reset/fault/heldrequests included"
+      ],
+      "pending": [],
+      "unit_performance": "s4-audio-address-unit-performance.json",
+      "unit_summaries": [
+        "s4-audio-address-directory-unit-summary.json",
+        "s4-audio-address-width-axi32-summary.json",
+        "s4-audio-address-width-axi64-summary.json",
+        "s4-audio-address-store-operations-unit-summary.json"
+      ],
+      "environment_followup": "Firstfullregressionrun passedInstant/Fixeddeferredcases thenmissingDRAMsim3library undernewSourceRoot. Existingpinnedwork/dramsim3linkedintoroot/work, hashesrecordedsetup/s4-audio-address/dramsim3-runtime-link.json; originalfailurelogretained, exactfullcommandrerunning. NoRTL/test/config/clockchange.",
+      "callback_performance": "s4-audio-address-callback-performance.json",
+      "optimized_summary": "s4-audio-address-opt-summary.json",
+      "optimized_deltas_vs_c4": {
+        "lut": -60,
+        "logic_lut": -60,
+        "memory_lut": 0,
+        "ff": 18,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -33,
+        "muxf7": 150,
+        "muxf8": 25,
+        "control_sets": 4
+      },
+      "selected": false,
+      "regression_summary": "s4-audio-address-regressions-summary.json",
+      "routed_summary": "s4-audio-address-100-summary.json",
+      "routed_deltas_vs_c4": {
+        "lut": -68,
+        "logic_lut": -68,
+        "memory_lut": 0,
+        "ff": 21,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -33,
+        "muxf7": 150,
+        "muxf8": 25,
+        "slices": 56,
+        "control_sets": 86
+      },
+      "timing_met": false,
+      "decision": "Rejectdefault: -68routedLUT/-33carry costs+56slices/+21FF/+86controlsets/+175F7/F8, worsenedfailingWNS-3.939ns andextracoldpayloadreads. All11affectedtests andmatchedrawlogicalrows pass; currentblocksteadycyclesmostlyunchanged. C4retained; no repeat forunselected area/traffictradeoff."
+    },
+    {
+      "label": "s4-iterative-capacity",
+      "stage": 4,
+      "status": "complete",
+      "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "prepared_control_revision": "06cfe5918aadcd148ecda773eb8ff074826b6bf1",
+      "control_summary": "s4-midi-address-100-summary.json",
+      "rtl_source_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+      "changed_contract": "No public numerical/capacity/ownership change. One34-bit iterative adder replaces combinational node/capacity arithmetic; growing extents add setup clocks, no-grow keeps prior path.",
+      "validation": [
+        "All38production control HDL hashes verified C4 before edit",
+        "Strict lint default/min/odd/primary passed",
+        "Independent closed-form/u64-wrap arithmetic preflight:144000boundary+100000seededrandomcases; notRTL qualification",
+        "Focused both-width high-bit/malformed-queue boundary test passed35.76sec",
+        "All187boundary rows/width,207deep rows/width,and1282public-store rows exactnoncycleC4control;finalDDRandtrafficexact",
+        "Deep77828growthwrites setup+1712176clocks: AXI32 1817747to3529923,AXI64 1810451to3522627;207postsetuprequests+46clocks;publicstore1224008to1238082(+14074)",
+        "All33mixed/on/delay7 callback rows match C4 including cycles,metadata/cache counters,traffic andwork; finalmemoryexact. Cold92745,steady median53258/max53947. Deepgrowthsetup reported separately.",
+        "Pinned optimization:35857LUT28769FF3094carry458controlsets;vsC4 -71LUT/+36FF/-111carry/+34netF7F8/+8control;BRAM78/DSP4 unchanged. OptWNS+0.412ns/WHS+0.002ns is notroutedtiming qualification.",
+        "Pre-placement critical path moved from metadata used_reg[4]->existing_nodes_reg[29],WNS-5.320ns C4, to MIDI job_reg[65]->response_error_reg[0]/CE,WNS+0.412ns; routing qualification pending.",
+        "All11affected tests passed:deferred1/102.13sec,media1/373.57sec,metadata6/270.80sec,validity1/49.27sec,ownership2/397.92sec. Runtime linked from snapshot creation; no environmental failure. Connected-primary lint verified metadata180096blocks/1024frames/16119pages/512views.",
+        "All1041extended mixed/on/delay7 rows match C4 exactly including cycles,counters,traffic,statework; finalmemoryexact. 1024steady median53258/max59776,cold92745. Benchmarkproductionparameterdifferences{}verifiedbyarchiver."
+      ],
+      "pending": [],
+      "contract": "stage4-iterative-capacity-contract.md",
+      "unit_performance": "s4-iterative-capacity-unit-performance.json",
+      "unit_summaries": [
+        "s4-iterative-capacity-directory-unit-summary.json",
+        "s4-iterative-capacity-width-axi32-summary.json",
+        "s4-iterative-capacity-width-axi64-summary.json",
+        "s4-iterative-capacity-store-operations-unit-summary.json"
+      ],
+      "arithmetic_preflight": "s4-iterative-capacity-arithmetic-summary.json",
+      "callback_performance": "s4-iterative-capacity-callback-performance.json",
+      "optimized_summary": "s4-iterative-capacity-opt-summary.json",
+      "optimized_deltas_vs_c4": {
+        "lut": -71,
+        "logic_lut": -71,
+        "memory_lut": 0,
+        "ff": 36,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -111,
+        "muxf7": 43,
+        "muxf8": -9,
+        "control_sets": 8
+      },
+      "regression_summary": "s4-iterative-capacity-regressions-summary.json",
+      "repeat_build": "work/area-experiments/s4-iterative-capacity-repeat-route100",
+      "routed_summary": "s4-iterative-capacity-100-summary.json",
+      "routed_deltas_vs_c4": {
+        "lut": -92,
+        "logic_lut": -92,
+        "memory_lut": 0,
+        "ff": -41,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -111,
+        "muxf7": 43,
+        "muxf8": -9,
+        "slices": -106,
+        "control_sets": 108
+      },
+      "timing_met": false,
+      "decision": "SelectC5: repeat exactall4stages; -92LUT/-106slices/-41FF/-111carry vsC4,sameBRAM/DSP,all11affectedtests+all1041extendedrows exactincludingcallbackclocks/traffic. Growthsetupslower (+1712176deepclocks,+14074publicstore),+108physicalcontrolsets; WNSimproves3.538nsbutstillfails-0.130. C4 retainedforfastergrowthsetup.",
+      "extended_summary": "s4-iterative-capacity-extended-100-summary.json",
+      "selected": true,
+      "repeat_summary": "s4-iterative-capacity-repeat-100-summary.json"
     }
   ],
   "provisioning": {
@@ -1322,28 +1489,49 @@
         "CodeQL"
       ],
       "native_verification": "Complete nativeMarlin job137392124794 passed on testedmerge1ba135dd; reference/integration/dependencyisolation also passed. Standaloneunusedbit gate failed; focusedstrictsynthesisfixpass archivedonarea/base-integration."
+    },
+    "selected_control_c4": {
+      "head": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "fpga_run": 45088624815,
+      "fpga_native": "passed137412851641;reference/dependencypassed;standalonefailedknownunusedbits137412851540",
+      "workspace_run": 45088624810,
+      "workspace": "Completedfailure: same3legacyCarlaexpectations, packagedbuscatalog/capability mismatch, wasmreleaseunknowncarla.hosting_mode. Integrationfixesisolatedarea/base-integration,notmeasuredC4.",
+      "firmware_run": 45088624808,
+      "firmware": "Failed;knownnestedlockrequiresintegrationrepair;freshjoblogsnotyetinspected",
+      "passed": [
+        "Native JACK acceptance",
+        "Hosted track processors",
+        "Docs",
+        "CodeQL",
+        "Web wasm32 debug",
+        "Bare-metal runtime/session",
+        "Sharedmediafoundation",
+        "Host process inspectionsallOS"
+      ],
+      "status": "Incomplete; requiredintegrationandCIgatesremain"
     }
   },
   "selected_control": {
-    "label": "C4",
-    "implementation": "s4-midi-address-100",
-    "rtl_revision": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
-    "summary": "s4-midi-address-100-summary.json",
-    "repeat_summary": "s4-midi-address-repeat-100-summary.json",
-    "extended_summary": "s4-midi-address-extended-100-summary.json",
-    "musical_summary": "s4-musical-comparison-summary.json",
+    "label": "C5",
+    "implementation": "s4-iterative-capacity-100",
+    "rtl_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+    "summary": "s4-iterative-capacity-100-summary.json",
+    "repeat_summary": "s4-iterative-capacity-repeat-100-summary.json",
+    "extended_summary": "s4-iterative-capacity-extended-100-summary.json",
     "timing_met": false,
     "cumulative_deltas_vs_B0": {
-      "lut": -6681,
-      "slices": -1327,
-      "ff": -4553,
+      "lut": -6773,
+      "slices": -1433,
+      "ff": -4594,
       "bram36": 0.5,
       "dsp": 0,
-      "carry4": -2286,
-      "control_sets": -850
+      "carry4": -2397,
+      "control_sets": -742
     },
     "hints": "original early+late",
-    "faster_alternative": "C3 fe2184ea / branch area/s3-path-context",
-    "connected": "1024steady median53258/max59776,cold92745;all1041noncyclefields exactC3. Musicalseek410865vs365340,+12.46%; all40musicalnoncyclefieldsexact."
+    "faster_setup_alternative": "C4 7d2d7cd7 / area/s4-midi-address",
+    "connected": "All1041extended rows exactC4 includingcycles/traffic/work;1024steady median53258/max59776,cold92745. Growth-onlysetup penalty measured separately.",
+    "selection_branch": "feat/backend-replacement-area-selected",
+    "branch_promotion": "pending merge of completed experiment"
   }
 }

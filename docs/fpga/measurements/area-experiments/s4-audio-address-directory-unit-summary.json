@@ -1,0 +1,499 @@
+{
+  "label": "s4-audio-address-directory-unit",
+  "fixture_revision": "938436956dc36a7c8dde82b014626e21eb209b1a",
+  "cases": {
+    "32": {
+      "scope": "whole metadata driver call including admission/response cleanup; preparation writes timed separately; direct-memory model, no randomized stalls",
+      "validation": "independent logical values across competing views, 16/256/4096/65536 boundaries, high opaque rewrites, trim/regrow, detached deep-root GC with live-ID reuse and stale-RAM reset",
+      "setup_cycles": 1911191,
+      "setup": [
+        {
+          "cycles": 1608395,
+          "view": 0,
+          "writes": 65537
+        },
+        {
+          "cycles": 100932,
+          "view": 1,
+          "writes": 4097
+        },
+        {
+          "cycles": 100932,
+          "view": 2,
+          "writes": 4097
+        },
+        {
+          "cycles": 100932,
+          "view": 3,
+          "writes": 4097
+        }
+      ],
+      "parameters": {
+        "DATA_WIDTH": "32",
+        "LARGE": "2",
+        "LINE_WORDS": "16",
+        "SLOTS": "180096",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "8192"
+      },
+      "populations": {
+        "invalidate": {
+          "count": 3,
+          "error_count": 0,
+          "min": 30,
+          "median": 30,
+          "max": 374,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 8
+        },
+        "forward": {
+          "count": 34,
+          "error_count": 6,
+          "min": 16,
+          "median": 165.0,
+          "max": 270,
+          "hits": 10,
+          "misses": 83,
+          "fills": 83,
+          "writebacks": 0
+        },
+        "reverse": {
+          "count": 34,
+          "error_count": 6,
+          "min": 16,
+          "median": 165.0,
+          "max": 270,
+          "hits": 14,
+          "misses": 79,
+          "fills": 79,
+          "writebacks": 0
+        },
+        "alternating": {
+          "count": 72,
+          "error_count": 24,
+          "min": 165,
+          "median": 218.0,
+          "max": 270,
+          "hits": 3,
+          "misses": 264,
+          "fills": 264,
+          "writebacks": 0
+        },
+        "rewrite": {
+          "count": 6,
+          "error_count": 0,
+          "min": 124,
+          "median": 203.0,
+          "max": 358,
+          "hits": 4,
+          "misses": 20,
+          "fills": 20,
+          "writebacks": 4
+        },
+        "rewrite_read": {
+          "count": 6,
+          "error_count": 0,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "trim": {
+          "count": 1,
+          "error_count": 0,
+          "min": 89,
+          "median": 89,
+          "max": 89,
+          "hits": 9,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "trim_extent": {
+          "count": 0,
+          "error_count": 1,
+          "min": null,
+          "median": null,
+          "max": null,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "trim_read": {
+          "count": 1,
+          "error_count": 0,
+          "min": 313,
+          "median": 313,
+          "max": 313,
+          "hits": 1,
+          "misses": 4,
+          "fills": 4,
+          "writebacks": 2
+        },
+        "regrow": {
+          "count": 1,
+          "error_count": 0,
+          "min": 596,
+          "median": 596,
+          "max": 596,
+          "hits": 12,
+          "misses": 5,
+          "fills": 5,
+          "writebacks": 4
+        },
+        "regrow_read": {
+          "count": 1,
+          "error_count": 0,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "detach": {
+          "count": 1,
+          "error_count": 0,
+          "min": 63,
+          "median": 63,
+          "max": 63,
+          "hits": 1,
+          "misses": 1,
+          "fills": 1,
+          "writebacks": 0
+        },
+        "live_reuse": {
+          "count": 1,
+          "error_count": 0,
+          "min": 331,
+          "median": 331,
+          "max": 331,
+          "hits": 9,
+          "misses": 5,
+          "fills": 0,
+          "writebacks": 3
+        },
+        "gc_read": {
+          "count": 2,
+          "error_count": 0,
+          "min": 414,
+          "median": 457.0,
+          "max": 500,
+          "hits": 5,
+          "misses": 9,
+          "fills": 9,
+          "writebacks": 9
+        },
+        "gc_trim": {
+          "count": 2,
+          "error_count": 0,
+          "min": 23,
+          "median": 105.5,
+          "max": 188,
+          "hits": 12,
+          "misses": 1,
+          "fills": 1,
+          "writebacks": 1
+        },
+        "live_read": {
+          "count": 2,
+          "error_count": 0,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "reset_extent": {
+          "count": 0,
+          "error_count": 1,
+          "min": null,
+          "median": null,
+          "max": null,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "reset_write": {
+          "count": 1,
+          "error_count": 0,
+          "min": 202,
+          "median": 202,
+          "max": 202,
+          "hits": 9,
+          "misses": 5,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "reset_read": {
+          "count": 1,
+          "error_count": 0,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        }
+      }
+    },
+    "64": {
+      "scope": "whole metadata driver call including admission/response cleanup; preparation writes timed separately; direct-memory model, no randomized stalls",
+      "validation": "independent logical values across competing views, 16/256/4096/65536 boundaries, high opaque rewrites, trim/regrow, detached deep-root GC with live-ID reuse and stale-RAM reset",
+      "setup_cycles": 1903895,
+      "setup": [
+        {
+          "cycles": 1602251,
+          "view": 0,
+          "writes": 65537
+        },
+        {
+          "cycles": 100548,
+          "view": 1,
+          "writes": 4097
+        },
+        {
+          "cycles": 100548,
+          "view": 2,
+          "writes": 4097
+        },
+        {
+          "cycles": 100548,
+          "view": 3,
+          "writes": 4097
+        }
+      ],
+      "parameters": {
+        "DATA_WIDTH": "64",
+        "LARGE": "2",
+        "LINE_WORDS": "16",
+        "SLOTS": "180096",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "8192"
+      },
+      "populations": {
+        "invalidate": {
+          "count": 3,
+          "error_count": 0,
+          "min": 30,
+          "median": 30,
+          "max": 374,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 8
+        },
+        "forward": {
+          "count": 34,
+          "error_count": 6,
+          "min": 16,
+          "median": 141.0,
+          "max": 230,
+          "hits": 10,
+          "misses": 83,
+          "fills": 83,
+          "writebacks": 0
+        },
+        "reverse": {
+          "count": 34,
+          "error_count": 6,
+          "min": 16,
+          "median": 141.0,
+          "max": 230,
+          "hits": 14,
+          "misses": 79,
+          "fills": 79,
+          "writebacks": 0
+        },
+        "alternating": {
+          "count": 72,
+          "error_count": 24,
+          "min": 141,
+          "median": 186.0,
+          "max": 230,
+          "hits": 3,
+          "misses": 264,
+          "fills": 264,
+          "writebacks": 0
+        },
+        "rewrite": {
+          "count": 6,
+          "error_count": 0,
+          "min": 108,
+          "median": 175.0,
+          "max": 318,
+          "hits": 4,
+          "misses": 20,
+          "fills": 20,
+          "writebacks": 4
+        },
+        "rewrite_read": {
+          "count": 6,
+          "error_count": 0,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "trim": {
+          "count": 1,
+          "error_count": 0,
+          "min": 89,
+          "median": 89,
+          "max": 89,
+          "hits": 9,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "trim_extent": {
+          "count": 0,
+          "error_count": 1,
+          "min": null,
+          "median": null,
+          "max": null,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "trim_read": {
+          "count": 1,
+          "error_count": 0,
+          "min": 281,
+          "median": 281,
+          "max": 281,
+          "hits": 1,
+          "misses": 4,
+          "fills": 4,
+          "writebacks": 2
+        },
+        "regrow": {
+          "count": 1,
+          "error_count": 0,
+          "min": 556,
+          "median": 556,
+          "max": 556,
+          "hits": 12,
+          "misses": 5,
+          "fills": 5,
+          "writebacks": 4
+        },
+        "regrow_read": {
+          "count": 1,
+          "error_count": 0,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "detach": {
+          "count": 1,
+          "error_count": 0,
+          "min": 55,
+          "median": 55,
+          "max": 55,
+          "hits": 1,
+          "misses": 1,
+          "fills": 1,
+          "writebacks": 0
+        },
+        "live_reuse": {
+          "count": 1,
+          "error_count": 0,
+          "min": 331,
+          "median": 331,
+          "max": 331,
+          "hits": 9,
+          "misses": 5,
+          "fills": 0,
+          "writebacks": 3
+        },
+        "gc_read": {
+          "count": 2,
+          "error_count": 0,
+          "min": 382,
+          "median": 421.0,
+          "max": 460,
+          "hits": 5,
+          "misses": 9,
+          "fills": 9,
+          "writebacks": 9
+        },
+        "gc_trim": {
+          "count": 2,
+          "error_count": 0,
+          "min": 23,
+          "median": 101.5,
+          "max": 180,
+          "hits": 12,
+          "misses": 1,
+          "fills": 1,
+          "writebacks": 1
+        },
+        "live_read": {
+          "count": 2,
+          "error_count": 0,
+          "min": 6,
+          "median": 6.0,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "reset_extent": {
+          "count": 0,
+          "error_count": 1,
+          "min": null,
+          "median": null,
+          "max": null,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "reset_write": {
+          "count": 1,
+          "error_count": 0,
+          "min": 202,
+          "median": 202,
+          "max": 202,
+          "hits": 9,
+          "misses": 5,
+          "fills": 0,
+          "writebacks": 0
+        },
+        "reset_read": {
+          "count": 1,
+          "error_count": 0,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "hits": 0,
+          "misses": 0,
+          "fills": 0,
+          "writebacks": 0
+        }
+      }
+    }
+  },
+  "retention": "s4-audio-address-directory-unit-retention.json"
+}

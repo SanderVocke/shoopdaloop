@@ -1,0 +1,50 @@
+{
+  "control": "C4 10cddabd / measured7d2d7cd7",
+  "candidate": "938436956dc36a7c8dde82b014626e21eb209b1a",
+  "rows": 33,
+  "logical_outputs_work_exact": true,
+  "metadata_cache_counters_exact": true,
+  "traffic_changes": [
+    {
+      "row": 0,
+      "field": "audio_axi_reads_writes_native_reads_writes",
+      "control": [
+        694,
+        8,
+        4016,
+        32
+      ],
+      "candidate": [
+        750,
+        8,
+        4464,
+        32
+      ]
+    }
+  ],
+  "interpretation": "Every sample/event/work item is checked by the independent Rust benchmark. Cold traffic differs under the changed schedule; precise prefetch causality has not been traced. Extra bus reads are a performance cost, not an output mismatch.",
+  "timing_qualified": false,
+  "cycles": {
+    "playback_start": {
+      "rows": 1,
+      "control_median": 92745,
+      "control_max": 92745,
+      "candidate_median": 92670,
+      "candidate_max": 92670
+    },
+    "warmup": {
+      "rows": 16,
+      "control_median": 53330.0,
+      "control_max": 53987,
+      "candidate_median": 53330.0,
+      "candidate_max": 53987
+    },
+    "steady": {
+      "rows": 16,
+      "control_median": 53258.0,
+      "control_max": 53947,
+      "candidate_median": 53258.0,
+      "candidate_max": 53948
+    }
+  }
+}

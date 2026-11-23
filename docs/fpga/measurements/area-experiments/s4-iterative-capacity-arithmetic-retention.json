@@ -1,0 +1,15 @@
+{
+  "archive": "s4-iterative-capacity-arithmetic-raw.tar.gz",
+  "archive_sha256": "deb3a2fc9f1626635427dfd063cada53a828d560cff04afb8d0571df48cace89",
+  "members_sha256": {
+    "setup/prepare-iterative-capacity.py": "cd2f186a1a808617918edb9e57d7aec31de52b5c8d112e8e513e86690d296c5e",
+    "setup/check-iterative-capacity-arithmetic.py": "980bef06ecd3b4dbe3994f35e5408f313f1af276f00151c58478acaf68bc5312",
+    "setup/compare-iterative-capacity.py": "81dd58b4240ad616c750822987d63855eb97031078129a919c08bb2441165abb",
+    "setup/iterative-capacity-draft2/arithmetic-preflight.json": "81d6ac522d04080ede2386f717039eb36c51a0a2f72defbe6ce1b509a7456d55",
+    "setup/iterative-capacity-draft2/media_metadata.sv": "823b6ad4ee796ce5c4c00cef9e9f19f387b9b6cc6d4b0b1903c4592e4dd8caa9",
+    "setup/s4-iterative-capacity/lint-default.log": "b3b25e53212137ad37d6d6d26404655d32d7c20028c6aab7bfd29446dd1bd7cb",
+    "s4-iterative-capacity-simulation-source/snapshot-provenance.json": "1a40da5526b13a80138701fe072da24c12579016530082474e76104ce150be8f",
+    "s4-iterative-capacity-focused.log": "ae496b1fdd94f805a260bee23946f2a0feb19d076930655b97ba200618c18ca8",
+    "setup/iterative-capacity-draft2/lint.log": "a2a26989affcb25308a48dd5aaa93c2c541875bea7a2826e83dd10de8f03b914"
+  }
+}

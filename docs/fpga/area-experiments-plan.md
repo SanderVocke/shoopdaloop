@@ -188,21 +188,24 @@ C2, unchanged measured cycles/BRAM, and 13 more carries. Timing still fails.
 
 Depends on stage 3's decision; use explicit registered operand selection.
 
-Execution status: shared MIDI-store address sharing is selected as C4 after
-23 affected tests, 1,041 exact non-cycle extended rows, 40 musical-transition
-rows and an exact four-stage physical repeat. It saves 108 LUTs/54 slices against
-C3, costing 174 FFs and 0.5% ordinary mixed median cycles; musical prefix
-restoration costs 12.5% more. C3 remains the faster alternative. MIDI scratch
-sharing, audio metadata sharing and iterative node counting have prepared drafts
-but remain unexecuted. Stage 5 has an original-RTL validity control ready; its
-implementation remains unexecuted.
+Execution status: complete. Shared MIDI-store addresses are selected in C4;
+scratch and audio-address siblings are measured and unselected. Iterative node/
+capacity arithmetic is selected as C5 after an exact four-stage physical repeat,
+all 11 affected regressions, raw both-width/deep/store controls and 1,041 extended
+callback rows matching C4 exactly, including clocks and traffic. Against C4 it
+saves 92 LUTs, 106 slices, 41 FFs and 111 carries, costing 108 physical control
+sets. Growth setup is slower: +1,712,176 clocks over 77,828 deep writes and
++14,074 over the public-store fixture. Setup slack improves from -3.668 to
+-0.130 ns; 100 MHz timing still fails. C4 remains the faster setup alternative.
+Stage 5's original-RTL validity control and separate implementation contracts
+are ready; no Stage 5 implementation has been measured.
 
-- [ ] Replace repeated MIDI store address expressions with a shared region/index/
+- [x] Replace repeated MIDI store address expressions with a shared region/index/
   field request datapath. Measure before separately sharing the remaining MIDI
   scratch address paths and audio metadata address calculations.
-- [ ] Trial iterative metadata node/capacity calculations using the same bounded
+- [x] Trial iterative metadata node/capacity calculations using the same bounded
   arithmetic unit. Keep per-sample throughput changes separate from setup costs.
-- [ ] Verify every region boundary, 32/64-bit AXI mode, backpressure, faults, and
+- [x] Verify every region boundary, 32/64-bit AXI mode, backpressure, faults, and
   latched command operands. Run affected MIDI/metadata/AXI tests; measure request
   latency, connected callback cycles, carry count, mux cost, area, and critical paths.
 

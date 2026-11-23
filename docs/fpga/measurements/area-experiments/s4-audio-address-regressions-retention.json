@@ -1,0 +1,11 @@
+{
+  "archive": "s4-audio-address-regressions-raw.tar.gz",
+  "archive_sha256": "062810c9be847edfdf2d5b94a7fcfaae982568d4030f952be65895e7f36f9392",
+  "members_sha256": {
+    "logs/success.log": "4113e1cbdaeca62a21f0ec518cc510a38c0580cf2391dad1a1f83bf72dbcb41a",
+    "logs/initial-environment-failure.log": "40ea66a3b3794473f289eff33deb9886f392e89e5e60e48d2e7ee4d6affae627",
+    "snapshot-provenance.json": "f2c84ec68782eea09b868a7f8c3431457b9e6713c620f98652d52c940b27aefa",
+    "runtime-link.json": "e04d10a6f14cedfdd41460b4eb1560c47154f332532ea758138641814f6e965b",
+    "recipe.json": "929c0863fe76313220f1640218f93279498f9149f8505f75b8a2d363a9984dd4"
+  }
+}

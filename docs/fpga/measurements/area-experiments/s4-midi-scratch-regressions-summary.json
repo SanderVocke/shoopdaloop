@@ -1,0 +1,21 @@
+{
+  "candidate_revision": "1c73f3fac2854124c8a90a8f529aaea92c033554",
+  "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+  "command": "CARGO_INCREMENTAL=0 SHOOP_FPGA_SOURCE_ROOT=work/area-experiments/s4-midi-scratch-simulation-source cargo test --locked -p rt_fpga_testbench --features sim --test midi --test midi_reserved --test midi_expression -- --test-threads=1",
+  "environment": "Rust1.100.0, Verilator5.032, RUSTFLAGS=-D warnings; model compilation included in wall times",
+  "suites": {
+    "midi": {
+      "passed": 16,
+      "seconds": 633.72
+    },
+    "midi_expression": {
+      "passed": 5,
+      "seconds": 428.52
+    },
+    "midi_reserved": {
+      "passed": 2,
+      "seconds": 12.66
+    }
+  },
+  "retention": "s4-midi-scratch-regressions-retention.json"
+}
