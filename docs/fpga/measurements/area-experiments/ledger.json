@@ -1431,11 +1431,12 @@
         "StrictVerilatorlint default/minimum/odd/connected-primary passes; allreportedwarnings identical C6.",
         "Both reserved/relocation tests and dense record/merge/read/stop focused test pass",
         "All10311boundary+54reserved+108relocated rows exactly match C6, including cycles and memory traffic",
-        "All33mixed+40musical rows exactC6 including cycles/traffic/work/state/finalmixedmemory; all16mainMIDItests passonspace-corrected rerun, expression/reserved running"
+        "All33mixed+40musical rows exactC6 including cycles/traffic/work/state/finalmixedmemory; all16mainMIDItests passonspace-corrected rerun, expression/reserved running",
+        "All23affected suites pass: MIDI16/405.22sec, expression5/489.28sec, reserved2/1.95sec. Earlier8StorageFullfailures retained andallpasswithunchangedsource/assertions aftercachecleanup."
       ],
       "pending": [
-        "Finish all23affectedMIDI/expression/reserved regressions",
-        "Connectedrouteandrepeat ifretained; actualpayloadregister query"
+        "Connectedrouteandrepeat ifretained; actualpayloadregister query",
+        "1041extendedcallbackcomparison running"
       ],
       "rtl_source_revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
       "raw_unit_summaries": [
@@ -1446,7 +1447,8 @@
       "environment_retry": "First full suite:8pass8failure, eachfailureStorageFull(os28), not RTLassertion. Initiallog retained; nativeRustcaches reclaimed andexactcommand/source rerunningwith3GBheadroom.",
       "opt_summary": "s5-payload-lifetime-opt-summary.json",
       "callback_performance": "s5-payload-lifetime-callback-performance.json",
-      "mapped_screen": "-21LUT/-37FF/+13MUXF7/-2controlsets vsC6; BRAM/DSP/carry unchanged. OptWNS-0.151ns vs+.412control; physicalroutepending."
+      "mapped_screen": "-21LUT/-37FF/+13MUXF7/-2controlsets vsC6; BRAM/DSP/carry unchanged. OptWNS-0.151ns vs+.412control; physicalroutepending.",
+      "regression_summary": "s5-payload-lifetime-regressions-summary.json"
     }
   ],
   "provisioning": {
