@@ -39,6 +39,13 @@ struct Row {
     last_pulse: Option<u64>,
 }
 
+#[derive(Clone, Copy)]
+struct FutureAttempt {
+    program: SwitchProgram,
+    frame: u64,
+    program_lane: bool,
+}
+
 pub struct Owner<B> {
     session: ProgramSession<B>,
     execution: rt::Execution,
@@ -50,6 +57,7 @@ pub struct Owner<B> {
     announced: bool,
     cancelled: bool,
     retry_switch_after: Option<u64>,
+    future_attempt: Option<FutureAttempt>,
     retired: Option<ProgramImage>,
     rows: Vec<Row>,
     next_rows: Vec<Row>,
@@ -105,6 +113,7 @@ where
             announced: false,
             cancelled: false,
             retry_switch_after: None,
+            future_attempt: None,
             retired: None,
             rows: Vec::with_capacity(rows),
             next_rows: Vec::with_capacity(rows),
@@ -214,8 +223,15 @@ where
     /// Service a bounded number of uploads per turn so the control task can run.
     pub fn step(&mut self, mut within_budget: impl FnMut() -> bool) -> Result<()> {
         self.drain_sync()?;
+        let switched = self.finish_future_switch(&mut within_budget)?;
+        if self.future_attempt.is_some() {
+            return Ok(());
+        }
         self.upload(&mut within_budget)?;
-        let updated = self.command(&mut within_budget)?;
+        let updated = self.command(&mut within_budget)? || switched;
+        if self.future_attempt.is_some() {
+            return Ok(());
+        }
         if self.audio_enabled || updated {
             let state = device_result(request(
                 self.session.client(),
@@ -258,13 +274,80 @@ where
         Ok(())
     }
 
+    fn finish_future_switch(&mut self, within_budget: &mut impl FnMut() -> bool) -> Result<bool> {
+        let Some(attempt) = self.future_attempt else {
+            return Ok(false);
+        };
+        let status = device_result(request(
+            self.session.client(),
+            Request::capture_snapshot(0),
+            within_budget,
+        ))?;
+        let frame = join(status[1], status[2]);
+        if frame == attempt.frame {
+            return Ok(false);
+        }
+        ensure!(
+            frame
+                .checked_sub(attempt.frame)
+                .is_some_and(|elapsed| elapsed >= u64::from(self.geometry.quantum)),
+            "FPGA future switch has not run a complete quantum"
+        );
+        self.frame = frame;
+        self.status.set_frame(frame);
+        self.future_attempt = None;
+        let revision = join(status[3], status[4]);
+        if revision
+            == self
+                .session
+                .active()
+                .map_or(0, |image| image.layout.revision)
+        {
+            return Ok(false);
+        }
+        self.retired = device_result(self.session.accept_future_switch(
+            attempt.program,
+            revision,
+            attempt.frame,
+        ))?
+        .map(|upload| upload.image);
+        self.select_rows();
+        self.ready = None;
+        self.announced = false;
+        self.cancelled = false;
+        self.retry_switch_after = None;
+        let commands = if attempt.program_lane {
+            self.execution
+                .switches
+                .as_mut()
+                .expect("prepared switch lane")
+        } else {
+            &mut self.execution.commands
+        };
+        commands.begin_callback();
+        let group = commands.pop().expect("armed FPGA switch");
+        ensure!(
+            group
+                .commands()
+                .next()
+                .is_some_and(|record| record.command() == Command::SwitchProgram(attempt.program)),
+            "FPGA future switch command moved"
+        );
+        let header = group.header;
+        group.respond(header.complete(attempt.frame, Code::Applied), |record| {
+            record.complete(Code::Applied)
+        });
+        Ok(true)
+    }
+
     fn drain_sync(&mut self) -> Result<()> {
         let revision = self.session.active().map_or(0, |p| p.layout.revision);
+        let future_revision = self.future_attempt.map(|attempt| attempt.program.revision);
         for _ in 0..128 {
             let Some(event) = device_result(self.session.client().sync_event())? else {
                 break;
             };
-            if event.revision != revision {
+            if event.revision != revision && Some(event.revision) != future_revision {
                 continue;
             }
             if let Some(row) = self
@@ -337,7 +420,7 @@ where
 
     fn command(&mut self, within_budget: &mut impl FnMut() -> bool) -> Result<bool> {
         let ordinary = self.command_lane(false, within_budget)?;
-        let switched = self.command_lane(true, within_budget)?;
+        let switched = self.future_attempt.is_none() && self.command_lane(true, within_budget)?;
         Ok(ordinary || switched)
     }
 
@@ -392,7 +475,13 @@ where
         {
             Ok(Some((self.frame, Code::CannotApply)))
         } else {
-            self.apply(revision, header.deadline(), records, within_budget)
+            self.apply(
+                revision,
+                header.deadline(),
+                records,
+                program_lane,
+                within_budget,
+            )
         };
         if matches!(outcome, Ok(None)) {
             return Ok(false);
@@ -447,6 +536,7 @@ where
         revision: u64,
         deadline: Option<u64>,
         records: &mut [CommandRecord],
+        program_lane: bool,
         within_budget: &mut impl FnMut() -> bool,
     ) -> Result<Option<(u64, Code)>> {
         let switching = records.last().and_then(|record| match record.command() {
@@ -483,6 +573,19 @@ where
                 return Ok(None);
             }
             let layout = &staged.unwrap().layout;
+            if let Some((program, cut)) = switching
+                .filter(|_| records.len() == 1)
+                .zip(layout.future_switch())
+            {
+                device_result(window.arm_future_switch(program, cut))?;
+                device_result(window.release())?;
+                self.future_attempt = Some(FutureAttempt {
+                    program,
+                    frame,
+                    program_lane,
+                });
+                return Ok(None);
+            }
             let cuts = layout.composite_cuts();
             let mut status = Code::Applied;
             if let Some(slot) = layout.retiring_composite() {

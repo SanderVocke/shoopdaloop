@@ -17,6 +17,9 @@ module state_processor #(
     input  wire [31:0]                         run_instruction_count,
     input wire [31:0] run_sync_count,
     input wire run_program_region,
+    input wire future_switch_valid,
+    input wire [43:0] future_switch,
+    output wire future_switch_ready,
     input  wire [31:0]                         run_state_count,
     input  wire [31:0]                         run_quantum,
     input wire [31:0] run_chunk_frames,
@@ -164,6 +167,7 @@ module state_processor #(
     ) engine (
         .clk(clk), .reset(reset), .start(start),
         .program_changed(PROGRAM_REGIONS == 2 && run_program_region != program_region),
+        .future_switch_valid(future_switch_valid), .future_switch(future_switch), .future_switch_ready(future_switch_ready),
         .instruction_count(run_instruction_count), .sync_count(run_sync_count), .state_count(run_state_count),
         .quantum(run_quantum), .chunk_frames(run_chunk_frames), .job_budget(run_job_budget), .capture_credits(capture_credits),
         .queued_jobs(queued_jobs), .queue_remaining(queue_remaining),

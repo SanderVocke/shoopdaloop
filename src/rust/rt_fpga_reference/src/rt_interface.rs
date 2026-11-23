@@ -252,10 +252,14 @@ impl Processor {
             }
             let frame = self.engine.pipeline.state().frame();
             let mut switched = false;
+            let mut future_switch = None;
             for (lane, commands) in core::iter::once(&mut self.ports.commands)
                 .chain(self.ports.switches.iter_mut())
                 .enumerate()
             {
+                if future_switch.is_some() {
+                    break;
+                }
                 let program_lane = lane != 0;
                 if base == 0 || self.programs.is_some() {
                     commands.begin_callback();
@@ -322,8 +326,19 @@ impl Processor {
                         Code::Applied
                     };
                     if code == Code::Applied && count == 1 {
-                        let command = group.commands().next().unwrap().command();
-                        if let Command::SwitchProgram(descriptor) = command {
+                        let record = *group.commands().next().unwrap();
+                        if let Command::SwitchProgram(descriptor) = record.command() {
+                            if let Some(cut) = self
+                                .next_program
+                                .as_ref()
+                                .filter(|stage| stage.descriptor() == descriptor && stage.ready())
+                                .and_then(|stage| stage.image.layout.future_switch())
+                            {
+                                future_switch =
+                                    Some((program_lane, header, record, descriptor, cut));
+                                group.leave_unread();
+                                break;
+                            }
                             if self.next_program.as_ref().is_some_and(|stage| {
                                 stage.descriptor() == descriptor
                                     && stage.ready()
@@ -351,7 +366,7 @@ impl Processor {
                                         self.next_program = Some(image);
                                         return Err(PipelineError::Jobs(error));
                                     }
-                                    self.engine.switch(&mut image, descriptor, jobs)
+                                    self.engine.switch(&mut image, descriptor, jobs, false)
                                 };
                                 if code == Code::Applied {
                                     retired = Some(image);
@@ -441,7 +456,31 @@ impl Processor {
                     &mut observer,
                     base == 0 || switched,
                 )
+            }?;
+            if let Some((program_lane, header, record, descriptor, cut)) = future_switch {
+                if self.engine.pipeline.state().permits_future_switch(cut) {
+                    memory
+                        .begin_completion_fence()
+                        .map_err(PipelineError::Jobs)?;
+                    let mut image = self.next_program.take().expect("armed image");
+                    if self.engine.switch(&mut image, descriptor, jobs, true) != Code::Applied {
+                        self.next_program = Some(image);
+                        return Err(PipelineError::State(Error::InvalidState));
+                    }
+                    let mut records = [record; shoop_rt_protocol::immediate::COMMANDS];
+                    records[0] = record.complete(Code::Applied);
+                    self.pending_switch = Some(loading::PendingSwitch {
+                        program_lane,
+                        header,
+                        frame,
+                        records,
+                        count: 1,
+                        retired: image,
+                    });
+                    self.publish_initial_snapshot();
+                }
             }
+            Ok(())
         });
         if let Err(error) = result {
             self.engine.pipeline.latch_fault(error);

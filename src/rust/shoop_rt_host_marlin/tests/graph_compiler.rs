@@ -632,6 +632,145 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
     }
 }
 
+fn seek_across_a_pending_nested_edit<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(2);
+    let play = |slot, start, end, ordinal| CompositeSpan {
+        target: id(slot),
+        start,
+        end,
+        occurrence_start: start,
+        ordinal,
+        mode: LoopMode::Playing,
+    };
+    let mut child = graph.loops[0].clone();
+    child.id = id(120);
+    child.strip = None;
+    child.composite = Some(CompositeView {
+        kind: CompositeKind::Regular,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: 256,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![play(100, 0, 256, 0), play(101, 32, 48, 1)].into(),
+    });
+    let mut parent = child.clone();
+    parent.id = id(121);
+    parent.composite.as_mut().unwrap().spans = vec![play(120, 0, 256, 0)].into();
+    graph.loops.extend([child, parent]);
+    upload(&mut client, &mut renderer, &graph, 0);
+    for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
+        let commands = [100, 101].map(|slot| Command::Transition(slot, mode.into()));
+        client
+            .immediate(Batch::new(1, 1, &commands).unwrap())
+            .unwrap();
+        response(&mut client, &mut renderer);
+        step(&mut renderer);
+    }
+    let seek = |iteration, seek| {
+        Batch::new(
+            1,
+            1,
+            &[Command::LoopIteration(
+                LoopSlotId(SlotId::new(121, id(121).generation)),
+                IterationTransition {
+                    iteration,
+                    seek,
+                    retrigger: false,
+                },
+            )],
+        )
+        .unwrap()
+    };
+    client.immediate(seek(128, false)).unwrap();
+    response(&mut client, &mut renderer);
+
+    let plan = graph.loops[2].composite.as_mut().unwrap();
+    plan.version += 1;
+    plan.spans.to_mut()[1] = play(101, 64, 80, 1);
+    let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, 23).unwrap();
+    for batch in &batches[..batches.len() - 1] {
+        client.immediate(*batch).unwrap();
+        response(&mut client, &mut renderer);
+    }
+    client.immediate(*batches.last().unwrap()).unwrap();
+    for _ in 0..12 {
+        assert_eq!(step(&mut renderer), [0.125, 0.125]);
+        while let Some(message) = client.poll() {
+            assert!(!matches!(message, EngineMessage::ImmediateResponse(_)));
+        }
+    }
+
+    // A seek into the changed part still plays the old arrangement.
+    client.immediate(seek(35, true)).unwrap();
+    response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.1875, 0.1875]);
+
+    client.immediate(seek(8, true)).unwrap();
+    let sought = response(&mut client, &mut renderer);
+    assert_eq!(response(&mut client, &mut renderer), sought);
+
+    let audible_start = sought + Q as u64;
+    assert!(renderer.next_frame().0 < audible_start + (32 - 8) * Q as u64);
+    while renderer.next_frame().0 < audible_start + (82 - 8) * Q as u64 {
+        let frame = renderer.next_frame().0;
+        let iteration = 8 + (frame - audible_start) / Q as u64;
+        let expected = if (64..80).contains(&iteration) {
+            0.1875
+        } else {
+            0.125
+        };
+        assert_eq!(
+            step(&mut renderer),
+            [expected, expected],
+            "iteration {iteration}"
+        );
+    }
+
+    let plan = graph.loops[2].composite.as_mut().unwrap();
+    plan.version += 1;
+    plan.spans.to_mut()[1] = play(101, 96, 112, 1);
+    let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 2, 24).unwrap();
+    for batch in &batches[..batches.len() - 1] {
+        client.immediate(*batch).unwrap();
+        response(&mut client, &mut renderer);
+    }
+    client.immediate(*batches.last().unwrap()).unwrap();
+    for _ in 0..12 {
+        assert_eq!(step(&mut renderer), [0.125, 0.125]);
+        while let Some(message) = client.poll() {
+            assert!(!matches!(message, EngineMessage::ImmediateResponse(_)));
+        }
+    }
+    client
+        .immediate(Batch::new(2, 2, &[Command::CancelCompositeGraph(24)]).unwrap())
+        .unwrap();
+    response(&mut client, &mut renderer);
+    assert_eq!(
+        wait_response(&mut client, &mut renderer).header.code(),
+        Code::Cancelled
+    );
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn nested_edits_use_the_parent_seek_resolved_on_the_switch_boundary() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    seek_across_a_pending_nested_edit(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    seek_across_a_pending_nested_edit(rtl.endpoint, rtl.renderer);
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Ending {
     Same,

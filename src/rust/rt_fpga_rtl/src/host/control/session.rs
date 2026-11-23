@@ -36,6 +36,9 @@ impl FencedSwitch {
     pub(super) fn frame(&self) -> u64 {
         self.selected.frame
     }
+    pub(super) fn revision(&self) -> u64 {
+        self.selected.revision
+    }
 }
 
 /// Owns the staged image and retains its predecessor until the fabric memory fence returns.
@@ -207,6 +210,29 @@ impl<B: RegisterBus> ProgramSession<B> {
         self.composite_wrap_frame = fence.composite_wrap.then_some(fence.selected.frame);
         self.uploaded = false;
         Ok((fence.selected, self.active.replace(staged)))
+    }
+
+    /// A guarded switch uses the same media and allocations. The completed
+    /// quantum publishes its revision after all its jobs have drained.
+    pub fn accept_future_switch(
+        &mut self,
+        requested: SwitchProgram,
+        revision: u64,
+        frame: u64,
+    ) -> Result<Option<Upload>, Error<B::Error>> {
+        if self
+            .staged()
+            .and_then(|image| image.layout.future_switch())
+            .is_none()
+        {
+            return Err(Error::UnexpectedResponse);
+        }
+        let fence = FencedSwitch {
+            requested,
+            selected: ActiveProgram { revision, frame },
+            composite_wrap: false,
+        };
+        self.accept_fence(fence).map(|(_, retired)| retired)
     }
 
     fn exchange(

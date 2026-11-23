@@ -60,6 +60,23 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         Ok(fence)
     }
 
+    pub fn arm_future_switch(
+        &mut self,
+        program: SwitchProgram,
+        cut: rt_fpga_compiler::loading::FutureSwitch,
+    ) -> Result<(), Error<B::Error>> {
+        let words = self.send(Request::switch_at_resolved_position(
+            self.revision,
+            program,
+            cut,
+        ))?;
+        let reply = FencedSwitch::new(program, words, false);
+        if reply.frame() != self.frame || reply.revision() != self.revision {
+            return Err(Error::UnexpectedResponse);
+        }
+        Ok(())
+    }
+
     pub fn composite_cut_ready(
         &mut self,
         cut: &rt_fpga_compiler::loading::CompositeCut,

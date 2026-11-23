@@ -445,7 +445,9 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
         },
         target::RtlTarget,
     };
-    use shoop_rt_protocol::immediate::{Code, SwitchProgram, TransitionMode, TransitionPlan};
+    use shoop_rt_protocol::immediate::{
+        Code, IterationTransition, SwitchProgram, TransitionMode, TransitionPlan,
+    };
 
     fn timeout() -> impl FnMut() -> bool {
         let mut remaining = 10000;
@@ -802,4 +804,85 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
     );
     assert_eq!(retired.unwrap().image.layout.revision, 6);
     allocator.complete(7).unwrap();
+
+    let span = |target, start, end| CompositeSpan {
+        target,
+        start,
+        end,
+        occurrence_start: start,
+        ordinal: 0,
+        mode: LoopMode::Playing,
+    };
+    let mut child = graph.loops[0].clone();
+    child.id = parent_id;
+    child.strip = None;
+    child.composite = Some(CompositeView {
+        kind: CompositeKind::Regular,
+        version: 1,
+        unit_frames: quantum,
+        iterations: 16,
+        sample_rate: 48_000,
+        quantum: limits.quantum,
+        spans: vec![span(identity, 4, 7)].into(),
+    });
+    let mut outer = child.clone();
+    outer.id.slot = 3;
+    let outer_id = outer.id;
+    outer.composite.as_mut().unwrap().spans = vec![span(child.id, 0, 16)].into();
+    graph.loops.extend([child, outer]);
+    let compile_and_stage =
+        |graph: &rt_fpga_compiler::shoop_graph::Graph,
+         allocator: &mut Allocator,
+         session: &mut ProgramSession<Axi<'_, '_>>| {
+            let program = compile_composites(graph, context, 32).unwrap();
+            let layout = allocator.stage(&program).unwrap();
+            let media = layout.media_views(&program);
+            let image = RtlTarget {
+                capacities: limits,
+                media_views: &media,
+                state_base: 0,
+            }
+            .build_image(&program, layout)
+            .unwrap();
+            let requested = stage(session, Upload::new(image, limits.instructions));
+            allocator.publish(requested.revision).unwrap();
+            requested
+        };
+    let requested = compile_and_stage(&graph, &mut allocator, &mut session);
+    session.activate(requested, timeout()).unwrap();
+    allocator.complete(8).unwrap();
+    let outer = session.active().unwrap().layout.loop_id(outer_id).unwrap();
+    let plan = graph.loops[2].composite.as_mut().unwrap();
+    plan.version += 1;
+    plan.spans.to_mut()[0] = span(identity, 8, 11);
+    let requested = compile_and_stage(&graph, &mut allocator, &mut session);
+    let cut = session.staged().unwrap().layout.future_switch().unwrap();
+    assert_eq!(cut.before, 3 * limits.quantum);
+    for (index, (iteration, seek, version)) in [(5, false, 8), (1, true, 9)].into_iter().enumerate()
+    {
+        let mut window = ControlWindow::begin(session.client(), 8, timeout()).unwrap();
+        let frame = window.frame();
+        assert_eq!(
+            window.apply_iteration(
+                outer,
+                IterationTransition {
+                    iteration,
+                    seek,
+                    retrigger: false
+                }
+            ),
+            Ok(Code::Applied)
+        );
+        window.arm_future_switch(requested, cut).unwrap();
+        window.release().unwrap();
+        let completed = send(session.client(), Request::run_quantum());
+        assert_eq!(completed[3..5], [version, 0]);
+        if index == 1 {
+            let retired = session
+                .accept_future_switch(requested, u64::from(version), frame)
+                .unwrap();
+            assert_eq!(retired.unwrap().image.layout.revision, 8);
+            allocator.complete(9).unwrap();
+        }
+    }
 }

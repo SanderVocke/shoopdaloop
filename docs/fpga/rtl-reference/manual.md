@@ -235,13 +235,16 @@ recording can start. See the admission rule under
   A parent can keep playing while an edit changes a later part of a nested
   composite, including which child composite plays there. For this early
   handoff, the edited composite keeps its timing and sync source, and the
-  first change is beyond the current and next iteration. An edit to a single
-  nested composite can also wait until the child stops, either by finishing
-  its own run or when its parent releases it. Unchanged parents keep playing
-  and use the new plan the next time they start the child.
+  first change is beyond the current and next iteration. For supported edits
+  to Play or Stop spans that keep the same children, SP can check the child's
+  position after a parent seek. A seek into the changed part leaves the edit
+  pending. A seek far enough back can let it take effect on that boundary.
+  An edit to a single nested composite can also wait until the child stops,
+  either by finishing its own run or when its parent releases it. Unchanged
+  parents keep playing and use the new plan the next time they start the child.
   A repeating child can also pick up a compatible edit at its own restart
-  while its parents keep playing. An ancestor command that could change the
-  child's entry point makes the edit wait for a safe boundary.
+  while its parents keep playing. The host waits when an ancestor command
+  could change the child's entry point and SP cannot use the future-edit check.
   A compatible one-pass child can take up an edit as it finishes. A parent
   that starts it again at that same boundary starts the replacement plan.
   An independent repeating composite can pick up an edit at its next restart,
@@ -907,7 +910,7 @@ results. HP0 carries audio storage traffic to the reserved DDR aperture.
 The compiled-audio bring-up can use a deterministic source or the external
 I²S adapter, based on the build profile.
 
-| Mailbox concern | Version 8 register anchors |
+| Mailbox concern | Version 9 register anchors |
 | --- | --- |
 | Discover the image | `ID` 0x000, `VERSION` 0x004, `STATUS` 0x008, `EPOCH` 0x00c, geometry at 0x010–0x03c |
 | Submit command | `REQUEST_EPOCH` 0x040, `REQUEST_OP` 0x044, payload from 0x048, `REQUEST_PUSH` 0x078 |
@@ -943,6 +946,17 @@ with no spans. SP uses the old mode for the wrap at the switch, then reads the
 new spans for subsequent passes. A following switch waits for that quantum to run.
 Continuing child media remains attached to its existing views through the
 handoff.
+
+For a future edit that keeps the same children, audio work, and addresses,
+the host can submit a switch with a loop slot and a position limit. SP checks
+the loop after resolving its transport, parent actions, and sync for the
+quantum. The switch qualifies if the loop is stopped or its render position
+is below the limit. The staged program agrees with the active program on the
+audio and loop actions for that quantum, so SP can finish the block with the
+active rows. The pipeline publishes the new revision after the block succeeds.
+The switch is reported at the frame where SP made its decision, and the next
+quantum fetches from the new region. If the check fails, the host can try
+again on a later boundary with the same staged program.
 
 ## Audio device clock boundary
 

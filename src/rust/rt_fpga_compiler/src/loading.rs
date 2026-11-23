@@ -74,6 +74,16 @@ pub struct ClockState {
     pub repeat_sync: bool,
 }
 
+/// A staged edit that can share the active program's render at this boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FutureSwitch {
+    /// Physical loop record in both program regions.
+    pub target: Identity,
+    /// Exclusive render position limit, in frames.
+    pub before: u32,
+}
+
 impl CompositeCut {
     /// Preserve whether the previous render was inside the pass or waiting at its end.
     pub fn restart_previous(old_previous: u64, old_length: u64, length: u64, quantum: u32) -> u64 {
@@ -325,6 +335,37 @@ pub struct Layout {
     previous_wrap_children: Vec<(Identity, Vec<Identity>)>,
     #[cfg_attr(feature = "serde", serde(default))]
     retiring_composite: Option<Identity>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    future_switch: Option<FutureSwitch>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    render_shape: Option<RenderShape>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RenderShape {
+    loops: Vec<Loop>,
+    sync_pass: Vec<Identity>,
+    work_pass: Vec<Operation>,
+    initial_state: Vec<InitialValue>,
+    state_bindings: Vec<StateBinding>,
+    bindings: Vec<LoopBinding>,
+    resources: Resources,
+    jobs_per_quantum: u32,
+}
+
+impl RenderShape {
+    fn of(program: &LogicalStateProgram) -> Self {
+        Self {
+            loops: program.loops.clone(),
+            sync_pass: program.sync_pass.clone(),
+            work_pass: program.work_pass.clone(),
+            initial_state: program.initial_state.clone(),
+            state_bindings: program.state_bindings.clone(),
+            bindings: program.bindings.clone(),
+            resources: program.resources,
+            jobs_per_quantum: program.jobs_per_quantum,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -404,6 +445,9 @@ impl Layout {
     }
     pub fn retiring_composite(&self) -> Option<Identity> {
         self.retiring_composite
+    }
+    pub fn future_switch(&self) -> Option<FutureSwitch> {
+        self.future_switch
     }
     pub fn composite_schedule(&self, logical: Identity) -> Option<&CompositeSchedule> {
         self.composites
@@ -950,6 +994,40 @@ impl Allocator {
             }
             _ => None,
         };
+        let render_shape = (!program.composites.is_empty()).then(|| RenderShape::of(program));
+        // The old sync pass can settle the handoff quantum when the edit
+        // preserves its audible prefix and the work pass uses the same state.
+        let future_switch = old.and_then(|old| {
+            let [(id, cut)] = composite_cuts.as_slice() else {
+                return None;
+            };
+            let before = cut.future_before.filter(|&frame| frame != 0)?;
+            if cut.parent_guards.is_empty()
+                || old.render_shape != render_shape
+                || cut.reconcile_ending
+            {
+                return None;
+            }
+            let old = old.composite_schedule(*id)?;
+            let new = program
+                .composites
+                .iter()
+                .find(|schedule| schedule.id == *id)?;
+            (old.children
+                .iter()
+                .map(|child| child.id)
+                .eq(new.children.iter().map(|child| child.id))
+                && !old
+                    .children
+                    .iter()
+                    .chain(&new.children)
+                    .flat_map(|child| &child.spans)
+                    .any(|span| span.mode == SpanMode::Record))
+            .then_some(FutureSwitch {
+                target: cut.old_slot,
+                before,
+            })
+        });
         let composite_cuts = composite_cuts
             .into_iter()
             .map(|(logical, mut cut)| {
@@ -978,6 +1056,8 @@ impl Allocator {
             composite_cuts,
             previous_wrap_children,
             retiring_composite,
+            future_switch,
+            render_shape,
         };
         layout.relocate(program)?.validate(self.limits)?;
         self.pending = Some(layout.clone());

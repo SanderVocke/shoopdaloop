@@ -14,6 +14,9 @@ module sp_engine #(
     input  wire                                reset,
     input  wire                                start,
     input  wire                                program_changed,
+    input wire future_switch_valid,
+    input wire [43:0] future_switch,
+    output reg future_switch_ready,
     input  wire [31:0]                         instruction_count,
     input wire [31:0] sync_count,
     input  wire [31:0]                         state_count,
@@ -302,7 +305,8 @@ module sp_engine #(
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
             pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
             changed<=0; applied_pulse<=0; sync_fault<=0; sync_frame<=0; midi_prepass<=0; midi_restart<=0; emit_return<=NEXT;
-            run_quantum <= 0; run_program_changed<=0; begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
+            run_quantum <= 0; run_program_changed<=0; future_switch_ready<=0;
+            begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
             opcode <= 0;
             arg0 <= 0;
             arg1 <= 0;
@@ -337,6 +341,7 @@ module sp_engine #(
                 IDLE: if (start) begin
                     busy <= 1;
                     run_program_changed <= program_changed;
+                    future_switch_ready <= 0;
                     pc <= 0; chunk_shift <= shift_for(chunk_frames);
                     error_code <= `SHOOP_SP_OK;
                     queue_bad <= (queued_jobs != 0) || (queue_remaining < job_budget);
@@ -1022,6 +1027,9 @@ module sp_engine #(
                 end
                 SYNC_RENDER: begin
                     position_in_range <= position < length;
+                    if (future_switch_valid && target[11:0] == future_switch[11:0]
+                        && (flags[M+:2]==0 || (flags[M+:2]==1 && position < {32'b0,future_switch[43:12]})))
+                        future_switch_ready <= 1;
                     flags[BC]<=flags[M+:2]==2 && capture_frames==0; flags[PV]<=1;
                     loop_write(RP,position,SYNC_STAMP);
                 end

@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 8,
+  "version": 9,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",

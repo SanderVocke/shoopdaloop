@@ -287,6 +287,7 @@ impl Engine {
         image: &mut PreparedProgram,
         descriptor: SwitchProgram,
         jobs: &mut JobProcessor,
+        resolved: bool,
     ) -> Code {
         if descriptor != image.descriptor || !image.ready() {
             return Code::CannotApply;
@@ -296,7 +297,11 @@ impl Engine {
         {
             return Code::StaleConfiguration;
         }
-        if self.pipeline.switch_image(&mut image.image).is_err() {
+        if self
+            .pipeline
+            .switch_image_at_boundary(&mut image.image, resolved)
+            .is_err()
+        {
             return Code::CannotApply;
         }
         for &logical in image.image.layout.changed_sources() {

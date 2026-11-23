@@ -330,6 +330,10 @@ fn replacing_a_future_nested_branch_checks_its_ancestors_for_transport() {
     edited.spans.to_mut()[1].target = replacement;
     let after = compile_composites(&graph, context, 16).unwrap();
     let second = allocator.stage(&after).unwrap();
+    assert!(
+        second.future_switch().is_none(),
+        "replacing a child changes sync relations"
+    );
     let [cut] = second.composite_cuts() else {
         panic!("expected a cut for only the edited composite");
     };

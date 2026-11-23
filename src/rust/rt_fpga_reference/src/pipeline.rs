@@ -83,6 +83,14 @@ impl Pipeline {
         &mut self,
         image: &mut crate::target::ProgramImage,
     ) -> Result<(), PipelineError> {
+        self.switch_image_at_boundary(image, false)
+    }
+
+    pub(crate) fn switch_image_at_boundary(
+        &mut self,
+        image: &mut crate::target::ProgramImage,
+        resolved: bool,
+    ) -> Result<(), PipelineError> {
         if image.layout.expected != self.revision
             || image.layout.revision <= self.revision
             || (self.revision != 0 && image.layout.region == self.region)
@@ -101,7 +109,14 @@ impl Pipeline {
         }) {
             return Err(PipelineError::State(Error::InvalidState));
         }
-        for cut in image.layout.composite_cuts() {
+        let future = image
+            .layout
+            .future_switch()
+            .filter(|cut| resolved && self.state.permits_future_switch(*cut));
+        if resolved && future.is_none() {
+            return Err(PipelineError::State(Error::InvalidState));
+        }
+        for cut in image.layout.composite_cuts().iter().filter(|_| !resolved) {
             let slot = self
                 .state
                 .loop_state(LoopId {

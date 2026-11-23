@@ -64,6 +64,7 @@ struct Pending {
     header: Header,
     records: Vec<CommandRecord>,
     frame: u64,
+    future: bool,
 }
 struct Owner<'a> {
     sim: Sim<'a>,
@@ -385,34 +386,48 @@ impl Owner<'_> {
         program_lane: bool,
     ) -> Result<bool> {
         commands.begin_callback();
-        if let Some(pending) = &self.pending {
+        if let Some(pending) = self
+            .pending
+            .as_ref()
+            .filter(|p| !p.future || p.program_lane == program_lane)
+        {
             if pending.program_lane != program_lane {
                 return Ok(false);
             }
-            if self.sim.model.get("switch_response_valid") == 0 {
+            let still_armed = pending.future && self.frame == pending.frame;
+            let cancelled =
+                still_armed && self.upload.as_ref().is_some_and(|upload| upload.cancelled);
+            if (still_armed && !cancelled)
+                || (!pending.future && self.sim.model.get("switch_response_valid") == 0)
+            {
                 return Ok(false);
             }
             let pending = self.pending.take().unwrap();
-            ensure!(
-                self.sim.model.get("switch_response_error") == 0,
-                "RTL ownership fence failed"
-            );
-            let group = commands
-                .pop()
-                .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
-            let mut i = 0;
-            group.respond(
-                pending.header.complete(pending.frame, Code::Applied),
-                |_| {
-                    let r = pending.records[i];
-                    i += 1;
-                    r
-                },
-            );
-            self.sim.model.set("switch_response_ready", 1);
-            self.tick()?;
-            self.sim.model.set("switch_response_ready", 0);
-            return Ok(true);
+            if cancelled {
+                self.sim.model.set("switch_valid", 0);
+            }
+            if !pending.future || self.sim.model.get("active_revision") != pending.header.graph() {
+                ensure!(
+                    self.sim.model.get("switch_response_error") == 0,
+                    "RTL ownership fence failed"
+                );
+                let group = commands
+                    .pop()
+                    .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
+                let mut i = 0;
+                group.respond(
+                    pending.header.complete(pending.frame, Code::Applied),
+                    |_| {
+                        let r = pending.records[i];
+                        i += 1;
+                        r
+                    },
+                );
+                if !pending.future {
+                    self.acknowledge_switch()?;
+                }
+                return Ok(true);
+            }
         }
         let Some(group) = commands.pop() else {
             return Ok(false);
@@ -461,8 +476,14 @@ impl Owner<'_> {
         }
         let mut complete = Vec::with_capacity(COMMANDS);
         let mut switching = false;
+        let mut future = false;
         for record in &records {
             let code = if let Command::SwitchProgram(d) = record.command() {
+                let cut = self
+                    .upload
+                    .as_ref()
+                    .filter(|_| records.len() == 1)
+                    .and_then(|upload| upload.upload.image.layout.future_switch());
                 if !self
                     .upload
                     .as_ref()
@@ -471,7 +492,7 @@ impl Owner<'_> {
                     Code::CannotApply
                 } else if self.upload.as_ref().unwrap().cancelled {
                     Code::Cancelled
-                } else if !self.prepare_composite_cuts()? {
+                } else if cut.is_none() && !self.prepare_composite_cuts()? {
                     Code::CannotApply
                 } else {
                     let changed = self
@@ -503,8 +524,15 @@ impl Owner<'_> {
                         ("switch_states", u64::from(d.states)),
                         ("switch_jobs", u64::from(d.jobs)),
                         ("switch_buffers", u64::from(d.buffers)),
+                        (
+                            "switch_future",
+                            cut.map_or(0, |cut| {
+                                u64::from(cut.before) << 12 | u64::from(cut.target.slot)
+                            }),
+                        ),
                     ]);
                     switching = true;
+                    future = cut.is_some();
                     Code::Applied
                 }
             } else {
@@ -523,6 +551,7 @@ impl Owner<'_> {
                 header,
                 records: complete,
                 frame: self.frame,
+                future,
             });
             group.leave_unread();
         } else {
@@ -534,6 +563,13 @@ impl Owner<'_> {
             });
         }
         Ok(true)
+    }
+
+    fn acknowledge_switch(&mut self) -> Result<()> {
+        self.sim.model.set("switch_response_ready", 1);
+        self.tick()?;
+        self.sim.model.set("switch_response_ready", 0);
+        Ok(())
     }
 
     fn retire_refused_upload(&mut self, requested: SwitchProgram) {
@@ -554,6 +590,7 @@ impl Owner<'_> {
             || upload.cancelled
             || !upload.announced
             || descriptor(&upload.upload.image) != switch
+            || upload.upload.image.layout.future_switch().is_some()
         {
             return Ok(false);
         }
@@ -782,12 +819,25 @@ impl Owner<'_> {
         ]);
         let mut accepted_at = None;
         for _ in 0..2_000_000 {
-            if self.pending.is_some() && self.sim.model.get("switch_response_valid") != 0 {
+            if let Some(pending) = self
+                .pending
+                .as_ref()
+                .filter(|_| self.sim.model.get("switch_response_valid") != 0)
+            {
                 self.sim.model.set("run_valid", 0);
-                self.command_turn(execution)?;
-                for _ in 0..128 {
-                    if !self.command_turn(execution)? {
-                        break;
+                if pending.future {
+                    ensure!(
+                        self.sim.model.get("switch_response_error") == 0,
+                        "RTL future switch admission failed"
+                    );
+                    self.sim.model.set("switch_valid", 0);
+                    self.acknowledge_switch()?;
+                } else {
+                    self.command_turn(execution)?;
+                    for _ in 0..128 {
+                        if !self.command_turn(execution)? {
+                            break;
+                        }
                     }
                 }
                 self.sim.model.set("run_valid", 1);
@@ -819,6 +869,7 @@ impl Owner<'_> {
         );
         self.tick()?;
         self.frame += u64::from(self.quantum);
+        self.select()?;
         ensure!(
             self.sim.model.get("sync_frame") == self.frame,
             "RTL logical frame mismatch"

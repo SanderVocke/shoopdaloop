@@ -341,6 +341,21 @@ impl StateProcessor {
             .as_ref()
             .is_some_and(|loops| loops.program_changed)
     }
+    pub(crate) fn permits_future_switch(
+        &self,
+        cut: rt_fpga_compiler::loading::FutureSwitch,
+    ) -> bool {
+        self.loop_state(LoopId {
+            slot: cut.target.slot,
+            generation: cut.target.generation,
+        })
+        .is_ok_and(|slot| {
+            use crate::records::Mode;
+            slot.render.mode == Mode::Stopped
+                || (slot.render.mode == Mode::Playing
+                    && slot.render.position < u64::from(cut.before))
+        })
+    }
     pub fn new(memory: Vec<Value>) -> Self {
         Self {
             memory,
