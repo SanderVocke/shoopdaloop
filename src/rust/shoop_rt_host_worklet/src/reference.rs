@@ -8,7 +8,7 @@ use rt_fpga_reference::{
 };
 use shoop_rt_host_reference::{ProgramLoader, Status};
 use shoop_rt_protocol::{
-    immediate::{Batch, Response, SwitchProgram},
+    immediate::{Batch, Command, Response, SwitchProgram},
     snapshot, ClientMessage, DriverRunState, DriverStatus, EngineMessage, Telemetry,
 };
 use shoop_rt_transport::{
@@ -20,6 +20,7 @@ use std::sync::Arc;
 pub const MAX_IMAGE_BYTES: usize = 1024 * 1024;
 pub trait ImagePort: RecordPort + Clone {
     fn upload(&mut self, bytes: &[u8]) -> Result<(), CarrierError>;
+    fn cancel_image(&mut self, revision: u64) -> Result<(), CarrierError>;
     fn image_ready(&mut self) -> Option<(u64, bool)>;
 }
 pub struct Images<P> {
@@ -58,6 +59,9 @@ impl<P: ImagePort> ProgramLoader for Images<P> {
     fn program_ready(&mut self) -> Option<(u64, bool)> {
         self.port.image_ready()
     }
+    fn cancel_program(&mut self, revision: u64) -> Result<(), CarrierError> {
+        self.port.cancel_image(revision)
+    }
     fn reclaim_programs(&mut self) {}
 }
 pub fn decode_image(bytes: &[u8]) -> Result<Box<PreparedProgram>> {
@@ -73,12 +77,46 @@ pub fn decode_image(bytes: &[u8]) -> Result<Box<PreparedProgram>> {
         .collect();
     PreparedProgram::new(image, unused).map_err(|e| anyhow::anyhow!("worklet image: {e:?}"))
 }
+#[derive(Default)]
+struct ForwardedGroup {
+    inflight: bool,
+    response: Option<Response>,
+}
+
+impl ForwardedGroup {
+    fn service<P: ImagePort>(
+        &mut self,
+        queue: &mut rt::CommandConsumer,
+        remote: &mut ProtocolClient<RecordClient<P>>,
+    ) {
+        queue.begin_callback();
+        if let Some(response) = self.response.take() {
+            let group = queue.pop().expect("forwarded command group");
+            let mut records = response.records().iter().copied();
+            group.respond(response.header, |_| {
+                records.next().expect("forwarded response record")
+            });
+            self.inflight = false;
+        }
+        if !self.inflight && remote.state() == ClientState::Connected {
+            if let Some(group) = queue.pop() {
+                let commands = group.commands().map(|r| r.command()).collect::<Vec<_>>();
+                let mut batch =
+                    Batch::new(group.header.graph(), group.header.topology(), &commands).unwrap();
+                batch.deadline = group.header.deadline();
+                self.inflight = remote.immediate(batch).is_ok();
+                group.leave_unread();
+            }
+        }
+    }
+}
+
 pub struct Endpoint<P: ImagePort> {
     endpoint: shoop_rt_host_reference::Endpoint<Images<P>>,
     execution: rt::Execution,
     remote: ProtocolClient<RecordClient<P>>,
-    inflight: bool,
-    response: Option<Response>,
+    commands: ForwardedGroup,
+    switches: ForwardedGroup,
     snapshot: Vec<u8>,
     sequence: u32,
     offset: usize,
@@ -125,8 +163,8 @@ impl<P: ImagePort> Endpoint<P> {
             endpoint,
             execution,
             remote,
-            inflight: false,
-            response: None,
+            commands: ForwardedGroup::default(),
+            switches: ForwardedGroup::default(),
             snapshot,
             sequence: 0,
             offset: 0,
@@ -145,7 +183,12 @@ impl<P: ImagePort> Endpoint<P> {
                     let _ = self.remote.observe_snapshots(true);
                 }
                 EngineMessage::ImmediateResponse(response) => {
-                    self.response = Some(response);
+                    if matches!(response.records(), [record] if matches!(record.command(), Command::SwitchProgram(_)))
+                    {
+                        self.switches.response = Some(response);
+                    } else {
+                        self.commands.response = Some(response);
+                    }
                 }
                 EngineMessage::Telemetry(Telemetry::Engine {
                     driver,
@@ -196,28 +239,15 @@ impl<P: ImagePort> Endpoint<P> {
                 _ => {}
             }
         }
-        self.execution.commands.begin_callback();
-        if let Some(response) = self.response.take() {
-            if let Some(group) = self.execution.commands.pop() {
-                let mut i = 0;
-                group.respond(response.header, |_| {
-                    let r = response.records()[i];
-                    i += 1;
-                    r
-                });
-                self.inflight = false;
-            }
-        }
-        if !self.inflight && self.remote.state() == ClientState::Connected {
-            if let Some(group) = self.execution.commands.pop() {
-                let commands = group.commands().map(|r| r.command()).collect::<Vec<_>>();
-                let mut batch =
-                    Batch::new(group.header.graph(), group.header.topology(), &commands).unwrap();
-                batch.deadline = group.header.deadline();
-                self.inflight = self.remote.immediate(batch).is_ok();
-                group.leave_unread();
-            }
-        }
+        self.commands
+            .service(&mut self.execution.commands, &mut self.remote);
+        self.switches.service(
+            self.execution
+                .switches
+                .as_mut()
+                .expect("prepared switch lane"),
+            &mut self.remote,
+        );
     }
 }
 impl<P: ImagePort> Carrier for Endpoint<P> {

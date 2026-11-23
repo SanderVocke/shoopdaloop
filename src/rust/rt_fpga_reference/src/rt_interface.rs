@@ -252,144 +252,163 @@ impl Processor {
             }
             let frame = self.engine.pipeline.state().frame();
             let mut switched = false;
-            if base == 0 || self.programs.is_some() {
-                self.ports.commands.begin_callback();
-            }
-            while let Some(group) = self.ports.commands.pop() {
-                if self.pending_switch.is_some() {
-                    if !memory
-                        .completion_fence_ready()
-                        .map_err(PipelineError::Jobs)?
-                    {
-                        group.leave_unread();
-                        break;
-                    }
-                    let pending = self.pending_switch.take().unwrap();
-                    assert_eq!(pending.header, group.header, "pending FIFO barrier");
-                    let mut index = 0;
-                    group.respond(
-                        pending.header.complete(pending.frame, Code::Applied),
-                        |_| {
-                            let r = pending.records[index];
-                            index += 1;
-                            r
-                        },
-                    );
-                    assert_eq!(index, pending.count);
-                    assert!(
-                        self.retired_program.is_none(),
-                        "bounded reclamation storage"
-                    );
-                    self.retired_program = Some(pending.retired);
+            for (lane, commands) in core::iter::once(&mut self.ports.commands)
+                .chain(self.ports.switches.iter_mut())
+                .enumerate()
+            {
+                let program_lane = lane != 0;
+                if base == 0 || self.programs.is_some() {
+                    commands.begin_callback();
+                }
+                if self
+                    .pending_switch
+                    .as_ref()
+                    .is_some_and(|pending| pending.program_lane != program_lane)
+                {
                     continue;
                 }
-                let header = group.header;
-                if fault.is_none()
-                    && self.retired_program.is_some()
-                    && group
-                        .commands()
-                        .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
-                {
-                    group.leave_unread();
-                    break;
-                }
-                let configuration = self.engine.configuration;
-                let count = group.commands().count();
-                let malformed = group.commands().enumerate().any(|(i, r)| {
-                    matches!(r.command(), Command::SwitchProgram(_)) && i + 1 != count
-                });
-                let code = if (header.graph(), header.topology())
-                    != (configuration.graph, configuration.topology)
-                {
-                    Code::StaleConfiguration
-                } else if header.deadline().is_some_and(|limit| frame > limit) {
-                    Code::DeadlineMissed
-                } else if fault.is_some() || malformed {
-                    Code::CannotApply
-                } else {
-                    Code::Applied
-                };
-                if code == Code::Applied && count == 1 {
-                    let command = group.commands().next().unwrap().command();
-                    if let Command::SwitchProgram(descriptor) = command {
-                        if self.next_program.as_ref().is_some_and(|stage| {
-                            stage.descriptor() == descriptor
-                                && stage.ready()
-                                && self.engine.waits_for_composite_cut(stage)
-                        }) {
+                while let Some(group) = commands.pop() {
+                    if self.pending_switch.is_some() {
+                        if !memory
+                            .completion_fence_ready()
+                            .map_err(PipelineError::Jobs)?
+                        {
                             group.leave_unread();
                             break;
                         }
+                        let pending = self.pending_switch.take().unwrap();
+                        assert_eq!(pending.header, group.header, "pending FIFO barrier");
+                        let mut index = 0;
+                        group.respond(
+                            pending.header.complete(pending.frame, Code::Applied),
+                            |_| {
+                                let r = pending.records[index];
+                                index += 1;
+                                r
+                            },
+                        );
+                        assert_eq!(index, pending.count);
+                        assert!(
+                            self.retired_program.is_none(),
+                            "bounded reclamation storage"
+                        );
+                        self.retired_program = Some(pending.retired);
+                        continue;
                     }
-                }
-                let mut records =
-                    [shoop_rt_protocol::immediate::CommandRecord::new(Command::BusMute(0, false));
-                        shoop_rt_protocol::immediate::COMMANDS];
-                let mut retired = None;
-                for (i, record) in group.commands().enumerate() {
-                    let applied = if code != Code::Applied {
-                        code
-                    } else if let Command::SwitchProgram(descriptor) = record.command() {
-                        if let Some(mut image) = self.next_program.take() {
-                            if let Err(error) = memory.begin_completion_fence() {
-                                self.next_program = Some(image);
-                                return Err(PipelineError::Jobs(error));
-                            }
-                            let code = self.engine.switch(&mut image, descriptor, jobs);
-                            if code == Code::Applied {
-                                retired = Some(image);
-                                switched = true;
-                            } else {
-                                self.next_program = Some(image);
-                            }
-                            code
-                        } else {
-                            Code::CannotApply
-                        }
-                    } else {
-                        self.engine.execute(record.command())
-                    };
-                    if applied != Code::Applied {
-                        if let Command::SwitchProgram(descriptor) = record.command() {
-                            if self.retired_program.is_none()
-                                && self
-                                    .next_program
-                                    .as_ref()
-                                    .is_some_and(|image| image.descriptor() == descriptor)
-                            {
-                                self.retired_program = self.next_program.take();
-                            }
-                        }
-                    }
-                    records[i] = record.complete(applied);
-                }
-                if let Some(retired) = retired {
-                    self.pending_switch = Some(loading::PendingSwitch {
-                        header,
-                        frame,
-                        records,
-                        count,
-                        retired,
-                    });
-                    if !memory
-                        .completion_fence_ready()
-                        .map_err(PipelineError::Jobs)?
+                    let header = group.header;
+                    if fault.is_none()
+                        && self.retired_program.is_some()
+                        && group
+                            .commands()
+                            .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
                     {
                         group.leave_unread();
                         break;
                     }
-                    assert!(
-                        self.retired_program.is_none(),
-                        "bounded reclamation storage"
+                    let configuration = self.engine.configuration;
+                    let count = group.commands().count();
+                    let malformed = group.commands().enumerate().any(|(i, r)| {
+                        matches!(r.command(), Command::SwitchProgram(_)) && i + 1 != count
+                    });
+                    let code = if (header.graph(), header.topology())
+                        != (configuration.graph, configuration.topology)
+                    {
+                        Code::StaleConfiguration
+                    } else if header.deadline().is_some_and(|limit| frame > limit) {
+                        Code::DeadlineMissed
+                    } else if fault.is_some() || malformed {
+                        Code::CannotApply
+                    } else {
+                        Code::Applied
+                    };
+                    if code == Code::Applied && count == 1 {
+                        let command = group.commands().next().unwrap().command();
+                        if let Command::SwitchProgram(descriptor) = command {
+                            if self.next_program.as_ref().is_some_and(|stage| {
+                                stage.descriptor() == descriptor
+                                    && stage.ready()
+                                    && self.engine.waits_for_composite_cut(stage)
+                            }) {
+                                group.leave_unread();
+                                break;
+                            }
+                        }
+                    }
+                    let mut records = [shoop_rt_protocol::immediate::CommandRecord::new(
+                        Command::BusMute(0, false),
                     );
-                    self.retired_program = Some(self.pending_switch.take().unwrap().retired);
+                        shoop_rt_protocol::immediate::COMMANDS];
+                    let mut retired = None;
+                    for (i, record) in group.commands().enumerate() {
+                        let applied = if code != Code::Applied {
+                            code
+                        } else if let Command::SwitchProgram(descriptor) = record.command() {
+                            if let Some(mut image) = self.next_program.take() {
+                                let code = if image.descriptor() == descriptor && image.cancelled {
+                                    Code::Cancelled
+                                } else {
+                                    if let Err(error) = memory.begin_completion_fence() {
+                                        self.next_program = Some(image);
+                                        return Err(PipelineError::Jobs(error));
+                                    }
+                                    self.engine.switch(&mut image, descriptor, jobs)
+                                };
+                                if code == Code::Applied {
+                                    retired = Some(image);
+                                    switched = true;
+                                } else {
+                                    self.next_program = Some(image);
+                                }
+                                code
+                            } else {
+                                Code::CannotApply
+                            }
+                        } else {
+                            self.engine.execute(record.command())
+                        };
+                        if applied != Code::Applied {
+                            if let Command::SwitchProgram(descriptor) = record.command() {
+                                if self.retired_program.is_none()
+                                    && self
+                                        .next_program
+                                        .as_ref()
+                                        .is_some_and(|image| image.descriptor() == descriptor)
+                                {
+                                    self.retired_program = self.next_program.take();
+                                }
+                            }
+                        }
+                        records[i] = record.complete(applied);
+                    }
+                    if let Some(retired) = retired {
+                        self.pending_switch = Some(loading::PendingSwitch {
+                            program_lane,
+                            header,
+                            frame,
+                            records,
+                            count,
+                            retired,
+                        });
+                        if !memory
+                            .completion_fence_ready()
+                            .map_err(PipelineError::Jobs)?
+                        {
+                            group.leave_unread();
+                            break;
+                        }
+                        assert!(
+                            self.retired_program.is_none(),
+                            "bounded reclamation storage"
+                        );
+                        self.retired_program = Some(self.pending_switch.take().unwrap().retired);
+                    }
+                    let mut index = 0;
+                    group.respond(header.complete(frame, code), |_| {
+                        let r = records[index];
+                        index += 1;
+                        r
+                    });
                 }
-                let mut index = 0;
-                group.respond(header.complete(frame, code), |_| {
-                    let r = records[index];
-                    index += 1;
-                    r
-                });
             }
             if let Some(error) = fault {
                 return Err(error);
@@ -654,6 +673,9 @@ impl Observer for Publication<'_> {
             }
             if let Some(composite) = state.composite_status(row.binding.id) {
                 let pending = self.staged.and_then(|staged| {
+                    if staged.cancelled {
+                        return None;
+                    }
                     let id = row.binding.public_id;
                     staged
                         .image

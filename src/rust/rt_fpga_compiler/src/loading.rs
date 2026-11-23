@@ -48,20 +48,25 @@ pub struct CompositeCut {
     pub old_slot: Identity,
     pub require_empty: bool,
     pub allow_restart: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub restart_source: Option<Identity>,
     pub future_before: Option<u32>,
 }
 
 impl CompositeCut {
-    pub fn allows_playing(self, position: u64, length: u64) -> bool {
-        (self.allow_restart && length != 0 && position == length)
+    pub fn allows_playing(self, position: u64, length: u64, restart_ready: bool) -> bool {
+        (self.allow_restart && restart_ready && length != 0 && position == length)
             || (position < length
                 && self
                     .future_before
                     .is_some_and(|frame| position < u64::from(frame)))
     }
 
-    pub fn waits_for_restart(self, position: u64, length: u64) -> bool {
-        self.allow_restart && position < length && !self.allows_playing(position, length)
+    pub fn waits_for_restart(self, position: u64, length: u64, restart_ready: bool) -> bool {
+        self.allow_restart
+            && length != 0
+            && position <= length
+            && !self.allows_playing(position, length, restart_ready)
     }
 }
 
@@ -412,8 +417,32 @@ impl Allocator {
                         .iter()
                         .chain(&program.composites)
                         .any(|s| s.children.iter().any(|child| child.id == row.logical));
+                    let external_source = row.sync_source.filter(|source| *source != row.logical);
+                    let restart_source = external_source.and_then(|source| {
+                        let old_source = old.loops.iter().find(|loop_| loop_.logical == source)?;
+                        let new_source = program.loops.iter().find(|loop_| loop_.id == source)?;
+                        let independent_clock = old_source
+                            .sync_source
+                            .is_none_or(|id| id == source)
+                            && new_source.sync_source == old_source.sync_source
+                            && !old
+                                .composites
+                                .iter()
+                                .chain(&program.composites)
+                                .any(|schedule| {
+                                    schedule.id == source
+                                        || schedule.children.iter().any(|child| child.id == source)
+                                });
+                        independent_clock.then_some(old_source.physical)
+                    });
+                    let same_source = program
+                        .loops
+                        .iter()
+                        .any(|l| l.id == row.logical && l.sync_source == row.sync_source);
                     let allow_restart = changed_composites.contains(&row.logical)
                         && independent
+                        && same_source
+                        && (external_source.is_none() || restart_source.is_some())
                         && continuing.is_some_and(|(before, after)| {
                             let tail = |s: &CompositeSchedule| -> Vec<Identity> {
                                 s.children
@@ -424,20 +453,11 @@ impl Allocator {
                                     .map(|child| child.id)
                                     .collect()
                             };
-                            !before.explicit
-                                && row.sync_source.is_none()
-                                && program
-                                    .loops
-                                    .iter()
-                                    .any(|l| l.id == row.logical && l.sync_source.is_none())
-                                && tail(before) == tail(after)
+                            !before.explicit && tail(before) == tail(after)
                         });
                     let future_before = if changed_composites.contains(&row.logical)
                         && independent
-                        && program
-                            .loops
-                            .iter()
-                            .any(|l| l.id == row.logical && l.sync_source == row.sync_source)
+                        && same_source
                     {
                         continuing.and_then(|(before, after)| before.future_edit_before(after))
                     } else {
@@ -447,6 +467,7 @@ impl Allocator {
                         old_slot: row.physical,
                         require_empty: before.is_none(),
                         allow_restart,
+                        restart_source,
                         future_before,
                     });
                 }

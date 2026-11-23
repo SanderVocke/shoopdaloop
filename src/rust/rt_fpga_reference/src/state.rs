@@ -314,6 +314,24 @@ impl StateProcessor {
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
     }
+    pub(crate) fn composite_restart_ready(
+        &self,
+        cut: rt_fpga_compiler::loading::CompositeCut,
+        slot: &LoopSlot,
+    ) -> bool {
+        !slot.state.repeat_sync
+            || cut.restart_source.is_none_or(|source| {
+                self.loop_state(LoopId {
+                    slot: source.slot,
+                    generation: source.generation,
+                })
+                .is_ok_and(|clock| {
+                    clock.planned.iter().all(Option::is_none)
+                        && (clock.state.mode != crate::transitions::Mode::Playing
+                            || clock.state.at_end())
+                })
+            })
+    }
     pub fn composite_status(&self, id: LoopId) -> Option<CompositeStatus> {
         let loops = self.loops.as_ref()?;
         let clock = loops

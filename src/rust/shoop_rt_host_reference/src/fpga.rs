@@ -10,17 +10,23 @@ use rt_fpga_rtl::{
     target::{ProgramImage, RtlTarget},
 };
 use shoop_rt_protocol::immediate::SwitchProgram;
+use shoop_rt_transport::carrier::CarrierError;
+
+pub enum UploadRequest {
+    Stage(Upload),
+    Cancel(u64),
+}
 
 pub struct Images {
     limits: ProgramLimits,
     chunk_frames: u32,
-    uploads: rtrb::Producer<Upload>,
+    uploads: rtrb::Producer<UploadRequest>,
     ready: rtrb::Consumer<(u64, bool)>,
     retired: rtrb::Consumer<ProgramImage>,
 }
 
 pub struct ImageOwner {
-    pub uploads: rtrb::Consumer<Upload>,
+    pub uploads: rtrb::Consumer<UploadRequest>,
     pub ready: rtrb::Producer<(u64, bool)>,
     pub retired: rtrb::Producer<ProgramImage>,
 }
@@ -68,13 +74,22 @@ impl ProgramLoader for Images {
         .build_image(logical, layout)?;
         let descriptor = descriptor(&image);
         self.uploads
-            .push(Upload::new(image, self.limits.instructions))
+            .push(UploadRequest::Stage(Upload::new(
+                image,
+                self.limits.instructions,
+            )))
             .map_err(|_| anyhow::anyhow!("RTL upload queue is full"))?;
         Ok(descriptor)
     }
 
     fn program_ready(&mut self) -> Option<(u64, bool)> {
         self.ready.pop().ok()
+    }
+
+    fn cancel_program(&mut self, revision: u64) -> Result<(), CarrierError> {
+        self.uploads
+            .push(UploadRequest::Cancel(revision))
+            .map_err(|_| CarrierError::Full)
     }
 
     fn reclaim_programs(&mut self) {

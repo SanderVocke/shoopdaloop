@@ -11,8 +11,10 @@ addresses. Logical identity numbers do not consume physical address space;
 logical compilation checks counts and target resource budgets, and allocation
 checks the simultaneous old/new occupancy. Application track and loop tables grow
 with the draft; they do not impose an extra graph-size profile. Graph descriptions
-may span bounded command groups, and only ActivateGraph publishes a complete
-upload. A refusal names the exhausted resource and preserves current ownership.
+may span bounded command groups. `ActivateGraph` finishes a layout upload.
+`ActivateCompositeGraph` finishes an edit and attaches a key the application
+can use to cancel that edit. A capacity refusal names the exhausted resource
+and preserves current ownership.
 Retained identities must keep compatible state roles. Revisions and
 slot generations use checked increments. Cancellation burns their identifiers;
 it cannot make an old image current again.
@@ -34,10 +36,10 @@ RAM values are never copied from compiler defaults or snapshots. Sync source,
 scratch destination and history operands are encoded in instructions. History
 allocation therefore survives a changed scratch layout.
 
-ARM holds the union of old and new allocations after publication. Only a fenced
-completion permits `Allocator::complete`; publication prevents cancellation and
-further staging. Before publication the caller must finish upload transactions
-before cancelling. The APIs assume one trusted loader owner. Raw component RAM
+ARM holds the union of old and new allocations until the renderer answers.
+An applied switch needs a completion fence before `Allocator::complete`.
+A cancelled or refused switch releases the pending allocations after the
+renderer retires the proposed image. The APIs assume one trusted loader owner. Raw component RAM
 access remains available for explicit test fixtures and is not hardware isolation.
 
 ## Rust real-time path
@@ -47,26 +49,37 @@ clock alive across graph changes. Complete `GraphView` snapshots, including unsu
 stop at the ARM endpoint:
 compilation and allocation run there, outside processing. Typed bound artifacts
 cross a bounded program-memory handoff. Unused media views are prepared
-incrementally. The execution side reports readiness before ARM publishes a switch
-through the ordinary command FIFO.
+incrementally. The prepared hosts use a bounded, single-request switch queue
+alongside the ordinary command FIFO. The switch can wait for an eligible
+restart while playback commands continue through that FIFO.
 
-At each quantum boundary, complete command groups execute in FIFO order. A
-switch changes the program, plan metadata, run parameters, control bindings and
+`CancelCompositeGraph` identifies an edit by its key and base revision. It
+passes through the image upload channel, which also reaches the renderer
+while the switch waits. When the renderer receives cancellation before the
+switch, it retires the image and reports a cancelled activation. A switch
+that already took effect reports its applied revision and frame.
+An admitted switch also settles if the application connection closes. The
+loader uses the result to settle program ownership. After reconnecting, the
+client can read the current revision through its usual snapshot subscription.
+
+At each quantum boundary, complete command groups execute in FIFO order within
+each queue. A switch changes the program, plan metadata, run parameters, control bindings and
 revision without replacing the persistent state pool. Public application loop
 identities translate to the committed physical bindings. Continuing gains and
 snapshot metadata move with the instance, rather than a temporary binding index.
 
 The header names the expected old revision; the small `SwitchProgram` record
 contains the next revision, instruction region and instruction/sync/state/job/
-buffer counts. RT protocol version 39 includes complete semantic graph uploads and resource/feature-specific graph refusals.
+buffer counts. The RT protocol includes complete graph uploads and
+resource-specific and feature-specific refusals.
 The FPGA profile uses
 the same monotonic value for graph and topology. Old-revision commands following
 a switch receive `StaleConfiguration`, including commands to retained loops.
 
-When a sync source changes, the host orders an explicit clear-plans command
-before the switch in the same group. No old sync pass interleaves those commands.
-Ordinary command failure has no rollback guarantee. Ownership follows the actual
-switch result, even if another command in its group fails.
+When a sync source changes, the host clears plans tied to the old source at the
+switching boundary. Ordinary command failure has no rollback guarantee.
+Ownership follows the actual switch result, even if another command in its group
+fails.
 
 Retirement waits for `Memory::completion_fence_ready`. New Rust processing and
 snapshots can continue while the completion is delayed, but the old allocation
@@ -80,8 +93,8 @@ destroying its program storage during processing or returning a false completion
 `RtBackend` maintains an editable prepared graph and a committed runtime revision.
 Structural mutations alter the prepared graph. The application service commits
 one complete operation (including its default connections) automatically, and
-tracks its completion through the ownership fence. Later application commands
-wait behind a pending switch. Lower-level clients can still stage mutations and
+tracks its completion through the ownership fence. Later structural changes
+wait for the pending switch. Lower-level clients can still stage mutations and
 request explicit activation. Immediate runtime commands use committed identities
 and revisions. Failed preparation restores the last committed control-side mirror,
 retaining monotonically allocated identities and slot generations; it does not
@@ -120,20 +133,13 @@ acknowledging. It conservatively holds the next quantum during that fence.
 Completion remains asserted until accepted, while new processing may resume once
 the fence itself is complete. Memory faults never become successful handoffs.
 
-The Marlin ARM upload agent consumes the target's sparse image and drives normal
-RAM transactions, including during execution. Its switch bridge consumes the
-existing internal command FIFO and returns the existing response records. A
-switch group remains unread with its response credit reserved until the RTL
-completion arrives. Loading and carrier polling do not advance the simulation
-clock; the driver chooses when a quantum boundary exists.
-
-This change extends the Marlin component/runtime loading integration, not the
-application host backend. The Marlin switch bridge currently accepts singleton
-`SwitchProgram` groups; other runtime commands and mixed command/switch groups
-are refused. Existing component fixtures can still directly supply initial
-plans. A complete RTL immediate-command/snapshot frontend and a Marlin-backed
-`shoop_host` remain separate work. The Rust host supports the full command-group
-loading path, including explicit plan clearing.
+The Marlin and board upload agents consume the target's sparse image and drive
+normal RAM transactions during execution. They use the dedicated switch queue
+alongside the ordinary control queue. A switch group remains unread with its
+response credit reserved until RTL reports completion. The hosts read the
+same loop words for composite version and playhead snapshots. In simulation,
+loading and carrier polling leave the simulation clock under the driver's control.
+Component test fixtures can also supply initial plans directly.
 
 ## Tests and limits
 

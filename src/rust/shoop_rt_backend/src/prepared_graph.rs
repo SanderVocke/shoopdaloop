@@ -147,7 +147,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut count = 0;
         while let Some(pending) = self.requests.outgoing.pop_front() {
             let graph = self.prepared_graph.as_mut().unwrap();
-            if graph.pending.is_some() {
+            let transport = transport_command(&pending.request, &self.mirror);
+            let live_edit_controls = self
+                .capabilities
+                .contains(shoop_rt_protocol::Capabilities::CANCEL_PREPARED_COMPOSITES)
+                && matches!(graph.pending, Some(PendingGraph::Composite(_)))
+                && transport.is_some()
+                && graph.active;
+            if graph.pending.is_some() && !live_edit_controls {
                 self.requests.outgoing.push_front(pending);
                 break;
             }
@@ -202,9 +209,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 _ => false,
             };
-            if let Some(command) = transport_command(&pending.request, &self.mirror)
-                .filter(|_| graph.active && !draft_repeat)
-            {
+            if let Some(command) = transport.filter(|_| graph.active && !draft_repeat) {
                 // The shared immediate ring replies in order. Drain older UI
                 // groups before sending a tracked command with the same payload.
                 if graph.transport.is_some() || graph.ui_immediate_in_flight != 0 {
@@ -355,8 +360,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     pub(crate) fn submit_composite_image(&mut self, sequence: u64, image: &Mirror) -> Result<()> {
         let graph = self.prepared_graph.as_ref().unwrap();
-        let outgoing =
-            shoop_rt_protocol::graph::upload(image, self.limits().quantum, graph.revision)?;
+        let quantum = self.limits().quantum;
+        let outgoing = if self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::CANCEL_PREPARED_COMPOSITES)
+        {
+            shoop_rt_protocol::graph::upload_composite(image, quantum, graph.revision, sequence)?
+        } else {
+            shoop_rt_protocol::graph::upload(image, quantum, graph.revision)?
+        };
         self.queue_prepared_image(outgoing, PendingGraph::Composite(sequence));
         Ok(())
     }
@@ -373,6 +385,35 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return true;
         }
         false
+    }
+
+    pub(crate) fn send_prepared_composite_cancel(
+        &mut self,
+        sequence: u64,
+    ) -> Result<bool, shoop_rt_transport::client::ClientError> {
+        use shoop_rt_transport::client::ClientError;
+        let graph = self.prepared_graph.as_ref().unwrap();
+        if !self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::CANCEL_PREPARED_COMPOSITES)
+            || !matches!(graph.pending, Some(PendingGraph::Composite(s)) if s == sequence)
+        {
+            return Ok(false);
+        }
+        let batch = Batch::new(
+            graph.revision,
+            graph.revision,
+            &[Command::CancelCompositeGraph(sequence)],
+        )
+        .unwrap();
+        match self.client.immediate(batch) {
+            Ok(()) => Ok(true),
+            Err(
+                ClientError::Busy
+                | ClientError::Carrier(shoop_rt_transport::carrier::CarrierError::Full),
+            ) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     fn queue_prepared_image(&mut self, outgoing: Vec<Batch>, pending: PendingGraph) {
@@ -447,11 +488,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
         }
-        if !response
+        let activation = response
             .records()
             .iter()
-            .any(|r| r.command() == Command::ActivateGraph)
-        {
+            .map(|r| r.command())
+            .find(|command| {
+                matches!(
+                    command,
+                    Command::ActivateGraph | Command::ActivateCompositeGraph(_)
+                )
+            });
+        let Some(activation) = activation else {
             if let Some(graph) = &mut self.prepared_graph {
                 if response.records().iter().all(|r| {
                     !matches!(
@@ -460,16 +507,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Command::ConfigureLoop(_)
                             | Command::BeginGraphImage { .. }
                             | Command::GraphImageData { .. }
+                            | Command::CancelCompositeGraph(_)
                     )
                 }) {
                     graph.ui_immediate_in_flight = graph.ui_immediate_in_flight.saturating_sub(1);
                 }
             }
             return;
-        }
+        };
         let Some(graph) = &mut self.prepared_graph else {
             return;
         };
+        if let Command::ActivateCompositeGraph(key) = activation {
+            if !matches!(graph.pending, Some(PendingGraph::Composite(sequence)) if key == sequence)
+            {
+                return;
+            }
+        }
         let Some(pending) = graph.pending.take() else {
             return;
         };
@@ -510,6 +564,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .push(BackendMutationCompletion { sequence, result });
             }
             PendingGraph::Composite(sequence) => {
+                let result = result.map_err(|error| {
+                    if response.header.code() == Code::Cancelled {
+                        shoop_backend::BackendCompositeOutcome::Cancelled
+                    } else {
+                        shoop_backend::BackendCompositeOutcome::Refused(error)
+                    }
+                });
                 self.prepared_composite_answer(sequence, result, response.header.frame());
             }
             PendingGraph::Edit(pending) => {

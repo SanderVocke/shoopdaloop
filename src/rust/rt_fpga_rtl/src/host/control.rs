@@ -5,7 +5,10 @@ use crate::{
     bits::Bits,
     target::{COMPOSITE_LOOP, ProgramImage},
 };
-use rt_fpga_compiler::Identity;
+use rt_fpga_compiler::{
+    Identity,
+    loading::{CompositeCut, Layout},
+};
 use rt_fpga_reference::{
     fixed::Fixed,
     state::{
@@ -16,7 +19,7 @@ use rt_fpga_reference::{
 };
 pub use session::{ActiveProgram, FencedSwitch, ProgramSession};
 use shoop_rt_protocol::{
-    LoopMode,
+    LoopMode, LoopSlotId, SlotId, Telemetry,
     immediate::{
         ClearPlanned, Code, IterationTransition, PlannedTransition, SwitchProgram, TransitionMode,
         TransitionPlan,
@@ -84,31 +87,68 @@ pub fn loop_state(id: Identity, words: &[u64; 16], last_pulse: Option<u64>) -> L
     }
 }
 
-pub fn composite_cut_ready(
-    cut: rt_fpga_compiler::loading::CompositeCut,
+pub fn composite_telemetry(
+    id: Identity,
+    frame: u64,
+    position: u64,
     words: &[u64; 16],
-) -> bool {
-    let mode = (words[0] >> 33) & 3;
-    composite_cut_state_valid(cut, words)
-        && (mode == 0 || (mode == 1 && cut.allows_playing(words[2], words[3])))
-        && (!cut.require_empty || words[3] == 0)
+    active: &Layout,
+    staged: Option<(&Layout, bool)>,
+) -> Option<Telemetry> {
+    let composite = active.composite_schedule(id)?;
+    let pending = staged
+        .and_then(|(layout, _)| layout.composite_schedule(id))
+        .filter(|plan| plan.version != composite.version);
+    let state = loop_state(id, words, None);
+    let unit = u64::from(composite.unit_frames);
+    Some(Telemetry::Composite {
+        loop_id: LoopSlotId(SlotId::new(id.slot, id.generation)),
+        frame,
+        mode: protocol_mode(state.mode),
+        position,
+        length: state.content_length,
+        active_version: composite.version,
+        pending_version: pending.map(|plan| plan.version),
+        pending_admitted: pending.is_some() && staged.is_some_and(|(_, ready)| ready),
+        iteration: (position / unit).min((state.content_length / unit).saturating_sub(1)),
+        passes: state.cycles,
+        waiting_repeat: words[1] & (1 << 42) != 0,
+    })
 }
 
-pub fn composite_cut_waits_for_restart(
-    cut: rt_fpga_compiler::loading::CompositeCut,
-    words: &[u64; 16],
-) -> bool {
-    composite_cut_state_valid(cut, words)
-        && (words[0] >> 33) & 3 == 1
-        && cut.waits_for_restart(words[2], words[3])
+pub fn composite_cut_source(cut: CompositeCut, words: &[u64; 16]) -> Option<Identity> {
+    cut.restart_source.filter(|_| {
+        cut.allow_restart
+            && words[0] & (1 << 35) != 0
+            && loop_state(cut.old_slot, words, None).at_end()
+    })
 }
 
-fn composite_cut_state_valid(
-    cut: rt_fpga_compiler::loading::CompositeCut,
+pub fn composite_cut_status(
+    cut: CompositeCut,
     words: &[u64; 16],
-) -> bool {
+    source_words: Option<&[u64; 16]>,
+) -> Code {
+    if !cut_loop_valid(cut.old_slot, words) || (cut.require_empty && words[3] != 0) {
+        return Code::CannotApply;
+    }
+    let restart_ready = composite_cut_source(cut, words).is_none_or(|source| {
+        source_words.is_some_and(|words| {
+            let clock = loop_state(source, words, None);
+            cut_loop_valid(source, words) && (clock.mode != Mode::Playing || clock.at_end())
+        })
+    });
+    match (words[0] >> 33) & 3 {
+        0 => Code::Applied,
+        1 if cut.allows_playing(words[2], words[3], restart_ready) => Code::Applied,
+        1 if cut.waits_for_restart(words[2], words[3], restart_ready) => Code::Scheduled,
+        _ => Code::CannotApply,
+    }
+}
+
+fn cut_loop_valid(slot: Identity, words: &[u64; 16]) -> bool {
     words[0] & 1 != 0
-        && (words[0] >> 1) as u32 == cut.old_slot.generation
+        && (words[0] >> 1) as u32 == slot.generation
         && words[1] & ((1 << 32) | (1 << 37)) == 0
 }
 

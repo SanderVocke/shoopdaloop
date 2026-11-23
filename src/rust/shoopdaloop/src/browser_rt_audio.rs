@@ -236,6 +236,15 @@ mod platform {
                 .and_then(|_| self.target.post_message(&message))
                 .map_err(|_| CarrierError::Disconnected)
         }
+        fn cancel_image(&mut self, revision: u64) -> Result<(), CarrierError> {
+            let message = Object::new();
+            Reflect::set(&message, &"kind".into(), &"cancel-image".into())
+                .and_then(|_| {
+                    Reflect::set(&message, &"revision".into(), &revision.to_string().into())
+                })
+                .and_then(|_| self.target.post_message(&message))
+                .map_err(|_| CarrierError::Disconnected)
+        }
         fn image_ready(&mut self) -> Option<(u64, bool)> {
             self.images.borrow_mut().pop_front()
         }

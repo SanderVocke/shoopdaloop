@@ -11,6 +11,7 @@ pub struct PreparedProgram {
     prepared: usize,
     error: Option<Error>,
     ready_sent: bool,
+    pub(super) cancelled: bool,
 }
 impl PreparedProgram {
     pub fn new(image: ProgramImage, unused_views: Vec<ViewId>) -> Result<Box<Self>, Error> {
@@ -64,13 +65,14 @@ impl PreparedProgram {
             prepared: 0,
             error: None,
             ready_sent: false,
+            cancelled: false,
         }))
     }
     pub fn descriptor(&self) -> SwitchProgram {
         self.descriptor
     }
     pub(super) fn ready(&self) -> bool {
-        self.ready_sent && self.error.is_none()
+        self.ready_sent && self.error.is_none() && !self.cancelled
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -81,6 +83,7 @@ pub struct ProgramReady {
 enum Request {
     Stage(Box<PreparedProgram>),
     Discard(u64),
+    Cancel(u64),
 }
 pub struct ProgramControl {
     upload: rtrb::Producer<Request>,
@@ -121,6 +124,9 @@ impl ProgramControl {
     pub fn discard(&mut self, revision: u64) -> bool {
         self.upload.push(Request::Discard(revision)).is_ok()
     }
+    pub fn cancel(&mut self, revision: u64) -> bool {
+        self.upload.push(Request::Cancel(revision)).is_ok()
+    }
     pub fn ready(&mut self) -> Option<ProgramReady> {
         self.ready.pop().ok()
     }
@@ -129,6 +135,7 @@ impl ProgramControl {
     }
 }
 pub(super) struct PendingSwitch {
+    pub program_lane: bool,
     pub header: Header,
     pub frame: u64,
     pub records: [CommandRecord; COMMANDS],
@@ -186,18 +193,27 @@ impl Processor {
                         self.retired_program = self.next_program.take();
                     }
                 }
+                Request::Cancel(revision) => {
+                    if let Some(image) = self
+                        .next_program
+                        .as_mut()
+                        .filter(|image| image.descriptor.revision == revision)
+                    {
+                        image.cancelled = true;
+                    }
+                }
             }
         }
         if let Some(image) = &mut self.next_program {
             if !image.ready_sent {
-                if image.prepared < image.views.len() && image.error.is_none() {
+                if !image.cancelled && image.prepared < image.views.len() && image.error.is_none() {
                     match memory.prepare_unused_view(image.views[image.prepared]) {
                         Ok(true) => image.prepared += 1,
                         Ok(false) => {}
                         Err(error) => image.error = Some(error),
                     }
                 }
-                if image.error.is_some() || image.prepared == image.views.len() {
+                if image.cancelled || image.error.is_some() || image.prepared == image.views.len() {
                     let ready = ProgramReady {
                         revision: image.descriptor.revision,
                         result: image.error.map_or(Ok(()), Err),
@@ -221,8 +237,8 @@ impl Engine {
         let [cut] = image.image.layout.composite_cuts() else {
             return false;
         };
-        self.pipeline
-            .state()
+        let state = self.pipeline.state();
+        state
             .loop_state(LoopId {
                 slot: cut.old_slot.slot,
                 generation: cut.old_slot.generation,
@@ -230,7 +246,11 @@ impl Engine {
             .is_ok_and(|slot| {
                 slot.state.mode == Mode::Playing
                     && slot.planned.iter().all(Option::is_none)
-                    && cut.waits_for_restart(slot.state.position, slot.state.content_length)
+                    && cut.waits_for_restart(
+                        slot.state.position,
+                        slot.state.content_length,
+                        state.composite_restart_ready(*cut, slot),
+                    )
             })
     }
 
@@ -240,7 +260,7 @@ impl Engine {
         descriptor: SwitchProgram,
         jobs: &mut JobProcessor,
     ) -> Code {
-        if descriptor != image.descriptor || !image.ready_sent || image.error.is_some() {
+        if descriptor != image.descriptor || !image.ready() {
             return Code::CannotApply;
         }
         if image.image.layout.expected != self.configuration.graph

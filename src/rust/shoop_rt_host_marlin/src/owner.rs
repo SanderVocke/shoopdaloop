@@ -1,6 +1,6 @@
 use super::bridge::{Block, Shared};
 use anyhow::{ensure, Result};
-use rt_fpga_compiler::{Identity, ProgramLimits};
+use rt_fpga_compiler::{loading::CompositeCut, Identity, ProgramLimits};
 use rt_fpga_reference::{
     fixed::Fixed,
     transitions::{LoopId, Mode},
@@ -8,15 +8,17 @@ use rt_fpga_reference::{
 use rt_fpga_rtl::{
     bits::Bits,
     host::control::{
-        apply_iteration, apply_plan, clear_plan, descriptor, gain_value, loop_plan, loop_state,
-        protocol_mode, reference_mode, set_repeat_sync,
+        apply_iteration, apply_plan, clear_plan, composite_telemetry, descriptor, gain_value,
+        loop_plan, loop_state, protocol_mode, reference_mode, set_repeat_sync,
     },
     host::{Upload, UploadStep},
     pipeline::{design, Geometry},
     sim::Sim,
     target::{ProgramImage, Space},
 };
-use shoop_rt_host_reference::{program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS};
+use shoop_rt_host_reference::{
+    fpga::UploadRequest, program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS,
+};
 use shoop_rt_protocol::{
     codec,
     immediate::{Code, Command, CommandRecord, Header, SwitchProgram, TransitionMode, COMMANDS},
@@ -36,6 +38,7 @@ struct StagedUpload {
     upload: Upload,
     done: bool,
     announced: bool,
+    cancelled: bool,
 }
 impl StagedUpload {
     fn new(upload: Upload) -> Self {
@@ -43,6 +46,7 @@ impl StagedUpload {
             upload,
             done: false,
             announced: false,
+            cancelled: false,
         }
     }
 }
@@ -56,6 +60,7 @@ struct Row {
     last_pulse: Option<u64>,
 }
 struct Pending {
+    program_lane: bool,
     header: Header,
     records: Vec<CommandRecord>,
     frame: u64,
@@ -183,7 +188,7 @@ impl Owner<'_> {
             self.upload = Some(upload);
             return Ok(false);
         }
-        if !upload.done {
+        if !upload.done && !upload.cancelled {
             for _ in 0..32 {
                 match upload.upload.next_step() {
                     Some(UploadStep::Configure(w)) => {
@@ -205,7 +210,7 @@ impl Owner<'_> {
                 }
             }
         }
-        if upload.done {
+        if upload.done || upload.cancelled {
             if ready
                 .push((upload.upload.image.layout.revision, true))
                 .is_ok()
@@ -359,8 +364,23 @@ impl Owner<'_> {
         }
     }
     fn command_turn(&mut self, execution: &mut rt::Execution) -> Result<bool> {
-        execution.commands.begin_callback();
-        if self.pending.is_some() {
+        let mut progress = self.command_lane(&mut execution.commands, false)?;
+        if let Some(switches) = &mut execution.switches {
+            progress |= self.command_lane(switches, true)?;
+        }
+        Ok(progress)
+    }
+
+    fn command_lane(
+        &mut self,
+        commands: &mut rt::CommandConsumer,
+        program_lane: bool,
+    ) -> Result<bool> {
+        commands.begin_callback();
+        if let Some(pending) = &self.pending {
+            if pending.program_lane != program_lane {
+                return Ok(false);
+            }
             if self.sim.model.get("switch_response_valid") == 0 {
                 return Ok(false);
             }
@@ -369,8 +389,7 @@ impl Owner<'_> {
                 self.sim.model.get("switch_response_error") == 0,
                 "RTL ownership fence failed"
             );
-            let group = execution
-                .commands
+            let group = commands
                 .pop()
                 .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
             let mut i = 0;
@@ -387,7 +406,7 @@ impl Owner<'_> {
             self.sim.model.set("switch_response_ready", 0);
             return Ok(true);
         }
-        let Some(group) = execution.commands.pop() else {
+        let Some(group) = commands.pop() else {
             return Ok(false);
         };
         let header = group.header;
@@ -436,13 +455,14 @@ impl Owner<'_> {
         let mut switching = false;
         for record in &records {
             let code = if let Command::SwitchProgram(d) = record.command() {
-                if self.retired.is_some()
-                    || !self
-                        .upload
-                        .as_ref()
-                        .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
+                if !self
+                    .upload
+                    .as_ref()
+                    .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
                 {
                     Code::CannotApply
+                } else if self.upload.as_ref().unwrap().cancelled {
+                    Code::Cancelled
                 } else if !self.composite_cuts_ready()? {
                     Code::CannotApply
                 } else {
@@ -491,6 +511,7 @@ impl Owner<'_> {
         }
         if switching {
             self.pending = Some(Pending {
+                program_lane,
                 header,
                 records: complete,
                 frame: self.frame,
@@ -521,7 +542,10 @@ impl Owner<'_> {
         let Some(upload) = self.upload.as_ref() else {
             return Ok(false);
         };
-        if self.retired.is_some() || !upload.announced || descriptor(&upload.upload.image) != switch
+        if self.retired.is_some()
+            || upload.cancelled
+            || !upload.announced
+            || descriptor(&upload.upload.image) != switch
         {
             return Ok(false);
         }
@@ -532,9 +556,18 @@ impl Owner<'_> {
         if !cut.allow_restart {
             return Ok(false);
         }
+        Ok(self.composite_cut_status(cut)? == Code::Scheduled)
+    }
+
+    fn composite_cut_status(&mut self, cut: CompositeCut) -> Result<Code> {
         let words = self.loop_words(cut.old_slot)?;
-        Ok(rt_fpga_rtl::host::control::composite_cut_waits_for_restart(
-            cut, &words,
+        let source = rt_fpga_rtl::host::control::composite_cut_source(cut, &words)
+            .map(|id| self.loop_words(id))
+            .transpose()?;
+        Ok(rt_fpga_rtl::host::control::composite_cut_status(
+            cut,
+            &words,
+            source.as_ref(),
         ))
     }
 
@@ -549,8 +582,7 @@ impl Owner<'_> {
             .composite_cuts()
             .to_vec();
         for cut in cuts {
-            let words = self.loop_words(cut.old_slot)?;
-            if !rt_fpga_rtl::host::control::composite_cut_ready(cut, &words) {
+            if self.composite_cut_status(cut)? != Code::Applied {
                 return Ok(false);
             }
         }
@@ -642,37 +674,23 @@ impl Owner<'_> {
                     .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
                 records += 1;
             }
-            if let Some(composite) = self
-                .current
+            let staged = self
+                .upload
                 .as_ref()
-                .unwrap()
-                .layout
-                .composite_schedule(row.id)
-            {
-                let pending = self
-                    .upload
-                    .as_ref()
-                    .and_then(|staged| staged.upload.image.layout.composite_schedule(row.id))
-                    .filter(|plan| plan.version != composite.version);
-                let playhead = if processed { words[8] } else { state.position };
-                let unit = u64::from(composite.unit_frames);
-                let record = Record::Telemetry(Telemetry::Composite {
-                    loop_id: id,
-                    frame,
-                    mode: protocol_mode(state.mode),
-                    position: playhead,
-                    length: state.content_length,
-                    active_version: composite.version,
-                    pending_version: pending.map(|plan| plan.version),
-                    pending_admitted: pending.is_some()
-                        && self.upload.as_ref().is_some_and(|staged| staged.announced),
-                    iteration: (playhead / unit)
-                        .min((state.content_length / unit).saturating_sub(1)),
-                    passes: state.cycles,
-                    waiting_repeat: words[1] & (1 << 42) != 0,
-                });
-                position += codec::encode_snapshot(&record, &mut bytes[position..])
-                    .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
+                .filter(|staged| !staged.cancelled)
+                .map(|staged| (&staged.upload.image.layout, staged.announced));
+            let playhead = if processed { words[8] } else { state.position };
+            if let Some(composite) = composite_telemetry(
+                row.id,
+                frame,
+                playhead,
+                &words,
+                &self.current.as_ref().unwrap().layout,
+                staged,
+            ) {
+                position +=
+                    codec::encode_snapshot(&Record::Telemetry(composite), &mut bytes[position..])
+                        .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
                 records += 1;
             }
             if processed {
@@ -813,7 +831,7 @@ pub(super) fn run(
     memory_mb: u32,
     shared: &Shared,
     mut execution: rt::Execution,
-    mut uploads: rtrb::Consumer<Upload>,
+    mut uploads: rtrb::Consumer<UploadRequest>,
     mut ready: rtrb::Producer<(u64, bool)>,
     mut retired: rtrb::Producer<ProgramImage>,
     mut requests: rtrb::Consumer<Block>,
@@ -904,11 +922,23 @@ pub(super) fn run(
                 work = true;
             }
         }
-        if owner.upload.is_none() {
-            if let Ok(upload) = uploads.pop() {
-                owner.upload = Some(StagedUpload::new(upload));
-                work = true;
+        if let Ok(request) = uploads.pop() {
+            match request {
+                UploadRequest::Stage(upload) => {
+                    ensure!(owner.upload.is_none(), "one staged program");
+                    owner.upload = Some(StagedUpload::new(upload));
+                }
+                UploadRequest::Cancel(revision) => {
+                    if let Some(upload) = owner
+                        .upload
+                        .as_mut()
+                        .filter(|u| u.upload.image.layout.revision == revision)
+                    {
+                        upload.cancelled = true;
+                    }
+                }
             }
+            work = true;
         }
         work |= owner.upload_turn(&mut ready)?;
         work |= owner.command_turn(&mut execution)?;

@@ -21,6 +21,29 @@ pub fn upload(
     quantum: u32,
     revision: u64,
 ) -> Result<Vec<Batch>, UploadError> {
+    upload_image(view, quantum, revision, Command::ActivateGraph)
+}
+
+pub fn upload_composite(
+    view: &impl GraphView,
+    quantum: u32,
+    revision: u64,
+    edit: u64,
+) -> Result<Vec<Batch>, UploadError> {
+    upload_image(
+        view,
+        quantum,
+        revision,
+        Command::ActivateCompositeGraph(edit),
+    )
+}
+
+fn upload_image(
+    view: &impl GraphView,
+    quantum: u32,
+    revision: u64,
+    activation: Command,
+) -> Result<Vec<Batch>, UploadError> {
     let bytes = Graph::capture(view)
         .encode()
         .map_err(|_| UploadError::Encode)?;
@@ -39,7 +62,7 @@ pub fn upload(
             bytes,
         });
     }
-    commands.push(Command::ActivateGraph);
+    commands.push(activation);
     Ok(commands
         .chunks(COMMANDS)
         .map(|c| Batch::new(revision, revision, c).unwrap())

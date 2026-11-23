@@ -624,8 +624,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             match job.phase {
                 Phase::Confirming => {}
                 Phase::Commit => {
-                    if job.cancel.is_some() && self.cancel_composite_upload(job.sequence) {
-                        terminal = job.cancel.take();
+                    if job.cancel.is_some() && !job.cancel_sent {
+                        if self.cancel_composite_upload(job.sequence) {
+                            terminal = job.cancel.take();
+                        } else {
+                            match self.send_prepared_composite_cancel(job.sequence) {
+                                Ok(sent) => job.cancel_sent = sent,
+                                Err(error) => {
+                                    self.composites.jobs.push_front(job);
+                                    self.lose(alloc::format!(
+                                        "composite cancellation submission failed: {error:?}"
+                                    ));
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {
@@ -768,7 +781,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn prepared_composite_answer(
         &mut self,
         sequence: u64,
-        result: Result<(), alloc::string::String>,
+        result: Result<(), BackendCompositeOutcome>,
         frame: u64,
     ) {
         let Some(mut job) = self.composites.jobs.pop_front() else {
@@ -784,7 +797,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 job.phase = Phase::Confirming;
                 self.composites.jobs.push_front(job);
             }
-            Err(error) => self.finish_composite(job, BackendCompositeOutcome::Refused(error)),
+            Err(outcome) => {
+                let outcome = if outcome == BackendCompositeOutcome::Cancelled {
+                    job.cancel.take().unwrap_or(outcome)
+                } else {
+                    outcome
+                };
+                self.finish_composite(job, outcome);
+            }
         }
     }
 

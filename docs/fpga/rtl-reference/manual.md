@@ -189,7 +189,9 @@ can apply the action at the new position even if the playhead stays inside
 the same span. For Play, SP uses the distance from the start of the span to
 position the child.
 
-Drums can have its own sync source. A command scheduled directly on Drums
+Drums still emits sync pulses when it starts or wraps. Other loops can use
+those pulses even while Arrangement controls Drums. Drums can also have its
+own sync source. A command scheduled directly on Drums
 for a particular frame can take precedence when it comes due. If several
 parents request a change at the same boundary, SP takes the first in the
 compiled order. One-pass (explicit) programs come before repeating (regular)
@@ -225,12 +227,16 @@ recording can start. See the admission rule under
   has taken over and the state snapshot shows that version. If a primitive
   begins recording before conversion takes over, the handoff refuses the
   conversion and the primitive keeps its take.
-- **Editing during playback.** The Rust and Marlin hosts can apply compatible
+- **Editing during playback.** The prepared hosts can apply compatible
   future changes, such as adding another child later in the current pass.
   They can also wait for the restart of an independent repeating loop with
-  compatible timing. Other changes require the affected composite loops to
-  stop. A proposal can be cancelled before the application sends its activation
-  command.
+  compatible timing. When that loop is holding at the end of a pass for an
+  independent primitive clock, the edit can take effect on the clock's wrap
+  pulse. Other changes require the affected composite loops to stop.
+  Ordinary playback controls can run while an edit waits for a restart.
+  Cancelling an edit that still waits leaves the active version in place. If
+  the edit reaches the handoff first, the application reports the version that
+  took over.
 
 ## How the render state reaches JP
 

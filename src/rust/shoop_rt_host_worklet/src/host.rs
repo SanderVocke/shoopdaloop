@@ -360,6 +360,17 @@ impl WorkletHost {
             .ready()
             .map(|r| (r.revision, r.result.is_ok()))
     }
+    #[cfg(feature = "fpga-reference")]
+    pub fn cancel_reference_image(&mut self, revision: u64) -> Result<(), rt_runtime::Error> {
+        let programs = self
+            .programs
+            .as_mut()
+            .ok_or(rt_runtime::Error::InvalidConfig)?;
+        programs
+            .cancel(revision)
+            .then_some(())
+            .ok_or(rt_runtime::Error::Full)
+    }
     pub fn set_profiling_clock(&mut self, clock: rt_runtime::profiling::Clock) {
         match &mut self.render {
             RenderOwner::Native(render) => render.set_profiling_clock(clock),

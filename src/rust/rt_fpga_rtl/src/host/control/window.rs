@@ -62,10 +62,21 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         &mut self,
         cut: rt_fpga_compiler::loading::CompositeCut,
     ) -> Result<bool, Error<B::Error>> {
-        Ok(self
-            .read_loop(cut.old_slot)?
-            .1
-            .is_some_and(|words| super::composite_cut_ready(cut, &words)))
+        Ok(self.composite_cut_status(cut)? == Code::Applied)
+    }
+
+    pub fn composite_cut_status(
+        &mut self,
+        cut: rt_fpga_compiler::loading::CompositeCut,
+    ) -> Result<Code, Error<B::Error>> {
+        let (_, Some(words)) = self.read_loop(cut.old_slot)? else {
+            return Ok(Code::CannotApply);
+        };
+        let source = match super::composite_cut_source(cut, &words) {
+            Some(id) => self.read_loop(id)?.1,
+            None => None,
+        };
+        Ok(super::composite_cut_status(cut, &words, source.as_ref()))
     }
 
     pub fn apply_transition(

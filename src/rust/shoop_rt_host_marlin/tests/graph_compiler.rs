@@ -576,6 +576,120 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
     future_composite_child(rtl.endpoint, rtl.renderer);
 }
 
+fn edit_at_clock_restart<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops.truncate(2);
+    graph.loops[1].gain = 0.;
+    let mut parent = graph.loops[0].clone();
+    parent.id = id(120);
+    parent.strip = None;
+    parent.sync_source = Some(id(101));
+    parent.repeat_sync = true;
+    parent.composite = Some(CompositeView {
+        kind: CompositeKind::Regular,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: 16,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![CompositeSpan {
+            target: id(100),
+            start: 0,
+            end: 16,
+            occurrence_start: 0,
+            ordinal: 0,
+            mode: LoopMode::Playing,
+        }]
+        .into(),
+    });
+    graph.loops.push(parent);
+    upload(&mut client, &mut renderer, &graph, 0);
+    let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
+    let record = [
+        transition(100, TransitionMode::Recording),
+        transition(101, TransitionMode::Recording),
+    ];
+    client
+        .immediate(Batch::new(1, 1, &record).unwrap())
+        .unwrap();
+    let capture_start = response(&mut client, &mut renderer);
+    for (slot, ticks) in [(100, 4), (101, 96)] {
+        for _ in 0..ticks {
+            assert_eq!(step(&mut renderer), [0., 0.]);
+        }
+        client
+            .immediate(Batch::new(1, 1, &[transition(slot, TransitionMode::Stopped)]).unwrap())
+            .unwrap();
+        // The clock’s capture length is fixed when its Stop takes effect.
+        if slot == 100 {
+            response(&mut client, &mut renderer);
+        }
+    }
+    let clock_length = response(&mut client, &mut renderer) - capture_start;
+    let play = [
+        transition(101, TransitionMode::Playing),
+        transition(120, TransitionMode::Playing),
+    ];
+    client.immediate(Batch::new(1, 1, &play).unwrap()).unwrap();
+    let started = response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.125, 0.125]);
+    for _ in 0..20 {
+        step(&mut renderer);
+    }
+    assert_eq!(step(&mut renderer), [0., 0.]);
+
+    let edit = graph.loops[2].composite.as_mut().unwrap();
+    edit.version = 2;
+    edit.spans.to_mut()[0].start = 4;
+    edit.spans.to_mut()[0].occurrence_start = 4;
+    let key = 41;
+    let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, key).unwrap();
+    for (index, batch) in batches.iter().enumerate() {
+        client.immediate(*batch).unwrap();
+        if index + 1 < batches.len() {
+            response(&mut client, &mut renderer);
+        }
+    }
+    for _ in 0..8 {
+        assert_eq!(step(&mut renderer), [0., 0.]);
+        while let Some(message) = client.poll() {
+            assert!(
+                !matches!(message, EngineMessage::ImmediateResponse(_)),
+                "edit answered before the clock pulse"
+            );
+        }
+    }
+    assert_eq!(response(&mut client, &mut renderer), started + clock_length);
+    let cancel = Command::CancelCompositeGraph(key);
+    client
+        .immediate(Batch::new(2, 2, &[cancel]).unwrap())
+        .unwrap();
+    assert_eq!(
+        wait_response(&mut client, &mut renderer).header.code(),
+        Code::TargetUnavailable
+    );
+    assert_eq!(step(&mut renderer), [0., 0.]);
+    assert!((0..8).any(|_| step(&mut renderer) == [0.125, 0.125]));
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    edit_at_clock_restart(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    edit_at_clock_restart(rtl.endpoint, rtl.renderer);
+}
+
 #[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
 fn prepared_conversion_fences_an_old_generation_and_preserves_its_take() {
     let driver = DriverStatus {

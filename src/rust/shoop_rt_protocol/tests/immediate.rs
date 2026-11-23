@@ -63,11 +63,24 @@ fn prepared_graph_records_roundtrip_and_reject_reserved_bits() {
             },
         ),
         Command::LoopRepeatSync(LoopSlotId(SlotId::new(9, 4)), true),
+        Command::ActivateCompositeGraph(0x03d6_149b_8c47_ae25),
+        Command::CancelCompositeGraph(0x03d6_149b_8c47_ae25),
     ];
     let message = ClientMessage::Immediate(Batch::new(0, 0, &commands).unwrap());
     let mut bytes = [0; MAX_RECORD_BYTES];
     let length = codec::encode_client(&message, &mut bytes).unwrap();
     assert_eq!(codec::decode_client(&bytes[..length]), Ok(message));
+    assert!(!Command::CancelCompositeGraph(0).valid());
+    let cancelled = CommandRecord::new(commands[5]).complete(Code::Cancelled);
+    let response = EngineMessage::ImmediateResponse(
+        Response::new(
+            Header::new(1, 1, None).complete(640, Code::Cancelled),
+            &[cancelled],
+        )
+        .unwrap(),
+    );
+    let length = codec::encode_engine(&response, &mut bytes).unwrap();
+    assert_eq!(codec::decode_engine(&bytes[..length]), Ok(response));
     for command in commands {
         assert!(command.valid());
         let record = CommandRecord::new(command);

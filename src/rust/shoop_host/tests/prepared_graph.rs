@@ -30,9 +30,9 @@ fn composite_layout(
 ) {
     use rt_runtime::buffer::{AudioBlock, MidiBlock};
     use shoop_backend::{
-        Backend, BackendCompositeKind, BackendCompositeOutcome, BackendCompositeSpan,
-        BackendCompositeTarget, BackendLoopMode, BackendPortRole, BackendPreparedCompositePlan,
-        DirectTrackRequest,
+        Backend, BackendCompositeKind, BackendCompositeOutcome, BackendCompositePending,
+        BackendCompositeSpan, BackendCompositeTarget, BackendLoopMode, BackendPortRole,
+        BackendPreparedCompositePlan, DirectTrackRequest,
     };
     use shoop_rt_backend::{NoWait, RtBackend};
     use shoop_rt_transport::{
@@ -183,11 +183,11 @@ fn composite_layout(
     let mut repeat = plan;
     repeat.kind = BackendCompositeKind::Regular;
     repeat.entries = 1;
-    repeat.iterations = 4;
+    repeat.iterations = 64;
     repeat.spans = vec![BackendCompositeSpan {
         target: BackendCompositeTarget::Loop(*child),
         start: 0,
-        end: 4,
+        end: 64,
         occurrence_start: 0,
         ordinal: 0,
         mode: BackendLoopMode::Playing,
@@ -205,6 +205,70 @@ fn composite_layout(
         .unwrap();
     wait(&mut backend, &|s| {
         s.composites[&parent].mode == BackendLoopMode::Playing
+    });
+    let mut edit = repeat.clone();
+    edit.spans[0].start = 8;
+    edit.spans[0].occurrence_start = 8;
+    for supersede in [false, true] {
+        let candidate = backend
+            .configure_prepared_composite_loop(parent, &edit)
+            .unwrap();
+        wait(&mut backend, &|s| {
+            s.composites[&parent].pending_plan_version == Some(candidate)
+                && s.composites[&parent].pending_stage
+                    == Some(BackendCompositePending::AwaitingRestart)
+        });
+        backend.set_loop_repeat_sync(*child, !supersede).unwrap();
+        let control_sequence = backend.mutation_cursor();
+        let active = wait(&mut backend, &|s| {
+            s.mutation_completions
+                .iter()
+                .any(|receipt| receipt.sequence == control_sequence)
+        });
+        assert!(active
+            .mutation_completions
+            .iter()
+            .any(|receipt| { receipt.sequence == control_sequence && receipt.result.is_ok() }));
+        assert_eq!(
+            active.composites[&parent].pending_plan_version,
+            Some(candidate)
+        );
+        assert_eq!(active.loops[child].repeat_sync, !supersede);
+        let expected = if supersede {
+            backend
+                .configure_prepared_composite_loop(parent, &repeat)
+                .unwrap();
+            BackendCompositeOutcome::Superseded
+        } else {
+            backend.cancel_composite_plan(parent, candidate).unwrap();
+            BackendCompositeOutcome::Cancelled
+        };
+        let cancel_sequence = backend.mutation_cursor();
+        let cancelled = wait(&mut backend, &|s| {
+            s.composite_receipts
+                .iter()
+                .any(|receipt| receipt.version == candidate)
+        });
+        assert_eq!(
+            cancelled
+                .composite_receipts
+                .iter()
+                .find(|receipt| receipt.version == candidate)
+                .unwrap()
+                .outcome,
+            expected,
+        );
+        assert_eq!(cancelled.composites[&parent].active_plan_version, updated);
+        assert_eq!(cancelled.loops[child].mode, BackendLoopMode::Playing);
+        if !supersede {
+            assert!(cancelled
+                .mutation_completions
+                .iter()
+                .any(|receipt| { receipt.sequence == cancel_sequence && receipt.result.is_ok() }));
+        }
+    }
+    wait(&mut backend, &|s| {
+        s.composites[&parent].active_plan_version > updated
     });
     backend
         .transition_composite_loop(parent, BackendLoopMode::Stopped, Some(1), None)

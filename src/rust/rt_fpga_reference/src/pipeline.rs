@@ -110,7 +110,11 @@ impl Pipeline {
                 .map_err(PipelineError::Transition)?;
             let ready = (slot.state.mode == Mode::Stopped && !slot.render.plays())
                 || (slot.state.mode == Mode::Playing
-                    && cut.allows_playing(slot.state.position, slot.state.content_length));
+                    && cut.allows_playing(
+                        slot.state.position,
+                        slot.state.content_length,
+                        self.state.composite_restart_ready(*cut, slot),
+                    ));
             if !ready
                 || slot.planned.iter().any(Option::is_some)
                 || (cut.require_empty && slot.state.content_length != 0)
