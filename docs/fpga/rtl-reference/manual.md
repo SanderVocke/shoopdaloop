@@ -134,37 +134,88 @@ boundaries.
 
 ## Composite audio loops
 
-A composite loop holds a playhead and a schedule of actions for its children.
-The children own their audio and use the ordinary playback and capture jobs.
-The compiler lowers each scheduled action to a span with an inclusive start
-and exclusive end, in frames relative to the parent's pass. Program RAM holds
-one 96-bit header per parent-child relationship and one row per span. A parent
-with 64 one-span children therefore uses 128 schedule rows in addition to the
-loop visits. The tables share the instruction budget and the active and staged
-program regions, with all schedule reads served by on-chip program RAM.
+A composite loop keeps a playhead and tells other loops when to act. Suppose
+the composite **Arrangement** controls an ordinary audio loop called **Drums**.
+Arrangement is the parent and Drums is its child. Drums holds the recorded
+audio. A child can also be a composite with children of its own.
 
-The sync prefix visits parents and sync sources before their dependents. At
-each visit, SP looks at each parent's previous and current render positions to
-find span entries, exits and seeks. An eligible absolute plan for the child can
-take precedence. Among due actions from different parents, the first wins in
-compiled order, with explicit programs before regular programs and logical
-loop identity breaking ties. A child can still have its own sync source. SP
-saves the settled child render state for the existing work pass. A nested seek
-uses the offset into the active span and the same adder used for loop timing.
+A **span** says what one child should do over one stretch of the parent's
+timeline. It lists a start frame, an end frame and an action. Frame numbers
+are measured from the start of the parent's pass. In the example below,
+Arrangement runs for one pass. The Record span starts at frame 0 and ends
+at frame 64, so Drums records frames 0–63. At frame 64, the Play span begins
+and Drums plays the new take during frames 64–127. The two spans make up the
+schedule for Drums.
 
-| Behaviour | Supported subset |
-| --- | --- |
-| Playback | Regular repeating programs, including empty programs, and explicit one-pass programs. Nested playback and seek run at quantum boundaries, and explicit programs stop at the end of their pass. |
-| Actions | Regular spans play children. Explicit spans can Play, Stop or Record. Record targets primitive Direct audio loops with prepared, distinct writable media views. |
-| Timing and capacity | Composite units occupy whole quanta. Unit and total pass length fit in 32-bit frame counts. Each child can have up to eight parents, and each parent-child relationship can have up to 32 spans. The whole schedule must fit the program region. The combined parent and sync dependencies must be acyclic apart from ordinary self-sync. |
-| Host control | The prepared Rust and Marlin hosts accept composite graph images and immediate start/stop. Low-level plans handle seek and scheduling. The application composite editor and iteration controls are outside this profile. |
-| Media and modes outside the profile | Authored MIDI and Replace or dry/wet modes are outside the composite graph profile. The core's primitive MIDI support is described in the MIDI chapters. |
+![Arrangement’s two spans for Drums, shown on the timeline and in program RAM. At frame 64 the schedule tells Drums to switch from Record to Play.](figures/composite-spans.svg)
 
-For example, a one-pass program can record a child during `[0, 2Q)` and play
-it during `[2Q, 8Q)`. At `2Q` the settled state exposes the completed take to
-the ordinary playback jobs. The audio store supplies capture credits so SP
-can check capacity before starting the take. See the audio media chapter for
-the admission rule and Appendix A for the instruction and RAM layout.
+### How the schedule is stored
+
+A **schedule row** is one 96-bit word in the same on-chip program RAM that
+holds the SP instructions. The compiler puts the rows for Drums immediately
+after the `ProcessCompositeChild` instruction that visits Drums. The
+instruction says three rows follow. The first is a **parent header** that
+identifies Arrangement and says it has two spans for Drums. The next two
+rows each hold one span's start frame, end frame and action. If several
+parents schedule the same child, each parent has its own header followed by
+its spans. Appendix A gives the exact bit layout.
+
+For example, if one parent schedules a single Play span for each of 64 child
+loops, each child needs one header row and one span row. That is 128 schedule
+rows in addition to the instructions that visit the loops. These rows share
+the existing program RAM budget in each program region.
+
+### How the state processor picks an action
+
+With a quantum of 32 frames, here's what happens when Arrangement reaches
+frame 64.
+
+1. **Update the parent first.** The compiler orders parents and sync sources
+   ahead of the loops that depend on them. Arrangement's loop record now
+   shows that its playhead was at frame 32 in the previous quantum and is at
+   frame 64 in this one.
+2. **Find both positions in the schedule.** When SP reaches the instruction
+   for Drums, it uses the header to find Arrangement's loop record. It reads
+   the span rows in start-frame order. A row matches if the position is at
+   or after its start and before its end. Frame 32 matches Record. Frame 64
+   matches Play.
+3. **Apply the change.** SP switches Drums from Record to Play so the usual
+   audio playback jobs can use the completed take. SP then skips the schedule
+   rows to continue with the next instruction. At the following quantum,
+   both positions match Play, so Drums keeps playing.
+
+A parent that leaves a span and enters a gap asks the child to stop. A seek
+can apply the action at the new position even if the playhead stays inside
+the same span. For Play, SP uses the distance from the start of the span to
+position the child.
+
+Drums can have its own sync source. A command scheduled directly on Drums
+for a particular frame can take precedence when it comes due. If several
+parents request a change at the same boundary, SP takes the first in the
+compiled order. One-pass (explicit) programs come before repeating (regular)
+programs. Loop IDs break ties.
+
+SP uses the audio store's capacity report to decide whether a scheduled
+recording can start. See the admission rule under
+[Views, allocation and reclamation](#views-allocation-and-reclamation).
+
+### Supported behaviour
+
+- **Playback.** Regular programs repeat and can be empty. Explicit programs
+  stop after one pass. Nested playback and seek run at quantum boundaries.
+- **Actions.** Regular spans play children. Explicit spans can Play, Stop or
+  Record. Record targets ordinary Direct audio loops with separate writable
+  media views. Authored MIDI, Replace and dry/wet modes are outside this
+  composite profile.
+- **Timing.** Each composite unit is a whole number of quanta. The unit and
+  the full pass each fit in a 32-bit frame count. A loop can sync to itself.
+  Parent and sync links between different loops must be free of cycles.
+- **Capacity.** A child can have up to eight parents. Each parent can schedule
+  up to 32 spans for that child. The whole schedule must fit the program region.
+- **Host controls.** The prepared Rust and Marlin hosts accept composite graph
+  images and immediate start and stop commands. Low-level plans handle seek
+  and scheduling. The application composite editor and iteration controls are
+  outside this profile.
 
 ## How the render state reaches JP
 
