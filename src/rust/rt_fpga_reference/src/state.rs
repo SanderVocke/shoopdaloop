@@ -374,7 +374,7 @@ impl StateProcessor {
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
     }
-    pub(crate) fn composite_restart_ready(
+    pub(crate) fn composite_playback_ready(
         &self,
         cut: &rt_fpga_compiler::loading::CompositeCut,
         slot: &LoopSlot,
@@ -384,39 +384,44 @@ impl StateProcessor {
         let Some(loops) = self.loops.as_ref() else {
             return false;
         };
-        cut.restart_ready(slot.state.repeat_sync, slot.state.at_end(), |source| {
-            let id = LoopId {
-                slot: source.slot,
-                generation: source.generation,
-            };
-            let clock = loops.slot(id).ok().filter(|clock| {
-                !clock.planned.iter().flatten().any(|plan| {
-                    (clock.mode_plan || plan.effective <= loops.frame)
-                        && (!plan.on_pulse || plan.remaining_ticks == 0)
-                })
-            });
-            Ok::<_, core::convert::Infallible>(clock.map(|clock| {
-                let kind = loops
-                    .plan
-                    .composite_clocks
-                    .get(id.slot as usize)
-                    .copied()
-                    .flatten()
-                    .map(|clock| {
-                        if clock.explicit {
-                            CompositeKind::Explicit
-                        } else {
-                            CompositeKind::Regular
-                        }
-                    });
-                ClockState {
-                    kind,
-                    playing: clock.state.mode == crate::transitions::Mode::Playing,
-                    at_end: clock.state.at_end(),
-                    repeat_sync: clock.state.repeat_sync,
-                }
-            }))
-        })
+        cut.playback_ready(
+            slot.state.position,
+            slot.state.content_length,
+            slot.state.repeat_sync,
+            |source| {
+                let id = LoopId {
+                    slot: source.slot,
+                    generation: source.generation,
+                };
+                let clock = loops.slot(id).ok().filter(|clock| {
+                    !clock.planned.iter().flatten().any(|plan| {
+                        (clock.mode_plan || plan.effective <= loops.frame)
+                            && (!plan.on_pulse || plan.remaining_ticks == 0)
+                    })
+                });
+                Ok::<_, core::convert::Infallible>(clock.map(|clock| {
+                    let kind = loops
+                        .plan
+                        .composite_clocks
+                        .get(id.slot as usize)
+                        .copied()
+                        .flatten()
+                        .map(|clock| {
+                            if clock.explicit {
+                                CompositeKind::Explicit
+                            } else {
+                                CompositeKind::Regular
+                            }
+                        });
+                    ClockState {
+                        kind,
+                        playing: clock.state.mode == crate::transitions::Mode::Playing,
+                        at_end: clock.state.at_end(),
+                        repeat_sync: clock.state.repeat_sync,
+                    }
+                }))
+            },
+        )
         .unwrap()
     }
     pub fn composite_status(&self, id: LoopId) -> Option<CompositeStatus> {

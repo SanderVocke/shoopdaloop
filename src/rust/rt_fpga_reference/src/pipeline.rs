@@ -114,7 +114,7 @@ impl Pipeline {
                     && cut.allows_playing(
                         slot.state.position,
                         slot.state.content_length,
-                        self.state.composite_restart_ready(cut, slot),
+                        self.state.composite_playback_ready(cut, slot),
                         slot.composite_wait,
                     ));
             let transport_before_switch = slot.planned.iter().any(Option::is_some)

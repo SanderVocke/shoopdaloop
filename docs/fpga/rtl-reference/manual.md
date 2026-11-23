@@ -233,11 +233,12 @@ recording can start. See the admission rule under
 - **Editing during playback.** The prepared hosts can apply compatible
   future changes, such as adding another child later in the current pass.
   A parent can keep playing while an edit changes a later part of a nested
-  composite. The nested composite keeps its timing, sync source, and links
-  to other composites for that early handoff. An edit to a single nested
-  composite can also wait until the child stops, either by finishing its own
-  run or when its parent releases it. Unchanged parents keep playing and use
-  the new plan the next time they start the child.
+  composite, including which child composite plays there. For this early
+  handoff, the edited composite keeps its timing and sync source, and the
+  first change is beyond the current and next iteration. An edit to a single
+  nested composite can also wait until the child stops, either by finishing
+  its own run or when its parent releases it. Unchanged parents keep playing
+  and use the new plan the next time they start the child.
   A repeating child can also pick up a compatible edit at its own restart
   while its parents keep playing. An ancestor command that could change the
   child's entry point makes the edit wait for a safe boundary.
@@ -249,7 +250,7 @@ recording can start. See the admission rule under
   playing with what should play next. Continuing children keep their place.
   The edit can drop a child from the schedule while leaving the loop and its
   audio in the session. A child still playing at the end of the old pass needs
-  one extra program row so SP can stop it. If the row cannot fit, a wait for an
+  one extra program row so SP can stop it. If the row cannot fit, a wait for a
   sync clock can give the old schedule time to release its children. The
   clock can be a primitive, a composite, or a chain of loops that sync to
   one another. The chain keeps the same links and schedules during the edit,

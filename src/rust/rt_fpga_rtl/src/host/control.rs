@@ -133,12 +133,18 @@ pub fn composite_cut_status<E>(
             Code::CannotApply
         });
     }
-    let restart_ready = cut.restart_ready(state.repeat_sync, state.at_end(), read_clock)?;
+    let ready = state.mode != Mode::Playing
+        || cut.playback_ready(
+            state.position,
+            state.content_length,
+            state.repeat_sync,
+            read_clock,
+        )?;
     let waited = words[1] & (1 << 42) != 0;
     Ok(match (words[0] >> 33) & 3 {
         0 => Code::Applied,
-        1 if cut.allows_playing(words[2], words[3], restart_ready, waited) => Code::Applied,
-        1 if cut.waits_for_boundary(words[2], words[3], restart_ready, waited) => Code::Scheduled,
+        1 if cut.allows_playing(words[2], words[3], ready, waited) => Code::Applied,
+        1 if cut.waits_for_boundary(words[2], words[3], ready, waited) => Code::Scheduled,
         _ => Code::CannotApply,
     })
 }

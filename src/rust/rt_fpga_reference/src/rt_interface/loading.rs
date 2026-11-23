@@ -276,7 +276,7 @@ impl Engine {
                     && cut.waits_for_boundary(
                         slot.state.position,
                         slot.state.content_length,
-                        state.composite_restart_ready(cut, slot),
+                        state.composite_playback_ready(cut, slot),
                         slot.composite_wait,
                     )
             })

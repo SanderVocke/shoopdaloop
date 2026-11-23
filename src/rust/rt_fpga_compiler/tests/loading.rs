@@ -274,3 +274,63 @@ fn a_dropped_child_at_wrap_uses_one_optional_instruction_row() {
         );
     }
 }
+
+#[shoop_test]
+fn replacing_a_future_nested_branch_checks_its_ancestors_for_transport() {
+    use composite::timing_loop;
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, Graph};
+
+    let mut graph = Graph {
+        loops: vec![
+            timing_loop(1, 0, &[]),
+            timing_loop(2, 0, &[]),
+            timing_loop(3, 2, &[(2, 0, 2)]),
+            timing_loop(4, 2, &[(2, 0, 2)]),
+            timing_loop(5, 8, &[(1, 0, 8), (3, 6, 8)]),
+            timing_loop(6, 8, &[(5, 0, 8)]),
+            timing_loop(7, 8, &[(6, 0, 8)]),
+        ],
+        ..Default::default()
+    };
+    let context = CompileContext {
+        quantum: 16,
+        limits: ProgramLimits {
+            loop_slots: 8,
+            ..limits()
+        },
+    };
+    let before = compile_composites(&graph, context, 16).unwrap();
+    let mut allocator = Allocator::new(context.limits);
+    let first = allocator.stage(&before).unwrap();
+    allocator.publish(first.revision).unwrap();
+    allocator.complete(first.revision).unwrap();
+    let replacement = graph.loops[3].id;
+    let edited = graph.loops[4].composite.as_mut().unwrap();
+    edited.version += 1;
+    edited.spans.to_mut()[1].target = replacement;
+    let after = compile_composites(&graph, context, 16).unwrap();
+    let second = allocator.stage(&after).unwrap();
+    let [cut] = second.composite_cuts() else {
+        panic!("expected a cut for only the edited composite");
+    };
+    assert_eq!(cut.future_before, Some(80));
+    let parent = first.loop_id(graph.loops[5].id).unwrap();
+    let grandparent = first.loop_id(graph.loops[6].id).unwrap();
+    assert_eq!(cut.parent_guards, [parent, grandparent]);
+
+    let ready = |pending| {
+        cut.playback_ready(16, 128, false, |id| {
+            Ok::<_, ()>((pending != Some(id)).then_some(ClockState {
+                kind: Some(CompositeKind::Regular),
+                playing: true,
+                at_end: false,
+                repeat_sync: false,
+            }))
+        })
+        .unwrap()
+    };
+    assert!(cut.allows_playing(16, 128, ready(None), false));
+    for ancestor in [parent, grandparent] {
+        assert!(cut.waits_for_boundary(16, 128, ready(Some(ancestor)), false));
+    }
+}

@@ -500,13 +500,20 @@ fn composite_conversion<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     assert_eq!(step(&mut renderer), [0.125, 0.125]);
 }
 
-fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, nested: bool) {
+fn future_composite_child<E: Endpoint>(
+    endpoint: E,
+    mut renderer: impl Renderer,
+    nested: bool,
+    replace_branch: bool,
+) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     client.connect().unwrap();
     while client.poll().is_some() {}
     let mut graph = stereo_graph();
-    graph.loops.truncate(2);
+    if !replace_branch {
+        graph.loops.truncate(2);
+    }
     let mut parent = graph.loops[0].clone();
     parent.id = id(120);
     parent.strip = None;
@@ -527,9 +534,25 @@ fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer,
         quantum: Q as u32,
         spans: vec![play(100, 0, 0)].into(),
     });
+    if replace_branch {
+        parent
+            .composite
+            .as_mut()
+            .unwrap()
+            .spans
+            .to_mut()
+            .push(play(122, 96, 1));
+        for (branch, child) in [(122, 101), (123, 102)] {
+            let mut branch_loop = parent.clone();
+            branch_loop.id = id(branch);
+            branch_loop.composite.as_mut().unwrap().spans = vec![play(child, 0, 0)].into();
+            graph.loops.push(branch_loop);
+        }
+    }
+    let edited_index = graph.loops.len();
     graph.loops.push(parent);
     let playing = if nested {
-        let mut outer = graph.loops[2].clone();
+        let mut outer = graph.loops[edited_index].clone();
         outer.id = id(121);
         outer.composite.as_mut().unwrap().spans = vec![play(120, 0, 0)].into();
         graph.loops.push(outer);
@@ -540,9 +563,18 @@ fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer,
     upload(&mut client, &mut renderer, &graph, 0);
     let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
     for mode in [TransitionMode::Recording, TransitionMode::Stopped] {
-        let commands = [transition(100, mode), transition(101, mode)];
+        let commands = [
+            transition(100, mode),
+            transition(101, mode),
+            transition(102, mode),
+        ];
+        let commands = if replace_branch {
+            &commands[..]
+        } else {
+            &commands[..2]
+        };
         client
-            .immediate(Batch::new(1, 1, &commands).unwrap())
+            .immediate(Batch::new(1, 1, commands).unwrap())
             .unwrap();
         response(&mut client, &mut renderer);
         step(&mut renderer);
@@ -552,9 +584,13 @@ fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer,
         .unwrap();
     let started = response(&mut client, &mut renderer);
     assert_eq!(step(&mut renderer), [0.125, 0.125]);
-    let program = graph.loops[2].composite.as_mut().unwrap();
+    let program = graph.loops[edited_index].composite.as_mut().unwrap();
     program.version += 1;
-    program.spans.to_mut().push(play(101, 96, 1));
+    if replace_branch {
+        program.spans.to_mut()[1].target = id(123);
+    } else {
+        program.spans.to_mut().push(play(101, 96, 1));
+    }
     let switched = upload(&mut client, &mut renderer, &graph, 1);
     assert!(switched < started + 95 * Q as u64);
     // Both dummy-driver paths deliver the block buffered by the quantum adapter.
@@ -569,7 +605,11 @@ fn future_composite_child<E: Endpoint>(endpoint: E, mut renderer: impl Renderer,
             0.125
         } else {
             second_child_heard = true;
-            0.1875
+            if replace_branch {
+                0.375
+            } else {
+                0.1875
+            }
         };
         assert_eq!(step(&mut renderer), [sample, sample], "frame {frame}");
     }
@@ -584,11 +624,11 @@ fn a_playing_composite_can_add_a_child_later_in_the_current_pass() {
         sample_rate: 48000,
         buffer_frames: Q as u32,
     };
-    for nested in [false, true] {
+    for (nested, replace_branch) in [(false, false), (true, false), (true, true)] {
         let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
-        future_composite_child(rust.endpoint, rust.renderer, nested);
+        future_composite_child(rust.endpoint, rust.renderer, nested, replace_branch);
         let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
-        future_composite_child(rtl.endpoint, rtl.renderer, nested);
+        future_composite_child(rtl.endpoint, rtl.renderer, nested, replace_branch);
     }
 }
 

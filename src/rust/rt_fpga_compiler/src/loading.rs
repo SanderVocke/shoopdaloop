@@ -84,36 +84,33 @@ impl CompositeCut {
         }
     }
 
-    pub fn allows_playing(
-        &self,
-        position: u64,
-        length: u64,
-        restart_ready: bool,
-        waited: bool,
-    ) -> bool {
-        (length != 0
-            && position == length
-            && restart_ready
-            && (self.finish_at_boundary
-                || (self.allow_restart && (!self.require_repeat_wait || waited))))
-            || (position < length
-                && self
-                    .future_before
-                    .is_some_and(|frame| position < u64::from(frame)))
+    pub fn allows_playing(&self, position: u64, length: u64, ready: bool, waited: bool) -> bool {
+        ready
+            && ((length != 0
+                && position == length
+                && (self.finish_at_boundary
+                    || (self.allow_restart && (!self.require_repeat_wait || waited))))
+                || self.allows_future(position, length))
+    }
+
+    fn allows_future(&self, position: u64, length: u64) -> bool {
+        position < length
+            && self
+                .future_before
+                .is_some_and(|frame| position < u64::from(frame))
     }
 
     pub fn waits_for_boundary(
         &self,
         position: u64,
         length: u64,
-        restart_ready: bool,
+        ready: bool,
         waited: bool,
     ) -> bool {
         length != 0
             && position <= length
-            && (self.wait_for_finish
-                || (self.allow_restart && (position < length || !restart_ready)))
-            && !self.allows_playing(position, length, restart_ready, waited)
+            && (self.wait_for_finish || (self.allow_restart && (position < length || !ready)))
+            && !self.allows_playing(position, length, ready, waited)
     }
 
     pub fn waits_for_control(&self) -> bool {
@@ -131,13 +128,17 @@ impl CompositeCut {
         self.reconcile_ending && length != 0 && position == length && !waited
     }
 
-    pub fn restart_ready<E>(
+    pub fn playback_ready<E>(
         &self,
+        position: u64,
+        length: u64,
         repeat_sync: bool,
-        at_end: bool,
         mut read_clock: impl FnMut(Identity) -> Result<Option<ClockState>, E>,
     ) -> Result<bool, E> {
-        if !(self.allow_restart || self.finish_at_boundary) || !at_end {
+        let at_end = length != 0 && position == length;
+        if !(self.allows_future(position, length)
+            || (at_end && (self.allow_restart || self.finish_at_boundary)))
+        {
             return Ok(true);
         }
         for &parent in &self.parent_guards {
@@ -145,7 +146,7 @@ impl CompositeCut {
                 return Ok(false);
             }
         }
-        if !self.allow_restart || !repeat_sync {
+        if !at_end || !self.allow_restart || !repeat_sync {
             return Ok(true);
         }
         let mut needs_pulse = false;
@@ -192,7 +193,11 @@ impl CompositeSchedule {
         })
     }
 
-    fn future_edit_before(&self, candidate: &Self) -> Option<u32> {
+    fn future_edit_before(
+        &self,
+        candidate: &Self,
+        remains_composite: impl Fn(Identity) -> bool,
+    ) -> Option<u32> {
         let mut schedules = BTreeMap::<Identity, [&[FrameSpan]; 2]>::new();
         for (version, children) in [&self.children, &candidate.children]
             .into_iter()
@@ -203,11 +208,10 @@ impl CompositeSchedule {
             }
         }
         let mut earliest = self.length;
-        for [before, after] in schedules.into_values() {
-            // Removing the last relationship changes how the child handles
-            // its own pulse plan. A stopped handoff handles that case.
+        for (child, [before, after]) in schedules {
+            // Removing the last relationship changes primitive pulse plans.
             // A new recorder can also change the storage credit calculation.
-            if after.is_empty()
+            if (after.is_empty() && !remains_composite(child))
                 || (before.is_empty() && after.iter().any(|span| span.mode == SpanMode::Record))
             {
                 return None;
@@ -430,7 +434,7 @@ impl Layout {
         }
         Some(clocks)
     }
-    fn nested_future_cut(&self, program: &LogicalStateProgram, id: Identity) -> Option<u32> {
+    fn future_cut(&self, program: &LogicalStateProgram, id: Identity) -> Option<u32> {
         let before = self.composite_schedule(id)?;
         let after = program
             .composites
@@ -438,21 +442,16 @@ impl Layout {
             .find(|schedule| schedule.id == id)?;
         let old_source = self.loops.iter().find(|row| row.logical == id)?.sync_source;
         let new_source = program.loops.iter().find(|row| row.id == id)?.sync_source;
-        let composite_targets = |schedule: &CompositeSchedule| {
-            schedule
-                .children
-                .iter()
-                .map(|child| child.id)
-                .filter(|&child| self.composite_schedule(child).is_some())
-                .collect::<BTreeSet<_>>()
-        };
-        if !before.same_timing(after)
-            || old_source != new_source
-            || composite_targets(before) != composite_targets(after)
-        {
+        if !before.same_timing(after) || old_source != new_source {
             return None;
         }
-        before.future_edit_before(after)
+        before.future_edit_before(after, |child| {
+            self.composite_schedule(child).is_some()
+                && program
+                    .composites
+                    .iter()
+                    .any(|schedule| schedule.id == child)
+        })
     }
 
     fn composite_ancestors(&self, child: Identity) -> Result<Vec<Identity>, CompileError> {
@@ -663,8 +662,8 @@ impl Allocator {
                     && old.composite_schedule(*id).is_some()
                     && program.composites.iter().any(|schedule| schedule.id == *id)
             });
-            let nested_future = single_edit
-                .and_then(|id| old.nested_future_cut(program, id).map(|frame| (id, frame)));
+            let single_future =
+                single_edit.and_then(|id| old.future_cut(program, id).map(|frame| (id, frame)));
             // A primitive-to-composite conversion gives the public slot a new
             // generation. Fence the departing primitive before its take can be
             // retired, just as for a conversion that keeps the logical ID.
@@ -767,13 +766,7 @@ impl Allocator {
                                 && after.length != 0
                                 && before.ending_modes().eq(after.ending_modes())
                         });
-                    // A seek on an ancestor can enter the child at a nonzero offset.
-                    let parent_guards = if (allow_restart || finish_at_boundary) && !independent {
-                        old.composite_ancestors(row.logical)?
-                    } else {
-                        Vec::new()
-                    };
-                    let future_before = nested_future
+                    let future_before = single_future
                         .filter(|(id, _)| *id == row.logical)
                         .map(|(_, frame)| frame)
                         .or_else(|| {
@@ -781,12 +774,22 @@ impl Allocator {
                                 && independent
                                 && same_source
                             {
-                                continuing
-                                    .and_then(|(before, after)| before.future_edit_before(after))
+                                continuing.and_then(|(before, after)| {
+                                    before.future_edit_before(after, |_| false)
+                                })
                             } else {
                                 None
                             }
                         });
+                    // A seek on an ancestor can enter the child at a nonzero offset.
+                    let parent_guards =
+                        if (allow_restart || finish_at_boundary || future_before.is_some())
+                            && !independent
+                        {
+                            old.composite_ancestors(row.logical)?
+                        } else {
+                            Vec::new()
+                        };
                     composite_cuts.push((
                         row.logical,
                         CompositeCut {
