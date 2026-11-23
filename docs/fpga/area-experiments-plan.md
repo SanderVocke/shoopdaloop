@@ -197,7 +197,9 @@ screening: 254 more LUTs, 28 more FFs and 107 more F7/F8 muxes for 32 fewer
 carries. All 23 affected tests and 73 matched callback rows pass. Audio metadata sharing (`93843695`) is also complete/unselected: all 11 affected
 tests pass, but routing costs 56 more slices and 86 more control sets for 68 fewer
 LUTs/33 fewer carries, with extra cold traffic. C4 remains selected. Iterative
-node/capacity arithmetic has a prepared draft but remains unexecuted.
+node/capacity arithmetic is now in simulation and synthesis screening. The
+focused boundary/malformed-queue check passes; full regression and raw setup/
+callback measurements remain pending.
 Stage 5 has an original-RTL validity control ready; its
 implementation remains unexecuted.
 

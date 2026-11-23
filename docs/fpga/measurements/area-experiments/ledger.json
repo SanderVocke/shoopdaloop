@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 4,
-  "status": "Stages0\u20133 complete; Stage4MIDIstoreaddress selectedC4, scratchsharing andaudioaddresssharing complete/unselected. Iterative node/capacity trialnext;Stages5\u201311 unexecuted.",
+  "status": "Stages0\u20133 complete; Stage4C4selected, scratch/audioaddress siblings unselected; iterative node/capacity experiment in progress. Stages5\u201311 unexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1282,6 +1282,29 @@
       },
       "timing_met": false,
       "decision": "Rejectdefault: -68routedLUT/-33carry costs+56slices/+21FF/+86controlsets/+175F7/F8, worsenedfailingWNS-3.939ns andextracoldpayloadreads. All11affectedtests andmatchedrawlogicalrows pass; currentblocksteadycyclesmostlyunchanged. C4retained; no repeat forunselected area/traffictradeoff."
+    },
+    {
+      "label": "s4-iterative-capacity",
+      "stage": 4,
+      "status": "in progress",
+      "control_revision": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "prepared_control_revision": "06cfe5918aadcd148ecda773eb8ff074826b6bf1",
+      "control_summary": "s4-midi-address-100-summary.json",
+      "rtl_source_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+      "changed_contract": "No public numerical/capacity/ownership change. One34-bit iterative adder replaces combinational node/capacity arithmetic; growing extents add setup clocks, no-grow keeps prior path.",
+      "validation": [
+        "All38production control HDL hashes verified C4 before edit",
+        "Strict lint default/min/odd/primary passed",
+        "Independent closed-form/u64-wrap arithmetic preflight:144000boundary+100000seededrandomcases; notRTL qualification",
+        "Focused both-width high-bit/malformed-queue boundary test passed35.76sec"
+      ],
+      "pending": [
+        "Full11affected regressions",
+        "Both-width raw boundary/deep setup and public-store comparison",
+        "Connected cold/warm/steady callback comparison",
+        "Pinned optimization screen, route/repeat if viable"
+      ],
+      "contract": "stage4-iterative-capacity-contract.md"
     }
   ],
   "provisioning": {
