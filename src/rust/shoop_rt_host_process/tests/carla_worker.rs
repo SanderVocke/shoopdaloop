@@ -96,8 +96,9 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             shoop_rt_backend::RtBackend::connect(client, shoop_rt_backend::Sleep::default())
                 .unwrap();
         let limits = backend.processor_limits().unwrap();
-        assert_eq!(limits.effective.carla.rack_instances, 1, "{limits:?}");
-        assert_eq!(limits.effective.carla.patchbay_instances, 1, "{limits:?}");
+        assert!(limits.dynamic_carla, "{limits:?}");
+        assert_eq!(limits.effective.carla.instances(), 0, "{limits:?}");
+        assert_eq!(limits.reserved_bytes, 0, "{limits:?}");
         assert_eq!(limits.carla_latency_frames, 768);
         let descriptors = backend.track_processor_catalog().unwrap();
         let rack = descriptors
@@ -534,7 +535,7 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
     use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
     use shoop_rt_host_process::{Pending, Started, Transport};
     use shoop_rt_protocol::{
-        processors::{CarlaHosting, CarlaSettings, Unavailable},
+        processors::{CarlaHosting, CarlaSettings},
         ProcessorSettings,
     };
 
@@ -575,46 +576,52 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
             shoop_rt_backend::RtBackend::connect(client, shoop_rt_backend::Sleep::default())
                 .unwrap();
         let limits = backend.processor_limits().unwrap();
-        let effective = limits.effective.carla;
+        let width = usize::from(channels);
         let wide = "carla_patchbay_16x";
         let catalog = backend.track_processor_catalog().unwrap();
         let descriptor = catalog
             .iter()
             .find(|entry| entry.id.as_str() == wide)
             .unwrap();
-        if memory_mb == 1 {
-            assert_eq!(effective.unavailable, Some(Unavailable::Memory));
-            assert!(!descriptor.available);
-        } else if channels == 8 {
-            assert_eq!(effective.rack_instances, 1);
-            assert_eq!(effective.patchbay16x_instances, 0);
-            assert!(!descriptor.available);
-            assert!(descriptor
-                .unavailable_reason
-                .as_deref()
-                .unwrap()
-                .contains("16 prepared track channels"));
-        } else {
-            assert_eq!(effective.rack_instances, 1);
-            assert_eq!(effective.patchbay16x_instances, 2, "{limits:?}");
-            assert!(
-                limits.reserved_bytes > 0 && limits.reserved_bytes <= limits.effective.memory_bytes
-            );
+        {
+            assert!(limits.dynamic_carla, "{limits:?}");
+            assert_eq!(limits.effective.carla.instances(), 0, "{limits:?}");
+            assert_eq!(limits.reserved_bytes, 0, "{limits:?}");
+            assert_eq!(limits.effective.memory_bytes, u64::from(memory_mb) << 20);
             assert!(descriptor.available);
-            assert_eq!(descriptor.constraints.max_dry_audio_channels, Some(16));
-            assert_eq!(descriptor.constraints.max_wet_audio_channels, Some(16));
+            assert_eq!(
+                descriptor.constraints.max_dry_audio_channels,
+                Some(u32::from(channels))
+            );
+            assert_eq!(
+                descriptor.constraints.max_wet_audio_channels,
+                Some(u32::from(channels))
+            );
             assert!(descriptor.features.logs == (hosting == CarlaHosting::Subprocess));
             assert!(backend
                 .bus_processor_catalog()
                 .unwrap()
                 .iter()
                 .any(|entry| entry.id.as_str() == wide && entry.available));
+            assert!(backend
+                .create_track(TrackRequest {
+                    port_name_base: "Overwide Carla track".into(),
+                    topology: BackendTrackTopology::DryWetProcessor {
+                        dry_audio_channels: u32::from(channels) + 1,
+                        wet_audio_channels: u32::from(channels) + 1,
+                        dry_midi: true,
+                        processor_type: wide.into(),
+                        remote_fx: None,
+                    },
+                    initial_loops: 1,
+                })
+                .is_err());
             let track = backend
                 .create_track(TrackRequest {
                     port_name_base: "Wide Carla track".into(),
                     topology: BackendTrackTopology::DryWetProcessor {
-                        dry_audio_channels: 16,
-                        wet_audio_channels: 16,
+                        dry_audio_channels: u32::from(channels),
+                        wet_audio_channels: u32::from(channels),
                         dry_midi: true,
                         processor_type: wide.into(),
                         remote_fx: None,
@@ -625,10 +632,10 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
             let bus = backend
                 .create_bus(BackendBusRequest {
                     name: "Wide Carla bus".into(),
-                    channel_count: 16,
+                    channel_count: u32::from(channels),
                     fx: Some(BackendBusFxRequest {
                         processor_type: wide.into(),
-                        audio_channels: 16,
+                        audio_channels: u32::from(channels),
                     }),
                 })
                 .unwrap();
@@ -660,8 +667,8 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                 ) {
                     assert_eq!(track_fx.processor_type.as_str(), wide);
                     assert_eq!(bus_fx.processor_type.as_str(), wide);
-                    assert_eq!(state.tracks[&track.track_id].output_peaks.len(), 16);
-                    assert_eq!(state.mixer.buses[&bus.bus_id].channels.len(), 16);
+                    assert_eq!(state.tracks[&track.track_id].output_peaks.len(), width);
+                    assert_eq!(state.mixer.buses[&bus.bus_id].channels.len(), width);
                     break;
                 }
                 assert!(
@@ -676,7 +683,7 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                     .iter()
                     .filter(|port| port.direction == BackendPortDirection::Output)
                     .count(),
-                16
+                width
             );
             let chain = CarlaChainType::Patchbay16x;
             let project =
@@ -702,7 +709,7 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
             take.audio = [BackendChannelMode::Dry, BackendChannelMode::Wet]
                 .into_iter()
                 .flat_map(|mode| {
-                    (0..16).map(move |channel| {
+                    (0..width).map(move |channel| {
                         let sample = lanes
                             .iter()
                             .find(|(lane, _)| *lane == channel && mode == BackendChannelMode::Dry)
@@ -770,12 +777,16 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                     let bus = &state.mixer.buses[&restored_bus];
                     let close =
                         |value: f32, sample: f32| (value - 20. * sample.log10()).abs() < 0.015;
-                    if lanes.iter().all(|&(lane, amplitude)| {
-                        let gain = if lane == 0 || lane == 15 { 0.5 } else { 1. };
-                        close(track.output_peaks[lane], amplitude * gain)
-                            && close(bus.output_peaks_db[lane], amplitude * gain * gain)
-                    }) {
-                        assert!((0..16)
+                    if lanes
+                        .iter()
+                        .filter(|(lane, _)| *lane < width)
+                        .all(|&(lane, amplitude)| {
+                            let gain = if lane == 0 || lane == 15 { 0.5 } else { 1. };
+                            close(track.output_peaks[lane], amplitude * gain)
+                                && close(bus.output_peaks_db[lane], amplitude * gain * gain)
+                        })
+                    {
+                        assert!((0..width)
                             .filter(|index| !lanes.iter().any(|&(lane, _)| lane == *index))
                             .all(|index| track.output_peaks[index] < -150.
                                 && bus.output_peaks_db[index] < -150.));
@@ -799,7 +810,7 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                     .find(|entry| entry.source_id == track_id)
                     .unwrap();
                 let saved_take = &saved_track.loops[0];
-                assert_eq!(saved_take.audio.len(), 32);
+                assert_eq!(saved_take.audio.len(), 2 * width);
                 assert_eq!(saved_take.midi[0].events[0].frame, 59);
                 assert_eq!(saved_take.midi[0].events[1].frame, 184);
                 assert_eq!(
@@ -815,7 +826,7 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                             .iter()
                             .any(|channel| channel.source_id == route.destination_channel_id))
                         .count(),
-                    16
+                    width
                 );
             }
         }
