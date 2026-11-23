@@ -143,6 +143,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         Ok(())
     }
+
+    pub(crate) fn can_yield_prepared_composite(&self) -> bool {
+        self.capabilities
+            .contains(shoop_rt_protocol::Capabilities::CANCEL_PREPARED_COMPOSITES)
+            && self
+                .prepared_graph
+                .as_ref()
+                .is_some_and(|graph| matches!(graph.pending, Some(PendingGraph::Composite(_))))
+    }
+
     pub(crate) fn send_prepared_graph_requests(&mut self) -> usize {
         let mut count = 0;
         while let Some(pending) = self.requests.outgoing.pop_front() {

@@ -1002,7 +1002,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         source: Option<BackendLoopId>,
     ) -> Result<()> {
         self.ready()?;
-        self.structure_mutable()?;
+        let composite = self
+            .mirror
+            .live_loop(loop_id)
+            .is_some_and(|entry| entry.program.is_some());
+        if !(composite && self.can_yield_prepared_composite()) {
+            self.structure_mutable()?;
+        }
         let slot = self.live_loop_slot(loop_id)?;
         let source_slot = source
             .map(|source| self.live_loop_slot(source))

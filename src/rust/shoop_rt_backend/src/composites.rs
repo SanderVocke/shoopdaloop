@@ -55,6 +55,20 @@ pub(crate) struct Job {
     cancel_sent: bool,
 }
 
+impl Job {
+    fn restage(&mut self) {
+        self.phase = Phase::Queued;
+        self.description = None;
+        self.spans.clear();
+        self.sent = 0;
+        self.failure = None;
+        self.applied = None;
+        self.telemetry = None;
+        self.cancel_sent = false;
+        self.yielding = false;
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Composites {
     pub jobs: VecDeque<Job>,
@@ -624,12 +638,26 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             match job.phase {
                 Phase::Confirming => {}
                 Phase::Commit => {
-                    if job.cancel.is_some() && !job.cancel_sent {
+                    let yield_for_sync = job.cancel.is_none()
+                        && self.can_yield_prepared_composite()
+                        && self
+                            .requests
+                            .outgoing
+                            .iter()
+                            .any(|pending| matches!(pending.purpose, Purpose::LoopSync(..)));
+                    if (job.cancel.is_some() || yield_for_sync) && !job.cancel_sent {
                         if self.cancel_composite_upload(job.sequence) {
-                            terminal = job.cancel.take();
+                            if yield_for_sync {
+                                job.restage();
+                            } else {
+                                terminal = job.cancel.take();
+                            }
                         } else {
                             match self.send_prepared_composite_cancel(job.sequence) {
-                                Ok(sent) => job.cancel_sent = sent,
+                                Ok(sent) => {
+                                    job.cancel_sent = sent;
+                                    job.yielding = sent && yield_for_sync;
+                                }
                                 Err(error) => {
                                     self.composites.jobs.push_front(job);
                                     self.lose(alloc::format!(
@@ -795,6 +823,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Ok(()) => {
                 job.applied = Some(frame);
                 job.phase = Phase::Confirming;
+                self.composites.jobs.push_front(job);
+            }
+            Err(BackendCompositeOutcome::Cancelled) if job.yielding && job.cancel.is_none() => {
+                job.restage();
                 self.composites.jobs.push_front(job);
             }
             Err(outcome) => {
@@ -1001,13 +1033,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             && job.outstanding == 0
             && job.cancel.is_none()
         {
-            job.phase = Phase::Queued;
-            job.description = None;
-            job.spans.clear();
-            job.sent = 0;
-            job.failure = None;
-            job.cancel_sent = false;
-            job.yielding = false;
+            job.restage();
             job.retry_after = Some(self.status.callbacks);
             terminal = None;
         }

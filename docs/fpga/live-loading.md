@@ -63,6 +63,9 @@ passes through the image upload channel, which also reaches the renderer
 while the switch waits. When the renderer receives cancellation before the
 switch, it retires the image and reports a cancelled activation. A switch
 that already took effect reports its applied revision and frame.
+The application can also ask a waiting edit to release its staged copy while
+the composite's sync source changes. It stages the same edit version again
+against the new source once the source change has taken effect.
 An admitted switch also settles if the application connection closes. The
 loader uses the result to settle program ownership. After reconnecting, the
 client can read the current revision through its usual snapshot subscription.
