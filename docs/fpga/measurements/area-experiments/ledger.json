@@ -1234,13 +1234,12 @@
         "Preparedsource strict-Walllintpassesdefault/min/odd/primarywithoutwaivers; candidatebyte-identicalto prelinteddraft2",
         "Focusedbothwidths/minimum-odd-primaryboundarytest passes37.37sec",
         "All187boundaryrows/width,207deepdirectoryrows/width and1282publicstorerows matchevery noncyclefield of C4audio-identicalC3controls; modelsourcehash equivalenceverified",
-        "Deep setup1810451->1903895(+93444)clocks AXI64; store1282operationstotal1224008->1245317(+21309)clocks"
+        "Deep setup1810451->1903895(+93444)clocks AXI64; store1282operationstotal1224008->1245317(+21309)clocks",
+        "All33shortmixedcallbacklogical outputs/work/cachecounters exactC4. Steadymedian53258unchanged,max53948vs53947,cold92670vs92745; coldAudioAXIreads694->750/native4016->4464, writesunchanged. Trafficdifference retained, not claimedbitwise-performancematch.",
+        "RerunwithlinkedpinnedDRAMsim3 passes full deferredsuite; media suiteinprogress"
       ],
       "pending": [
-        "Bothwidths minimum/odd/primary focusedboundarytest",
-        "Fullmetadata/media/ownership/deferred/validityregressions",
-        "Rawboundary/deepdirectory/publicstoreperformancecomparison",
-        "ShortconnectedcomparisonagainstC4",
+        "Remainingfullmedia/metadata/validity/ownershipregressions",
         "Optimizedscreen thenrouteifviable"
       ],
       "unit_performance": "s4-audio-address-unit-performance.json",
@@ -1250,7 +1249,8 @@
         "s4-audio-address-width-axi64-summary.json",
         "s4-audio-address-store-operations-unit-summary.json"
       ],
-      "environment_followup": "Firstfullregressionrun passedInstant/Fixeddeferredcases thenmissingDRAMsim3library undernewSourceRoot. Existingpinnedwork/dramsim3linkedintoroot/work, hashesrecordedsetup/s4-audio-address/dramsim3-runtime-link.json; originalfailurelogretained, exactfullcommandrerunning. NoRTL/test/config/clockchange."
+      "environment_followup": "Firstfullregressionrun passedInstant/Fixeddeferredcases thenmissingDRAMsim3library undernewSourceRoot. Existingpinnedwork/dramsim3linkedintoroot/work, hashesrecordedsetup/s4-audio-address/dramsim3-runtime-link.json; originalfailurelogretained, exactfullcommandrerunning. NoRTL/test/config/clockchange.",
+      "callback_performance": "s4-audio-address-callback-performance.json"
     }
   ],
   "provisioning": {
