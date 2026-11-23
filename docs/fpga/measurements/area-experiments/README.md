@@ -517,3 +517,10 @@ fails. The node-count critical path is removed; the next limiter is MIDI
 job_reg[68] to store_arg0_reg[3]/CE. A clean source-through-route repeat and
 1,024-quantum callback run are in progress before selection. See
 `s4-iterative-capacity-100-*` and its retained unit/regression archives.
+
+The iterative candidate's extended run is now complete: **all 1,041 rows match
+C4 exactly**, including cycles, cache counters, traffic and state work, with
+identical final memory. Across 1,024 steady quanta the median/max remain
+53,258/59,776 clocks and cold playback 92,745. The primary implementation and
+benchmark parameter comparison is empty. The full physical repeat remains
+pending; no 100 MHz deadline qualification is claimed.
