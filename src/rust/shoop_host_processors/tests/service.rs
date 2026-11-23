@@ -29,6 +29,7 @@ fn bus_fx_public_controls_global_midi_recovery_and_file_round_trip() {
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
             default_playback_mode: Default::default(),
+            remote_fx: None,
         },
         latency: Default::default(),
         initial_output_bus_names: vec!["Master".into()],
@@ -666,6 +667,11 @@ fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
                 ProcessorKind::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
                 ProcessorKind::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
                 ProcessorKind::CarlaPatchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+                ProcessorKind::RemoteCarlaRack => TrackProcessorTypeId::REMOTE_CARLA_RACK,
+                ProcessorKind::RemoteCarlaPatchbay => TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY,
+                ProcessorKind::RemoteCarlaPatchbay16x => {
+                    TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
+                }
                 ProcessorKind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
                 ProcessorKind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
             };
@@ -677,6 +683,7 @@ fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(processor),
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    remote_fx: None,
                 },
                 latency: Default::default(),
                 initial_output_bus_names: vec!["Master".into()],
@@ -788,6 +795,7 @@ fn external_unequal_roles_survive_the_service_and_session_archive() {
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
             default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            remote_fx: None,
         },
         latency: Default::default(),
         initial_output_bus_names: vec!["Master".into()],
@@ -903,6 +911,7 @@ fn hosted_tracks_and_composites_share_archives_and_refuse_invalid_edits_atomical
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(processor_type),
             default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            remote_fx: None,
         },
     );
     let (_, direct_loops) = add(
@@ -1169,6 +1178,7 @@ fn service_processor(kind: ProcessorKind) {
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(type_id),
             default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            remote_fx: None,
         },
         latency: Default::default(),
         initial_output_bus_names: vec!["Master".into()],
@@ -1841,6 +1851,7 @@ fn maximum_dry_wet_channel_timing_batch_is_atomic_over_the_public_wire() {
             dry_midi: true,
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
             default_playback_mode: DefaultPlaybackMode::Regular,
+            remote_fx: None,
         },
         latency: Default::default(),
         initial_output_bus_names: vec![],

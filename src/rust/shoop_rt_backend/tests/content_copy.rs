@@ -56,12 +56,14 @@ fn complete_payload_replaces_all_roles_and_empty_media_with_no_spare_loop_slot()
             wet_audio_channels: 2,
             dry_midi: true,
             processor_type: "builtin_fx".into(),
+            remote_fx: None,
         },
         BackendTrackTopology::DryWetProcessor {
             dry_audio_channels: 2,
             wet_audio_channels: 2,
             dry_midi: true,
             processor_type: "oxisynth".into(),
+            remote_fx: None,
         },
     ] {
         let mut d = description();

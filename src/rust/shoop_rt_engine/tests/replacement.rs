@@ -93,6 +93,7 @@ fn replacement_prepares_processed_composite_owners_without_interrupting_old_play
                     kind: ProcessorKind::External,
                     default_dry: false,
                     state: None,
+                    remote_fx: None,
                 }
             } else {
                 ReplacementEdit::Strip {

@@ -1,0 +1,31 @@
+{
+  "command": [
+    "tar",
+    "--numeric-owner",
+    "--owner=0",
+    "--group=0",
+    "--exclude=./tools",
+    "--exclude=./tmp",
+    "--exclude=./proc",
+    "--exclude=./sys",
+    "--exclude=./dev",
+    "--exclude=./run",
+    "--exclude=./var/cache/apt",
+    "-C",
+    "work/area-experiments/vivado-runtime/rootfs",
+    "-cf",
+    "work/area-experiments/setup/vivado-runtime.tar",
+    "."
+  ],
+  "archive_bytes": 1108295680,
+  "archive_sha256": "12c955d79abe0be37ad7d609abfbf33478719c2c6ff4483380380ec77868373b",
+  "file_limit_bytes": 2147483648,
+  "source_image": "sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "runtime_image": "sha256:02eb283fd099318858019e26344d7d2e1dd761526c2571aa48adecd886d699eb",
+  "vivado_version": "WARNING: Default location for XILINX_HLS not found\nVivado v2021.1 (64-bit)\nSW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021\nCopyright 1986-2021 Xilinx, Inc. All Rights Reserved.\n",
+  "oci_normalization": {
+    "source_manifest_sha256": "d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+    "runtime_manifest_sha256": "56fba2c7400bff9279f3fefa24a2d131c6bb02cf97e09fc7454314220d5bdc78",
+    "changed": "Manifest media types only; all layer and configuration content digests preserved"
+  }
+}

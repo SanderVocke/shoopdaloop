@@ -1,0 +1,24 @@
+{
+  "control": "C5 b0fe222e; isolated MIDI inputs hash-identical to retained C4 raw controls",
+  "candidate": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+  "cases": [
+    {
+      "kind": "boundaries",
+      "rows": 10311,
+      "all_fields_exact_including_cycles_and_traffic": true,
+      "control_midi_sources_verified_c5": true
+    },
+    {
+      "kind": "reserved",
+      "rows": 54,
+      "all_fields_exact_including_cycles_and_traffic": true,
+      "control_midi_sources_verified_c5": true
+    },
+    {
+      "kind": "relocated",
+      "rows": 108,
+      "all_fields_exact_including_cycles_and_traffic": true,
+      "control_midi_sources_verified_c5": true
+    }
+  ]
+}

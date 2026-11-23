@@ -383,13 +383,14 @@ impl ControlEndpoint {
                 shape,
                 controls,
             } => {
-                return self.replacement_strip(strip, shape, controls, None, false, None);
+                return self.replacement_strip(strip, shape, controls, None, None, false, None);
             }
             ReplacementEdit::ProcessedStrip {
                 strip,
                 shape,
                 controls,
                 kind,
+                remote_fx,
                 default_dry,
                 state,
             } => {
@@ -398,6 +399,7 @@ impl ControlEndpoint {
                     shape,
                     controls,
                     Some(kind),
+                    remote_fx,
                     default_dry,
                     state,
                 );
@@ -471,6 +473,7 @@ impl ControlEndpoint {
         shape: shoop_rt_protocol::StripShape,
         controls: shoop_rt_protocol::StripPreset,
         kind: Option<shoop_rt_protocol::ProcessorKind>,
+        remote_fx: Option<shoop_processor_protocol::RemoteFxTarget>,
         default_dry: bool,
         state: Option<shoop_rt_protocol::processors::Control>,
     ) -> Result<(), Refusal> {
@@ -508,7 +511,12 @@ impl ControlEndpoint {
             }
         }
         let request = match kind {
-            Some(kind) => Request::CreateProcessedStrip { strip, shape, kind },
+            Some(kind) => Request::CreateProcessedStrip {
+                strip,
+                shape,
+                kind,
+                remote_fx,
+            },
             None => Request::CreateStrip { strip, shape },
         };
         let change = match self.stage(request, true) {

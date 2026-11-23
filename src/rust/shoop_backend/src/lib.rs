@@ -394,6 +394,8 @@ pub enum BackendTrackTopology {
         dry_audio_channels: u32,
         wet_audio_channels: u32,
         dry_midi: bool,
+        #[serde(default)]
+        remote_fx: Option<shoop_app_api::RemoteFxTarget>,
     },
 }
 
@@ -407,6 +409,13 @@ impl Default for BackendTrackTopology {
 }
 
 impl BackendTrackTopology {
+    pub const fn remote_fx(&self) -> Option<shoop_app_api::RemoteFxTarget> {
+        match self {
+            Self::DryWetProcessor { remote_fx, .. } => *remote_fx,
+            _ => None,
+        }
+    }
+
     pub const fn dry_audio_channels(&self) -> u32 {
         match self {
             Self::Direct { audio_channels, .. } => *audio_channels,

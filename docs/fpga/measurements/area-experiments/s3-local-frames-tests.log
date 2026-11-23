@@ -1,0 +1,9 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.85s
+     Running tests/media_local_frames.rs (target/debug/build/rt_fpga_testbench/589b03b02e7c2840/out/media_local_frames-589b03b02e7c2840)
+
+running 1 test
+test bounded_local_frames_preserve_samples_and_refuse_overflow_atomically ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.10s
+

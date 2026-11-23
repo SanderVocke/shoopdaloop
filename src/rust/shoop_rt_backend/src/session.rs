@@ -514,6 +514,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     shape,
                     controls,
                     kind,
+                    remote_fx: track.topology.remote_fx(),
                     default_dry: track.default_playback_mode
                         == BackendDefaultPlaybackMode::DryThroughWet,
                     state: processor_states[track_id].0,
@@ -708,13 +709,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         for track in &session.tracks {
             check_track(track, u32::from(limits.strip_audio_channels), &composites)?;
         }
-        for kind in [
-            shoop_rt_protocol::ProcessorKind::BuiltInFx,
-            shoop_rt_protocol::ProcessorKind::OxiSynth,
-            shoop_rt_protocol::ProcessorKind::CarlaRack,
-            shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
-            shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x,
-        ] {
+        for kind in shoop_rt_protocol::ProcessorKind::HOSTED {
             let requested = session
                 .tracks
                 .iter()
@@ -742,22 +737,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     "Carla checkpoint restoration is unavailable on this host"
                 ));
             }
-            let available = self.processors.map_or(0, |limits| match kind {
-                shoop_rt_protocol::ProcessorKind::BuiltInFx => limits.effective.fx_instances,
-                shoop_rt_protocol::ProcessorKind::OxiSynth => limits.effective.synth_instances,
-                shoop_rt_protocol::ProcessorKind::CarlaRack => {
-                    limits.effective.carla.rack_instances
-                }
-                shoop_rt_protocol::ProcessorKind::CarlaPatchbay => {
-                    limits.effective.carla.patchbay_instances
-                }
-                shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x => {
-                    limits.effective.carla.patchbay16x_instances
-                }
-                shoop_rt_protocol::ProcessorKind::External => {
-                    unreachable!("external requires no hosted processor slot")
-                }
-            });
+            if self.processors.is_some_and(|limits| limits.dynamic(kind)) {
+                continue;
+            }
+            let available = self
+                .processors
+                .map_or(0, |limits| limits.effective.instances(kind));
             if requested > available as usize {
                 return Err(anyhow!("session requires {requested} {kind:?} instances; the host prepared {available}"));
             }

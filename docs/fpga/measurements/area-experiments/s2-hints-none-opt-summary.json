@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "label": "s2-hints-none-opt",
+  "provenance": {
+    "revision": "e6fce1e706f73e2ba63c56ac3ff2d530bc7f64f5",
+    "working_tree": false,
+    "stage": "opt",
+    "parameter_overrides": {
+      "READ_HINT_POLICY": 0
+    },
+    "clock_mhz": 100.0,
+    "part": "xc7z020clg484-1",
+    "vivado": "2021.1",
+    "uncertainty_ns": 0.2,
+    "loops": 64,
+    "audio_channels_per_loop": 2,
+    "sample_rate": 48000,
+    "storage_seconds": 30,
+    "chunk_frames": 32,
+    "quantum_frames": 32,
+    "parameters": {
+      "EXTERNAL_IO": 1,
+      "LIVE_LOADING": 1,
+      "EXPORT_SYNC_EVENTS": 1,
+      "PROGRAM_DEPTH": 2048,
+      "STATE_DEPTH": 256,
+      "JOB_DEPTH": 2048,
+      "MAX_FRAMES": 32,
+      "BUFFERS": 512,
+      "INPUT_PORTS": 2,
+      "OUTPUT_PORTS": 2,
+      "REUSE_VIEWS": 1,
+      "VIEWS": 512,
+      "SLOTS": 5763072,
+      "CHUNK_FRAMES": 32,
+      "BLOCK_CHUNKS": 32,
+      "RETIRED_TABLES": 256,
+      "TABLE_LINES": 128,
+      "REF_LINES": 4,
+      "STACK_LINES": 2,
+      "READ_BUFFERS": 4,
+      "WRITE_BUFFERS": 4,
+      "BURST_MEMORY": 1,
+      "AXI_DATA_WIDTH": 64,
+      "PHYSICAL_BASE": 16777216,
+      "PHYSICAL_BYTES_LIMIT": 1073741824,
+      "READ_HINT_DEPTH": 256,
+      "MIDI_LOOPS": 64,
+      "MIDI_INPUTS": 1,
+      "MIDI_DESTINATIONS": 8,
+      "MIDI_BLOCK_EVENTS": 256,
+      "MIDI_BLOCKS": 2432,
+      "MIDI_MAX_EVENTS": 8192,
+      "MIDI_VIEWS": 256,
+      "MIDI_RETIREMENTS": 128,
+      "MIDI_MAINTENANCE": 64,
+      "MIDI_STATE_SUPPORTED": 1,
+      "MIDI_AXI_DATA_WIDTH": 64,
+      "MIDI_PHYSICAL_BASE": 805306368,
+      "MIDI_PHYSICAL_BYTES_LIMIT": 67108864,
+      "MIDI_BUFFERS": 256,
+      "MIDI_CURSORS": 64,
+      "MIDI_SCRATCH_EVENTS": 131072,
+      "READ_HINT_POLICY": 0
+    },
+    "compiled_instructions": 835,
+    "jobs_per_quantum": 1155,
+    "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+    "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+    "threads": 2
+  },
+  "build_directory": "/workspace/shoopdaloop/work/area-experiments/s2-hints-none-opt",
+  "manifests": {
+    "source-manifest.json": "f55fe53e382ab5700ff0d5358e576dd8b5846689450b1010ddd910c6740c4331",
+    "artifact-manifest.json": "3a5d84d9960ae5a8204ca964ce9ba2961d9a0cb0a504a9866128f25837d505db"
+  },
+  "outcome": {
+    "stage": "opt",
+    "status": "0",
+    "message": ""
+  },
+  "stages": {
+    "synth": {
+      "lut": 41305,
+      "logic_lut": 40889,
+      "memory_lut": 416,
+      "ff": 33385,
+      "bram36": 76.5,
+      "dsp": 4,
+      "carry4": 4190,
+      "muxf7": 1424,
+      "muxf8": 560,
+      "slices": null,
+      "timing": {
+        "wns_ns": -5.32,
+        "whs_ns": 0.002
+      },
+      "control_sets": 563,
+      "timing_met": false
+    },
+    "opt": {
+      "lut": 39671,
+      "logic_lut": 39255,
+      "memory_lut": 416,
+      "ff": 32467,
+      "bram36": 76.5,
+      "dsp": 4,
+      "carry4": 3955,
+      "muxf7": 1424,
+      "muxf8": 560,
+      "slices": null,
+      "timing": {
+        "wns_ns": -5.32,
+        "whs_ns": 0.002
+      },
+      "control_sets": 561,
+      "timing_met": false
+    }
+  },
+  "benchmarks": [
+    {
+      "file": "work/area-experiments/s2-hints-none-short/mixed-on-delay7.json",
+      "sha256": "b235c7d12fa4df2b9840f10dd1c8980b237f7af799bac43770f468360a443985",
+      "scenario": "stereo_and_midi",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 121319,
+          "median": 121319,
+          "max": 121319
+        },
+        "warmup": {
+          "count": 16,
+          "min": 60418,
+          "median": 60510.0,
+          "max": 66308
+        },
+        "steady": {
+          "count": 16,
+          "min": 60438,
+          "median": 60438.0,
+          "max": 61045
+        }
+      }
+    }
+  ],
+  "evidence_sha256": {
+    "artifact-manifest.json": "3a5d84d9960ae5a8204ca964ce9ba2961d9a0cb0a504a9866128f25837d505db",
+    "outcome.txt": "a97818efb63f852fa4b4c524c36687db31abd592b82c9a21aaccff419e3923d7",
+    "post_opt.json": "1993837fd5285b1963c1f85433ac6bd5c6dfcdaa78deccd58ce8fb001d698736",
+    "post_opt_audio_utilization.rpt": "5d0f44eee49a28a319fce157f7c82b61cd7a96dd82aa583340948cb587eb79bb",
+    "post_opt_check_timing.rpt": "f3a8176c4227b9bf1fe17c855d259b7b4bc3709402972fc526161747c6e6992b",
+    "post_opt_control_sets.rpt": "bc08d6d5589c29a6e8015890ecc33de153d40e20bb75b82ce067b0f985473570",
+    "post_opt_critical_paths.rpt": "6afb2e07dcbe2e87b66f8b6e9ed23941b843330ff8ec718ba14d00a9b5ff89d6",
+    "post_opt_hierarchical_utilization.rpt": "45b284c42a16e22b9822eb05532d1626e01f238bcbc7642e8813a904f3078581",
+    "post_opt_jobs_utilization.rpt": "2a04a15967635451bee727ea8fee92a71440a498fe37e7edc94598e74f82dc5e",
+    "post_opt_midi_from_paths.rpt": "53ab7a0d8b3508cdf9be6505a98af059e942886085b089667225f3e6997f033e",
+    "post_opt_midi_store_utilization.rpt": "8f423a9bdc9e2824ee7a09835ab655ed2ced0f73db70d1f170749ab73f9c2518",
+    "post_opt_midi_timing.json": "aecb534190ff26da3cf11bfc87bcd5f1a3f7b07aa52b150eacccc9d5b72cab24",
+    "post_opt_midi_to_paths.rpt": "f42fd6806421914cc7cbae021fd7d4fc7708c454837baf10e736d39a7ec13b5b",
+    "post_opt_midi_utilization.rpt": "f26e362aa67ff827e4c5a1d7d6e7753b6f9f205a18100924c17634cf6537d920",
+    "post_opt_pipeline_utilization.rpt": "3122bdcf065cce483da721d04609df4b99de259299af357af195bf73f3003a45",
+    "post_opt_state_utilization.rpt": "d2fcccd146a461ac18d86d61244514fe9a37bbc43ef258f2b9c805b6a59ce4a5",
+    "post_opt_timing_summary.rpt": "16230674d52b9f8e1ee77f39d7d8fabec167ce31087293cc1883e0a3c559340d",
+    "post_opt_utilization.rpt": "ed06ca42a7bff98260a6ed48920e0cd12373aaafd0b8f8ad8756770d3132267a",
+    "post_synth.json": "1993837fd5285b1963c1f85433ac6bd5c6dfcdaa78deccd58ce8fb001d698736",
+    "post_synth_audio_utilization.rpt": "7f42af4fc0a2719da397e72da77b751a4bdf75f5b4ee96168592cdd7f1bb9f0c",
+    "post_synth_check_timing.rpt": "1853aaac8c922aec28b079ed6f2a119ccb49a592ae81fa0b24864a5c3bd9f63b",
+    "post_synth_control_sets.rpt": "e652ceb14e467e628280fe832ddf481269408102ddb6490b8a4e5cd970a80f03",
+    "post_synth_critical_paths.rpt": "f673c7f9ffbb2e38e3eadbdb4289441dd76f21d0fdf31f04abdca28f1ad6f78b",
+    "post_synth_hierarchical_utilization.rpt": "a1c17a1de70e031202910e3c8514206ff6d4a4b20f64a419c495f8af733348e0",
+    "post_synth_jobs_utilization.rpt": "d7fc870b69bc5e82170199307a13d566b27246408970e0d1d2187823f4a705b9",
+    "post_synth_midi_from_paths.rpt": "5479f4ab6e3a157fd10b0f943e9018385835e686f8e0a13111ecc459a8f59614",
+    "post_synth_midi_store_utilization.rpt": "02f9fee9beaa6b46e716edbba521e038b9f908acd1308255ad8bed2b00092fa4",
+    "post_synth_midi_timing.json": "33e1c1b9593bf13b8a5e075fd2ae333e4b6425e6cc1acff3602839023ced7133",
+    "post_synth_midi_to_paths.rpt": "e288a68e427294ef7e53b1f2c136d54b3d6a721f75f6d4dbcdeb51627f943f8e",
+    "post_synth_midi_utilization.rpt": "0c665a627c58a838fab3125f5da3fff2f921a2f9846db244543137301ba22070",
+    "post_synth_pipeline_utilization.rpt": "9924b7003cb060fdf7619ff2d1b98794dadc820054c27d85c146e01f84be6e2b",
+    "post_synth_state_utilization.rpt": "1a228d20c1f155d03ed8d74077c7df2aa0f8964d7afa4ed7c5c3714ec58ec86a",
+    "post_synth_timing_summary.rpt": "b74da20d1d1de817a7bcea791ecf4bf49458f54dd2d264e49efe42c20b867233",
+    "post_synth_utilization.rpt": "b9fcb9c38ba770b6df81c5528a789bcd756e6d92e57cd508f45c724242204384",
+    "provenance.json": "6376a1c21c56cdc29e27b9c48bd2d2fb899e774bf62394d18cd1dd4fdb0185a4",
+    "source-manifest.json": "f55fe53e382ab5700ff0d5358e576dd8b5846689450b1010ddd910c6740c4331"
+  },
+  "comparison": {
+    "label": "s2-hints-default2-opt",
+    "revision": "d09bd1cb752159ff8c1fb166c2c5584282be27ae",
+    "parameter_changes": {
+      "READ_HINT_POLICY": {
+        "control": null,
+        "candidate": 0
+      }
+    },
+    "resource_deltas": {
+      "synth": {
+        "lut": -580,
+        "logic_lut": -580,
+        "memory_lut": 0,
+        "ff": -421,
+        "bram36": -1.0,
+        "dsp": 0,
+        "carry4": -3,
+        "muxf7": 0,
+        "muxf8": 0,
+        "control_sets": -4
+      },
+      "opt": {
+        "lut": -417,
+        "logic_lut": -417,
+        "memory_lut": 0,
+        "ff": -416,
+        "bram36": -1.0,
+        "dsp": 0,
+        "carry4": -3,
+        "muxf7": 0,
+        "muxf8": 0,
+        "control_sets": -4
+      }
+    }
+  },
+  "retained_evidence": "s2-hints-none-opt-retention.json"
+}

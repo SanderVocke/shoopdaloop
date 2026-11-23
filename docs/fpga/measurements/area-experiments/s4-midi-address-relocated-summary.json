@@ -1,0 +1,376 @@
+{
+  "cases": [
+    {
+      "arena_base": 20014547599360,
+      "reserved_fields": [
+        10,
+        11,
+        14
+      ],
+      "views": 1,
+      "measurement_count": 16,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 179,
+          "median": 189.5,
+          "max": 200,
+          "memory_transactions": 40
+        },
+        "opcode2/expected_error2": {
+          "count": 1,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error0": {
+          "count": 3,
+          "min": 172,
+          "median": 174,
+          "max": 183,
+          "memory_transactions": 57
+        },
+        "opcode5/expected_error0": {
+          "count": 2,
+          "min": 212,
+          "median": 223.0,
+          "max": 234,
+          "memory_transactions": 49
+        },
+        "opcode6/expected_error0": {
+          "count": 1,
+          "min": 198,
+          "median": 198,
+          "max": 198,
+          "memory_transactions": 20
+        },
+        "opcode8/expected_error0": {
+          "count": 1,
+          "min": 150,
+          "median": 150,
+          "max": 150,
+          "memory_transactions": 16
+        },
+        "opcode9/expected_error0": {
+          "count": 2,
+          "min": 149,
+          "median": 159.0,
+          "max": 169,
+          "memory_transactions": 34
+        },
+        "opcode10/expected_error0": {
+          "count": 2,
+          "min": 50,
+          "median": 50.5,
+          "max": 51,
+          "memory_transactions": 8
+        },
+        "opcode11/expected_error0": {
+          "count": 1,
+          "min": 644,
+          "median": 644,
+          "max": 644,
+          "memory_transactions": 72
+        },
+        "opcode12/expected_error0": {
+          "count": 1,
+          "min": 145,
+          "median": 145,
+          "max": 145,
+          "memory_transactions": 16
+        }
+      }
+    },
+    {
+      "arena_base": 20014547599360,
+      "reserved_fields": [
+        10,
+        11,
+        14
+      ],
+      "views": 3,
+      "measurement_count": 38,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 536,
+          "median": 539.0,
+          "max": 542,
+          "memory_transactions": 120
+        },
+        "opcode2/expected_error2": {
+          "count": 3,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error0": {
+          "count": 5,
+          "min": 171,
+          "median": 179,
+          "max": 232,
+          "memory_transactions": 104
+        },
+        "opcode5/expected_error0": {
+          "count": 6,
+          "min": 202,
+          "median": 231.5,
+          "max": 257,
+          "memory_transactions": 147
+        },
+        "opcode6/expected_error0": {
+          "count": 3,
+          "min": 189,
+          "median": 192,
+          "max": 203,
+          "memory_transactions": 60
+        },
+        "opcode8/expected_error0": {
+          "count": 3,
+          "min": 147,
+          "median": 152,
+          "max": 154,
+          "memory_transactions": 48
+        },
+        "opcode9/expected_error0": {
+          "count": 6,
+          "min": 157,
+          "median": 231.5,
+          "max": 321,
+          "memory_transactions": 150
+        },
+        "opcode10/expected_error0": {
+          "count": 6,
+          "min": 44,
+          "median": 48.0,
+          "max": 51,
+          "memory_transactions": 24
+        },
+        "opcode11/expected_error0": {
+          "count": 1,
+          "min": 1947,
+          "median": 1947,
+          "max": 1947,
+          "memory_transactions": 216
+        },
+        "opcode12/expected_error0": {
+          "count": 3,
+          "min": 148,
+          "median": 152,
+          "max": 152,
+          "memory_transactions": 48
+        }
+      }
+    },
+    {
+      "arena_base": 18446744073709551488,
+      "reserved_fields": [
+        10,
+        11,
+        14
+      ],
+      "views": 1,
+      "measurement_count": 16,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 179,
+          "median": 189.5,
+          "max": 200,
+          "memory_transactions": 40
+        },
+        "opcode2/expected_error2": {
+          "count": 1,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error0": {
+          "count": 3,
+          "min": 172,
+          "median": 174,
+          "max": 183,
+          "memory_transactions": 57
+        },
+        "opcode5/expected_error0": {
+          "count": 2,
+          "min": 212,
+          "median": 223.0,
+          "max": 234,
+          "memory_transactions": 49
+        },
+        "opcode6/expected_error0": {
+          "count": 1,
+          "min": 198,
+          "median": 198,
+          "max": 198,
+          "memory_transactions": 20
+        },
+        "opcode8/expected_error0": {
+          "count": 1,
+          "min": 150,
+          "median": 150,
+          "max": 150,
+          "memory_transactions": 16
+        },
+        "opcode9/expected_error0": {
+          "count": 2,
+          "min": 149,
+          "median": 159.0,
+          "max": 169,
+          "memory_transactions": 34
+        },
+        "opcode10/expected_error0": {
+          "count": 2,
+          "min": 50,
+          "median": 50.5,
+          "max": 51,
+          "memory_transactions": 8
+        },
+        "opcode11/expected_error0": {
+          "count": 1,
+          "min": 644,
+          "median": 644,
+          "max": 644,
+          "memory_transactions": 72
+        },
+        "opcode12/expected_error0": {
+          "count": 1,
+          "min": 145,
+          "median": 145,
+          "max": 145,
+          "memory_transactions": 16
+        }
+      }
+    },
+    {
+      "arena_base": 18446744073709551488,
+      "reserved_fields": [
+        10,
+        11,
+        14
+      ],
+      "views": 3,
+      "measurement_count": 38,
+      "populations": {
+        "opcode0/expected_error0": {
+          "count": 2,
+          "min": 536,
+          "median": 539.0,
+          "max": 542,
+          "memory_transactions": 120
+        },
+        "opcode2/expected_error2": {
+          "count": 3,
+          "min": 6,
+          "median": 6,
+          "max": 6,
+          "memory_transactions": 0
+        },
+        "opcode4/expected_error0": {
+          "count": 5,
+          "min": 171,
+          "median": 179,
+          "max": 232,
+          "memory_transactions": 104
+        },
+        "opcode5/expected_error0": {
+          "count": 6,
+          "min": 202,
+          "median": 231.5,
+          "max": 257,
+          "memory_transactions": 147
+        },
+        "opcode6/expected_error0": {
+          "count": 3,
+          "min": 189,
+          "median": 192,
+          "max": 203,
+          "memory_transactions": 60
+        },
+        "opcode8/expected_error0": {
+          "count": 3,
+          "min": 147,
+          "median": 152,
+          "max": 154,
+          "memory_transactions": 48
+        },
+        "opcode9/expected_error0": {
+          "count": 6,
+          "min": 157,
+          "median": 231.5,
+          "max": 321,
+          "memory_transactions": 150
+        },
+        "opcode10/expected_error0": {
+          "count": 6,
+          "min": 44,
+          "median": 48.0,
+          "max": 51,
+          "memory_transactions": 24
+        },
+        "opcode11/expected_error0": {
+          "count": 1,
+          "min": 1947,
+          "median": 1947,
+          "max": 1947,
+          "memory_transactions": 216
+        },
+        "opcode12/expected_error0": {
+          "count": 3,
+          "min": 148,
+          "median": 152,
+          "max": 152,
+          "memory_transactions": 48
+        }
+      }
+    }
+  ],
+  "scope": "standalone 64-bit word interface at high and wrapping arena bases; descriptor, event, reference, free and retirement address regions; does not qualify board DDR mappings",
+  "validation": "independent two-packet vectors retain high64 timestamps/order/length, raw reserved words preserved, all ownership recovered; held responses, memory backpressure and poisoned accepted command inputs",
+  "label": "s4-midi-address-relocated",
+  "fixture_revision": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
+  "models": [
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "2",
+        "BLOCK_EVENTS": "2",
+        "MAX_EVENTS": "4",
+        "RETIREMENTS": "1",
+        "VIEWS": "1"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "f122184818ac82b980a73346ae29d116147a9955a6b8648939de937eb8736d90",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    },
+    {
+      "native_memory": null,
+      "parameters": {
+        "BLOCKS": "6",
+        "BLOCK_EVENTS": "2",
+        "MAX_EVENTS": "4",
+        "RETIREMENTS": "3",
+        "VIEWS": "3"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/midi/rtl/midi_functions.svh": "723699e241e339f40cbf74882b2b826ba398163958e303e7084a4dffeb1463c4",
+        "fpga/midi/rtl/midi_store.sv": "f122184818ac82b980a73346ae29d116147a9955a6b8648939de937eb8736d90",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "midi_store"
+    }
+  ],
+  "retention": "s4-midi-address-relocated-retention.json",
+  "per_request_samples": "s4-midi-address-relocated-raw.tar.gz"
+}

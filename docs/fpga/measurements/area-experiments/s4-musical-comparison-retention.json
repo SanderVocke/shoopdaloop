@@ -1,0 +1,13 @@
+{
+  "archive": "s4-musical-comparison-raw.tar.gz",
+  "archive_sha256": "73c0174f05db35015fca4f78867e8b5b6a4db82cbf4581f72b50daca8d6c91e7",
+  "members_sha256": {
+    "c3.log": "904686bb2aadf16fab698b026a9fca0ac4ffc17a90504d85ab6f094ea8c8c50a",
+    "s4-midi-address.log": "1333ce4607304e97f75a59ded699a4171262bb74f3780265651f8fb8debde7d3",
+    "c3.json": "139997bd3b0f57c914f46529c67276c2762d58ab5ca698b8d983767cae138c9e",
+    "s4-midi-address.json": "5bac1f4805fc90c33c5a1106c778f88b518f3b144c681097db3a4289e12c3588",
+    "manifest.json": "8c053e4d5ffa408b0ff371ebb7abc35457a8ba2d10ecefe49a206d19b4e978e3",
+    "fixture/midi_expression_transitions.rs": "f7cd5174bd969de3302c7036c7bf9d8e705653314e0076ee213e2d430b13c1c9",
+    "fixture/benchmark.rs": "ae5c2b3fa015c72af1b3ffdc9904b934536258ca1f5a07cc2549d5eda2ba4c1b"
+  }
+}

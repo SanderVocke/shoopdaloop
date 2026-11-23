@@ -1,0 +1,224 @@
+{
+  "allocated_blocks": 384,
+  "axi_data_width": 64,
+  "block_chunks": 32,
+  "local_frame_bits": null,
+  "parameters": [
+    [
+      "VIEWS",
+      512
+    ],
+    [
+      "SLOTS",
+      5763072
+    ],
+    [
+      "CHUNK_FRAMES",
+      32
+    ],
+    [
+      "BLOCK_CHUNKS",
+      32
+    ],
+    [
+      "TABLE_PAGES",
+      16119
+    ],
+    [
+      "RETIRED_TABLES",
+      256
+    ],
+    [
+      "RECLAIM_BLOCKS",
+      0
+    ],
+    [
+      "RECLAIM_CYCLES",
+      5000
+    ],
+    [
+      "RECLAIM_GUARD",
+      1024
+    ],
+    [
+      "TABLE_LINES",
+      128
+    ],
+    [
+      "REF_LINES",
+      4
+    ],
+    [
+      "STACK_LINES",
+      2
+    ],
+    [
+      "READ_BUFFERS",
+      4
+    ],
+    [
+      "WRITE_BUFFERS",
+      4
+    ],
+    [
+      "REUSE_VIEWS",
+      1
+    ]
+  ],
+  "reset_cycles": 514,
+  "scope": "public media store at primary capacity; 128 captures of1057 frames, offset33-frame exports, clear/retake/read and final retirement; ideal AXI memory, no SP/JP or DDR-added delay",
+  "validation": "all commands complete; retained and replacement samples match independent Rust vectors; every allocated block is recovered uniquely and all metadata pages are freed",
+  "label": "s4-audio-address-store-operations-unit",
+  "fixture_revision": "938436956dc36a7c8dde82b014626e21eb209b1a",
+  "models": [
+    {
+      "native_memory": {
+        "embedded": true,
+        "physical_base": 16777216,
+        "words": 185040496
+      },
+      "parameters": {
+        "AXI_DATA_WIDTH": "64",
+        "BLOCK_CHUNKS": "32",
+        "CHUNK_FRAMES": "32",
+        "PHYSICAL_BASE": "16777216",
+        "READ_BUFFERS": "4",
+        "RECLAIM_BLOCKS": "0",
+        "RECLAIM_CYCLES": "5000",
+        "RECLAIM_GUARD": "1024",
+        "REF_LINES": "4",
+        "RETIRED_TABLES": "256",
+        "REUSE_VIEWS": "1",
+        "SLOTS": "5763072",
+        "STACK_LINES": "2",
+        "TABLE_LINES": "128",
+        "TABLE_PAGES": "16119",
+        "VIEWS": "512",
+        "WRITE_BUFFERS": "4"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+        "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+        "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+        "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+        "fpga/axi_memory/rtl/media_store_axi.sv": "994218f9c840591aac6c0a72c17a00d5ab4c68d96a5f25f5d556fe150bec8c9d",
+        "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+        "fpga/axi_memory/rtl/word_axi.sv": "384ae7fe56f7303371397bc011e8cf25f4900acecc69aecf3a5e7ae3635b648a",
+        "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+        "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e",
+        "fpga/chunk_memory/rtl/chunk_memory.sv": "66e8b5a5f1978cfdc89656aef59d74223a69ef0a89aa99f84d5e2bfb202f0d34",
+        "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+        "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+        "fpga/media_store/rtl/media_metadata.sv": "f210810268ef2fb6f88f4bd2b2cc63ff392926ddd346286963e52932a4eb89bf",
+        "fpga/media_store/rtl/media_prefetch_resolver.sv": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e",
+        "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+        "fpga/media_store/rtl/media_reclaimer.sv": "f4d38e13e9d705a8afff6c10bde68483c2e02c5c71dedaa8e6def7db3d224049",
+        "fpga/media_store/rtl/media_store.sv": "b3724656279576498d5c594161bedd83aa3e2d115a02174e3d8fe4b8e19b2753",
+        "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "media_store_axi"
+    }
+  ],
+  "retention": "s4-audio-address-store-operations-unit-retention.json",
+  "populations": {
+    "create": {
+      "count": 128,
+      "min": 10,
+      "median": 265.0,
+      "max": 519,
+      "axi_reads": 0,
+      "axi_writes": 306
+    },
+    "capture": {
+      "count": 128,
+      "min": 3976,
+      "median": 4169.0,
+      "max": 4319,
+      "axi_reads": 144,
+      "axi_writes": 4687
+    },
+    "retain_offset_slice": {
+      "count": 128,
+      "min": 1131,
+      "median": 1393.0,
+      "max": 1685,
+      "axi_reads": 144,
+      "axi_writes": 660
+    },
+    "clear_retained_capture": {
+      "count": 128,
+      "min": 116,
+      "median": 166.0,
+      "max": 166,
+      "axi_reads": 128,
+      "axi_writes": 128
+    },
+    "retake": {
+      "count": 128,
+      "min": 528,
+      "median": 528.0,
+      "max": 606,
+      "axi_reads": 8,
+      "axi_writes": 647
+    },
+    "retake_read": {
+      "count": 128,
+      "min": 65,
+      "median": 65.0,
+      "max": 65,
+      "axi_reads": 0,
+      "axi_writes": 128
+    },
+    "retained_read": {
+      "count": 128,
+      "min": 267,
+      "median": 267.0,
+      "max": 358,
+      "axi_reads": 384,
+      "axi_writes": 8
+    },
+    "remove": {
+      "count": 128,
+      "min": 73,
+      "median": 116.0,
+      "max": 116,
+      "axi_reads": 128,
+      "axi_writes": 120
+    },
+    "maintenance_drain": {
+      "count": 1,
+      "min": 191736,
+      "median": 191736,
+      "max": 191736,
+      "axi_reads": 1568,
+      "axi_writes": 1566
+    },
+    "retained_after_maintenance": {
+      "count": 128,
+      "min": 267,
+      "median": 267.0,
+      "max": 310,
+      "axi_reads": 384,
+      "axi_writes": 4
+    },
+    "remove_retained": {
+      "count": 128,
+      "min": 116,
+      "median": 116.0,
+      "max": 116,
+      "axi_reads": 128,
+      "axi_writes": 128
+    },
+    "final_maintenance_drain": {
+      "count": 1,
+      "min": 108066,
+      "median": 108066,
+      "max": 108066,
+      "axi_reads": 800,
+      "axi_writes": 796
+    }
+  }
+}

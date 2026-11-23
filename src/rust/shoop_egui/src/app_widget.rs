@@ -105,10 +105,6 @@ pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
     SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
-pub const CARLA_RACK_INSTANCES: SettingKey<u32> = SettingKey::new("carla.rack_instances");
-pub const CARLA_PATCHBAY_INSTANCES: SettingKey<u32> = SettingKey::new("carla.patchbay_instances");
-pub const CARLA_PATCHBAY_16X_INSTANCES: SettingKey<u32> =
-    SettingKey::new("carla.patchbay16x_instances");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
@@ -647,8 +643,8 @@ pub fn register_carla_settings(
             CARLA_HOSTING_MODE,
             shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
             "Carla",
-            "Hosting mode",
-            "Select how a native Socket or Shared Memory session host runs Carla. Restart the host to apply changes.",
+            "Local Carla isolation",
+            "Select how a native Socket or Shared Memory session host runs local chains. Restart the host to apply changes.",
         )
         .category_order(7)
         .setting_order(10)
@@ -660,25 +656,6 @@ pub fn register_carla_settings(
             ],
         }),
     )?;
-    for (key, label, order) in [
-        (CARLA_RACK_INSTANCES, "Rack instances", 11),
-        (CARLA_PATCHBAY_INSTANCES, "Stereo Patchbay instances", 12),
-        (CARLA_PATCHBAY_16X_INSTANCES, "Patchbay 16x instances", 13),
-    ] {
-        builder.register(
-            SettingDefinition::new(
-                key,
-                0,
-                "Carla",
-                label,
-                "Capacity reserved when the host starts. Set all instance counts to zero to disable Carla.",
-            )
-            .category_order(7)
-            .setting_order(order)
-            .effect(SettingEffect::RestartRequired)
-            .editor(SettingEditor::UnsignedInteger { min: 0, max: 64 }),
-        )?;
-    }
     Ok(())
 }
 
@@ -771,27 +748,10 @@ pub fn processor_settings_from_snapshot(
         carla: Default::default(),
     };
     if backend == crate::BackendType::Native {
-        let carla_slots = |key: SettingKey<u32>| match snapshot.get(key) {
-            Ok(count) => u16::try_from(count).map_err(|error| error.to_string()),
-            Err(shoop_settings::SettingsAccessError::UnknownKey(_)) => Ok(0),
-            Err(error) => Err(error.to_string()),
+        settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
+            shoop_settings::CarlaHostingMode::InProcess => shoop_app_api::CarlaHosting::InProcess,
+            shoop_settings::CarlaHostingMode::Subprocess => shoop_app_api::CarlaHosting::Subprocess,
         };
-        settings.carla.rack_instances = carla_slots(CARLA_RACK_INSTANCES)?;
-        settings.carla.patchbay_instances = carla_slots(CARLA_PATCHBAY_INSTANCES)?;
-        settings.carla.patchbay16x_instances = carla_slots(CARLA_PATCHBAY_16X_INSTANCES)?;
-        if settings.carla.rack_instances != 0
-            || settings.carla.patchbay_instances != 0
-            || settings.carla.patchbay16x_instances != 0
-        {
-            settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
-                shoop_settings::CarlaHostingMode::InProcess => {
-                    shoop_app_api::CarlaHosting::InProcess
-                }
-                shoop_settings::CarlaHostingMode::Subprocess => {
-                    shoop_app_api::CarlaHosting::Subprocess
-                }
-            };
-        }
     }
     settings.validate().map_err(|error| error.to_string())?;
     Ok(settings)
@@ -837,11 +797,18 @@ pub fn register_audio_backend_settings(
             .editor(SettingEditor::StringChoice {choices:&[("auto","Auto"),("on","On"),("off","Off")]}))?;
     }
     for (key, label, default, min, max, order) in [
-        (PROCESSOR_FX_INSTANCES, "FX instances", 2, 0, 64, 60),
+        (
+            PROCESSOR_FX_INSTANCES,
+            "Built-in FX instances",
+            2,
+            0,
+            64,
+            60,
+        ),
         (PROCESSOR_SYNTH_INSTANCES, "Synth instances", 2, 0, 64, 61),
         (
             PROCESSOR_MEMORY_MB,
-            "Processor memory (MiB)",
+            "Built-in processor memory (MiB)",
             256,
             0,
             4096,
@@ -1415,6 +1382,8 @@ pub struct AppWidget {
     add_track_midi: bool,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
+    add_track_fx: crate::remote_fx::Picker,
+    add_track_has_default_fx: bool,
     add_track_default_playback_mode: DefaultPlaybackMode,
     add_track_output_bus_names: Vec<String>,
     add_track_output_bus_text: String,
@@ -1496,6 +1465,19 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fx_service_discovery(&mut self, discover: fn() -> Vec<std::net::SocketAddr>) {
+        self.add_track_fx.set_discovery(discover);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fx_service_launcher(
+        &mut self,
+        prepare: fn(&str) -> Result<std::net::SocketAddr, String>,
+    ) {
+        self.add_track_fx.set_launcher(prepare);
+    }
+
     pub fn open_host_profiling(&mut self) {
         self.profiling.open = true;
         self.profiling.host = true;
@@ -1510,6 +1492,8 @@ impl AppWidget {
 
     pub fn reset_connection(&mut self) {
         let mut fresh = Self::new(self.settings.registry());
+        fresh.add_track_fx = std::mem::take(&mut self.add_track_fx);
+        fresh.add_track_fx.clear_choice();
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
         fresh.profiling = core::mem::take(&mut self.profiling);
@@ -1543,6 +1527,8 @@ impl AppWidget {
             add_track_midi: false,
             add_track_dry_midi: false,
             add_track_processor: None,
+            add_track_fx: Default::default(),
+            add_track_has_default_fx: false,
             add_track_default_playback_mode: DefaultPlaybackMode::Regular,
             add_track_output_bus_names: vec!["Master".to_owned()],
             add_track_output_bus_text: String::new(),
@@ -2487,6 +2473,7 @@ impl AppWidget {
         self.add_track_processor_adjustment = configuration.processor_adjustment;
         self.add_track_processor_frames = configuration.processor_frames;
         self.add_track_make_default = false;
+        self.add_track_fx.opened();
         self.add_track_open = true;
     }
 
@@ -2892,6 +2879,14 @@ impl AppWidget {
                 self.add_track_recording_frames = configuration.recording_frames;
                 self.add_track_processor_adjustment = configuration.processor_adjustment;
                 self.add_track_processor_frames = configuration.processor_frames;
+                self.add_track_has_default_fx = state.bus_processors.iter()
+                    .any(|processor| processor.available && processor.id.is_remote_carla());
+                let remote_fx = self.add_track_mode == AddTrackMode::DryWet
+                    && self.add_track_processor.as_ref().is_some_and(TrackProcessorTypeId::is_remote_carla);
+                if remote_fx {
+                    self.add_track_fx.show(ui, self.host_controls.state.as_ref(), self.add_track_has_default_fx);
+                }
+                let preparing_fx = remote_fx && self.add_track_fx.is_preparing();
                 #[cfg(test)]
                 {
                     self.add_track_midi_id = _configuration_ui.midi_id;
@@ -2907,9 +2902,15 @@ impl AppWidget {
                 let spec = self.add_track_spec();
                 let validation = spec
                     .as_ref()
-                    .ok_or(crate::TrackSpecError::ProcessorUnavailable)
+                    .ok_or(if remote_fx {
+                        crate::TrackSpecError::InvalidRemoteFx
+                    } else {
+                        crate::TrackSpecError::ProcessorUnavailable
+                    })
                     .and_then(|spec| spec.validate(processors));
-                if let Err(error) = validation {
+                if let Some(error) = validation.err().filter(|error| {
+                    !preparing_fx || *error != crate::TrackSpecError::InvalidRemoteFx
+                }) {
                     let message = match error {
                         crate::TrackSpecError::EmptyName => "A track name is required.",
                         crate::TrackSpecError::InvalidLatency => {
@@ -2920,6 +2921,9 @@ impl AppWidget {
                         }
                         crate::TrackSpecError::UnsupportedShape => {
                             "The selected processor does not support this channel/MIDI shape."
+                        }
+                        crate::TrackSpecError::InvalidRemoteFx => {
+                            "Select an FX service or enter its IP address and port."
                         }
                     };
                     ui.colored_label(egui::Color32::LIGHT_RED, message);
@@ -2933,7 +2937,7 @@ impl AppWidget {
                 ui.separator();
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(
-                        validation.is_ok() && missing_capability.is_none(),
+                        validation.is_ok() && missing_capability.is_none() && !preparing_fx,
                         egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
                     );
                     #[cfg(test)]
@@ -2965,6 +2969,9 @@ impl AppWidget {
         if cancelled {
             self.cancel_add_track();
             open = false;
+        }
+        if !open {
+            self.add_track_fx.closed();
         }
         self.add_track_open = open;
     }
@@ -2998,13 +3005,26 @@ impl AppWidget {
                 audio_channels: 0,
                 midi: false,
             },
-            AddTrackMode::DryWet => TrackSpecTopology::DryWet {
-                dry_audio_channels: self.add_track_audio_channels,
-                wet_audio_channels: self.add_track_audio_channels,
-                dry_midi: self.add_track_dry_midi,
-                processor_type: self.add_track_processor.clone()?,
-                default_playback_mode: self.add_track_default_playback_mode,
-            },
+            AddTrackMode::DryWet => {
+                let processor_type = self.add_track_processor.clone()?;
+                let remote_fx = if processor_type.is_remote_carla()
+                    && !self
+                        .add_track_fx
+                        .uses_host_service(self.add_track_has_default_fx)
+                {
+                    Some(self.add_track_fx.target()?)
+                } else {
+                    None
+                };
+                TrackSpecTopology::DryWet {
+                    dry_audio_channels: self.add_track_audio_channels,
+                    wet_audio_channels: self.add_track_audio_channels,
+                    dry_midi: self.add_track_dry_midi,
+                    processor_type,
+                    default_playback_mode: self.add_track_default_playback_mode,
+                    remote_fx,
+                }
+            }
         };
         Some(TrackSpec {
             name: self.add_track_name.trim().to_owned(),
@@ -3670,7 +3690,10 @@ pub fn show_new_track_configuration(
                 ui.end_row();
             });
         if configuration.mode == AddTrackMode::DryWet {
-            if let Some(resources) = selected_processor.and_then(|processor| processor.resources) {
+            if let Some(resources) = selected_processor
+                .and_then(|processor| processor.resources)
+                .filter(|resources| resources.instance_limit != 0)
+            {
                 ui.small(format!(
                     "{} of {} host instances in use",
                     resources.instances_in_use, resources.instance_limit
@@ -4689,6 +4712,7 @@ mod tests {
                 dry_midi: false,
                 processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
                 default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                remote_fx: None,
             },
             latency: TrackLatencySpec {
                 manual_frames: 3,
@@ -5322,6 +5346,7 @@ mod tests {
                     dry_midi: true,
                     processor_type: processor.id,
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: vec!["Master".to_owned()],
@@ -5377,6 +5402,7 @@ mod tests {
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: vec!["Master".to_owned()],
@@ -5897,6 +5923,75 @@ mod tests {
             configuration.output_bus_names,
             vec!["Cue".to_owned(), "Master".to_owned()]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "desktop FX host launcher")]
+    fn desktop_fx_host_is_started_on_request_and_used_for_track_creation() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::{Duration, Instant};
+
+        static REQUESTS: AtomicUsize = AtomicUsize::new(0);
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        widget.set_host_state(crate::HostUiState {
+            name: "Stage host".into(),
+            endpoint: Some("192.0.2.1:15400".into()),
+            location: crate::HostLocation::RemoteSocket,
+            connection: crate::HostConnectionState::Ready,
+            error: None,
+            shutdown_pending: false,
+            import_enabled: true,
+        });
+        widget.set_fx_service_launcher(|endpoint| {
+            assert_eq!(endpoint, "192.0.2.1:15400");
+            REQUESTS.fetch_add(1, Ordering::Relaxed);
+            Ok("192.0.2.2:24510".parse().unwrap())
+        });
+        let processor = TrackProcessorTypeId::new(TrackProcessorTypeId::REMOTE_CARLA_RACK);
+        let state = AppState {
+            capabilities: crate::BackendCapabilities::FULL,
+            track_processors: Arc::from([TrackProcessorDescriptor {
+                id: processor.clone(),
+                label: "Remote Carla Rack".into(),
+                available: true,
+                unavailable_reason: None,
+                resources: None,
+                constraints: Default::default(),
+                features: Default::default(),
+                editor: None,
+            }]),
+            ..Default::default()
+        };
+        widget.add_track_open = true;
+        widget.add_track_name = "Desktop FX".into();
+        widget.add_track_mode = AddTrackMode::DryWet;
+        widget.add_track_processor = Some(processor);
+        widget.add_track_audio_channels = 2;
+        frame(&context, &mut widget, &state, vec![]);
+        frame(&context, &mut widget, &state, vec![]);
+        assert_eq!(REQUESTS.load(Ordering::Relaxed), 0);
+        let button = widget.add_track_fx.launch_button_rect().unwrap().center();
+        assert!(click(&context, &mut widget, &state, button).is_empty());
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while widget.add_track_fx.target().is_none() {
+            assert!(
+                Instant::now() < deadline,
+                "Desktop FX host startup did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+            frame(&context, &mut widget, &state, vec![]);
+        }
+        let add = widget.add_track_accept_rect.unwrap().center();
+        let actions = click(&context, &mut widget, &state, add);
+        let [AppAction::AddTrackWithTopology(spec)] = actions.as_slice() else {
+            panic!("expected track creation, got {actions:?}");
+        };
+        assert!(matches!(
+            spec.topology, TrackSpecTopology::DryWet { remote_fx: Some(target), .. }
+                if target.address == "192.0.2.2:24510".parse().unwrap()
+        ));
+        assert_eq!(REQUESTS.load(Ordering::Relaxed), 1);
     }
 
     #[shoop_wasm_test_support::shoop_test]

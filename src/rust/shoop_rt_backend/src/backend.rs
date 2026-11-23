@@ -1452,6 +1452,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .filter(|entry| {
                 crate::processor_controls::processor_kind(entry.id.as_str())
                     .is_some_and(|kind| kind.supports_bus())
+                    && (!entry.id.is_remote_carla()
+                        || self
+                            .processors
+                            .is_some_and(|limits| limits.remote_carla_has_default))
             })
             .cloned()
             .collect();
@@ -1460,6 +1464,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             entry.constraints.matching_audio_channels = true;
             entry.constraints.min_dry_audio_channels = Some(1);
             entry.constraints.min_wet_audio_channels = Some(1);
+            if let Some(kind) = crate::processor_controls::processor_kind(entry.id.as_str())
+                .filter(|kind| self.processors.is_some_and(|limits| limits.dynamic(*kind)))
+            {
+                let channels = usize::from(self.limits().bus_channels);
+                let width = Some(kind.prepared_audio_channels(channels).min(channels) as u32);
+                entry.constraints.max_dry_audio_channels = width;
+                entry.constraints.max_wet_audio_channels = width;
+            }
         }
         Ok(entries.into())
     }

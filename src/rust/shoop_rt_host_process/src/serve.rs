@@ -23,6 +23,7 @@ pub fn run() -> Result<()> {
         let carla = shoop_rt_host_native::CarlaHostOptions {
             worker: Some(worker),
             ui: Some(dispatcher),
+            remote: None,
         };
         return run_impl(
             |config| shoop_rt_host_native::start_endpoint_with_carla(config, carla.clone()),

@@ -5576,6 +5576,7 @@ impl ApplicationModel {
                 dry_midi,
                 processor_type,
                 default_playback_mode,
+                ..
             } => {
                 let backend_topology =
                     if processor_type.as_str() == shoop_app_api::TrackProcessorTypeId::EXTERNAL {
@@ -5590,6 +5591,7 @@ impl ApplicationModel {
                             dry_audio_channels: *dry_audio_channels,
                             wet_audio_channels: *wet_audio_channels,
                             dry_midi: *dry_midi,
+                            remote_fx: None,
                         }
                     };
                 (
@@ -5599,6 +5601,7 @@ impl ApplicationModel {
                         wet_audio_channels: *wet_audio_channels,
                         dry_midi: *dry_midi,
                         processor_type: processor_type.clone(),
+                        remote_fx: None,
                     },
                     dry_audio_channels.saturating_add(*wet_audio_channels),
                     *default_playback_mode,
@@ -11237,6 +11240,7 @@ impl ApplicationModel {
                     dry_audio_channels,
                     wet_audio_channels,
                     dry_midi,
+                    ..
                 } => {
                     let chain_type = fx_chain_type_for_processor(
                         &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
@@ -11272,6 +11276,7 @@ impl ApplicationModel {
                             midi: *dry_midi,
                             dry_audio_channels: Some(*dry_audio_channels),
                             wet_audio_channels: Some(*wet_audio_channels),
+                            remote_fx: None,
                         }
                     };
                     (
@@ -13075,6 +13080,15 @@ fn fx_chain_type_for_processor(
         shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
+        shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_RACK => {
+            Ok(FxChainTypeDocument::RemoteCarlaRack)
+        }
+        shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY => {
+            Ok(FxChainTypeDocument::RemoteCarlaPatchbay)
+        }
+        shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X => {
+            Ok(FxChainTypeDocument::RemoteCarlaPatchbay16x)
+        }
         shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => Ok(FxChainTypeDocument::BuiltInFx),
         shoop_app_api::TrackProcessorTypeId::OXISYNTH => Ok(FxChainTypeDocument::OxiSynth),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
@@ -13092,6 +13106,15 @@ fn processor_for_fx_chain_type(
         FxChainTypeDocument::CarlaPatchbay => shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY,
         FxChainTypeDocument::CarlaPatchbay16x => {
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
+        }
+        FxChainTypeDocument::RemoteCarlaRack => {
+            shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_RACK
+        }
+        FxChainTypeDocument::RemoteCarlaPatchbay => {
+            shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY
+        }
+        FxChainTypeDocument::RemoteCarlaPatchbay16x => {
+            shoop_app_api::TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
         }
         FxChainTypeDocument::BuiltInFx => shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
         FxChainTypeDocument::OxiSynth => shoop_app_api::TrackProcessorTypeId::OXISYNTH,
@@ -13148,6 +13171,7 @@ fn runtime_track_topology(
                     wet_audio_channels: *wet_audio_channels,
                     dry_midi: *dry_midi,
                     processor_type: processor,
+                    remote_fx: None,
                 },
                 dry_audio_channels.saturating_add(*wet_audio_channels),
                 *dry_midi,
@@ -13159,6 +13183,7 @@ fn runtime_track_topology(
             midi,
             dry_audio_channels,
             wet_audio_channels,
+            ..
         } => {
             let dry_audio_channels = dry_audio_channels.unwrap_or(*audio_channels);
             let wet_audio_channels = wet_audio_channels.unwrap_or(*audio_channels);
@@ -13177,12 +13202,14 @@ fn runtime_track_topology(
                     dry_audio_channels,
                     wet_audio_channels,
                     dry_midi: *midi,
+                    remote_fx: None,
                 },
                 TrackTopology::DryWet {
                     dry_audio_channels,
                     wet_audio_channels,
                     dry_midi: *midi,
                     processor_type: processor,
+                    remote_fx: None,
                 },
                 dry_audio_channels.saturating_add(wet_audio_channels),
                 *midi,
@@ -13206,12 +13233,14 @@ fn runtime_track_topology(
                     dry_audio_channels: *audio_channels,
                     wet_audio_channels: *audio_channels,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 TrackTopology::DryWet {
                     dry_audio_channels: *audio_channels,
                     wet_audio_channels: *audio_channels,
                     dry_midi: true,
                     processor_type: processor,
+                    remote_fx: None,
                 },
                 audio_channels.saturating_mul(2),
                 true,
@@ -13228,12 +13257,14 @@ fn runtime_track_topology(
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
+                    remote_fx: None,
                 },
                 TrackTopology::DryWet {
                     dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: processor,
+                    remote_fx: None,
                 },
                 2,
                 true,
@@ -16212,6 +16243,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec {
                     adjustment: RecordingOffsetAdjustmentState::ManualOverride,
@@ -16240,6 +16272,7 @@ mod tests {
                 processor_type: shoop_app_api::TrackProcessorTypeId::new(
                     shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                 ),
+                remote_fx: None,
             }
         );
         assert_eq!(track.loops.len(), 8);
@@ -16414,6 +16447,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::BUILTIN_FX,
                     ),
                     default_playback_mode: shoop_app_api::DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: shoop_app_api::TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -16585,6 +16619,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::OXISYNTH,
                     ),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -16847,6 +16882,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -16887,6 +16923,7 @@ mod tests {
                 midi: true,
                 dry_audio_channels: Some(2),
                 wet_audio_channels: Some(1),
+                remote_fx: None,
             }
         );
         assert_eq!(
@@ -16995,6 +17032,7 @@ mod tests {
                         shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
                     ),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -21214,6 +21252,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -25119,6 +25158,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                     default_playback_mode: DefaultPlaybackMode::Regular,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -26234,6 +26274,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                     ),
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    remote_fx: None,
                 },
                 latency: TrackLatencySpec::default(),
                 initial_output_bus_names: Vec::new(),
@@ -26435,6 +26476,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                         ),
                         default_playback_mode: DefaultPlaybackMode::Regular,
+                        remote_fx: None,
                     },
                     latency: TrackLatencySpec::default(),
                     initial_output_bus_names: Vec::new(),
@@ -26532,6 +26574,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             shoop_app_api::TrackProcessorTypeId::EXTERNAL,
                         ),
                         default_playback_mode: DefaultPlaybackMode::Regular,
+                        remote_fx: None,
                     },
                     latency: Default::default(),
                     initial_output_bus_names: Vec::new(),

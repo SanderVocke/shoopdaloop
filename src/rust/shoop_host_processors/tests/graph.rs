@@ -963,6 +963,7 @@ fn create_with_host_width(
                 midi_output: false,
             },
             kind,
+            remote_fx: None,
         },
     );
     for c in 0..channels {
@@ -1033,6 +1034,7 @@ fn fx_monitoring_capture_and_both_playback_paths_share_one_delay_at_every_width(
                 midi_output: false,
             },
             kind: ProcessorKind::BuiltInFx,
+            remote_fx: None,
         };
         assert_eq!(
             request(&mut h, invalid),

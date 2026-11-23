@@ -159,7 +159,10 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
         ProcessorKind::External
         | ProcessorKind::CarlaRack
         | ProcessorKind::CarlaPatchbay
-        | ProcessorKind::CarlaPatchbay16x => {
+        | ProcessorKind::CarlaPatchbay16x
+        | ProcessorKind::RemoteCarlaRack
+        | ProcessorKind::RemoteCarlaPatchbay
+        | ProcessorKind::RemoteCarlaPatchbay16x => {
             Err(Error::Preparation("processor has no inline DSP factory"))
         }
     }
@@ -222,6 +225,7 @@ pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
         reserved_bytes,
         instances,
         presets: presets.into_boxed_slice(),
+        dynamic_carla: Default::default(),
     })
 }
 

@@ -555,12 +555,12 @@ def verify_native(
             raise RuntimeError("macOS bundle has the wrong minimum OS version")
         print("\n".join(verify_payloads(payloads, arch or "arm64", macos_minimum_version)))
     require_application_icon(binary, "native executable")
-    reject_carla_native_payload(binary, "native executable")
+    # Standard Native binaries include the Carla loader for remote FX and
+    # local use with an installed runtime. The archive manifest above
+    # controls whether the runtime component itself is packaged.
     if with_carla:
         if b"SHOOP_CARLA_NATIVE_LIBRARY" not in payloads[companion]:
             raise RuntimeError("session host has no Carla Native support")
-    else:
-        reject_carla_native_payload(payloads[companion], "session host")
     reject_application_script_payload(binary, "native executable")
 
 

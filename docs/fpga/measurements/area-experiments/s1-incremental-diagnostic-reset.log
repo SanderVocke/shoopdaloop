@@ -1,0 +1,25 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.78s
+     Running tests/ownership.rs (target/debug/build/rt_fpga_testbench/a582660ae7a792de/out/ownership-a582660ae7a792de)
+
+running 1 test
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=1 reuse=false read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=1 reuse=true read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=7 reuse=false read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=7 reuse=true read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=512 reuse=false read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=512 reuse=true read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=513 reuse=false read_cycles=6
+ownership/64/Fixed/descriptor_statistics_reset_restore
+descriptor statistics views=513 reuse=true read_cycles=6
+test descriptor_statistics_count_distinct_views_and_discard_stale_ram_after_reset ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 25.72s
+

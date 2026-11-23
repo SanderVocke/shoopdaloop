@@ -1,0 +1,442 @@
+//! MIDI storage boundary controls independent of its DDR layout and allocator.
+use super::Memory;
+use crate::{Result, model::Design, sim::Sim};
+use rt_fpga_reference::midi::{ContentStore, Error, Message, StoreLimits};
+use serde_json::{Value, json};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+
+fn command(
+    s: &mut Sim<'_>,
+    memory: &Rc<RefCell<Memory>>,
+    rows: &mut Vec<Value>,
+    op: u64,
+    handle: u64,
+    arg: u64,
+    packet: u64,
+    error: u64,
+) -> Value {
+    let start = s.cycles;
+    let transfers = memory.borrow().transfers;
+    s.model.set_all(&[
+        ("command_valid", 1),
+        ("command_op", op),
+        ("command_view", handle),
+        ("command_arg0", arg),
+        ("command_arg1", 0),
+        ("command_packet", packet),
+        ("command_length", 3),
+        ("response_ready", 0),
+    ]);
+    let mut accepted = false;
+    for _ in 0..100000 {
+        if s.tick(&["command_ready"]).0.get("command_ready") != 0 {
+            accepted = true;
+            break;
+        }
+    }
+    assert!(accepted, "MIDI store admission");
+    s.model.set_all(&[
+        ("command_valid", 0),
+        ("command_op", 15),
+        ("command_view", u64::MAX),
+        ("command_arg0", u64::MAX),
+        ("command_arg1", u64::MAX),
+        ("command_packet", 0),
+    ]);
+    s.until(100000, "MIDI store result", |m| {
+        m.get("response_valid") != 0
+    });
+    assert_eq!(
+        s.model.get("response_error"),
+        error,
+        "op{op} handle{handle} arg{arg}"
+    );
+    let result = json!({"handle":s.model.get("response_handle"),"frame":s.model.get("response_frame"),"order":s.model.get("response_order"),
+        "packet":s.model.get("response_packet"),"length":s.model.get("response_length"),
+        "work":s.model.get("response_work")});
+    s.idle(3);
+    s.model.set("response_ready", 1);
+    s.idle(1);
+    s.model.set("response_ready", 0);
+    rows.push(
+        json!({"op":op,"handle":handle,"arg":arg,"error":error,"reply":result,
+        "cycles":s.cycles-start,"memory_transactions":memory.borrow().transfers-transfers}),
+    );
+    result
+}
+
+pub fn boundaries() -> Result<Value> {
+    let mut cases = Vec::new();
+    for (views, events, retired) in [(1, 1, 1), (3, 3, 1), (5, 3, 3), (256, 1, 128)] {
+        let limits = StoreLimits {
+            views,
+            max_events: events,
+            block_events: if views == 256 { 256 } else { 1 },
+            blocks: if views == 256 { 2432 } else { views * events },
+            retirements: retired,
+        };
+        let mut design = Design::new(
+            "midi_store",
+            vec![crate::root().join("fpga/midi/rtl/midi_store.sv")],
+        );
+        design.includes.push(crate::root().join("fpga/midi/rtl"));
+        let compiled = design
+            .parameters(&[
+                ("VIEWS", u64::from(views)),
+                ("MAX_EVENTS", u64::from(events)),
+                ("BLOCK_EVENTS", u64::from(limits.block_events)),
+                ("BLOCKS", u64::from(limits.blocks)),
+                ("RETIREMENTS", u64::from(retired)),
+            ])
+            .build(&crate::root().join("work/marlin-suite/midi-store-area"))?;
+        let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10000, 0)]);
+        let memory = Rc::new(RefCell::new(Memory::new(
+            (s.model.get("arena_bytes") / 4) as usize,
+        )));
+        s.agent(memory.clone());
+        s.agent(crate::protocol::ReadyValid::new(
+            "memory_valid",
+            "memory_ready",
+            &["memory_address", "memory_write", "memory_write_data"],
+        ));
+        s.agent(crate::protocol::ReadyValid::new(
+            "response_valid",
+            "response_ready",
+            &[
+                "response_error",
+                "response_handle",
+                "response_frame",
+                "response_order",
+                "response_packet",
+                "response_length",
+                "response_work",
+                "response_events",
+                "response_status",
+                "response_blocks",
+                "response_owner",
+                "response_references",
+            ],
+        ));
+        s.model.set_all(&[
+            ("reset", 1),
+            ("command_valid", 0),
+            ("response_ready", 0),
+            ("arena_base", 0),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        let mut rows = Vec::new();
+        command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 4);
+        command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
+        let mut reference = ContentStore::prepare(limits).unwrap();
+        let note = Message::parse(&[0x90, 60, 99]).unwrap();
+        let packet = 0x633c90;
+        let frame_base = 1u64 << 40;
+        let mut old_handles = Vec::new();
+        for round in 0..3 {
+            let mut owners = VecDeque::new();
+            for _ in 0..views {
+                let logical = reference.writer().unwrap();
+                let handle = command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0)["handle"]
+                    .as_u64()
+                    .unwrap();
+                assert!(!old_handles.contains(&handle));
+                for index in 0..events {
+                    reference
+                        .append(logical, frame_base + u64::from(index), note)
+                        .unwrap();
+                    command(
+                        &mut s,
+                        &memory,
+                        &mut rows,
+                        5,
+                        handle,
+                        frame_base + u64::from(index),
+                        packet,
+                        0,
+                    );
+                }
+                if round == 1 {
+                    assert_eq!(
+                        reference.append(logical, frame_base + u64::from(events), note),
+                        Err(Error::Capacity)
+                    );
+                    command(
+                        &mut s,
+                        &memory,
+                        &mut rows,
+                        5,
+                        handle,
+                        frame_base + u64::from(events),
+                        packet,
+                        3,
+                    );
+                    assert_eq!(
+                        reference.finish(logical, frame_base + u64::from(events) + 1),
+                        Err(Error::Incomplete)
+                    );
+                    command(
+                        &mut s,
+                        &memory,
+                        &mut rows,
+                        6,
+                        handle,
+                        frame_base + u64::from(events) + 1,
+                        0,
+                        8,
+                    );
+                } else {
+                    reference
+                        .finish(logical, frame_base + u64::from(events) + 1)
+                        .unwrap();
+                    command(
+                        &mut s,
+                        &memory,
+                        &mut rows,
+                        6,
+                        handle,
+                        frame_base + u64::from(events) + 1,
+                        0,
+                        0,
+                    );
+                    reference.retain(logical).unwrap();
+                    command(&mut s, &memory, &mut rows, 8, handle, 0, 0, 0);
+                    reference.release(logical).unwrap();
+                    command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 0);
+                }
+                for index in 0..events {
+                    let record = reference.read(logical, index).unwrap().unwrap();
+                    let actual = command(
+                        &mut s,
+                        &memory,
+                        &mut rows,
+                        10,
+                        handle,
+                        u64::from(index),
+                        0,
+                        0,
+                    );
+                    assert_eq!(
+                        (
+                            actual["frame"].as_u64().unwrap(),
+                            actual["packet"].as_u64().unwrap(),
+                            actual["length"].as_u64().unwrap(),
+                            actual["order"].as_u64().unwrap()
+                        ),
+                        (record.frame, packet, 3, u64::from(record.order))
+                    );
+                }
+                let actual = command(&mut s, &memory, &mut rows, 10, handle, u64::MAX, 0, 0);
+                assert_eq!(actual["length"], 0);
+                owners.push_back((logical, handle));
+            }
+            assert_eq!(reference.writer(), Err(Error::Capacity));
+            command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 3);
+            for handle in [0, 0x1_80000000, u64::MAX] {
+                command(&mut s, &memory, &mut rows, 12, handle, 0, 0, 4);
+            }
+            while !owners.is_empty() || reference.usage().retirements != 0 {
+                while let Some(&(logical, handle)) = owners.front() {
+                    match reference.release(logical) {
+                        Ok(()) => {
+                            command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 0);
+                            old_handles.push(handle);
+                            owners.pop_front();
+                        }
+                        Err(Error::Capacity) => {
+                            command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 3);
+                            break;
+                        }
+                        error => panic!("Unexpected release: {error:?}"),
+                    }
+                }
+                let work = reference.maintenance(1);
+                let actual = command(&mut s, &memory, &mut rows, 11, 0, 1, 0, 0);
+                assert_eq!(actual["work"], work);
+                let usage = reference.usage();
+                assert_eq!(
+                    s.model.get("free_block_slots"),
+                    u64::from(limits.blocks) - usage.blocks as u64
+                );
+                assert_eq!(
+                    s.model.get("free_view_slots"),
+                    u64::from(views) - usage.views as u64
+                );
+                assert_eq!(
+                    s.model.get("free_retirement_slots"),
+                    u64::from(retired) - usage.retirements as u64
+                );
+            }
+            for &handle in &old_handles {
+                command(&mut s, &memory, &mut rows, 12, handle, 0, 0, 4);
+            }
+        }
+        memory.borrow_mut().words[0] = u32::MAX;
+        command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 6);
+        memory.borrow_mut().fail = Some(0);
+        command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 7);
+        memory.borrow_mut().fail = None;
+        s.model.set("reset", 1);
+        s.idle(1);
+        s.model.set("reset", 0);
+        command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 4);
+        command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
+        command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0);
+        cases.push(json!({"views":views,"blocks":limits.blocks,"block_events":limits.block_events,"events_per_view":events,"retirements":retired,"measurements":rows}));
+    }
+    Ok(
+        json!({"scope":"standalone MIDI store, random word-memory backpressure; minimum/odd capacities and full pools over three generation/retirement wraps; fourth case has primary256-view/128-retirement/2432-block indices and256-event blocks with an explicit reduced one-event view limit",
+        "validation":"exact ContentStore record/frame/packet and usage agreement; high-bit invalid handles, max-plus-one refusal, generation overflow, poisoned accepted command inputs, held responses, memory faults and stale-RAM reset","cases":cases}),
+    )
+}
+
+pub fn reserved_words() -> Result<Value> {
+    reserved_at(0)
+}
+
+pub fn relocated_words() -> Result<Value> {
+    let mut result = reserved_at(0x1234_0000_0000)?;
+    let wrapped = reserved_at(u64::MAX - 127)?;
+    result["cases"]
+        .as_array_mut()
+        .unwrap()
+        .extend(wrapped["cases"].as_array().unwrap().iter().cloned());
+    result["scope"] = json!(
+        "standalone 64-bit word interface at high and wrapping arena bases; descriptor, event, reference, free and retirement address regions; does not qualify board DDR mappings"
+    );
+    Ok(result)
+}
+
+fn reserved_at(base: u64) -> Result<Value> {
+    let mut cases = Vec::new();
+    for views in [1u64, 3] {
+        let mut design = Design::new(
+            "midi_store",
+            vec![crate::root().join("fpga/midi/rtl/midi_store.sv")],
+        );
+        design.includes.push(crate::root().join("fpga/midi/rtl"));
+        let compiled = design
+            .parameters(&[
+                ("VIEWS", views),
+                ("MAX_EVENTS", 4),
+                ("BLOCK_EVENTS", 2),
+                ("BLOCKS", views * 2),
+                ("RETIREMENTS", views),
+            ])
+            .build(&crate::root().join("work/marlin-suite/midi-reserved"))?;
+        let mut s = Sim::new(compiled.benchmark_session()?, &[("clk", 10000, 0)]);
+        let memory = Rc::new(RefCell::new(Memory::new(
+            (s.model.get("arena_bytes") / 4) as usize,
+        )));
+        memory.borrow_mut().base = base;
+        s.agent(memory.clone());
+        s.agent(crate::protocol::ReadyValid::new(
+            "memory_valid",
+            "memory_ready",
+            &["memory_address", "memory_write", "memory_write_data"],
+        ));
+        s.agent(crate::protocol::ReadyValid::new(
+            "response_valid",
+            "response_ready",
+            &[
+                "response_error",
+                "response_handle",
+                "response_frame",
+                "response_order",
+                "response_packet",
+                "response_length",
+                "response_work",
+                "response_events",
+                "response_status",
+                "response_blocks",
+                "response_owner",
+                "response_references",
+            ],
+        ));
+        s.model.set_all(&[
+            ("reset", 1),
+            ("arena_base", base),
+            ("command_valid", 0),
+            ("response_ready", 0),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        let mut rows = Vec::new();
+        command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
+        let mut handles = Vec::new();
+        for slot in 0..views {
+            let handle = command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0)["handle"]
+                .as_u64()
+                .unwrap();
+            let frame = (1u64 << 40) + slot * 4;
+            command(&mut s, &memory, &mut rows, 5, handle, frame, 0x633c90, 0);
+            let poison = [
+                0x80000001u32 ^ (slot as u32),
+                0xdeadbeef ^ (slot as u32),
+                u32::MAX - (slot as u32),
+            ];
+            for (&field, &value) in [10usize, 11, 14].iter().zip(&poison) {
+                memory.borrow_mut().words[(handle as u32 as usize) * 16 + field] = value;
+            }
+            command(&mut s, &memory, &mut rows, 2, 0, 0, 0, 2);
+            command(&mut s, &memory, &mut rows, 12, handle, 0, 0, 0);
+            command(
+                &mut s,
+                &memory,
+                &mut rows,
+                5,
+                handle,
+                frame + 1,
+                0x003c80,
+                0,
+            );
+            command(&mut s, &memory, &mut rows, 6, handle, frame + 2, 0, 0);
+            command(&mut s, &memory, &mut rows, 8, handle, 0, 0, 0);
+            command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 0);
+            for (&field, &value) in [10usize, 11, 14].iter().zip(&poison) {
+                assert_eq!(
+                    memory.borrow().words[(handle as u32 as usize) * 16 + field],
+                    value
+                );
+            }
+            for (index, packet) in [0x633c90u64, 0x003c80].into_iter().enumerate() {
+                let r = command(&mut s, &memory, &mut rows, 10, handle, index as u64, 0, 0);
+                assert_eq!(r["frame"], frame + index as u64);
+                assert_eq!(r["order"], index);
+                assert_eq!(r["packet"], packet);
+                assert_eq!(r["length"], 3);
+            }
+            handles.push(handle);
+        }
+        for handle in handles {
+            command(&mut s, &memory, &mut rows, 9, handle, 0, 0, 0);
+        }
+        command(&mut s, &memory, &mut rows, 11, 0, u64::from(u32::MAX), 0, 0);
+        assert_eq!(s.model.get("free_view_slots"), views);
+        assert_eq!(s.model.get("free_block_slots"), views * 2);
+        assert_eq!(s.model.get("free_retirement_slots"), views);
+        for reset in [false, true] {
+            if reset {
+                s.model.set("reset", 1);
+                s.idle(1);
+                s.model.set("reset", 0);
+                command(&mut s, &memory, &mut rows, 0, 0, 0, 0, 0);
+            }
+            let handle = command(&mut s, &memory, &mut rows, 4, 0, 0, 0, 0)["handle"]
+                .as_u64()
+                .unwrap();
+            for field in [10usize, 11, 14] {
+                assert_eq!(
+                    memory.borrow().words[(handle as u32 as usize) * 16 + field],
+                    0
+                );
+            }
+        }
+        cases.push(json!({"arena_base":base,"views":views,"reserved_fields":[10,11,14],"measurements":rows}));
+    }
+    Ok(
+        json!({"scope":"standalone MIDI store: reserved DDR descriptor words preserve opaque high-bit values through append/finish/retain/release; create/reuse/reset clears stale reserved values",
+        "validation":"independent two-packet vectors retain high64 timestamps/order/length, raw reserved words preserved, all ownership recovered; held responses, memory backpressure and poisoned accepted command inputs",
+        "cases":cases}),
+    )
+}

@@ -1891,6 +1891,9 @@ fn validate_bus_fx_shape(bus: &crate::document::BusDocument) -> Result<(), Sessi
         FxChainTypeDocument::CarlaRack
         | FxChainTypeDocument::CarlaPatchbay
         | FxChainTypeDocument::CarlaPatchbay16x
+        | FxChainTypeDocument::RemoteCarlaRack
+        | FxChainTypeDocument::RemoteCarlaPatchbay
+        | FxChainTypeDocument::RemoteCarlaPatchbay16x
         | FxChainTypeDocument::BuiltInFx
         | FxChainTypeDocument::Test => {}
         FxChainTypeDocument::OxiSynth => {

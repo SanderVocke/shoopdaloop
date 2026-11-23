@@ -1,0 +1,125 @@
+{
+  "cases": [
+    {
+      "axi_data_width": 32,
+      "local_frame_bits": 64,
+      "mode": "Fixed",
+      "scope": "Duration/refusal and public retained sample checks. Synthetic max descriptor tests admission only; no synthetic payload read.",
+      "measurement_count": 22,
+      "populations": {
+        "opcodeappend/expected_errorOK": {
+          "count": 5,
+          "min": 60,
+          "median": 236,
+          "max": 402
+        },
+        "opcodeappend_raw_count/expected_errormemory_full": {
+          "count": 1,
+          "min": 27,
+          "median": 27,
+          "max": 27
+        },
+        "opcodeclear/expected_errorOK": {
+          "count": 1,
+          "min": 85,
+          "median": 85,
+          "max": 85
+        },
+        "opcodecreate/expected_errorOK": {
+          "count": 2,
+          "min": 10,
+          "median": 10.5,
+          "max": 11
+        },
+        "opcoderead/expected_errorOK": {
+          "count": 3,
+          "min": 89,
+          "median": 132,
+          "max": 349
+        },
+        "opcoderead/expected_errorinvalid_view": {
+          "count": 2,
+          "min": 6,
+          "median": 9.5,
+          "max": 13
+        },
+        "opcoderead/expected_errormemory_fault": {
+          "count": 1,
+          "min": 53,
+          "median": 53,
+          "max": 53
+        },
+        "opcoderemove/expected_errorOK": {
+          "count": 3,
+          "min": 141,
+          "median": 142,
+          "max": 142
+        },
+        "opcodeslice/expected_errorOK": {
+          "count": 2,
+          "min": 228,
+          "median": 234.5,
+          "max": 241
+        },
+        "opcodeslice/expected_errorinvalid_view": {
+          "count": 2,
+          "min": 23,
+          "median": 23.0,
+          "max": 23
+        }
+      }
+    }
+  ],
+  "label": "s3-local-frames64-axi32-boundaries",
+  "fixture_revision": "3e47163d",
+  "models": [
+    {
+      "native_memory": null,
+      "parameters": {
+        "AXI_DATA_WIDTH": "32",
+        "BLOCK_CHUNKS": "4",
+        "CHUNK_FRAMES": "4",
+        "LOCAL_FRAME_BITS": "64",
+        "PHYSICAL_BASE": "16777216",
+        "READ_BUFFERS": "4",
+        "RECLAIM_BLOCKS": "0",
+        "RECLAIM_CYCLES": "5000",
+        "RECLAIM_GUARD": "1024",
+        "REF_LINES": "4",
+        "RETIRED_TABLES": "256",
+        "REUSE_VIEWS": "1",
+        "SLOTS": "256",
+        "STACK_LINES": "2",
+        "TABLE_LINES": "8",
+        "TABLE_PAGES": "85",
+        "VIEWS": "8",
+        "WRITE_BUFFERS": "4"
+      },
+      "probes": [],
+      "sources_sha256": {
+        "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+        "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+        "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+        "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+        "fpga/axi_memory/rtl/media_store_axi.sv": "b324b69a6bf1cdea0c212dc19c93c671c9e1d928d04e31e5bb9c93c79e37d65b",
+        "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+        "fpga/axi_memory/rtl/word_axi.sv": "384ae7fe56f7303371397bc011e8cf25f4900acecc69aecf3a5e7ae3635b648a",
+        "fpga/axi_memory/rtl/word_dma.sv": "121ee515c218a2386417d9dcacfbbd49cff8dc679b3f9fb2ef882b9d093f7c41",
+        "fpga/chunk_memory/rtl/chunk_memory.sv": "66e8b5a5f1978cfdc89656aef59d74223a69ef0a89aa99f84d5e2bfb202f0d34",
+        "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+        "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+        "fpga/media_store/rtl/media_metadata.sv": "a49f3fc2ef170339e7d48348c04f8f9bc52eefdab083d114ec70241b8fad5959",
+        "fpga/media_store/rtl/media_prefetch_resolver.sv": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e",
+        "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+        "fpga/media_store/rtl/media_reclaimer.sv": "f4d38e13e9d705a8afff6c10bde68483c2e02c5c71dedaa8e6def7db3d224049",
+        "fpga/media_store/rtl/media_store.sv": "f2d059527a3e97bf54906c4d32206c700574692f9a06ac258c6084af3ab15449",
+        "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "528ef2656e272975aae5cb631aa2f76657afd6be0f8c1b2d251465236c653f3d",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "a208d533ec26bb0749426f6e475ac443128315eb7ab7a17d8f66c9d3ab97c55e"
+      },
+      "top": "media_store_axi"
+    }
+  ],
+  "retention": "s3-local-frames64-axi32-boundaries-retention.json",
+  "per_request_samples": "s3-local-frames64-axi32-boundaries-raw.tar.gz"
+}

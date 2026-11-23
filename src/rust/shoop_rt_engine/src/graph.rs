@@ -252,6 +252,8 @@ impl Builder {
                         ),
                     )?;
                 }
+            } else if pool.is_dynamic_processor(slot) {
+                continue;
             }
             self.step(plan, pool.processor(slot), count, &mut end)?;
         }

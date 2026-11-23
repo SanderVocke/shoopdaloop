@@ -1,0 +1,45 @@
+{
+  "checkpoint": "work/area-experiments/s2-path-repeat-route100/post_opt.dcp",
+  "checkpoint_sha256": "4061f1b9bbca93a6c57842c8eeccf15de7a86be8760fb485d37fdff3a74ecfe7",
+  "edif_sha256": "e0546046753b6175e8bdcd0a7b6e91fc411f0da01073eadda66c9a924f2bb428",
+  "scope": "Direct primitive instances whose RTL-derived name starts with group_reg; includes cells of that group in all hierarchy definitions, compared with Tcl hierarchical FF query",
+  "primitive_instances": {
+    "path_address": {
+      "RAM32X1D": 37,
+      "CARRY4": 9,
+      "LUT1": 16,
+      "MUXF7": 4,
+      "LUT4": 1,
+      "LUT2": 1,
+      "LUT3": 1,
+      "LUT6": 8
+    },
+    "path_page": {
+      "FDRE": 160
+    },
+    "parent_address": {
+      "FDRE": 37
+    },
+    "cache_address": {
+      "FDRE": 38,
+      "CARRY4": 33
+    },
+    "root_data": {
+      "FDRE": 72
+    },
+    "root_valid": {
+      "FDRE": 512
+    },
+    "leaf_valid": {
+      "FDRE": 512
+    },
+    "required_nodes": {
+      "FDRE": 31,
+      "CARRY4": 50
+    },
+    "existing_nodes": {
+      "FDRE": 31,
+      "CARRY4": 50
+    }
+  }
+}

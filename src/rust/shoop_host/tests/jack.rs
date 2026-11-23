@@ -185,6 +185,25 @@ impl Fixture {
             let mut options = shoop_host::serve::StartOptions::new().unwrap();
             options.driver_preferences = Some(root.path().join("audio-driver.json"));
             options.use_configured_driver = true;
+            let remote = settings.processors.carla.hosting == CarlaHosting::Remote;
+            let executable = std::env::var_os("SHOOP_REMOTE_FX_HOST")
+                .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoop_host").into());
+            if remote {
+                options.remote_carla = Some(shoop_host::serve::RemoteCarla {
+                    address: std::env::var("SHOOP_REMOTE_FX_TEST_ADDRESS")
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    slack_quanta: std::env::var("SHOOP_REMOTE_FX_SLACK")
+                        .ok()
+                        .map(|value| value.parse().unwrap()),
+                    copies: std::env::var("SHOOP_REMOTE_FX_COPIES")
+                        .ok()
+                        .map_or(2, |value| value.parse().unwrap()),
+                    reconnect: Default::default(),
+                    dry_on_loss: false,
+                });
+            }
             if matches!(mode, DeliveryMode::Tcp) {
                 options.lan = true;
                 options.export_profile = Some(profile.clone());
@@ -200,7 +219,7 @@ impl Fixture {
                     ..Default::default()
                 },
                 options,
-                std::path::Path::new(env!("CARGO_BIN_EXE_shoop_host")),
+                std::path::Path::new(&executable),
             )
             .unwrap();
 
@@ -266,6 +285,21 @@ impl Fixture {
         result.attach();
         result
     }
+
+    #[cfg(feature = "carla")]
+    fn shutdown(&mut self) {
+        let Delivery::Remote {
+            _owner: owner,
+            entry,
+            ..
+        } = &mut self.delivery
+        else {
+            unreachable!("Carla archive qualification uses a standalone host");
+        };
+        let status = shutdown::shutdown(&mut owner.0, entry, &mut self.client);
+        assert!(status.success(), "Carla session host exited with {status}");
+    }
+
     fn send(&mut self, message: ClientMessage) {
         match &mut self.delivery {
             Delivery::Local { service, id, .. } => service.handle(*id, message).unwrap(),
@@ -426,9 +460,14 @@ impl Fixture {
         persistence_transfer::assemble(objects).unwrap()
     }
     fn load(&mut self, image: Arc<persistence_image::Image>) {
+        let key = self.upload(image, 2);
+        self.command(protocol::Command::CommitPersistence(key));
+        self.until(|client| client.snapshot().unwrap().persistence_epoch != key.epoch);
+    }
+    fn upload(&mut self, image: Arc<persistence_image::Image>, transfer: u64) -> p::Key {
         let state = self.client.snapshot().unwrap();
         let key = p::Key {
-            transfer: TransferId(2),
+            transfer: TransferId(transfer),
             epoch: state.persistence_epoch,
         };
         let target = p::Target::Session {
@@ -452,9 +491,97 @@ impl Fixture {
                 false
             });
         }
-        self.command(protocol::Command::CommitPersistence(key));
-        self.until(|client| client.snapshot().unwrap().persistence_epoch != key.epoch);
+        key
     }
+}
+
+#[cfg(feature = "carla")]
+#[shoop_test(no_wasm = "native remote Carla companion")]
+fn remote_carla_track_selects_a_service_after_a_default_host_starts() {
+    let Ok(address) = std::env::var("SHOOP_REMOTE_FX_TEST_ADDRESS") else {
+        return;
+    };
+    let target = shoop_app_api::RemoteFxTarget {
+        address: address.parse().unwrap(),
+        reconnect: Default::default(),
+        dry_on_loss: true,
+    };
+    let settings = HostSettings {
+        driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            buffer_size: 128,
+            ..Default::default()
+        }),
+        pools: NewEnginePools {
+            tracks: 8,
+            loops: 64,
+            loop_memory_mb: 16,
+            ..Default::default()
+        },
+        processors: ProcessorSettings::disabled(),
+        ..Default::default()
+    };
+    let mut fixture = Fixture::with_settings(settings, DeliveryMode::Socket);
+    let processor_type = TrackProcessorTypeId::new(TrackProcessorTypeId::REMOTE_CARLA_RACK);
+    let snapshot = fixture.client.snapshot().unwrap();
+    let processor = snapshot
+        .track_processors
+        .iter()
+        .find(|entry| entry.id == processor_type)
+        .unwrap();
+    assert!(processor.available, "{processor:?}");
+    assert!(!snapshot
+        .bus_processors
+        .iter()
+        .any(|entry| entry.id == processor_type));
+    let add = |fixture: &mut Fixture, index| {
+        let processor_type = TrackProcessorTypeId::new(if index == 5 {
+            TrackProcessorTypeId::REMOTE_CARLA_PATCHBAY_16X
+        } else {
+            TrackProcessorTypeId::REMOTE_CARLA_RACK
+        });
+        fixture.command(Command::AddTrack(TrackSpec {
+            name: format!("Per-track service {index}"),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                dry_midi: false,
+                processor_type,
+                default_playback_mode: Default::default(),
+                remote_fx: Some(target),
+            },
+            latency: Default::default(),
+            initial_output_bus_names: Vec::new(),
+            creation_request_id: None,
+        }))
+    };
+    for i in 0..6 {
+        assert!(matches!(add(&mut fixture, i), Outcome::TrackCreated { .. }));
+    }
+    let all_tracks = |client: &mut Client| {
+        client.snapshot().unwrap().tracks.iter().filter(|track| matches!(
+            track.topology,
+            shoop_app_api::TrackTopology::DryWet { remote_fx: Some(remote), .. } if remote == target
+        )).count() == 6
+    };
+    fixture.until(all_tracks);
+    let image = fixture.capture(1);
+    fixture.load(image);
+    fixture.until(all_tracks);
+    let track = fixture
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|track| track.name == "Per-track service 0")
+        .unwrap()
+        .id;
+    fixture.command(Command::Track {
+        track,
+        action: TrackAction::Remove,
+    });
+    assert!(matches!(add(&mut fixture, 6), Outcome::TrackCreated { .. }));
+    fixture.until(all_tracks);
 }
 
 #[cfg(feature = "carla")]
@@ -468,43 +595,80 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
     if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none() {
         return;
     }
-    for (hosting, delivery) in [
+    let mut modes = vec![
         (CarlaHosting::InProcess, DeliveryMode::Socket),
         (CarlaHosting::Subprocess, DeliveryMode::SharedMemory),
-    ] {
+    ];
+    if std::env::var_os("SHOOP_REMOTE_FX_TEST_ADDRESS").is_some() {
+        modes = vec![(CarlaHosting::Remote, DeliveryMode::Socket)];
+    }
+    for (hosting, delivery) in modes {
+        let period = std::env::var("SHOOP_REMOTE_FX_PERIOD")
+            .ok()
+            .map_or(128, |value| value.parse().unwrap());
+        let stereo = hosting == CarlaHosting::Remote
+            && std::env::var("SHOOP_REMOTE_FX_WIDTH").as_deref() == Ok("2");
+        let (width, carla_kind, id) = if stereo {
+            (
+                2,
+                CarlaChainType::Patchbay,
+                TrackProcessorTypeId::CARLA_PATCHBAY,
+            )
+        } else {
+            (
+                16,
+                CarlaChainType::Patchbay16x,
+                TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+            )
+        };
         let mut processors = ProcessorSettings {
             builtin_fx: ProcessorPolicy::Off,
             oxisynth: ProcessorPolicy::Off,
             ..Default::default()
         };
         processors.carla.hosting = hosting;
-        processors.carla.patchbay16x_instances = 2;
-        let mut fixture = Fixture::with_settings(
-            HostSettings {
-                processors,
-                driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
-                pools: NewEnginePools {
-                    tracks: 2,
-                    loops: 16,
-                    channels: 16,
-                    buses: 2,
-                    bus_channels: 16,
-                    loop_memory_mb: 16,
-                    ..Default::default()
+        if stereo {
+            processors.carla.patchbay_instances = 2;
+        } else {
+            processors.carla.patchbay16x_instances = 2;
+        }
+        let settings = HostSettings {
+            processors,
+            loop_smoothing_ms: if hosting == CarlaHosting::Remote {
+                0
+            } else {
+                HostSettings::default().loop_smoothing_ms
+            },
+            driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                buffer_size: if hosting == CarlaHosting::Remote {
+                    period
+                } else {
+                    DummyAudioDriverConfig::default().buffer_size
                 },
                 ..Default::default()
+            }),
+            pools: NewEnginePools {
+                tracks: 2,
+                loops: 16,
+                channels: width,
+                buses: 2,
+                bus_channels: width,
+                loop_memory_mb: 16,
+                ..Default::default()
             },
-            delivery,
-        );
-        let patchbay = TrackProcessorTypeId::new(TrackProcessorTypeId::CARLA_PATCHBAY_16X);
+            ..Default::default()
+        };
+        let mut fixture = Fixture::with_settings(settings.clone(), delivery);
+        let patchbay = TrackProcessorTypeId::new(id);
         let Outcome::TrackCreated { track, .. } = fixture.command(Command::AddTrack(TrackSpec {
             name: "Archived Wide Track".into(),
             topology: TrackSpecTopology::DryWet {
-                dry_audio_channels: 16,
-                wet_audio_channels: 16,
+                dry_audio_channels: width,
+                wet_audio_channels: width,
                 dry_midi: true,
                 processor_type: patchbay.clone(),
                 default_playback_mode: Default::default(),
+                remote_fx: None,
             },
             latency: Default::default(),
             initial_output_bus_names: vec![],
@@ -521,7 +685,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         });
         fixture.command(Command::AddBus(BusSpec {
             name: "Archived Patchbay".into(),
-            channel_count: 16,
+            channel_count: width,
             fx: Some(BusFxSpec {
                 processor_type: patchbay,
             }),
@@ -541,6 +705,20 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             panic!("session capture")
         };
         session.global.sync = false;
+        if hosting == CarlaHosting::Remote {
+            let sync = &mut session
+                .tracks
+                .iter_mut()
+                .find(|entry| entry.sync)
+                .unwrap()
+                .loops[0];
+            sync.frames = 1024;
+            captured
+                .payloads
+                .push(image::Payload::Audio(Arc::new(vec![0.; 1024])));
+            sync.audio[0].object = Some(captured.payloads.len() as u32);
+            sync.audio[0].frames = 1024;
+        }
         let track = session
             .tracks
             .iter_mut()
@@ -551,18 +729,29 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             .iter_mut()
             .find(|entry| entry.name == "Archived Patchbay")
             .unwrap();
-        let recorded =
-            include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_state.json");
-        let project = include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml")
+        let (recorded, project) = if stereo {
+            (
+                include_str!(
+                    "../../shoop_engine/test_data/carla_legacy_patchbay_loaded_state.json"
+                ),
+                include_str!(
+                    "../../shoop_engine/test_data/carla_legacy_patchbay_loaded_project.xml"
+                )
+                .replacen("<Value>1</Value>", "<Value>0.5</Value>", 1),
+            )
+        } else {
+            (include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_state.json"),
+            include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml")
             .replace("Audio Input:Capture 2<", "Audio Input:Capture 16<")
             .replace("Audio Output:Playback 2<", "Audio Output:Playback 16<")
             .replacen("<Value>1</Value>", "<Value>0.5</Value>", 1)
             .replace(" </Patchbay>", concat!(
                 "  <Connection><Source>Audio Input:Capture 8</Source><Target>Audio Output:Playback 8</Target></Connection>\n",
                 "  <Connection><Source>Audio Input:Capture 9</Source><Target>Audio Output:Playback 9</Target></Connection>\n",
-                " </Patchbay>"));
+                " </Patchbay>")))
+        };
         let checkpoint = Arc::new(
-            encode_state(CarlaChainType::Patchbay16x, project.as_bytes())
+            encode_state(carla_kind, project.as_bytes())
                 .unwrap()
                 .into_bytes(),
         );
@@ -578,12 +767,16 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 recorded.as_bytes().to_vec(),
             )));
         take.recorded_processor_checkpoint = Some(captured.payloads.len() as u32);
-        let lanes = [
-            (0, 0.25_f32, 0.0625_f32),
-            (7, 0.375, 0.375),
-            (8, 0.5, 0.5),
-            (15, 0.625, 0.15625),
-        ];
+        let lanes: &[(usize, f32, f32)] = if stereo {
+            &[(0, 0.25, 0.0625), (1, 0.625, 0.15625)]
+        } else {
+            &[
+                (0, 0.25_f32, 0.0625_f32),
+                (7, 0.375, 0.375),
+                (8, 0.5, 0.5),
+                (15, 0.625, 0.15625),
+            ]
+        };
         let mut dry = 0;
         for channel in &mut take.audio {
             let mut amplitude = 0.;
@@ -687,6 +880,295 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             fixture.until(expected_audio);
         };
         play(&mut fixture);
+
+        if hosting == CarlaHosting::Remote {
+            let state_before = fixture.client.snapshot().unwrap();
+            let delay = state_before
+                .track_processors
+                .iter()
+                .find(|processor| processor.id.as_str() == id)
+                .unwrap()
+                .resources
+                .as_ref()
+                .unwrap()
+                .buffering_frames;
+            assert_eq!(state_before.status.quantum_frames, 32);
+            assert_eq!(state_before.status.buffer_size, period);
+            assert_eq!(state_before.status.sample_rate, 48_000);
+            let sweep = std::env::var_os("SHOOP_REMOTE_FX_SWEEP").is_some();
+            if !sweep {
+                assert_eq!(period, 128);
+                assert!(delay <= 576, "remote processor delay is {delay} frames");
+            }
+            let fx_stats = |client: &Client| {
+                let state = client.snapshot().unwrap();
+                [
+                    state
+                        .tracks
+                        .iter()
+                        .find(|entry| entry.id == track)
+                        .unwrap()
+                        .fx
+                        .as_ref()
+                        .unwrap(),
+                    state
+                        .buses
+                        .iter()
+                        .find(|entry| entry.name == "Archived Patchbay")
+                        .unwrap()
+                        .fx
+                        .as_ref()
+                        .unwrap(),
+                ]
+                .map(|fx| (fx.generation, fx.deadline_misses, fx.stale_completions))
+            };
+            let before = fx_stats(&fixture.client);
+            let seconds = std::env::var("SHOOP_REMOTE_FX_SOAK_SECONDS")
+                .ok()
+                .map_or(0, |value| value.parse().unwrap());
+            let started = Instant::now();
+            let end = started + Duration::from_secs(seconds);
+            let clean_soak =
+                seconds != 0 && !sweep && std::env::var_os("SHOOP_REMOTE_FX_IMPAIRED").is_none();
+            let mut next_log = started + Duration::from_secs(300);
+            let frames = state_before.status.processed_frames;
+            let mut progress = (frames, started);
+            while Instant::now() < end {
+                fixture.tick();
+                if clean_soak {
+                    let observed_frame = fixture.client.snapshot().unwrap().status.processed_frames;
+                    if observed_frame > progress.0 {
+                        progress = (observed_frame, Instant::now());
+                    }
+                    assert!(
+                        progress.1.elapsed() < Duration::from_secs(5),
+                        "Native render stopped making progress"
+                    );
+                    let observed = fx_stats(&fixture.client);
+                    assert_eq!(
+                        before.map(|(generation, _, _)| generation),
+                        observed.map(|(generation, _, _)| generation),
+                        "FX service changed generation after {:.1}s at width {width}",
+                        started.elapsed().as_secs_f64()
+                    );
+                    if Instant::now() >= next_log {
+                        eprintln!(
+                            "Remote Carla {width} channels: {} seconds, worker {observed:?}",
+                            started.elapsed().as_secs(),
+                        );
+                        next_log += Duration::from_secs(300);
+                    }
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            let state = fixture.client.snapshot().unwrap().clone();
+            let after = fx_stats(&fixture.client);
+            let completion = state
+                .tracks
+                .iter()
+                .find(|entry| entry.id == track)
+                .unwrap()
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.status_summary.as_deref());
+            eprintln!("remote Carla {width}-channel run {seconds}s at period {period}: {delay} frames of buffering, {} frames rendered, {} xruns, DSP {:?}, worker {:?} → {:?}, {completion:?}", state.status.processed_frames - frames, state.status.xruns, state.status.dsp, before, after);
+            if sweep {
+                fixture.shutdown();
+                continue;
+            }
+            if clean_soak {
+                let batches = (state.status.processed_frames - frames) / u64::from(period);
+                assert!(batches > 0, "Native render stopped making progress");
+                for ((_, misses, _), (_, baseline, _)) in after.into_iter().zip(before) {
+                    let missed = misses.checked_sub(baseline).expect("worker counters reset");
+                    assert!(
+                        missed * 100 <= batches,
+                        "{missed} wet misses in {batches} batches"
+                    );
+                }
+                fixture.until(expected_audio);
+                fixture.shutdown();
+                continue;
+            }
+            if let Some(restart) = std::env::var_os("SHOOP_REMOTE_FX_RESTART_FILE") {
+                let last_frame = state.status.processed_frames;
+                std::fs::write(restart, b"restart").unwrap();
+                fixture.until(|client| {
+                    let snapshot = client.snapshot().unwrap();
+                    let fx = snapshot
+                        .tracks
+                        .iter()
+                        .find(|entry| entry.id == track)
+                        .unwrap()
+                        .fx
+                        .as_ref()
+                        .unwrap();
+                    snapshot.status.processed_frames > last_frame
+                        && fx.lifecycle == FxLifecycle::Unavailable
+                });
+                fixture.until(|client| {
+                    fx_stats(client)
+                        .iter()
+                        .zip(before)
+                        .all(|((generation, _, _), previous)| *generation > previous.0)
+                        && expected_audio(client)
+                });
+                fixture.shutdown();
+                continue;
+            }
+            if let Ok(mode) = std::env::var("SHOOP_REMOTE_FX_IMPAIRED") {
+                let copies = std::env::var("SHOOP_REMOTE_FX_COPIES").unwrap_or_else(|_| "2".into());
+                if mode == "burst" || copies == "1" {
+                    assert!(after
+                        .iter()
+                        .zip(before)
+                        .any(|((_, misses, _), previous)| *misses > previous.1));
+                }
+                if mode != "capture" {
+                    assert!(state.status.processed_frames > frames);
+                    fixture.shutdown();
+                    continue;
+                }
+            }
+            let sync = state.tracks.iter().find(|entry| entry.is_sync).unwrap();
+            let (sync_track, sync_loop) = (sync.id, sync.loops[0].id);
+            let loops = &state
+                .tracks
+                .iter()
+                .find(|entry| entry.id == track)
+                .unwrap()
+                .loops;
+            let revision = loops[0].content_revision;
+            fixture.command(Command::Loop {
+                track: sync_track,
+                loop_id: sync_loop,
+                action: LoopAction::PlayClicked,
+            });
+            fixture.until(|client| {
+                client
+                    .snapshot()
+                    .unwrap()
+                    .tracks
+                    .iter()
+                    .find(|entry| entry.id == sync_track)
+                    .unwrap()
+                    .loops[0]
+                    .mode
+                    == LoopMode::Playing
+            });
+            if let Some(block) = std::env::var_os("SHOOP_REMOTE_FX_BLOCK_FILE") {
+                std::fs::write(&block, b"drop media").unwrap();
+                fixture.command(Command::Loop {
+                    track,
+                    loop_id: take,
+                    action: LoopAction::RerecordClicked,
+                });
+                fixture.until(|client| {
+                    let snapshot = client.snapshot().unwrap();
+                    let take = &snapshot
+                        .tracks
+                        .iter()
+                        .find(|entry| entry.id == track)
+                        .unwrap()
+                        .loops[0];
+                    assert_eq!(take.content_revision, revision);
+                    take.capture_incomplete
+                });
+                std::fs::remove_file(block).unwrap();
+                fixture.until(expected_audio);
+                fixture.shutdown();
+                continue;
+            }
+            fixture.command(Command::Loop {
+                track,
+                loop_id: take,
+                action: LoopAction::RerecordClicked,
+            });
+            fixture.until(|client| {
+                client
+                    .snapshot()
+                    .unwrap()
+                    .tracks
+                    .iter()
+                    .find(|entry| entry.id == track)
+                    .unwrap()
+                    .loops[0]
+                    .content_revision
+                    > revision
+            });
+            let saved = fixture.capture(3);
+            let image::Manifest::Session(session) = &saved.manifest else {
+                panic!("session manifest")
+            };
+            let saved_track = session
+                .tracks
+                .iter()
+                .find(|entry| entry.name == "Archived Wide Track")
+                .unwrap();
+            assert!(saved_track.processor_checkpoint.is_some());
+            assert!(session
+                .buses
+                .iter()
+                .find(|bus| bus.name == "Archived Patchbay")
+                .unwrap()
+                .fx
+                .as_ref()
+                .unwrap()
+                .processor_checkpoint
+                .is_some());
+            let recorded = &saved_track.loops[0];
+            assert_eq!(recorded.frames, 1024);
+            let channel = &recorded.audio[width as usize];
+            let image::Payload::Audio(samples) =
+                &saved.payloads[channel.object.unwrap() as usize - 1]
+            else {
+                panic!("wet samples")
+            };
+            assert!(
+                samples.iter().all(|sample| (*sample - 0.125).abs() < 1e-5),
+                "first wet lane {:?}",
+                &samples[..samples.len().min(8)]
+            );
+            if seconds == 0 && stereo && std::env::var_os("SHOOP_REMOTE_FX_RESTART_FILE").is_none()
+            {
+                let checkpoint = saved_track.processor_checkpoint.unwrap() as usize - 1;
+                let mut rejected = (*saved).clone();
+                let invalid = project.replace(
+                    "<Label>audiogain_s</Label>",
+                    "<Label>unavailable_sample_gain</Label>",
+                );
+                rejected.payloads[checkpoint] = image::Payload::ProcessorCheckpoint(Arc::new(
+                    encode_state(carla_kind, invalid.as_bytes())
+                        .unwrap()
+                        .into_bytes(),
+                ));
+                let key = fixture.upload(Arc::new(rejected), 5);
+                assert!(matches!(
+                    fixture.outcome(Command::CommitPersistence(key)),
+                    Outcome::Refused { .. }
+                ));
+                assert_eq!(
+                    fixture.client.snapshot().unwrap().persistence_epoch,
+                    key.epoch
+                );
+                let mut local_settings = settings.clone();
+                local_settings.processors.carla.hosting = CarlaHosting::InProcess;
+                let mut local = Fixture::with_settings(local_settings, DeliveryMode::Socket);
+                local.load(saved);
+                let restored = local.capture(4);
+                let image::Manifest::Session(local_session) = &restored.manifest else {
+                    panic!("local session manifest")
+                };
+                assert!(local_session
+                    .tracks
+                    .iter()
+                    .any(|entry| entry.name == "Archived Wide Track"
+                        && entry.processor_checkpoint.is_some()));
+                local.shutdown();
+            }
+            fixture.shutdown();
+            continue;
+        }
 
         let request_driver = |fixture: &mut Fixture, buffer_size| {
             fixture.command(Command::AudioDriver(Driver::Request(
@@ -846,16 +1328,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         let restored = snapshot.audio_drivers.active.as_ref().unwrap();
         assert_eq!((restored.sample_rate, restored.buffer_size), (96_000, 512));
         play(&mut fixture);
-        let Delivery::Remote {
-            _owner: owner,
-            entry,
-            ..
-        } = &mut fixture.delivery
-        else {
-            unreachable!("Carla archive qualification uses a standalone host");
-        };
-        let status = shutdown::shutdown(&mut owner.0, entry, &mut fixture.client);
-        assert!(status.success(), "Carla session host exited with {status}");
+        fixture.shutdown();
     }
 }
 
@@ -1915,6 +2388,7 @@ fn native_jack_processed_tracks_publish_real_roles_and_record_host_dsp() {
                     dry_midi: true,
                     processor_type: TrackProcessorTypeId::new(kind),
                     default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    remote_fx: None,
                 },
                 latency: Default::default(),
                 initial_output_bus_names: vec![],

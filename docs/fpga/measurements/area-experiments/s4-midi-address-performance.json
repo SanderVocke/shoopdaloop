@@ -1,0 +1,164 @@
+{
+  "control": "C3 607c8a0f / HDL fe2184ea",
+  "candidate": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
+  "scope": "Raw MIDI word-agent request cycles and transaction counts; connected Q32/64-loop state-enabled delay7 fixture. All samples/replies independently validated by Rust reference. Nominal 100MHz conversion is not physical timing qualification.",
+  "raw_cases": [
+    {
+      "control": "c2-midi-primary-index-control.json",
+      "candidate": "s4-midi-address-boundaries.json",
+      "case": 0,
+      "rows": 54,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 4845,
+      "cycles_candidate_total": 7075,
+      "cycles_control_max": 232,
+      "cycles_candidate_max": 349
+    },
+    {
+      "control": "c2-midi-primary-index-control.json",
+      "candidate": "s4-midi-address-boundaries.json",
+      "case": 1,
+      "rows": 202,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 25149,
+      "cycles_candidate_total": 37330,
+      "cycles_control_max": 421,
+      "cycles_candidate_max": 597
+    },
+    {
+      "control": "c2-midi-primary-index-control.json",
+      "candidate": "s4-midi-address-boundaries.json",
+      "case": 2,
+      "rows": 308,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 40400,
+      "cycles_candidate_total": 59603,
+      "cycles_control_max": 697,
+      "cycles_candidate_max": 995
+    },
+    {
+      "control": "c2-midi-primary-index-control.json",
+      "candidate": "s4-midi-address-boundaries.json",
+      "case": 3,
+      "rows": 9747,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 2894761,
+      "cycles_candidate_total": 4412152,
+      "cycles_control_max": 53718,
+      "cycles_candidate_max": 80784
+    },
+    {
+      "control": "c2-midi-reserved-zero-replay.json",
+      "candidate": "s4-midi-address-reserved.json",
+      "case": 0,
+      "rows": 16,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 2019,
+      "cycles_candidate_total": 2916,
+      "cycles_control_max": 455,
+      "cycles_candidate_max": 644
+    },
+    {
+      "control": "c2-midi-reserved-zero-replay.json",
+      "candidate": "s4-midi-address-reserved.json",
+      "case": 1,
+      "rows": 38,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 5756,
+      "cycles_candidate_total": 8571,
+      "cycles_control_max": 1288,
+      "cycles_candidate_max": 1947
+    },
+    {
+      "control": "c2-midi-relocated-control.json",
+      "candidate": "s4-midi-address-relocated.json",
+      "case": 0,
+      "rows": 16,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 2019,
+      "cycles_candidate_total": 2916,
+      "cycles_control_max": 455,
+      "cycles_candidate_max": 644
+    },
+    {
+      "control": "c2-midi-relocated-control.json",
+      "candidate": "s4-midi-address-relocated.json",
+      "case": 1,
+      "rows": 38,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 5756,
+      "cycles_candidate_total": 8571,
+      "cycles_control_max": 1288,
+      "cycles_candidate_max": 1947
+    },
+    {
+      "control": "c2-midi-relocated-control.json",
+      "candidate": "s4-midi-address-relocated.json",
+      "case": 2,
+      "rows": 16,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 2019,
+      "cycles_candidate_total": 2916,
+      "cycles_control_max": 455,
+      "cycles_candidate_max": 644
+    },
+    {
+      "control": "c2-midi-relocated-control.json",
+      "candidate": "s4-midi-address-relocated.json",
+      "case": 3,
+      "rows": 38,
+      "exact_noncycle_fields": true,
+      "cycles_control_total": 5756,
+      "cycles_candidate_total": 8571,
+      "cycles_control_max": 1288,
+      "cycles_candidate_max": 1947
+    }
+  ],
+  "connected": {
+    "exact_noncycle_fields": true,
+    "rows": 33,
+    "nominal_budget_clocks_at_100mhz": 66666.66666666667,
+    "physical_timing_qualification": false,
+    "populations": {
+      "playback_start": {
+        "control": {
+          "min": 88446,
+          "median": 88446,
+          "max": 88446
+        },
+        "candidate": {
+          "min": 92745,
+          "median": 92745,
+          "max": 92745
+        },
+        "candidate_nominal_budget_slack_clocks": -26078.33333333333
+      },
+      "warmup": {
+        "control": {
+          "min": 52974,
+          "median": 53066.0,
+          "max": 53657
+        },
+        "candidate": {
+          "min": 53238,
+          "median": 53330.0,
+          "max": 53987
+        },
+        "candidate_nominal_budget_slack_clocks": 12679.666666666672
+      },
+      "steady": {
+        "control": {
+          "min": 52994,
+          "median": 52994.0,
+          "max": 53617
+        },
+        "candidate": {
+          "min": 53258,
+          "median": 53258.0,
+          "max": 53947
+        },
+        "candidate_nominal_budget_slack_clocks": 12719.666666666672
+      }
+    }
+  }
+}

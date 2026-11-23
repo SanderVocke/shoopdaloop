@@ -972,17 +972,20 @@ fn track_topology(topology: &BackendTrackTopology) -> TrackTopology {
             wet_audio_channels: *wet_audio_channels,
             dry_midi: *dry_midi,
             processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+            remote_fx: None,
         },
         BackendTrackTopology::DryWetProcessor {
             processor_type,
             dry_audio_channels,
             wet_audio_channels,
             dry_midi,
+            remote_fx,
         } => TrackTopology::DryWet {
             dry_audio_channels: *dry_audio_channels,
             wet_audio_channels: *wet_audio_channels,
             dry_midi: *dry_midi,
             processor_type: TrackProcessorTypeId::new(processor_type),
+            remote_fx: *remote_fx,
         },
     }
 }

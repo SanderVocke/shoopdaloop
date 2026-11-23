@@ -1,0 +1,657 @@
+{
+  "schema_version": 1,
+  "binary": "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+  "binary_sha256": "e7aa3cf7fdade6d608fa47b61560ea1a55e814b80f652de72e37e234523bb879",
+  "quanta": 16,
+  "complete": true,
+  "runs": [
+    {
+      "name": "audio-off-delay0",
+      "scenario": "audio",
+      "state": "off",
+      "delay": 0,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "audio",
+        "--state",
+        "off",
+        "--ddr-delay",
+        "0",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-off-delay0.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 229.67869447500198,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-off-delay0.json",
+        "sha256": "0ca5f23b09d091005d6f143ce6da28a47541f673217c9ce26976d17c64f9e4b6",
+        "scenario": "audio_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 0,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 62550,
+            "median": 62550,
+            "max": 62550
+          },
+          "warmup": {
+            "count": 16,
+            "min": 40220,
+            "median": 40220.0,
+            "max": 40220
+          },
+          "steady": {
+            "count": 16,
+            "min": 40220,
+            "median": 40220.0,
+            "max": 40220
+          }
+        }
+      }
+    },
+    {
+      "name": "audio-off-delay7",
+      "scenario": "audio",
+      "state": "off",
+      "delay": 7,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "audio",
+        "--state",
+        "off",
+        "--ddr-delay",
+        "7",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-off-delay7.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 294.36467012900175,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-off-delay7.json",
+        "sha256": "777f13b9ae3a9ced4f20be178b242b10d1ec109e3be4a592d4a974cd958d8199",
+        "scenario": "audio_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 7,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 69651,
+            "median": 69651,
+            "max": 69651
+          },
+          "warmup": {
+            "count": 16,
+            "min": 41184,
+            "median": 41184.0,
+            "max": 41184
+          },
+          "steady": {
+            "count": 16,
+            "min": 41184,
+            "median": 41184.0,
+            "max": 41184
+          }
+        }
+      }
+    },
+    {
+      "name": "audio-on-delay0",
+      "scenario": "audio",
+      "state": "on",
+      "delay": 0,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "audio",
+        "--state",
+        "on",
+        "--ddr-delay",
+        "0",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-on-delay0.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 274.7409564490008,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-on-delay0.json",
+        "sha256": "0ca5f23b09d091005d6f143ce6da28a47541f673217c9ce26976d17c64f9e4b6",
+        "scenario": "audio_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 0,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 62550,
+            "median": 62550,
+            "max": 62550
+          },
+          "warmup": {
+            "count": 16,
+            "min": 40220,
+            "median": 40220.0,
+            "max": 40220
+          },
+          "steady": {
+            "count": 16,
+            "min": 40220,
+            "median": 40220.0,
+            "max": 40220
+          }
+        }
+      }
+    },
+    {
+      "name": "audio-on-delay7",
+      "scenario": "audio",
+      "state": "on",
+      "delay": 7,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "audio",
+        "--state",
+        "on",
+        "--ddr-delay",
+        "7",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-on-delay7.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 381.7541797610029,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/audio-on-delay7.json",
+        "sha256": "ffabf13c3d10124288ee939f3277eb66c60c449bd81b2d63e1d97b97ad238f5f",
+        "scenario": "audio_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 7,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 69651,
+            "median": 69651,
+            "max": 69651
+          },
+          "warmup": {
+            "count": 16,
+            "min": 41184,
+            "median": 41184.0,
+            "max": 41184
+          },
+          "steady": {
+            "count": 16,
+            "min": 41184,
+            "median": 41184.0,
+            "max": 41184
+          }
+        }
+      }
+    },
+    {
+      "name": "midi-off-delay0",
+      "scenario": "midi",
+      "state": "off",
+      "delay": 0,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "midi",
+        "--state",
+        "off",
+        "--ddr-delay",
+        "0",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-off-delay0.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 62.12080819900075,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-off-delay0.json",
+        "sha256": "09ea0db618d090bcd1a903039fe22fa8ea83cf6a545ad7c509b4367257acdc2e",
+        "scenario": "midi_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 0,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 26201,
+            "median": 26201,
+            "max": 26201
+          },
+          "warmup": {
+            "count": 16,
+            "min": 12476,
+            "median": 12476.0,
+            "max": 12748
+          },
+          "steady": {
+            "count": 16,
+            "min": 12476,
+            "median": 12476.0,
+            "max": 12748
+          }
+        }
+      }
+    },
+    {
+      "name": "midi-off-delay7",
+      "scenario": "midi",
+      "state": "off",
+      "delay": 7,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "midi",
+        "--state",
+        "off",
+        "--ddr-delay",
+        "7",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-off-delay7.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 76.03414704199895,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-off-delay7.json",
+        "sha256": "75795c3c80f001d42d2bef7256b82118fb1fd20619dd259af621aa2ff893f3ff",
+        "scenario": "midi_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 7,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 36029,
+            "median": 36029,
+            "max": 36029
+          },
+          "warmup": {
+            "count": 16,
+            "min": 13288,
+            "median": 13288.0,
+            "max": 13763
+          },
+          "steady": {
+            "count": 16,
+            "min": 13288,
+            "median": 13288.0,
+            "max": 13763
+          }
+        }
+      }
+    },
+    {
+      "name": "midi-on-delay0",
+      "scenario": "midi",
+      "state": "on",
+      "delay": 0,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "midi",
+        "--state",
+        "on",
+        "--ddr-delay",
+        "0",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-on-delay0.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 57.782138743998075,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-on-delay0.json",
+        "sha256": "40f6e8ac81fac6faed60f4e868b3f718ce6a5312d1b16a6e6d4eb52a90de77fb",
+        "scenario": "midi_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 0,
+        "midi_state_tracking": true,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 31371,
+            "median": 31371,
+            "max": 31371
+          },
+          "warmup": {
+            "count": 16,
+            "min": 15915,
+            "median": 15972.0,
+            "max": 16318
+          },
+          "steady": {
+            "count": 16,
+            "min": 15928,
+            "median": 15928.0,
+            "max": 16283
+          }
+        }
+      }
+    },
+    {
+      "name": "midi-on-delay7",
+      "scenario": "midi",
+      "state": "on",
+      "delay": 7,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "midi",
+        "--state",
+        "on",
+        "--ddr-delay",
+        "7",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-on-delay7.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 95.74379662100182,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/midi-on-delay7.json",
+        "sha256": "bee5d23470280a833dd6c4cbd8410545b73e631e6ebbf50990ed7968a58a0fcc",
+        "scenario": "midi_only",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 7,
+        "midi_state_tracking": true,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 41409,
+            "median": 41409,
+            "max": 41409
+          },
+          "warmup": {
+            "count": 16,
+            "min": 16860,
+            "median": 16952.0,
+            "max": 17543
+          },
+          "steady": {
+            "count": 16,
+            "min": 16880,
+            "median": 16880.0,
+            "max": 17487
+          }
+        }
+      }
+    },
+    {
+      "name": "mixed-off-delay0",
+      "scenario": "mixed",
+      "state": "off",
+      "delay": 0,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "mixed",
+        "--state",
+        "off",
+        "--ddr-delay",
+        "0",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-off-delay0.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 333.7638055419993,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-off-delay0.json",
+        "sha256": "a47e1ff30a33fdd27155b16c03459ec417dfd89d5ae7ef21bb7e631063d152b0",
+        "scenario": "stereo_and_midi",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 0,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 87410,
+            "median": 87410,
+            "max": 87410
+          },
+          "warmup": {
+            "count": 16,
+            "min": 48853,
+            "median": 48853.0,
+            "max": 49125
+          },
+          "steady": {
+            "count": 16,
+            "min": 48853,
+            "median": 48853.0,
+            "max": 49125
+          }
+        }
+      }
+    },
+    {
+      "name": "mixed-off-delay7",
+      "scenario": "mixed",
+      "state": "off",
+      "delay": 7,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "mixed",
+        "--state",
+        "off",
+        "--ddr-delay",
+        "7",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-off-delay7.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 268.3338446170019,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-off-delay7.json",
+        "sha256": "8683fd911e4751c320cd168b321086a9927e258a639f573d37162ce7a00aa77c",
+        "scenario": "stereo_and_midi",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 7,
+        "midi_state_tracking": false,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 98141,
+            "median": 98141,
+            "max": 98141
+          },
+          "warmup": {
+            "count": 16,
+            "min": 50554,
+            "median": 50554.0,
+            "max": 51029
+          },
+          "steady": {
+            "count": 16,
+            "min": 50554,
+            "median": 50554.0,
+            "max": 51029
+          }
+        }
+      }
+    },
+    {
+      "name": "mixed-on-delay0",
+      "scenario": "mixed",
+      "state": "on",
+      "delay": 0,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "mixed",
+        "--state",
+        "on",
+        "--ddr-delay",
+        "0",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-on-delay0.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 238.04639956699975,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-on-delay0.json",
+        "sha256": "3a6025cdd8776a779bc0ea2ca5d025e71a12552e4f19c8171744773414df1148",
+        "scenario": "stereo_and_midi",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 0,
+        "midi_state_tracking": true,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 92676,
+            "median": 92676,
+            "max": 92676
+          },
+          "warmup": {
+            "count": 16,
+            "min": 52292,
+            "median": 52349.0,
+            "max": 52695
+          },
+          "steady": {
+            "count": 16,
+            "min": 52305,
+            "median": 52305.0,
+            "max": 52660
+          }
+        }
+      }
+    },
+    {
+      "name": "mixed-on-delay7",
+      "scenario": "mixed",
+      "state": "on",
+      "delay": 7,
+      "command": [
+        "/workspace/shoopdaloop/target/release/examples/midi_data_quantum_64",
+        "--scenario",
+        "mixed",
+        "--state",
+        "on",
+        "--ddr-delay",
+        "7",
+        "--quanta",
+        "16",
+        "--output",
+        "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-on-delay7.json"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 290.2609279290009,
+      "result": {
+        "file": "/workspace/shoopdaloop/work/area-experiments/b0-matrix/mixed-on-delay7.json",
+        "sha256": "d65cd7c490aaeffd3a120cb5cbc9ca5a725cc1e05fd72f56bd747ddee11f7b04",
+        "scenario": "stereo_and_midi",
+        "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "loops": 64,
+        "quantum_frames": 32,
+        "sample_rate": 48000,
+        "ddr_added_delay_clocks": 7,
+        "midi_state_tracking": true,
+        "implementation_parameter_differences": {},
+        "cycles": {
+          "playback_start": {
+            "count": 1,
+            "min": 110356,
+            "median": 110356,
+            "max": 110356
+          },
+          "warmup": {
+            "count": 16,
+            "min": 54126,
+            "median": 54218.0,
+            "max": 54809
+          },
+          "steady": {
+            "count": 16,
+            "min": 54146,
+            "median": 54146.0,
+            "max": 54753
+          }
+        }
+      }
+    }
+  ]
+}

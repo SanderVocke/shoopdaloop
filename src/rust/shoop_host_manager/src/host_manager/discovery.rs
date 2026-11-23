@@ -1,9 +1,9 @@
-use super::{Host, Source};
+use super::{Host, HostDetails, Source};
 use shoop_host::{connection, remote::Target};
 use shoop_host_processes::{identity, Process};
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -17,16 +17,39 @@ pub(super) struct Scan {
 enum Job {
     Local(Process),
     Manual(String),
+    Fx(SocketAddr),
 }
 impl Job {
     fn query(self) -> Option<Host> {
         match self {
             Self::Local(process) => local(process),
-            Self::Manual(address) => Some(Host::query(address)),
+            Self::Manual(address) => Some(manual(address)),
+            Self::Fx(address) => Some(Host::from_fx(
+                Source::Address(address.to_string()),
+                address,
+                shoop_remote_fx::describe(address).ok()?,
+            )),
         }
     }
 }
-fn local_address(mut address: SocketAddr) -> SocketAddr {
+
+fn manual(address: String) -> Host {
+    let source = Source::Address(address.clone());
+    match connection::describe(&address, Duration::from_secs(2)) {
+        Ok(target) => Host::from_target(source, target),
+        Err(error) => {
+            if let Ok(addresses) = address.to_socket_addrs() {
+                for address in addresses {
+                    if let Ok(description) = shoop_remote_fx::describe(address) {
+                        return Host::from_fx(source, address, description);
+                    }
+                }
+            }
+            Host::unavailable(source, format!("{error:#}"))
+        }
+    }
+}
+pub(super) fn local_address(mut address: SocketAddr) -> SocketAddr {
     if address.ip().is_unspecified() {
         address.set_ip(if address.is_ipv4() {
             IpAddr::V4(Ipv4Addr::LOCALHOST)
@@ -47,8 +70,9 @@ fn local(process: Process) -> Option<Host> {
         if remaining.is_zero() {
             break;
         }
-        match connection::describe(
-            &local_address(*address).to_string(),
+        let address = local_address(*address);
+        let host = match connection::describe(
+            &address.to_string(),
             remaining / (process.addresses.len() - index) as u32,
         ) {
             Ok(mut target) => {
@@ -56,19 +80,26 @@ fn local(process: Process) -> Option<Host> {
                     error = "Host description does not match the owning OS process".into();
                     continue;
                 }
-                match identity(process.identity.pid) {
-                    Ok(Some(current)) if current == process.identity => {
-                        target.use_local_addresses();
-                        return Some(Host::from_target(source, target));
-                    }
-                    Ok(_) => return None,
-                    Err(failure) => {
-                        error = format!("Process inspection unavailable: {failure:#}");
-                        break;
-                    }
-                }
+                target.use_local_addresses();
+                Host::from_target(source.clone(), target)
             }
-            Err(failure) => error = format!("{failure:#}"),
+            Err(failure) => match shoop_remote_fx::describe(address) {
+                Ok(fx) if fx.pid == process.identity.pid => {
+                    Host::from_fx(source.clone(), address, fx)
+                }
+                _ => {
+                    error = format!("{failure:#}");
+                    continue;
+                }
+            },
+        };
+        match identity(process.identity.pid) {
+            Ok(Some(current)) if current == process.identity => return Some(host),
+            Ok(_) => return None,
+            Err(failure) => {
+                error = format!("Process inspection unavailable: {failure:#}");
+                break;
+            }
         }
     }
     Some(Host::unavailable(source, error))
@@ -110,19 +141,25 @@ fn deduplicate(scan: &mut Scan) {
         Source::Process(process) => (0, process.pid, String::new()),
         Source::Address(address) => (1, 0, address.clone()),
     });
-    let mut instances: HashMap<u128, Source> = HashMap::new();
+    #[derive(Eq, Hash, PartialEq)]
+    enum Instance {
+        Session(u128),
+        Fx(String),
+    }
+    let mut instances = HashMap::<Instance, Source>::new();
     scan.hosts.retain(|host| {
-        let Some(Target { instance, .. }) = &host.target else {
-            return true;
+        let instance = match &host.details {
+            HostDetails::Fx { instance, .. } => Instance::Fx(instance.clone()),
+            _ => match host.target() {
+                Some(Target { instance, .. }) if *instance != 0 => Instance::Session(*instance),
+                _ => return true,
+            },
         };
-        if *instance == 0 {
-            return true;
-        }
-        if let Some(source) = instances.get(instance) {
+        if let Some(source) = instances.get(&instance) {
             scan.aliases.push((host.source.clone(), source.clone()));
             false
         } else {
-            instances.insert(*instance, host.source.clone());
+            instances.insert(instance, host.source.clone());
             true
         }
     });
@@ -153,8 +190,9 @@ pub(super) fn scan(manual: Vec<String>, previous: Vec<Host>) -> Scan {
                         Ok(_) => continue,
                         Err(_) => {}
                     }
-                    host.report =
-                        Err("OS inspection unavailable; process exit is unconfirmed".into());
+                    host.mark_unavailable(
+                        "OS inspection unavailable; process exit is unconfirmed".into(),
+                    );
                     scan.hosts.push(host);
                 }
             }
@@ -166,10 +204,15 @@ pub(super) fn scan(manual: Vec<String>, previous: Vec<Host>) -> Scan {
             scan.warnings.push(error.clone());
             for mut host in previous {
                 if matches!(host.source, Source::Process(_)) {
-                    host.report = Err(error.clone());
+                    host.mark_unavailable(error.clone());
                     scan.hosts.push(host);
                 }
             }
+        }
+    }
+    for address in shoop_remote_fx::discover_lan().unwrap_or_default() {
+        if !manual.contains(&address.to_string()) {
+            jobs.push(Job::Fx(address));
         }
     }
     jobs.extend(manual.into_iter().map(Job::Manual));
@@ -340,8 +383,8 @@ mod tests {
                 assert_eq!(matches.len(), 1);
                 let host = matches[0];
                 assert_eq!(host.name, "Same host name");
-                assert!(host.report.as_ref().unwrap().ready);
-                let target = host.target.as_ref().unwrap();
+                assert!(host.session().unwrap().report.as_ref().unwrap().ready);
+                let target = host.target().unwrap();
                 assert!(target.can_attach);
                 assert_eq!(target.instance, fixture.target.as_ref().unwrap().instance);
             }
@@ -375,7 +418,7 @@ mod tests {
             .iter()
             .find(|host| host.source == fixture.source())
             .unwrap();
-        assert!(host.report.is_err() && host.target.is_none());
+        assert!(host.inspection_error().is_some() && host.target().is_none());
         let mut changed = fixture.identity.clone();
         changed.started ^= 1;
         assert!(shoop_host_processes::force_stop(&changed).is_err());
@@ -554,9 +597,13 @@ mod tests {
             .iter()
             .find(|host| host.source == Source::Process(current.clone()))
             .unwrap();
-        assert!(host.report.is_ok(), "{:?}", host.report);
+        assert!(
+            host.inspection_error().is_none(),
+            "{:?}",
+            host.inspection_error()
+        );
         assert_eq!(
-            host.target.as_ref().unwrap().instance,
+            host.target().unwrap().instance,
             fixture.target.as_ref().unwrap().instance
         );
         std::fs::remove_file(&current.executable).unwrap();
@@ -565,12 +612,12 @@ mod tests {
             .hosts
             .iter()
             .find(|host| {
-                host.target.as_ref().is_some_and(|target| {
+                host.target().is_some_and(|target| {
                     target.instance == fixture.target.as_ref().unwrap().instance
                 })
             })
             .unwrap();
-        assert!(host.report.is_ok());
+        assert!(host.inspection_error().is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -578,7 +625,7 @@ mod tests {
         let mut hosts: Vec<_> = (0..90)
             .map(|index| {
                 let mut host = super::super::tests::host();
-                let target = host.target.as_mut().unwrap();
+                let target = host.session_mut().target.as_mut().unwrap();
                 target.instance += index;
                 target.process.as_mut().unwrap().pid += index as u32;
                 host.source = Source::Process(target.process.clone().unwrap());

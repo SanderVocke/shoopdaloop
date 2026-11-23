@@ -1,4 +1,8 @@
 if {[version -short] ne {2021.1}} {error "This experiment requires Vivado 2021.1"}
+if {![info exists stop_after]} {set stop_after route}
+if {$stop_after ni {synth opt place route}} {error "Invalid stop stage: $stop_after"}
+if {![info exists resume_after]} {set resume_after none}
+if {$resume_after ni {none synth opt place}} {error "Invalid resume stage: $resume_after"}
 set_param general.maxThreads 2
 create_project -in_memory -part xc7z020clg484-1
 set includes {}
@@ -11,8 +15,10 @@ foreach library {state_processor job_processor chunk_memory media_store axi_memo
 }
 set_property include_dirs $includes [current_fileset]
 lappend sources context.sv
-read_verilog -sv $sources
-read_xdc context.xdc
+if {$resume_after eq {none}} {
+    read_verilog -sv $sources
+    read_xdc context.xdc
+} else {open_checkpoint input.dcp}
 set f [open setup.txt w]
 puts $f "Vivado: [version]\nPart: xc7z020clg484-1\nThreads: 2\nUncertainty: 0.2 ns\nFlow: OOC, rebuilt hierarchy, default placement/routing, post-place phys_opt"
 close $f
@@ -56,27 +62,38 @@ proc reports {stage} {
     puts $f "{\"wns_ns\":[get_property SLACK $setup_paths],\"whs_ns\":[get_property SLACK $hold_paths]}"
     close $f
 }
-set stage synth
-set status [catch {
-    synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
-    checkpoint post_synth.dcp
-    reports post_synth
-    set stage opt
-    opt_design
-    reports post_opt
-    checkpoint post_opt.dcp
-    set stage place
-    place_design
-    phys_opt_design
-    checkpoint post_place.dcp
-    reports post_place
+proc run_flow {} {
+    global stage stop_after resume_after
+    if {$resume_after eq {none}} {
+        set stage synth
+        synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
+        checkpoint post_synth.dcp
+        reports post_synth
+        if {$stop_after eq {synth}} {return}
+    }
+    if {$resume_after in {none synth}} {
+        set stage opt
+        opt_design
+        reports post_opt
+        checkpoint post_opt.dcp
+        if {$stop_after eq {opt}} {return}
+    }
+    if {$resume_after ne {place}} {
+        set stage place
+        place_design
+        phys_opt_design
+        checkpoint post_place.dcp
+        reports post_place
+        if {$stop_after eq {place}} {return}
+    }
     set stage route
     route_design
     checkpoint post_route.dcp
     reports post_route
     report_route_status -file post_route_route_status.rpt
     report_drc -file post_route_drc.rpt
-} message options]
+}
+set status [catch {run_flow} message options]
 set f [open outcome.txt w]
 puts $f "stage=$stage\nstatus=$status\nmessage=$message"
 close $f

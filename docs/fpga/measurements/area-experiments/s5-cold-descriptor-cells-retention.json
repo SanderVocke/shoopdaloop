@@ -1,0 +1,22 @@
+{
+  "archive": "s5-cold-descriptor-cells-raw.tar.gz",
+  "archive_sha256": "dc7b8a7d5815621cb362d2e35a2b22a97de36e44c0b2582bc210cf08fac84328",
+  "members_sha256": {
+    "query.tcl": "8fe7eae6bd648bedac377fe659bcf1b598fffb86794e581252b84744b842062d",
+    "console.log": "a387251cbc319995b20cd76f6a0153bbeac165f339e3682620d609b731b9f055",
+    "run.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "control-primitives.csv": "461d853e157a8158dc202b20bcb3d36ea0174e4f7f451aeba94be58f18a49825",
+    "candidate-primitives.csv": "5ba0211419882ac4001f4315b745aacf508f50e4363210e1f49e386dfde6d942",
+    "counts.json": "e9fe926d9d3fcca1a3bfbbc345528b2a0dfee7200862c0bed5eadc15b86cb8e5"
+  },
+  "checkpoints": {
+    "control": {
+      "path": "/workspace/shoopdaloop/work/area-experiments/s4-iterative-capacity-opt/post_opt.dcp",
+      "sha256": "13e6423398e19354ea9ddaa4b8555708a8ec440710046e120bdccd5c9225ec43"
+    },
+    "candidate": {
+      "path": "/workspace/shoopdaloop/work/area-experiments/s5-cold-descriptor-opt/post_opt.dcp",
+      "sha256": "800dc429f6d36f6e295729abe28e3feb3e3288f46ec6828174aee504ec8b4498"
+    }
+  }
+}

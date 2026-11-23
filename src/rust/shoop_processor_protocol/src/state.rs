@@ -40,9 +40,7 @@ impl State {
                 values[55] = 1.;
             }
             Kind::OxiSynth => values[3..5].fill(-1.),
-            Kind::External | Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
-                return Err(InvalidState)
-            }
+            _ => return Err(InvalidState),
         }
         Ok(Self { kind, values })
     }
@@ -84,9 +82,7 @@ impl State {
                         .iter()
                         .all(|&v| v == -1. || integer(v, 0, 2047))
             }
-            Kind::External | Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
-                false
-            }
+            _ => false,
         };
         if valid {
             Ok(())
@@ -121,9 +117,7 @@ impl State {
                     self.values[1].to_bits()
                 )
             }
-            Kind::External | Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
-                String::new()
-            }
+            _ => String::new(),
         }
     }
     pub fn decode(kind: Kind, encoded: &str) -> Result<Self, InvalidState> {
@@ -186,9 +180,7 @@ impl State {
                 state.values[0] = float(fields.next())?;
                 state.values[1] = float(fields.next())?;
             }
-            Kind::External | Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
-                return Err(InvalidState)
-            }
+            _ => return Err(InvalidState),
         }
         if fields.next().is_some() {
             return Err(InvalidState);

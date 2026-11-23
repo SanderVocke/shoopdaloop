@@ -15,6 +15,8 @@ use std::{
     sync::mpsc::{self, Receiver},
 };
 
+use super::{fx_services, Host, Source};
+
 #[derive(Default)]
 struct Devices {
     host: String,
@@ -75,10 +77,39 @@ impl Request {
     }
 }
 
+pub(super) enum StartRequest {
+    Session(Request),
+    Fx(fx_services::Request),
+}
+
+impl StartRequest {
+    pub(super) fn start(self) -> Result<Host> {
+        match self {
+            Self::Fx(request) => request.start(),
+            Self::Session(request) => {
+                let target = request.start()?;
+                let identity = target
+                    .process
+                    .clone()
+                    .context("Host process identity unavailable")?;
+                Ok(Host::from_target(Source::Process(identity), target))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HostType {
+    Session,
+    Fx,
+}
+
 pub(super) struct Dialog {
     pub open: bool,
     pub pending: bool,
     pub error: Option<String>,
+    host_type: HostType,
+    fx_host: fx_services::Settings,
     name: String,
     driver: AudioDriverKind,
     backend: BackendType,
@@ -96,6 +127,9 @@ pub(super) struct Dialog {
     midi_outputs: Vec<String>,
     pools: NewEnginePools,
     processors: shoop_app_api::ProcessorSettings,
+    fx_address: String,
+    fx_reconnect: shoop_host::serve::RemoteReconnect,
+    fx_dry_on_loss: bool,
     master_auto_connect: bool,
     smoothing: u32,
     lan: bool,
@@ -115,6 +149,8 @@ impl Default for Dialog {
             open: true,
             pending: false,
             error: None,
+            host_type: HostType::Session,
+            fx_host: fx_services::Settings::default(),
             name: "ShoopDaLoop".into(),
             backend: BackendType::Native,
             dummy_mode: Default::default(),
@@ -138,6 +174,9 @@ impl Default for Dialog {
             midi_outputs: vec!["all".into()],
             pools: NewEnginePools::default(),
             processors: Default::default(),
+            fx_address: String::new(),
+            fx_reconnect: Default::default(),
+            fx_dry_on_loss: false,
             master_auto_connect: true,
             smoothing: 3,
             lan: false,
@@ -153,6 +192,31 @@ impl Default for Dialog {
     }
 }
 impl Dialog {
+    pub(super) fn probe_remote(address: SocketAddr) -> Result<Target> {
+        let mut dialog = Self {
+            driver: AudioDriverKind::Dummy,
+            buffer_size: 128,
+            pools: NewEnginePools {
+                tracks: 2,
+                loops: 16,
+                buses: 2,
+                bus_channels: 2,
+                loop_memory_mb: 16,
+                ..NewEnginePools::default()
+            },
+            ..Self::default()
+        };
+        dialog.processors.builtin_fx = shoop_app_api::ProcessorPolicy::Off;
+        dialog.processors.oxisynth = shoop_app_api::ProcessorPolicy::Off;
+        dialog.select_fx_service(address);
+        dialog.request()?.start()
+    }
+
+    pub(super) fn select_fx_service(&mut self, address: SocketAddr) {
+        self.host_type = HostType::Session;
+        self.backend = BackendType::Native;
+        self.fx_address = address.to_string();
+    }
     pub fn new() -> Self {
         let mut dialog = Self::default();
         if dialog.driver == AudioDriverKind::Cpal {
@@ -221,6 +285,19 @@ impl Dialog {
         options.management_endpoint = management;
         options.lan = self.lan;
         options.log_file = log_file;
+        if self.backend == BackendType::Native && !self.fx_address.trim().is_empty() {
+            let address = self
+                .fx_address
+                .parse()
+                .context("Invalid desktop FX service address")?;
+            options.remote_carla = Some(shoop_host::serve::RemoteCarla {
+                address,
+                slack_quanta: None,
+                copies: shoop_remote_fx::DEFAULT_COPIES,
+                reconnect: self.fx_reconnect,
+                dry_on_loss: self.fx_dry_on_loss,
+            });
+        }
         if self.lan && !self.advertised_host.trim().is_empty() {
             ensure!(
                 endpoint.port() != 0 && management.port() != 0,
@@ -313,7 +390,7 @@ impl Dialog {
         self.pending = false;
         self.error = Some(message);
     }
-    pub fn show(&mut self, context: &egui::Context) -> Option<Request> {
+    pub fn show(&mut self, context: &egui::Context) -> Option<StartRequest> {
         self.poll_devices();
         let mut open = self.open;
         let mut request = None;
@@ -323,11 +400,17 @@ impl Dialog {
             .collapsible(false)
             .show(context, |ui| {
                 ui.add_enabled_ui(!self.pending, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut self.host_type, HostType::Session, "Session host");
+                        ui.selectable_value(&mut self.host_type, HostType::Fx, "FX host");
+                    });
+                    ui.separator();
                     egui::ScrollArea::vertical()
                         .id_salt("new_host_form")
-                        .max_height((context.viewport_rect().height() - 150.0).max(220.0))
-                        .show(ui, |ui| {
-                            self.fields(ui);
+                        .max_height((context.viewport_rect().height() - 190.0).max(120.0))
+                        .show(ui, |ui| match self.host_type {
+                            HostType::Session => self.fields(ui),
+                            HostType::Fx => self.fx_host.fields(ui),
                         });
                 });
                 if let Some(error) = &self.error {
@@ -344,7 +427,11 @@ impl Dialog {
                             .add_enabled(!self.pending, super::primary_button("Start host"))
                             .clicked()
                         {
-                            match self.request() {
+                            let result = match self.host_type {
+                                HostType::Session => self.request().map(StartRequest::Session),
+                                HostType::Fx => self.fx_host.request().map(StartRequest::Fx),
+                            };
+                            match result {
                                 Ok(value) => {
                                     self.pending = true;
                                     self.error = None;
@@ -366,6 +453,43 @@ impl Dialog {
         request
     }
     fn fields(&mut self, ui: &mut egui::Ui) {
+        if self.backend == BackendType::Native {
+            ui.horizontal(|ui| {
+                ui.label("FX service");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.fx_address)
+                        .hint_text("IP address and port (optional)"),
+                );
+            });
+            if !self.fx_address.trim().is_empty() {
+                use shoop_host::serve::RemoteReconnect;
+                let choices = [
+                    (RemoteReconnect::Recreate, "Restore checkpoint"),
+                    (RemoteReconnect::Resume, "Resume live chain when possible"),
+                    (RemoteReconnect::Manual, "Wait for manual recovery"),
+                ];
+                ui.horizontal(|ui| {
+                    ui.label("On FX service disconnect");
+                    egui::ComboBox::from_id_salt("carla_fx_reconnect")
+                        .selected_text(
+                            choices
+                                .iter()
+                                .find(|(mode, _)| *mode == self.fx_reconnect)
+                                .unwrap()
+                                .1,
+                        )
+                        .show_ui(ui, |ui| {
+                            for (mode, label) in choices {
+                                ui.selectable_value(&mut self.fx_reconnect, mode, label);
+                            }
+                        });
+                });
+                ui.checkbox(
+                    &mut self.fx_dry_on_loss,
+                    "Play delayed dry audio when FX is missing",
+                );
+            }
+        }
         egui::Grid::new("new_host_audio")
             .num_columns(2)
             .spacing([10.0, 6.0])
@@ -584,54 +708,15 @@ impl Dialog {
                     });
             }
             ui.horizontal(|ui| {
-                ui.label("FX instances");
+                ui.label("Built-in FX instances");
                 ui.add(egui::DragValue::new(&mut self.processors.fx_instances).range(0..=64));
             });
             ui.horizontal(|ui| {
-                ui.label("Synth instances");
+                ui.label("Built-in synth instances");
                 ui.add(egui::DragValue::new(&mut self.processors.synth_instances).range(0..=64));
             });
-            if self.backend == BackendType::Native {
-                use shoop_app_api::CarlaHosting;
-                let carla = &mut self.processors.carla;
-                let choices = [
-                    (CarlaHosting::Disabled, "Disabled"),
-                    (CarlaHosting::InProcess, "In session host"),
-                    (CarlaHosting::Subprocess, "One subprocess per chain"),
-                ];
-                ui.horizontal(|ui| {
-                    ui.label("Carla hosting");
-                    let label = choices
-                        .iter()
-                        .find(|(mode, _)| *mode == carla.hosting)
-                        .unwrap()
-                        .1;
-                    egui::ComboBox::from_id_salt("new_host_carla")
-                        .selected_text(label)
-                        .show_ui(ui, |ui| {
-                            for (mode, label) in choices {
-                                ui.selectable_value(&mut carla.hosting, mode, label);
-                            }
-                        });
-                });
-                if carla.hosting != CarlaHosting::Disabled {
-                    for (label, count) in [
-                        ("Carla Rack instances", &mut carla.rack_instances),
-                        ("Carla Patchbay instances", &mut carla.patchbay_instances),
-                        (
-                            "Carla Patchbay 16x instances",
-                            &mut carla.patchbay16x_instances,
-                        ),
-                    ] {
-                        ui.horizontal(|ui| {
-                            ui.label(label);
-                            ui.add(egui::DragValue::new(count).range(0..=64));
-                        });
-                    }
-                }
-            }
             ui.horizontal(|ui| {
-                ui.label("Processor memory");
+                ui.label("Built-in processor memory");
                 ui.add(
                     egui::DragValue::new(&mut self.processors.memory_mb)
                         .range(0..=4096)
@@ -968,6 +1053,27 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn new_host_dialog_submits_fx_hosts_through_the_same_start_action() {
+        let mut dialog = Dialog::default();
+        let mut screen = Screen::new(egui::vec2(700.0, 400.0));
+        for _ in 0..2 {
+            screen.frame(vec![], |ui| {
+                assert!(dialog.show(ui.ctx()).is_none());
+            });
+        }
+        screen.click("FX host", |ui| {
+            assert!(dialog.show(ui.ctx()).is_none());
+        });
+        assert!(screen.contains("Listen address") && screen.contains("One process per chain"));
+        let mut request = None;
+        screen.click("Start host", |ui| {
+            request = dialog.show(ui.ctx()).or(request.take());
+        });
+        assert!(matches!(request, Some(StartRequest::Fx(_))));
+        assert!(dialog.pending);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn start_form_validates_before_launch_and_disables_duplicate_submissions() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
@@ -991,7 +1097,10 @@ mod tests {
             }
         });
         assert!(dialog.pending);
-        assert_eq!(request.unwrap().options.name, "Studio");
+        let Some(StartRequest::Session(request)) = request else {
+            panic!("Expected a session start request");
+        };
+        assert_eq!(request.options.name, "Studio");
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
         screen.click("Start host", |ui| {
             assert!(dialog.show(ui.ctx()).is_none());
@@ -1104,22 +1213,19 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn carla_mode_and_instance_counts_are_host_startup_settings() {
-        use shoop_app_api::CarlaHosting;
+    fn selecting_an_fx_service_only_sets_the_default_address() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
+        let address = "127.0.0.1:24510".parse().unwrap();
+        dialog.select_fx_service(address);
+        let request = dialog.request().unwrap();
+        assert_eq!(request.options.remote_carla.unwrap().address, address);
+        assert_eq!(request.config.settings.processors.carla, Default::default());
         let mut screen = Screen::new(egui::vec2(800.0, 1100.0));
         screen.frame(vec![], |ui| dialog.fields(ui));
+        assert!(screen.contains("FX service"));
         screen.click("Track processors", |ui| dialog.fields(ui));
-        screen.click("Disabled", |ui| dialog.fields(ui));
-        screen.click("One subprocess per chain", |ui| dialog.fields(ui));
-        assert!(
-            screen.contains("Carla Rack instances") && screen.contains("Carla Patchbay instances")
-        );
-        dialog.processors.carla.rack_instances = 2;
-        dialog.processors.carla.patchbay_instances = 1;
-        let carla = dialog.request().unwrap().config.settings.processors.carla;
-        assert_eq!(carla.hosting, CarlaHosting::Subprocess);
-        assert_eq!((carla.rack_instances, carla.patchbay_instances), (2, 1));
+        assert!(!screen.contains("Carla Rack instances"));
+        assert!(!screen.contains("Carla hosting"));
     }
 }

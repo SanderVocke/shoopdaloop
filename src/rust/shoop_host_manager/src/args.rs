@@ -8,6 +8,8 @@ use std::path::PathBuf;
     about = "Manage ShoopDaLoop hosts"
 )]
 pub struct ManagerArgs {
+    #[arg(long, hide = true)]
+    pub probe_fx_service: bool,
     /// Import an explicitly selected connection profile.
     #[arg(
         long = "host-profile",

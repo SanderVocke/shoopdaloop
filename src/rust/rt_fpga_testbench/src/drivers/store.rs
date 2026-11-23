@@ -143,7 +143,10 @@ impl Store {
             s.model.set("reset", 0);
         }
         self.tick(s);
-        assert_ne!(self.get(s, "cmd_ready"), 0);
+        let ready = self.port("cmd_ready");
+        s.until(100_000, "store reset admission", |model| {
+            model.get(&ready) != 0
+        });
         assert_eq!(self.get(s, "busy"), 0);
         if !self.loaded {
             Memory::fill(&self.memory, s, 0xa5a5a5a5);

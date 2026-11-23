@@ -1,0 +1,209 @@
+{
+  "control": "C4 10cddabd; isolated audio HDL is identical to C3 fe2184ea retained unit controls",
+  "candidate": "938436956dc36a7c8dde82b014626e21eb209b1a",
+  "control_audio_sources_verified": true,
+  "scope": "Matched standalone metadata/cache/AXI and public-store workloads. Request/cleanup clocks are observed fixture costs, not universal bounds or timing-qualified execution.",
+  "cases": [
+    {
+      "kind": "width",
+      "axi_width": 32,
+      "case": 0,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 678,
+      "candidate_cycles_total": 686
+    },
+    {
+      "kind": "width",
+      "axi_width": 32,
+      "case": 1,
+      "rows": 73,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1245,
+      "candidate_cycles_total": 1280
+    },
+    {
+      "kind": "width",
+      "axi_width": 32,
+      "case": 2,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1588,
+      "candidate_cycles_total": 1629
+    },
+    {
+      "kind": "width",
+      "axi_width": 64,
+      "case": 0,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 654,
+      "candidate_cycles_total": 662
+    },
+    {
+      "kind": "width",
+      "axi_width": 64,
+      "case": 1,
+      "rows": 73,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1205,
+      "candidate_cycles_total": 1240
+    },
+    {
+      "kind": "width",
+      "axi_width": 64,
+      "case": 2,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1532,
+      "candidate_cycles_total": 1573
+    },
+    {
+      "kind": "directory",
+      "axi_width": 32,
+      "case": 0,
+      "rows": 207,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 27518,
+      "candidate_cycles_total": 28426,
+      "setup_cycles": {
+        "control": 1817747,
+        "candidate": 1911191,
+        "delta": 93444
+      }
+    },
+    {
+      "kind": "directory",
+      "axi_width": 64,
+      "case": 0,
+      "rows": 207,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 23790,
+      "candidate_cycles_total": 24698,
+      "setup_cycles": {
+        "control": 1810451,
+        "candidate": 1903895,
+        "delta": 93444
+      }
+    }
+  ],
+  "public_store": {
+    "rows": 1282,
+    "exact_noncycle_fields": true,
+    "populations": {
+      "create": {
+        "rows": 128,
+        "control_median": 265.0,
+        "candidate_median": 265.0,
+        "control_max": 519,
+        "candidate_max": 519,
+        "control_total": 33919,
+        "candidate_total": 33919
+      },
+      "capture": {
+        "rows": 128,
+        "control_median": 4152.0,
+        "candidate_median": 4169.0,
+        "control_max": 4305,
+        "candidate_max": 4319,
+        "control_total": 535477,
+        "candidate_total": 537586
+      },
+      "retain_offset_slice": {
+        "rows": 128,
+        "control_median": 1372.0,
+        "candidate_median": 1393.0,
+        "control_max": 1664,
+        "candidate_max": 1685,
+        "control_total": 175371,
+        "candidate_total": 178059
+      },
+      "clear_retained_capture": {
+        "rows": 128,
+        "control_median": 165.0,
+        "candidate_median": 166.0,
+        "control_max": 165,
+        "candidate_max": 166,
+        "control_total": 21069,
+        "candidate_total": 21198
+      },
+      "retake": {
+        "rows": 128,
+        "control_median": 513.0,
+        "candidate_median": 528.0,
+        "control_max": 591,
+        "candidate_max": 606,
+        "control_total": 66245,
+        "candidate_total": 68165
+      },
+      "retake_read": {
+        "rows": 128,
+        "control_median": 65.0,
+        "candidate_median": 65.0,
+        "control_max": 65,
+        "candidate_max": 65,
+        "control_total": 8320,
+        "candidate_total": 8320
+      },
+      "retained_read": {
+        "rows": 128,
+        "control_median": 265.0,
+        "candidate_median": 267.0,
+        "control_max": 357,
+        "candidate_max": 358,
+        "control_total": 34313,
+        "candidate_total": 34568
+      },
+      "remove": {
+        "rows": 128,
+        "control_median": 114.0,
+        "candidate_median": 116.0,
+        "control_max": 114,
+        "candidate_max": 116,
+        "control_total": 14248,
+        "candidate_total": 14504
+      },
+      "maintenance_drain": {
+        "rows": 1,
+        "control_median": 183544,
+        "candidate_median": 191736,
+        "control_max": 183544,
+        "candidate_max": 191736,
+        "control_total": 183544,
+        "candidate_total": 191736
+      },
+      "retained_after_maintenance": {
+        "rows": 128,
+        "control_median": 265.0,
+        "candidate_median": 267.0,
+        "control_max": 308,
+        "candidate_max": 310,
+        "control_total": 34092,
+        "candidate_total": 34348
+      },
+      "remove_retained": {
+        "rows": 128,
+        "control_median": 114.0,
+        "candidate_median": 116.0,
+        "control_max": 114,
+        "candidate_max": 116,
+        "control_total": 14592,
+        "candidate_total": 14848
+      },
+      "final_maintenance_drain": {
+        "rows": 1,
+        "control_median": 102818,
+        "candidate_median": 108066,
+        "control_max": 102818,
+        "candidate_max": 108066,
+        "control_total": 102818,
+        "candidate_total": 108066
+      }
+    }
+  },
+  "binaries_sha256": {
+    "metadata_width_boundaries": "0969a34d7e8fba2cc3c1f6fa75629f48f23e5a071e79311a092f607259340ca1",
+    "metadata_directory_area": "857cfe2c8be0cdeb277df724fb1236b632b0f9c018525d36e26025aebfe5cff4",
+    "store_area_operations": "c6903eee2f760776f38dd22b9c3fd99287717a702fa6db34934a7b941396adaf"
+  }
+}
