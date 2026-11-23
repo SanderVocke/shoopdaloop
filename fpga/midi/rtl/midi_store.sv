@@ -120,12 +120,31 @@ module midi_store #(
     reg [63:0] view_handle, arg0, arg1;
     reg [23:0] packet;
     reg [1:0] length;
-    reg [31:0] desc [0:15];
+    reg [31:0] desc [0:12];
+    (* ram_style = "distributed" *) reg [31:0] descriptor_cold [0:3];
+    reg [31:0] descriptor_cold_data;
+    reg [2:0] descriptor_cold_valid;
+    wire descriptor_is_cold = cursor[3:0]==10 || cursor[3:0]==11 || cursor[3:0]==14;
+    wire [1:0] descriptor_cold_write_index = cursor[3:0]==10 ? 0 : cursor[3:0]==11 ? 1 : 2;
+    wire [1:0] descriptor_cold_read_index = cursor[3:0]==9 ? 0 : cursor[3:0]==10 ? 1 : 2;
+    wire [1:0] descriptor_cold_address = phase==LOADED_VIEW
+        ? descriptor_cold_write_index : descriptor_cold_read_index;
+    wire [3:0] descriptor_hot_index = cursor[3:0]<10 ? cursor[3:0]
+        : cursor[3:0]==12 ? 10 : cursor[3:0]==13 ? 11 : 12;
+    wire [31:0] descriptor_word = descriptor_is_cold
+        ? (descriptor_cold_valid[descriptor_cold_write_index] ? descriptor_cold_data : 32'b0)
+        : desc[descriptor_hot_index];
+    always @(posedge clk) begin
+        if (!reset && phase==LOADED_VIEW && descriptor_is_cold)
+            descriptor_cold[descriptor_cold_address] <= data_word;
+        if (phase==SAVED_VIEW && (cursor==9 || cursor==10 || cursor==13))
+            descriptor_cold_data <= descriptor_cold[descriptor_cold_address];
+    end
     reg [31:0] view_slot, source_slot, candidate, generation, refs;
     reg [31:0] cursor, scan, data_word, block_id, free_count, queue_head, queue_tail, queue_count;
     reg [31:0] used_views;
     assign response_blocks=desc[3];
-    assign response_owner=desc[15];
+    assign response_owner=desc[12];
     assign response_references=desc[1];
     assign free_block_slots=free_count;
     assign free_view_slots=32'(VIEWS)-used_views;
@@ -206,6 +225,7 @@ module midi_store #(
         if (reset) begin
             address_region<=0;address_index<=0;address_field<=0;address_offset<=0;
             address_writing<=0;address_saving<=0;
+            descriptor_cold_valid<=0;
             phase<=IDLE;formatted<=0;used_views<=0;descriptor_valid<=0;descriptor_handle<=0;
             batch_source<=0;batch_position<=0;batch_last_frame<=0;batch_count<=0;batch_index<=0;batch_offset<=0;
             append_ordinal<=0;append_block<=0;batch_has_last<=0;append_block_valid<=0;
@@ -279,7 +299,8 @@ module midi_store #(
             FORMAT_NEXT: begin scan<=scan+1;phase<=FORMAT;end
             LOAD_VIEW: read_region(ADDRESS_VIEW,view_slot,cursor,arena_base,LOADED_VIEW);
             LOADED_VIEW: begin
-                desc[cursor[3:0]]<=data_word;
+                if (descriptor_is_cold) descriptor_cold_valid[descriptor_cold_write_index]<=1;
+                else desc[descriptor_hot_index]<=data_word;
                 if(cursor==15) begin phase<=after_load;descriptor_valid<=1;descriptor_handle<=view_handle;end
                 else begin cursor<=cursor+1;phase<=LOAD_VIEW;end
             end
@@ -298,7 +319,7 @@ module midi_store #(
                     default: fail(4);
                 endcase
             end
-            SAVE_VIEW: write_region(ADDRESS_VIEW,view_slot,cursor,arena_base,desc[cursor[3:0]],SAVED_VIEW);
+            SAVE_VIEW: write_region(ADDRESS_VIEW,view_slot,cursor,arena_base,descriptor_word,SAVED_VIEW);
             SAVED_VIEW: if(cursor==15) phase<=after_save;else begin cursor<=cursor+1;phase<=SAVE_VIEW;end
             VIEW_ALLOC: if(candidate>=VIEWS) fail(3);else read_region(ADDRESS_VIEW,candidate,0,arena_base,VIEW_ALLOC_GEN);
             VIEW_ALLOC_GEN: begin generation<=data_word;read_region(ADDRESS_VIEW,candidate,1,arena_base,VIEW_ALLOC_REFS);end
@@ -319,8 +340,8 @@ module midi_store #(
                     origin=op==7 ? {desc[7],desc[6]}+arg0 : 0;
                     desc[6]<=origin[31:0];desc[7]<=origin[63:32];
                     frames=op==7 ? arg1-arg0 : 0;
-                    desc[8]<=frames[31:0];desc[9]<=frames[63:32];desc[10]<=0;desc[11]<=0;
-                    desc[12]<=0;desc[13]<=op==4 && arg0!=0 ? arg0[31:0] : 32'(MAX_EVENTS);desc[14]<=0;desc[15]<=0;
+                    desc[8]<=frames[31:0];desc[9]<=frames[63:32];descriptor_cold_valid<=0;
+                    desc[10]<=0;desc[11]<=op==4 && arg0!=0 ? arg0[31:0] : 32'(MAX_EVENTS);desc[12]<=0;
                     phase<=VIEW_READY;
                 end
             end
@@ -328,8 +349,8 @@ module midi_store #(
             APPEND: begin
                 if(desc[2]!=1 || desc[1]!=1) fail(4);
                 else if(packet_error(packet,length)!=0) fail({1'b0,packet_error(packet,length)});
-                else if(desc[12]==32'hffffffff) fail(6);
-                else if(desc[5]>=desc[13]) begin desc[2]<=3;response_error<=3;save_view(RESPONSE);end
+                else if(desc[10]==32'hffffffff) fail(6);
+                else if(desc[5]>=desc[11]) begin desc[2]<=3;response_error<=3;save_view(RESPONSE);end
                 else if(arg0<{desc[9],desc[8]} || arg0+{desc[7],desc[6]}<arg0) fail(1);
                 else if(op==15 && batch_has_last) begin if(arg0<batch_last_frame) fail(1);else phase<=APPEND_PREPARE;end
                 else if(desc[5]!=0) read_record(desc[5]-1,APPEND_LAST);
@@ -352,12 +373,12 @@ module midi_store #(
             APPEND_BLOCK_ID: begin
                 position=desc[4]+desc[5];origin={desc[7],desc[6]}+arg0;
                 append_block_valid<=1;append_ordinal<=position/32'(BLOCK_EVENTS);append_block<=data_word;
-                payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[12];payload[3]<={6'b0,length,packet};
+                payload[0]<=origin[31:0];payload[1]<=origin[63:32];payload[2]<=desc[10];payload[3]<={6'b0,length,packet};
                 record_word<=0;prepare_record(32'(data_word*32'(BLOCK_EVENTS)+position%32'(BLOCK_EVENTS)),APPEND_PAYLOAD);
             end
             APPEND_PAYLOAD: write_region(ADDRESS_WORD,record_word,0,record_address,payload[record_word[1:0]],APPEND_PAYLOAD_NEXT);
             APPEND_PAYLOAD_NEXT: if(record_word==3) begin
-                    desc[5]<=desc[5]+1;desc[12]<=desc[12]+1;
+                    desc[5]<=desc[5]+1;desc[10]<=desc[10]+1;
                     if(op==15) begin batch_has_last<=1;batch_last_frame<=arg0;phase<=BATCH_NEXT;end
                     else save_view(RESPONSE);
                 end else begin record_word<=record_word+1;phase<=APPEND_PAYLOAD;end

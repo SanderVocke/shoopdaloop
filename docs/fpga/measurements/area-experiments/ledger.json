@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 5,
-  "status": "Stages0\u20134 complete. Iterative node/capacity selected C5 after exactfourstage repeat andallbehavior/performancecontrols. Stage5contracts ready; implementationsunexecuted;Stages6\u201311 pending.",
+  "status": "Stages0\u20134complete. Stage5cold-descriptor RAM complete/selectedC6 afterexactrepeat,allregressions andextendedcontrol. Payload lifetime,resetelision,validityfolding remain;Stages6\u201311 unexecuted.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -44,9 +44,9 @@
     "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
   ],
   "pending": [
-    "Execute four separate Stage5 working-state/reset/validity trials",
-    "ExecuteStages6\u201310 onecandidateatatime",
-    "Stage11 selected-combination physical/regression/CI qualification; integrationfixesisolated"
+    "FinishStage5 payload-lifetime/reset-elision/validityfolding experiments",
+    "ExecuteStages6\u201310 sequentially",
+    "Stage11 finalcombination/decl-ordercleanup/physical/regression/CIqualification"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -1350,6 +1350,71 @@
       "extended_summary": "s4-iterative-capacity-extended-100-summary.json",
       "selected": true,
       "repeat_summary": "s4-iterative-capacity-repeat-100-summary.json"
+    },
+    {
+      "label": "s5-cold-descriptor",
+      "stage": 5,
+      "status": "complete",
+      "control_revision": "b0fe222e7500cfc762525d76de9599668785edee",
+      "control_rtl_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+      "control_summary": "s4-iterative-capacity-100-summary.json",
+      "contract": "stage5-state-contracts.md#cold-midi-descriptor-words",
+      "changed_contract": "No intended public orcycle change. Hot13wordbank plus3opaque reservedwords in4x32 synchronous distributedRAM; one sharedread/writeaddress,prefetch within existingSAVED_VIEW clocks,3validbits forreset/create. Actual inference/behavior/cycles unmeasured.",
+      "validation": [
+        "All38productionC5HDL hashes verified before edit",
+        "Default/minimum/odd/connected-primary lint pass; allreportedwarnings exactlymatchcontrol (onlybaselineUNUSEDSIGNAL), no newwidth/otherwarnings.",
+        "Both originalreserved/reuse/reset andhigh/wrappingbase tests pass11.33sec; no semantic orcycle conclusion untilmatchedraw rows.",
+        "All10311boundary+54reserved+108relocated raw rows EXACT including cycles/traffic; isolatedcontrolHDLinputs verified C5. All40C5musicalbaseline rows exactC4,includingcycles/work/traffic.",
+        "All33mixed and40musical rows EXACTC5 includingclocks/work/cache/traffic; mixedfinalmemoryexact. Cold92745,mixedsteady53258/max53947,musicalsteady17144,seek410865.",
+        "All16MIDI tests pass529.58sec,includingbothAXIwidths/stalls/faults; fiveexpression andtworeserved testsstillrunning.",
+        "All23affectedtests pass:16MIDI529.58sec,5expression433.17sec,2reserved1.88sec. ActualDCP:512descFF->416hot+32read+3valid=451,privatebank-61FF;32LUTRAMcells, noBRAM. GlobalFF-63 includes2elsewhere.",
+        "Cleanfullsource-through-route repeat exactallfourstage resources/control/timing; all38HDLhashes/contextSV/XDCexact. All1041extendedrows/finalmemory exactC5,steady1024median53258/max59776,cold92745."
+      ],
+      "pending": [],
+      "rtl_source_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+      "unit_performance": "s5-cold-descriptor-unit-performance.json",
+      "unit_summaries": [
+        "s5-cold-descriptor-boundaries-summary.json",
+        "s5-cold-descriptor-reserved-summary.json",
+        "s5-cold-descriptor-relocated-summary.json"
+      ],
+      "preflight_retention": "s5-cold-descriptor-preflight-retention.json",
+      "callback_performance": "s5-cold-descriptor-callback-performance.json",
+      "optimized_summary": "s5-cold-descriptor-opt-summary.json",
+      "optimized_deltas_vs_c5": {
+        "lut": 6,
+        "logic_lut": -26,
+        "memory_lut": 32,
+        "ff": -63,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 0,
+        "muxf7": -16,
+        "muxf8": 0,
+        "control_sets": -1
+      },
+      "prototype_warning": "Vivado adds15 Synth8-6901 warnings forforward declarationsof cursor/data_word; legalSV,strictVerilator passes. Recordandclean declarationorder before final integration if retained, then qualify final source. Noerror/criticalwarning.",
+      "regression_summary": "s5-cold-descriptor-regressions-summary.json",
+      "primitive_summary": "s5-cold-descriptor-cells-summary.json",
+      "routed_summary": "s5-cold-descriptor-100-summary.json",
+      "routed_deltas_vs_c5": {
+        "lut": 13,
+        "logic_lut": -19,
+        "memory_lut": 32,
+        "ff": -62,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 0,
+        "muxf7": -16,
+        "muxf8": 0,
+        "slices": -31,
+        "control_sets": 159
+      },
+      "timing_met": true,
+      "decision": "SelectC6: allfourphysicalstages repeat exactly andall1041extendedrows exactC5,includingcycles/cache/traffic/work/finalmemory. -31slices/-62FF/-16F7 for+13LUT/+159physicalcontrolsets,sameBRAM/DSP/carry. Registered100MHzsetup/hold+0.142/+0.006nspasses. All23tests+10311/54/108rawrows+40musicalrows exact; prototypedecl-ordercleanup/final-sourcequalification trackedStage11.",
+      "selected": true,
+      "repeat_summary": "s5-cold-descriptor-repeat-100-summary.json",
+      "extended_summary": "s5-cold-descriptor-extended-100-summary.json"
     }
   ],
   "provisioning": {
@@ -1509,30 +1574,62 @@
         "Host process inspectionsallOS"
       ],
       "status": "Incomplete; requiredintegrationandCIgatesremain"
+    },
+    "selected_control_c5": {
+      "head": "b0fe222e7500cfc762525d76de9599668785edee",
+      "fpga_run": 45097708540,
+      "fpga_standalone": "passed137441123794 (C5 includes strict unused-bit repairs)",
+      "reference_application_integration": "passed137441123841",
+      "dependency_isolation": "passed137441123895",
+      "native_verification": "passed137441123587 complete nativeMarlin",
+      "firmware_run": 45097708542,
+      "firmware": "Failed; knownnestedlockfixisolatedintegrationbranch, freshlogsnotyetinspected",
+      "workspace_run": 45097708592,
+      "workspace": "running",
+      "Docs": "passed45097708711",
+      "Hosted_track_processors": "passed45097708533",
+      "integration_branch": "area/base-integration18d8f695: prior4focusedfixes plusreal-runtime on-demandstartup assertion repair; notmergedmeasuredselection",
+      "status": "Incomplete; pendingfullCI/integration, draftPR remains",
+      "fpga_status": "Allfourjobs/workflowpassed"
     }
   },
   "selected_control": {
-    "label": "C5",
-    "implementation": "s4-iterative-capacity-100",
-    "rtl_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
-    "summary": "s4-iterative-capacity-100-summary.json",
-    "repeat_summary": "s4-iterative-capacity-repeat-100-summary.json",
-    "extended_summary": "s4-iterative-capacity-extended-100-summary.json",
-    "timing_met": false,
+    "label": "C6",
+    "implementation": "s5-cold-descriptor-100",
+    "rtl_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+    "summary": "s5-cold-descriptor-100-summary.json",
+    "repeat_summary": "s5-cold-descriptor-repeat-100-summary.json",
+    "extended_summary": "s5-cold-descriptor-extended-100-summary.json",
+    "musical_summary": "s5-cold-descriptor-callback-performance.json",
+    "timing_met": true,
+    "clock_scope": "100MHzregisteredmeasurementcontextonly;PS7/boardDDR/IOnotqualified",
     "cumulative_deltas_vs_B0": {
-      "lut": -6773,
-      "slices": -1433,
-      "ff": -4594,
+      "lut": -6760,
+      "slices": -1464,
+      "ff": -4656,
       "bram36": 0.5,
       "dsp": 0,
       "carry4": -2397,
-      "control_sets": -742
+      "control_sets": -583
     },
     "hints": "original early+late",
-    "faster_setup_alternative": "C4 7d2d7cd7 / area/s4-midi-address",
-    "connected": "All1041extended rows exactC4 includingcycles/traffic/work;1024steady median53258/max59776,cold92745. Growth-onlysetup penalty measured separately.",
+    "alternatives": "C5uses13fewerLUTbut31moreslicesandfails100MHzsetup;C4fastergrowthsetup;C3fasterMIDIaddress/restore",
+    "connected": "All1041extendedrows exactC5includingcycles/traffic/work/finalmemory;1024steady median53258/max59776,cold92745. All40musicalrows exactC5,seek410865.",
+    "observed_nominal_budget_us": {
+      "Q32_at48k": 666.6666666666666,
+      "steady_median_at100MHz": 532.58,
+      "steady_observed_max_at100MHz": 597.76,
+      "observed_steady_min_slack": 68.90666666666664,
+      "cold_at100MHz": 927.45,
+      "cold_slack": -260.7833333333334,
+      "seek_prefix_at100MHz": 4108.65
+    },
+    "budget_scope": "Observedfixturepopulations only,notuniversalbounds orboarddeadlinequalification; cold/seekexceedQ32budget.",
+    "final_qualification_pending": [
+      "PrototypeVivadoforward-declarationwarnings mustcleanandfinalsourcequalifybeforeintegration",
+      "FullStage11 combinationandCIgates"
+    ],
     "selection_branch": "feat/backend-replacement-area-selected",
-    "branch_promotion": "complete; all38productionHDL hashes match measured0e624700",
-    "selection_commit": "35670057009af545eb8eed86074199722f429b27"
+    "branch_promotion": "pending completedexperimentmerge"
   }
 }

@@ -1,0 +1,101 @@
+{
+  "control": "C5 b0fe222e/RTL0e624700",
+  "candidate": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+  "timing_qualified": false,
+  "cases": [
+    {
+      "kind": "mixed",
+      "rows": 33,
+      "all_measurement_fields_exact_including_cycles": true,
+      "final_memory_exact": true,
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 92745,
+          "median": 92745,
+          "max": 92745
+        },
+        "warmup": {
+          "count": 16,
+          "min": 53238,
+          "median": 53330.0,
+          "max": 53987
+        },
+        "steady": {
+          "count": 16,
+          "min": 53258,
+          "median": 53258.0,
+          "max": 53947
+        }
+      }
+    },
+    {
+      "kind": "musical",
+      "rows": 40,
+      "all_measurement_fields_exact_including_cycles": true,
+      "final_memory_exact": "not dumped; every packet/state checked by independent fixture",
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 63103,
+          "median": 63103,
+          "max": 63103
+        },
+        "warmup": {
+          "count": 16,
+          "min": 17124,
+          "median": 17216.0,
+          "max": 17873
+        },
+        "steady": {
+          "count": 16,
+          "min": 17144,
+          "median": 17144.0,
+          "max": 17817
+        },
+        "retrigger": {
+          "count": 1,
+          "min": 19220,
+          "median": 19220,
+          "max": 19220
+        },
+        "stop_cleanup": {
+          "count": 1,
+          "min": 20166,
+          "median": 20166,
+          "max": 20166
+        },
+        "warm_play": {
+          "count": 1,
+          "min": 32939,
+          "median": 32939,
+          "max": 32939
+        },
+        "seek_prefix": {
+          "count": 1,
+          "min": 410865,
+          "median": 410865,
+          "max": 410865
+        },
+        "wrap_after_seek": {
+          "count": 1,
+          "min": 18551,
+          "median": 18551,
+          "max": 18551
+        },
+        "stop_after_wrap": {
+          "count": 1,
+          "min": 20166,
+          "median": 20166,
+          "max": 20166
+        },
+        "quiet_after_stop": {
+          "count": 1,
+          "min": 17132,
+          "median": 17132,
+          "max": 17132
+        }
+      }
+    }
+  ]
+}
