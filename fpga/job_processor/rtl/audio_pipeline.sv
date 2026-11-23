@@ -167,12 +167,14 @@ module audio_pipeline #(
     reg [15:0] future_instructions, future_sync_count;
     wire future_switch_ready;
     wire guarded_switch = switch_future[43:12] != 0;
-    wire restart_preview = future_pending && (&future_switch[43:12]);
+    wire restart_preview = future_pending && future_switch[43:28] == `SHOOP_SP_RESTART_SWITCH_TAG;
     wire bad_switch = switch_expected != active_revision || switch_revision <= active_revision
         || (active_revision != 0 && switch_region == active_region)
         || (guarded_switch && (active_revision == 0 || switch_states != active_states
             || switch_buffers != active_buffers
-            || 32'(switch_future[11:0]) >= LOOP_DEPTH));
+            || 32'(switch_future[11:0]) >= LOOP_DEPTH
+            || (switch_future[43:28] == `SHOOP_SP_RESTART_SWITCH_TAG && switch_future[27:12] != `SHOOP_SP_RESTART_KEEP_SOURCE
+                && switch_future[27:12] != `SHOOP_SP_RESTART_NO_SOURCE && 32'(switch_future[27:12]) >= LOOP_DEPTH)));
     wire [31:0] selected_instructions = LIVE_LOADING != 0 ? {16'b0,active_instructions} : run_instruction_count;
     wire [31:0] selected_sync_count = LIVE_LOADING != 0 ? {16'b0,active_sync_count} : run_sync_count;
     wire [31:0] selected_states = LIVE_LOADING != 0 ? {16'b0,active_states} : run_state_count;

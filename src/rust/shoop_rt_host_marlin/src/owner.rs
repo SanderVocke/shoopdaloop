@@ -495,24 +495,26 @@ impl Owner<'_> {
                 } else if cut.is_none() && !self.prepare_composite_cuts()? {
                     Code::CannotApply
                 } else {
-                    let changed = self
-                        .upload
-                        .as_ref()
-                        .unwrap()
-                        .upload
-                        .image
-                        .layout
-                        .changed_sources()
-                        .to_vec();
-                    for loop_id in changed {
-                        let code = self.execute(Command::ClearPlannedTransitions(
-                            loop_id.slot,
-                            shoop_rt_protocol::immediate::ClearPlanned::Both,
-                        ))?;
-                        ensure!(
-                            code == Code::Applied,
-                            "RTL could not clear the continuing loop plan"
-                        );
+                    if cut.is_none() {
+                        let changed = self
+                            .upload
+                            .as_ref()
+                            .unwrap()
+                            .upload
+                            .image
+                            .layout
+                            .changed_sources()
+                            .to_vec();
+                        for loop_id in changed {
+                            let code = self.execute(Command::ClearPlannedTransitions(
+                                loop_id.slot,
+                                shoop_rt_protocol::immediate::ClearPlanned::Both,
+                            ))?;
+                            ensure!(
+                                code == Code::Applied,
+                                "RTL could not clear the continuing loop plan"
+                            );
+                        }
                     }
                     self.sim.model.set_all(&[
                         ("switch_valid", 1),

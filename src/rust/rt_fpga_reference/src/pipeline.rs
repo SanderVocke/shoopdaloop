@@ -73,7 +73,7 @@ impl Pipeline {
     pub(crate) fn swap_restart_program(
         &mut self,
         image: &mut crate::target::ProgramImage,
-        candidate: Option<rt_fpga_compiler::Identity>,
+        candidate: Option<rt_fpga_compiler::loading::FutureSwitch>,
     ) {
         self.state
             .swap_restart_plan(&mut image.compiled.plan, candidate);

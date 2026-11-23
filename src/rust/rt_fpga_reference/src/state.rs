@@ -379,13 +379,10 @@ impl StateProcessor {
     pub(crate) fn swap_restart_plan(
         &mut self,
         plan: &mut TransitionPlan,
-        candidate: Option<rt_fpga_compiler::Identity>,
+        candidate: Option<rt_fpga_compiler::loading::FutureSwitch>,
     ) {
         let loops = self.loops.as_mut().expect("prepared loop pool");
-        loops.restart_candidate = candidate.map(|id| LoopId {
-            slot: id.slot,
-            generation: id.generation,
-        });
+        loops.restart_candidate = candidate;
         core::mem::swap(&mut loops.plan, plan);
     }
 

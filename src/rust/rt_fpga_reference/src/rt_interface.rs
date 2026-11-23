@@ -435,8 +435,9 @@ impl Processor {
                 let staged = self.next_program.as_mut().expect("armed image");
                 self.engine
                     .pipeline
-                    .swap_restart_program(&mut staged.image, Some(cut.target));
+                    .swap_restart_program(&mut staged.image, Some(cut));
             }
+            let publish = base == 0 || switched;
             let mut observer = Publication {
                 loops: &mut self.engine.loops,
                 configuration: self.engine.configuration,
@@ -452,7 +453,7 @@ impl Processor {
                     outputs,
                     base,
                     &mut observer,
-                    base == 0 || switched,
+                    publish && restart.is_none(),
                     Some(io),
                 )
             } else {
@@ -463,7 +464,7 @@ impl Processor {
                     outputs,
                     base,
                     &mut observer,
-                    base == 0 || switched,
+                    publish && restart.is_none(),
                 )
             };
             if restart.is_some() {
@@ -493,6 +494,8 @@ impl Processor {
                         count: 1,
                         retired: image,
                     });
+                    self.publish_initial_snapshot();
+                } else if restart.is_some() && publish {
                     self.publish_initial_snapshot();
                 }
             }

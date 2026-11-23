@@ -4,7 +4,7 @@ use crate::{
     transitions::*,
 };
 use alloc::vec::Vec;
-use rt_fpga_compiler::SpanMode;
+use rt_fpga_compiler::{loading::FutureSwitch, SpanMode};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -110,7 +110,7 @@ pub struct Resolution {
 pub(crate) struct LoopMemory {
     pub plan: TransitionPlan,
     pub(crate) program_changed: bool,
-    pub(crate) restart_candidate: Option<LoopId>,
+    pub(crate) restart_candidate: Option<FutureSwitch>,
     pub(crate) restart_ready: bool,
     pub slots: Vec<Option<LoopSlot>>,
     pub frame: u64,
@@ -367,7 +367,10 @@ impl LoopMemory {
         } in instructions
         {
             let state = self.slot(id)?.state;
-            let source = sync_source.filter(|s| *s != id);
+            let source = self
+                .previous_source(id)?
+                .unwrap_or(sync_source)
+                .filter(|s| *s != id);
             let source_pulse = source.is_some_and(|s| self.projected_pulses[s.slot as usize]);
             let wraps = state.at_end()
                 && (!state.repeat_sync
@@ -414,10 +417,30 @@ impl LoopMemory {
         }
         Ok(())
     }
+    fn previous_source(&self, id: LoopId) -> Result<Option<Option<LoopId>>, TransitionError> {
+        let Some(source) = self
+            .restart_candidate
+            .filter(|cut| cut.target.slot == id.slot && cut.target.generation == id.generation)
+            .and_then(FutureSwitch::previous_source)
+        else {
+            return Ok(None);
+        };
+        let source = source
+            .map(|slot| {
+                self.slots
+                    .get(slot as usize)
+                    .and_then(Option::as_ref)
+                    .map(|slot| slot.state.id)
+                    .ok_or(TransitionError::InvalidId)
+            })
+            .transpose()?;
+        Ok(Some(source))
+    }
+
     fn process_loop(
         &mut self,
         id: LoopId,
-        source: Option<LoopId>,
+        new_source: Option<LoopId>,
         quantum: u32,
         allow_authored_recording: bool,
     ) -> Result<(), TransitionError> {
@@ -438,6 +461,31 @@ impl LoopMemory {
             self.apply_due(id, true)?;
         }
         self.apply_composite_parents(id, allow_authored_recording)?;
+        let previous_source = self.previous_source(id)?;
+        let mut source = previous_source.unwrap_or(new_source);
+        if previous_source.is_some() {
+            let slot = self.slot(id)?;
+            let waiting_on_old_clock = if let Some(source) = source.filter(|source| *source != id) {
+                let source = self.slot(source)?;
+                slot.state.repeat_sync
+                    && source.state.mode == Mode::Playing
+                    && !source.pulse_this_quantum
+            } else {
+                false
+            };
+            let ready = slot.state.mode == Mode::Stopped
+                || (slot.state.mode == Mode::Playing
+                    && !slot.planned.iter().flatten().any(|plan| plan.on_pulse)
+                    && ((slot.state.position == 0 && slot.composite_snapshot.is_some())
+                        || (slot.state.at_end()
+                            && (clock.is_some_and(|clock| clock.explicit)
+                                || !waiting_on_old_clock))));
+            if ready {
+                self.restart_ready = true;
+                self.clear_mode_plan(id, 3)?;
+                source = new_source;
+            }
+        }
         if !composite {
             self.natural_boundary(id, source)?;
         }
@@ -475,7 +523,11 @@ impl LoopMemory {
                 }
             }
         }
-        if self.restart_candidate == Some(id) {
+        if previous_source.is_none()
+            && self.restart_candidate.is_some_and(|cut| {
+                cut.target.slot == id.slot && cut.target.generation == id.generation
+            })
+        {
             let slot = self.slot(id)?;
             self.restart_ready = slot.state.mode == Mode::Stopped
                 || (slot.state.mode == Mode::Playing
@@ -550,8 +602,10 @@ impl LoopMemory {
                     .get(index)
                     .filter(|span| u64::from(span.start) <= position)
             }
-            let conditional = self.restart_candidate == Some(binding.parent)
-                && !binding.previous_spans.is_empty();
+            let conditional = self.restart_candidate.is_some_and(|cut| {
+                cut.target.slot == binding.parent.slot
+                    && cut.target.generation == binding.parent.generation
+            }) && !binding.previous_spans.is_empty();
             let before = if conditional {
                 &binding.previous_spans
             } else {

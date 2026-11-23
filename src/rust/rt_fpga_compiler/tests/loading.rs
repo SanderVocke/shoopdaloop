@@ -296,6 +296,68 @@ fn check_ending_row_budget(kind: rt_fpga_compiler::shoop_graph::CompositeKind) {
 }
 
 #[shoop_test]
+fn guarded_clock_change_counts_the_outgoing_spans_against_the_program_limit() {
+    let mut graph = composite::arbitration_graph();
+    let context = CompileContext {
+        quantum: 16,
+        limits: ProgramLimits {
+            loop_slots: 8,
+            ..limits()
+        },
+    };
+    let before = compile_composites(&graph, context, 16).unwrap();
+    let new_source = graph.loops[0].id;
+    graph.loops[1].sync_source = Some(new_source);
+    let changed = graph.loops[1].composite.as_mut().unwrap();
+    changed.version = 2;
+    let span = &mut changed.spans.to_mut()[0];
+    span.start = 1;
+    span.occurrence_start = 1;
+    let after = compile_composites(&graph, context, 16).unwrap();
+    let used = (1..64)
+        .find(|&instructions| {
+            after
+                .validate_logical(ProgramLimits {
+                    instructions,
+                    ..context.limits
+                })
+                .is_ok()
+        })
+        .unwrap();
+
+    for extra in [0, 1] {
+        let limits = ProgramLimits {
+            instructions: used + extra,
+            ..context.limits
+        };
+        let mut allocator = Allocator::new(limits);
+        let old = allocator.stage(&before).unwrap();
+        allocator.publish(old.revision).unwrap();
+        allocator.complete(old.revision).unwrap();
+        let image = allocator.stage(&after).unwrap();
+        if extra == 0 {
+            assert_eq!(image.future_switch(), None);
+            assert!(image.composite_cuts()[0].waits_for_boundary(16, 64, false, false));
+        } else {
+            let cut = image.future_switch().unwrap();
+            assert!(cut.at_restart());
+            assert_eq!(cut.previous_source(), Some(None));
+        }
+        let bound = image.relocate(&after).unwrap();
+        bound.validate(limits).unwrap();
+        assert_eq!(
+            bound
+                .composites
+                .iter()
+                .flat_map(|schedule| &schedule.children)
+                .map(|child| child.previous_spans.len())
+                .sum::<usize>(),
+            extra as usize,
+        );
+    }
+}
+
+#[shoop_test]
 fn replacing_a_future_nested_branch_checks_its_ancestors_for_transport() {
     use composite::timing_loop;
     use rt_fpga_compiler::shoop_graph::{CompositeKind, Graph};

@@ -285,7 +285,15 @@ recording can start. See the admission rule under
   one another. The chain keeps the same links and schedules during the edit,
   and its loops run free of composite parent actions. A primitive can pass
   along a source pulse. A composite clock supplies its own repeat pulse.
-  A clock command that could act at the boundary makes the edit wait.
+  For other edits, the host can use this unchanged clock chain to select a
+  restart. If a clock command can act at that boundary and SP cannot use
+  a guarded restart, the edit waits.
+  A compatible edit can also change the clock. SP uses the old clock to
+  find an eligible boundary and installs the schedule and source together.
+  The new clock can keep the composite waiting after the switch. The
+  compiler needs a visit order that works with both sources. While the
+  composite is playing, queued transitions tied to the old clock run
+  before that binding changes.
   A timing change needs one free loop record while the new program is staged.
   For a one-pass composite that keeps its sync source, an edit can take effect
   as the old run ends. When both plans end with the same child modes, the
@@ -982,7 +990,9 @@ state addresses. SP settles the target before its children. The children
 use the old spans if the attempt fails, or compare them with the new
 opening on an accepted restart. Completion reports the frame that used
 the new schedule. The extra spans count toward the existing program
-capacity.
+capacity. This path currently keeps timing, the child list and the audio
+work fixed and handles Play and Stop spans. Other edits use the existing
+handoffs or wait for a stop.
 
 ## Audio device clock boundary
 

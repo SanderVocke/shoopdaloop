@@ -102,7 +102,7 @@ module state_processor #(
     wire [`SHOOP_SP_INSTRUCTION_BITS-1:0] program_read_data;
     localparam integer PROGRAM_MEMORY_BITS = $clog2(PROGRAM_DEPTH*PROGRAM_REGIONS) > 0 ? $clog2(PROGRAM_DEPTH*PROGRAM_REGIONS) : 1;
     reg program_region, committed_region;
-    wire restart_preview = future_switch_valid && (&future_switch[43:12]);
+    wire restart_preview = future_switch_valid && future_switch[43:28] == `SHOOP_SP_RESTART_SWITCH_TAG;
     wire [PROGRAM_MEMORY_BITS-1:0] program_memory_read_address = busy
         ? PROGRAM_MEMORY_BITS'(program_read_address) + (program_region ? PROGRAM_MEMORY_BITS'(PROGRAM_DEPTH) : 0)
         : PROGRAM_MEMORY_BITS'(cfg_address);

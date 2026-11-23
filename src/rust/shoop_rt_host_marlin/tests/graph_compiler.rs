@@ -1451,6 +1451,144 @@ fn a_repeat_held_edit_applies_at_the_independent_clock_pulse() {
     }
 }
 
+fn edit_with_a_parent_controlled_clock(
+    endpoint: impl Endpoint,
+    mut renderer: impl Renderer,
+    change_source: bool,
+) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.loops[1].gain = 0.;
+    graph.loops[2].gain = 0.;
+    let program = |target, length| CompositeView {
+        kind: CompositeKind::Regular,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: length,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![CompositeSpan {
+            target: id(target),
+            start: 0,
+            end: length,
+            occurrence_start: 0,
+            ordinal: 0,
+            mode: LoopMode::Playing,
+        }]
+        .into(),
+    };
+    let mut clock_parent = graph.loops[0].clone();
+    clock_parent.id = id(121);
+    clock_parent.strip = None;
+    clock_parent.composite = Some(program(101, 192));
+    let mut edited = clock_parent.clone();
+    edited.id = id(120);
+    edited.sync_source = Some(id(101));
+    edited.repeat_sync = true;
+    edited.composite = Some(program(100, 16));
+    let edited_index = graph.loops.len();
+    graph.loops.extend([edited, clock_parent]);
+    upload(&mut client, &mut renderer, &graph, 0);
+    let transition = |slot, mode: TransitionMode| Command::Transition(slot, mode.into());
+    let record = [100, 101, 102].map(|slot| transition(slot, TransitionMode::Recording));
+    client
+        .immediate(Batch::new(1, 1, &record).unwrap())
+        .unwrap();
+    let recorded = response(&mut client, &mut renderer);
+    let mut lengths = [0; 3];
+    for (index, length) in [4, 96, 144].into_iter().enumerate() {
+        while renderer.next_frame().0 < recorded + length * Q as u64 {
+            step(&mut renderer);
+        }
+        client
+            .immediate(
+                Batch::new(
+                    1,
+                    1,
+                    &[transition(100 + index as u32, TransitionMode::Stopped)],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        lengths[index] = response(&mut client, &mut renderer) - recorded;
+    }
+
+    let start = [120, 121, 102].map(|slot| transition(slot, TransitionMode::Playing));
+    client.immediate(Batch::new(1, 1, &start).unwrap()).unwrap();
+    let started = response(&mut client, &mut renderer);
+    assert_eq!(step(&mut renderer), [0.125; 2]);
+    while renderer.next_frame().0 < started + 20 * Q as u64 {
+        step(&mut renderer);
+    }
+    assert_eq!(step(&mut renderer), [0.; 2]);
+
+    let edited = &mut graph.loops[edited_index];
+    if change_source {
+        edited.sync_source = Some(id(102));
+    }
+    let schedule = edited.composite.as_mut().unwrap();
+    schedule.version = 2;
+    schedule.spans.to_mut()[0].start = 4;
+    schedule.spans.to_mut()[0].occurrence_start = 4;
+    let batches = shoop_rt_protocol::graph::upload_composite(&graph, Q as u32, 1, 45).unwrap();
+    for (index, batch) in batches.iter().enumerate() {
+        client.immediate(*batch).unwrap();
+        if index + 1 < batches.len() {
+            response(&mut client, &mut renderer);
+        }
+    }
+    for _ in 0..8 {
+        assert_eq!(step(&mut renderer), [0.; 2]);
+        while let Some(message) = client.poll() {
+            assert!(!matches!(message, EngineMessage::ImmediateResponse(_)));
+        }
+    }
+
+    let (cut, restart) = if change_source {
+        (started + lengths[1], started + lengths[2])
+    } else {
+        client
+            .immediate(Batch::new(1, 1, &[transition(101, TransitionMode::Stopped)]).unwrap())
+            .unwrap();
+        let stopped = response(&mut client, &mut renderer);
+        assert!(stopped < started + lengths[1]);
+        (stopped, stopped)
+    };
+    let starts = restart + 5 * Q as u64;
+    let check_silence = |frame, audio| {
+        assert!(frame < starts);
+        assert_eq!(audio, [0.; 2], "frame {frame}");
+    };
+    let receipt = wait_response_with_audio(&mut client, &mut renderer, &mut |frame, audio| {
+        check_silence(frame, audio)
+    });
+    assert_eq!(applied_frame(receipt), cut);
+    while renderer.next_frame().0 < starts {
+        check_silence(renderer.next_frame().0, step(&mut renderer));
+    }
+    assert_eq!(step(&mut renderer), [0.125; 2]);
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn guarded_edits_follow_actual_clock_actions_and_apply_paired_source_changes() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    for change_source in [false, true] {
+        let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+        edit_with_a_parent_controlled_clock(rust.endpoint, rust.renderer, change_source);
+        let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+        edit_with_a_parent_controlled_clock(rtl.endpoint, rtl.renderer, change_source);
+    }
+}
+
 fn edit_one_shot<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, scheduled_transport: bool) {
     use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
     let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
