@@ -683,7 +683,12 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn supports_automatic_monitoring(&self) -> bool {
-        self.prepared_graph.is_none() && self.composite_limits_core().is_some()
+        if self.prepared_graph.is_some() {
+            self.capabilities
+                .contains(Capabilities::PREPARED_AUTOMATIC_MONITORING)
+        } else {
+            self.composite_limits_core().is_some()
+        }
     }
 
     fn set_track_automatic_monitoring(
@@ -1549,11 +1554,24 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let processor_latency = self
             .processors
             .map_or(0, |limits| limits.builtin_latency_frames);
+        let prepared_monitoring = self.prepared_graph.is_some()
+            && self
+                .capabilities
+                .contains(Capabilities::PREPARED_AUTOMATIC_MONITORING);
         let mirror = &mut self.mirror;
         let mut tracks = alloc::collections::BTreeMap::new();
         for (id, track) in mirror.tracks.iter_mut() {
             if track.confirmed {
                 let mut state = Mirror::track_state(track);
+                if prepared_monitoring && track.automatic_enabled {
+                    state.automatic_input_monitoring = track.loops.iter().any(|id| {
+                        mirror.loops.get(id).is_some_and(|entry| {
+                            entry.confirmed
+                                && entry.program.is_none()
+                                && entry.view.mode == shoop_rt_protocol::LoopMode::Recording
+                        })
+                    });
+                }
                 if crate::processor_controls::track_kind(track).is_some_and(|kind| !kind.is_carla())
                 {
                     state.latency.automatic_processor_advance_frames = Some(processor_latency);

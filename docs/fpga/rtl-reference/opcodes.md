@@ -55,6 +55,7 @@ generation.
 | `0x12` | MIDI Output | Source list | Output port | — | — | — |
 | `0x13` | MIDI State | Owner slot | Gen lo | Gen hi | Sequence/input | Output mask/channel bits |
 | `0x14` | ProcessCompositeChild | Child slot | Gen lo | Gen hi | Inline source slot or `0xffff` | Number of following schedule rows |
+| `0x15` | ProcessInputMonitor | Recorder slot or `0xffff` | Gen lo | Gen hi | Ramp addr | — |
 
 Other opcode values cause `INVALID_PROGRAM` (`0x03`). Additional operand
 interpretation follows.
@@ -72,6 +73,11 @@ interpretation follows.
   emits BeginCapture followed by Capture.
 - **ProcessGain.** The RAM entry is a Ramp. SP copies the old ramp into the
   job and updates elapsed to `min(elapsed + Q, duration)` when enqueueing it.
+- **ProcessInputMonitor.** After the sync pass, the compiler first clears
+  a track's shared monitoring gain with A0=`0xffff`. It then emits one row
+  for each primitive loop on the track. A loop that is recording sets the
+  gain to unity, and other loops leave the gain as they found it. The usual
+  gain jobs apply that value to each monitored input channel.
 - **ProcessArithmetic.** A3 uses the JP arithmetic modes in Appendix B.
 - **Smoothing.** For `0x0b`, the control Word supplies destination in bits
   15:0, history index in 31:16 and restart duration in frames in 63:32.

@@ -219,6 +219,11 @@ pub enum Operation {
         source: u32,
         port: u32,
     },
+    /// Clear a track's monitor gain, or set it if the given loop is recording.
+    Monitor {
+        ramp: u32,
+        recorder: Option<Identity>,
+    },
 }
 /// Stable ownership of persistent values, independent of instruction and allocation order.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -236,6 +241,7 @@ pub enum StateRole {
     Smoothing(u32),
     /// Immutable coefficients receive a new slot when their value changes.
     Coefficient(i32),
+    Monitor,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -738,6 +744,14 @@ impl LogicalStateProgram {
                         return Err(InvalidProgram);
                     }
                 }
+                Operation::Monitor { ramp, recorder } => {
+                    if let Some(recorder) = recorder {
+                        loop_id(recorder)?;
+                    }
+                    if !matches!(state(ramp)?, InitialValue::Ramp(_)) {
+                        return Err(InvalidProgram);
+                    }
+                }
                 Operation::Smoothing {
                     loop_id: id,
                     control,
@@ -776,6 +790,7 @@ impl LogicalStateProgram {
                     n.checked_add(match op {
                         Operation::MidiData(op) => op.jobs(),
                         Operation::Capture { .. } => 2,
+                        Operation::Monitor { .. } => 0,
                         _ => 1,
                     })
                 })
@@ -891,6 +906,7 @@ impl LogicalStateProgram {
                     n.checked_add(match op {
                         Operation::Midi { phase, .. } => phase.jobs(),
                         Operation::Capture { .. } => 2,
+                        Operation::Monitor { .. } => 0,
                         _ => 1,
                     })
                 })
@@ -915,7 +931,7 @@ impl LogicalStateProgram {
                     (binding.key.role, value),
                     (StateRole::View, InitialValue::MediaView(_))
                         | (
-                            StateRole::Gain | StateRole::Coefficient(_),
+                            StateRole::Gain | StateRole::Coefficient(_) | StateRole::Monitor,
                             InitialValue::Ramp(_)
                         )
                         | (StateRole::Smoothing(_), InitialValue::Smoothing { .. })

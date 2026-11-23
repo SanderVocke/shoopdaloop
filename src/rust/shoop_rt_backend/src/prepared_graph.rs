@@ -177,6 +177,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             };
             let edit = match pending.request {
                 Request::CreateComposite { .. } | Request::ResetComposite { .. } => true,
+                Request::StripControl {
+                    control: shoop_rt_protocol::StripControl::AutomaticMonitoring(_),
+                    ..
+                } => {
+                    !graph.dirty
+                        && self.capabilities.contains(
+                            shoop_rt_protocol::Capabilities::PREPARED_AUTOMATIC_MONITORING,
+                        )
+                }
                 Request::RemoveLoop { .. } => {
                     matches!(pending.purpose, Purpose::RemoveComposite(_))
                 }
@@ -338,6 +347,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     })
                     .transpose()?;
                 candidate.loops.get_mut(id).ok_or(Refusal::InvalidId)?.sync = source;
+            }
+            (
+                _,
+                Request::StripControl {
+                    strip,
+                    control: shoop_rt_protocol::StripControl::AutomaticMonitoring(enabled),
+                },
+            ) => {
+                let id = candidate
+                    .strip_tracks
+                    .get(&strip)
+                    .ok_or(Refusal::InvalidId)?;
+                candidate
+                    .tracks
+                    .get_mut(id)
+                    .ok_or(Refusal::InvalidId)?
+                    .automatic_enabled = enabled;
             }
             _ => unreachable!(),
         }

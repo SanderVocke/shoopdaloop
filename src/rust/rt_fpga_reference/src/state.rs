@@ -1,7 +1,7 @@
 //! Sync-ordered loop evolution followed by audio-ordered state/job emission.
 
 use crate::{
-    fixed::Ramp,
+    fixed::{Fixed, Ramp},
     jobs::{BufferId, CaptureWrite, Job, JobQueue},
     records::{Identity, Mode, SettledRecords},
     storage::ViewId,
@@ -59,6 +59,7 @@ impl Program {
                         | Instruction::ProcessMidiState { .. } => 3,
                         Instruction::ProcessLogicalCapture { .. }
                         | Instruction::ProcessLoopCapture { .. } => 2,
+                        Instruction::ProcessInputMonitor { .. } => 0,
                         _ => 1,
                     })
                 })
@@ -205,6 +206,10 @@ pub enum Instruction {
         ramp: Address,
         source: BufferId,
         destination: BufferId,
+    },
+    ProcessInputMonitor {
+        ramp: Address,
+        recorder: Option<Identity>,
     },
     ProcessMix {
         left: BufferId,
@@ -1055,6 +1060,15 @@ impl StateProcessor {
                     })?;
                     value.advance(program.quantum);
                     self.write(ramp, Value::Ramp(value))?;
+                }
+                Instruction::ProcessInputMonitor { ramp, recorder } => {
+                    if let Some(loop_id) = recorder {
+                        if self.loop_record(None, loop_id)?.mode == Mode::Recording {
+                            self.write(ramp, Value::Ramp(Ramp::constant(Fixed::ONE)))?;
+                        }
+                    } else {
+                        self.write(ramp, Value::Ramp(Ramp::constant(Fixed::ZERO)))?;
+                    }
                 }
                 Instruction::ProcessMix {
                     left,

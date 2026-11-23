@@ -1193,7 +1193,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
-            (Purpose::AutomaticMonitoring(..), None) => {}
+            (Purpose::AutomaticMonitoring(id, enabled), None) => {
+                if self.prepared_graph.is_some() {
+                    if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                        track.automatic_enabled = enabled;
+                    }
+                }
+            }
             (Purpose::AutomaticMonitoring(id, _), Some(refusal)) => self.failure(
                 BackendMutationKind::TrackControl,
                 Some(id.raw()),

@@ -32,13 +32,14 @@ python3 platforms/zynq7000/fpga_pair.py verify work/zturn-v2/diagnostic-pair.jso
 
 The paired manifest records the board and mailbox contract and hashes the ELF,
 bitstream, XSA and PS files. The signed SD deployment has its own manifest.
-Mailbox version 9 supports a conditional program switch for future composite
+Mailbox version 10 adds the automatic input-monitor instruction. It also
+supports a conditional program switch for future composite
 edits. A switch can include the edited loop slot in bits 12:1 of payload word 4
 and a 32-bit position limit split across bits 31:16 of words 5 and 6, low half
 first, with words numbered from zero. A nonzero limit arms a check for the
 next audio quantum. The response gives the armed frame and the current
 revision. Read the revision after that quantum to learn whether the switch
-took effect. Use a version 9 bitstream with the matching host or firmware.
+took effect. Use a version 10 bitstream with the matching host or firmware.
 The diagnostic ELF checks the fabric aperture and requests an empty snapshot.
 Pass `looping` after `bitstream` to try the resource bounds used by the
 production image packer. This geometry uses 32 samples per media chunk and

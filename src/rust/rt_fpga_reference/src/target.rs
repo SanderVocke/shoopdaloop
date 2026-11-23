@@ -240,6 +240,10 @@ impl StateProgramTarget for RustTarget<'_> {
                     source: BufferId(source as usize),
                     destination: BufferId(destination as usize),
                 },
+                Operation::Monitor { ramp, recorder } => Instruction::ProcessInputMonitor {
+                    ramp: Address(ramp as usize),
+                    recorder: recorder.map(id),
+                },
                 Operation::Smoothing {
                     loop_id,
                     control,

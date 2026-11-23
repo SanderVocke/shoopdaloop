@@ -24,6 +24,140 @@ fn application_client_live_loads_and_operates_through_rt_backend() {
     assert!(report["recorded_frames"].as_u64().unwrap() > 0);
 }
 
+fn monitoring_layout(
+    endpoint: impl shoop_rt_transport::carrier::Endpoint,
+    mut renderer: impl rt_runtime::host::Renderer,
+) {
+    use rt_runtime::buffer::{AudioBlock, MidiBlock};
+    use shoop_backend::{
+        Backend, BackendLoopMode, BackendPortRole, BackendSnapshot, DirectTrackRequest,
+    };
+    use shoop_rt_backend::{NoWait, RtBackend};
+    use shoop_rt_transport::{
+        carrier::{InProcess, Outbox},
+        client::ProtocolClient,
+    };
+
+    let client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    let mut backend = RtBackend::connect(client, NoWait).unwrap();
+    backend.pump();
+    backend
+        .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::Pull)
+        .unwrap();
+    assert!(backend.supports_automatic_monitoring());
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "Monitor".into(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    let input = track
+        .ports
+        .iter()
+        .find(|p| p.role == BackendPortRole::AudioInput)
+        .unwrap();
+    backend
+        .set_port_connected(input.id, "reference_in", true)
+        .unwrap();
+    let output = track
+        .ports
+        .iter()
+        .find(|p| p.role == BackendPortRole::AudioOutput)
+        .unwrap();
+    backend
+        .set_port_connected(output.id, "reference_left", true)
+        .unwrap();
+    backend
+        .set_track_automatic_monitoring(track.track_id, true)
+        .unwrap();
+    backend.activate_prepared_graph().unwrap();
+    let activation = backend.mutation_cursor();
+    let mut wait = |backend: &mut RtBackend<_, _>,
+                    predicate: &dyn Fn(&BackendSnapshot, f32) -> bool| {
+        for _ in 0..320 {
+            let mut left = [0.; 32];
+            renderer
+                .process(
+                    AudioBlock {
+                        frame: renderer.next_frame(),
+                        frames: 32,
+                        inputs: &[&[0.25; 32]],
+                        outputs: &mut [&mut left, &mut [0.; 32]],
+                    },
+                    MidiBlock {
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                )
+                .unwrap();
+            let snapshot = backend.poll().unwrap();
+            if predicate(&snapshot, left[0]) {
+                return snapshot;
+            }
+        }
+        panic!("prepared monitoring change did not settle");
+    };
+    let track_id = track.track_id;
+    let voice = track.loops[0];
+    let initial = wait(&mut backend, &|s, sample| {
+        sample == 0.0
+            && s.mutation_completions
+                .iter()
+                .any(|receipt| receipt.sequence == activation && receipt.result.is_ok())
+    });
+    assert!(initial.tracks[&track_id].automatic_monitoring_enabled);
+    assert!(!initial.tracks[&track_id].automatic_input_monitoring);
+    backend
+        .transition_loop(voice, BackendLoopMode::Recording, None)
+        .unwrap();
+    wait(&mut backend, &|s, sample| {
+        s.tracks[&track_id].automatic_input_monitoring && sample == 0.25
+    });
+    for enabled in [false, true] {
+        backend
+            .set_track_automatic_monitoring(track_id, enabled)
+            .unwrap();
+        let expected = if enabled { 0.25 } else { 0.0 };
+        let changed = wait(&mut backend, &|s, sample| {
+            s.tracks[&track_id].automatic_monitoring_enabled == enabled && sample == expected
+        });
+        assert_eq!(
+            changed.tracks[&track_id].automatic_input_monitoring,
+            enabled
+        );
+        assert!(!changed.tracks[&track_id].input_monitoring);
+        assert_eq!(changed.loops[&voice].mode, BackendLoopMode::Recording);
+    }
+    backend
+        .transition_loop(voice, BackendLoopMode::Stopped, None)
+        .unwrap();
+    let stopped = wait(&mut backend, &|s, sample| {
+        s.loops[&voice].mode == BackendLoopMode::Stopped && sample == 0.0
+    });
+    assert!(!stopped.tracks[&track_id].automatic_input_monitoring);
+    assert!(stopped.loops[&voice].length > 0);
+}
+
+#[shoop_test]
+fn application_can_change_automatic_monitoring_during_recording() {
+    use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48_000,
+        buffer_frames: 32,
+    };
+    let rust = shoop_rt_host_reference::prepare(32, driver, 1).unwrap();
+    monitoring_layout(rust.endpoint, rust.renderer);
+    #[cfg(feature = "rtl-sim")]
+    {
+        let rtl = shoop_rt_host_marlin::prepare(32, driver, 1, 32).unwrap();
+        monitoring_layout(rtl.endpoint, rtl.renderer);
+    }
+}
+
 fn composite_layout(
     endpoint: impl shoop_rt_transport::carrier::Endpoint,
     mut renderer: impl rt_runtime::host::Renderer,

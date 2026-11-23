@@ -345,6 +345,12 @@ impl StateProgramTarget for RtlTarget<'_> {
                     source: operand(source)?,
                     destination: operand(destination)?,
                 },
+                Operation::Monitor { ramp, recorder } => {
+                    component::Instruction::ProcessInputMonitor {
+                        ramp: self.address(ramp)?,
+                        recorder: recorder.map(id),
+                    }
+                }
                 Operation::Smoothing {
                     loop_id,
                     control,

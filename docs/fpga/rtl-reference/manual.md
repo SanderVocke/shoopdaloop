@@ -209,6 +209,12 @@ recording can start. See the admission rule under
   Record. Record targets ordinary Direct audio loops with separate writable
   media views. Authored MIDI, Replace and dry/wet modes are outside this
   composite profile.
+- **Automatic input monitoring.** On a Direct audio track with automatic
+  monitoring enabled, the live input is audible from the first block that
+  any loop on the track records. This includes recording started by nested
+  composites. The track monitors its input once even when several loops
+  record. It releases automatic monitoring when the last recording ends.
+  Manual input monitoring can keep the input audible independently.
 - **Timing.** Each composite unit is a whole number of quanta. The unit and
   the full pass each fit in a 32-bit frame count. A loop can sync to itself.
   Parent and sync links between different loops must be free of cycles.
@@ -910,7 +916,7 @@ results. HP0 carries audio storage traffic to the reserved DDR aperture.
 The compiled-audio bring-up can use a deterministic source or the external
 I²S adapter, based on the build profile.
 
-| Mailbox concern | Version 9 register anchors |
+| Mailbox concern | Version 10 register anchors |
 | --- | --- |
 | Discover the image | `ID` 0x000, `VERSION` 0x004, `STATUS` 0x008, `EPOCH` 0x00c, geometry at 0x010–0x03c |
 | Submit command | `REQUEST_EPOCH` 0x040, `REQUEST_OP` 0x044, payload from 0x048, `REQUEST_PUSH` 0x078 |

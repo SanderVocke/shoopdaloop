@@ -218,12 +218,7 @@ fn full_graph_views_report_unsupported_features_without_flattening_them_away() {
         .unwrap()
     );
     let owner = Owner::Strip(initial.strips[0].id);
-    let cases = [
-        Feature::Midi,
-        Feature::Processor,
-        Feature::StripControls,
-        Feature::Composite,
-    ];
+    let cases = [Feature::Midi, Feature::Processor, Feature::Composite];
     for feature in cases {
         let mut graph = initial.clone();
         let object = match feature {
@@ -239,10 +234,6 @@ fn full_graph_views_report_unsupported_features_without_flattening_them_away() {
                     type_id: "any processor".into(),
                     parameters: vec![0.4].into(),
                 });
-                owner
-            }
-            Feature::StripControls => {
-                graph.strips[0].controls.automatic_monitoring = true;
                 owner
             }
             Feature::Composite => {

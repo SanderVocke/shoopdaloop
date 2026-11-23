@@ -76,7 +76,7 @@ module sp_engine #(
         COMPOSITE_PARENT_PREVIOUS, COMPOSITE_PARENT_CURRENT, COMPOSITE_SPAN, COMPOSITE_APPLY,
         COMPOSITE_DIRECT_UNIT, COMPOSITE_DIRECT_CHECK, COMPOSITE_CHILD_UNIT, COMPOSITE_ALIGN, COMPOSITE_ALIGN_RESULT,
         COMPOSITE_LIMIT, COMPOSITE_REMAINDER, COMPOSITE_REMAINDER_RESULT, COMPOSITE_POSITION, COMPOSITE_OPERATION,
-        COMPOSITE_WAIT, COMPOSITE_REFUSE_CAPTURE
+        COMPOSITE_WAIT, COMPOSITE_REFUSE_CAPTURE, MONITOR_WRITE
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING, LOOP_MEMORY
@@ -167,9 +167,11 @@ module sp_engine #(
     assign state_read_enable = (phase == READ_REQUEST) && operand != LOOP_MEMORY && operand_in_range && !reset;
     assign state_read_address = STATE_ADDR_BITS'(operand_address);
     assign job_valid = (phase == EMIT) && (queue_remaining != 0) && !reset;
-    assign state_write_enable = job_valid && job_ready && writeback;
-    assign state_write_address = STATE_ADDR_BITS'(arg0);
-    assign state_write_data = {1'b1,
+    wire monitor_write = phase == MONITOR_WRITE && !reset;
+    wire [31:0] monitor_gain = arg0==16'hffff ? 32'd0 : 32'h01000000;
+    assign state_write_enable = (job_valid && job_ready && writeback) || monitor_write;
+    assign state_write_address = STATE_ADDR_BITS'(monitor_write ? arg3 : arg0);
+    assign state_write_data = monitor_write ? {1'b1,64'd0,monitor_gain,monitor_gain} : {1'b1,
         ramp_elapsed >= {1'b0, ramp_state[95:64]} ? ramp_state[95:64] : ramp_elapsed[31:0],
         ramp_state};
     assign loop_read_valid = phase == LOOP_REQUEST && !reset;
@@ -470,6 +472,15 @@ module sp_engine #(
                             operand_address <= instruction[23:8];
                             operand <= RAMP;
                             phase <= READ_REQUEST;
+                        end
+                        `SHOOP_SP_PROCESS_INPUT_MONITOR: begin
+                            if (instruction[95:72]!=0 || {16'b0,arg3}>=run_state_count)
+                                finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                            else if (arg0==16'hffff)
+                                phase<=MONITOR_WRITE;
+                            else if (!run_has_sync)
+                                finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                            else phase<=SYNC_BEGIN;
                         end
                         `SHOOP_SP_PROCESS_MIX: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_MIX,
@@ -1069,6 +1080,7 @@ module sp_engine #(
                 FRAME_FINISH: begin sync_frame<=arithmetic_sum[63:0]; phase<=NEXT; end
                 SYNC_WRITE: phase<=memory_return;
                 SYNC_EVENT: if (sync_event_ready) phase<=sync_event_return;
+                MONITOR_WRITE: phase<=NEXT;
                 OWN_FLAGS: begin
                     loop_invalid<=!word_value[V] || (opcode!=`SHOOP_SP_HISTORY_SMOOTHING && word_value[G+:32]!=generation) || word_value[M+:2]==3 || !word_value[PV];
                     flags<=word_value;
@@ -1077,8 +1089,13 @@ module sp_engine #(
                     loop_read(target,PF,OWN_STAMP);
                 end
                 OWN_STAMP: begin
-                    loop_invalid<=loop_invalid || arithmetic_sum[64] || arithmetic_sum[63:0]!=sync_frame;
-                    loop_read(target,RP,OWN_RENDER);
+                    if (opcode==`SHOOP_SP_PROCESS_INPUT_MONITOR) begin
+                        if (loop_invalid || arithmetic_sum[64] || arithmetic_sum[63:0]!=sync_frame) sync_fail();
+                        else phase<=loop_mode==2 ? MONITOR_WRITE : NEXT;
+                    end else begin
+                        loop_invalid<=loop_invalid || arithmetic_sum[64] || arithmetic_sum[63:0]!=sync_frame;
+                        loop_read(target,RP,OWN_RENDER);
+                    end
                 end
                 OWN_RENDER: begin
                     position<=midi_loop_instruction ? word_value : word_value>>chunk_shift; loop_at_start<=!word_nonzero;

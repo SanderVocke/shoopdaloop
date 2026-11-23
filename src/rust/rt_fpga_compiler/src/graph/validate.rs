@@ -65,9 +65,6 @@ pub(super) fn graph(
         {
             return Err(invalid);
         }
-        if c.automatic_monitoring {
-            return Err(unsupported(owner, Feature::StripControls));
-        }
     }
     let mut minimum_state = 0u64;
     for l in &g.loops {

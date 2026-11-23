@@ -376,7 +376,8 @@ pub fn prepare_control(
     .with_capabilities(
         Capabilities::PREPARED_GRAPH
             .union(Capabilities::LIVE_PROGRAMS)
-            .union(Capabilities::CANCEL_PREPARED_COMPOSITES),
+            .union(Capabilities::CANCEL_PREPARED_COMPOSITES)
+            .union(Capabilities::PREPARED_AUTOMATIC_MONITORING),
     );
     Ok((control, execution))
 }

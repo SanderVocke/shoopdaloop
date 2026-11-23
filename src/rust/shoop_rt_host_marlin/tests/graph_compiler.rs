@@ -107,6 +107,83 @@ fn stereo_graph() -> Graph {
     graph
 }
 
+fn monitor_nested_recording<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, CompositeSpan, CompositeView, LoopMode};
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    graph.strips[0].controls.automatic_monitoring = true;
+    let span = |slot, start, end, mode, ordinal| CompositeSpan {
+        target: id(slot),
+        start,
+        end,
+        occurrence_start: start,
+        ordinal,
+        mode,
+    };
+    let mut child = graph.loops[0].clone();
+    child.id = id(120);
+    child.strip = None;
+    child.composite = Some(CompositeView {
+        kind: CompositeKind::Explicit,
+        version: 1,
+        unit_frames: Q as u64,
+        iterations: 32,
+        sample_rate: 48000,
+        quantum: Q as u32,
+        spans: vec![
+            span(100, 4, 13, LoopMode::Recording, 0),
+            span(101, 8, 20, LoopMode::Recording, 1),
+        ]
+        .into(),
+    });
+    let mut parent = child.clone();
+    parent.id = id(121);
+    let parent_plan = parent.composite.as_mut().unwrap();
+    parent_plan.kind = CompositeKind::Regular;
+    parent_plan.iterations = 64;
+    parent_plan.spans = vec![span(120, 0, 32, LoopMode::Playing, 0)].into();
+    graph.loops.extend([child, parent]);
+    upload(&mut client, &mut renderer, &graph, 0);
+    assert_eq!(step(&mut renderer), [0.; 2]);
+    // This unrelated recorder must stay silent while the two nested
+    // recorders share one input monitor.
+    let commands = [
+        Command::Transition(121, TransitionMode::Playing.into()),
+        Command::Transition(102, TransitionMode::Recording.into()),
+    ];
+    client
+        .immediate(Batch::new(1, 1, &commands).unwrap())
+        .unwrap();
+    let audible_start = response(&mut client, &mut renderer) + Q as u64;
+    assert!(renderer.next_frame().0 <= audible_start + 4 * Q as u64);
+    while renderer.next_frame().0 < audible_start + 32 * Q as u64 {
+        let frame = renderer.next_frame().0;
+        let monitored =
+            (audible_start + 4 * Q as u64..audible_start + 20 * Q as u64).contains(&frame);
+        let sample = if monitored { 0.25 } else { 0.0 };
+        assert_eq!(step(&mut renderer), [sample; 2], "frame {frame}");
+    }
+    graph.strips[0].controls.input_monitoring = true;
+    upload(&mut client, &mut renderer, &graph, 1);
+    assert_eq!(step(&mut renderer), [0.25; 2]);
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation and reference renderer")]
+fn automatic_monitoring_follows_nested_recording_per_track() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48_000,
+        buffer_frames: Q as u32,
+    };
+    let rust = shoop_rt_host_reference::prepare(Q as u32, driver, 1).unwrap();
+    monitor_nested_recording(rust.endpoint, rust.renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
+    monitor_nested_recording(rtl.endpoint, rtl.renderer);
+}
+
 fn run<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<[f32; 2]> {
     let mut c = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
     c.connect().unwrap();

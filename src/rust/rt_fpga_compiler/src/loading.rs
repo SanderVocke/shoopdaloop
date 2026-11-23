@@ -614,6 +614,10 @@ impl Layout {
                     *view = address(*view);
                 }
                 Operation::Gain { ramp, .. } => *ramp = address(*ramp),
+                Operation::Monitor { ramp, recorder } => {
+                    *ramp = address(*ramp);
+                    *recorder = recorder.map(id).transpose()?;
+                }
                 Operation::Smoothing {
                     loop_id, control, ..
                 } => {

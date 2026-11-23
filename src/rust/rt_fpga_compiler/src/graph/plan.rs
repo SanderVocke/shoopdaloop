@@ -12,6 +12,7 @@ enum Step {
     Input(u32),
     Playback(Identity, u32),
     Gain(u32, Node),
+    Monitor(Identity, Node),
     Mix(Node, Node),
     Smoothing(Identity, u32, Node),
     Capture(Identity, u32, Node),
@@ -22,6 +23,7 @@ impl Step {
         match *self {
             Self::Alias(a)
             | Self::Gain(_, a)
+            | Self::Monitor(_, a)
             | Self::Smoothing(_, _, a)
             | Self::Capture(_, _, a)
             | Self::Output(_, a) => vec![a],
@@ -33,6 +35,7 @@ impl Step {
         match self {
             Self::Alias(a)
             | Self::Gain(_, a)
+            | Self::Monitor(_, a)
             | Self::Smoothing(_, _, a)
             | Self::Capture(_, _, a)
             | Self::Output(_, a) => *a = map(*a),
@@ -297,10 +300,11 @@ impl<'a> Plan<'a> {
         for s in &g.strips {
             let count = channels(s.layout)?;
             let mut used = self.connected_channels(Owner::Strip(s.id));
-            if g.loops
+            let has_recorders = g
+                .loops
                 .iter()
-                .any(|l| l.strip == Some(s.id) && l.composite.is_none())
-            {
+                .any(|l| l.strip == Some(s.id) && l.composite.is_none());
+            if has_recorders {
                 used.extend(0..count);
             }
             for channel in used {
@@ -312,6 +316,11 @@ impl<'a> Plan<'a> {
                     .collect::<Vec<_>>();
                 if s.controls.input_monitoring {
                     values.push(inputs[&(s.id, channel)]);
+                } else if s.controls.automatic_monitoring && has_recorders {
+                    let input = inputs[&(s.id, channel)];
+                    if input != 0 {
+                        values.push(self.add(Step::Monitor(s.id, input)));
+                    }
                 }
                 let source = self.sum(values);
                 let gain = if s.controls.output_muted {
@@ -395,6 +404,39 @@ impl<'a> Plan<'a> {
         let mut buffers = vec![None; self.steps.len()];
         let mut depth = 0u32;
         let mut work_pass = Vec::new();
+        let mut monitor_gains = BTreeMap::new();
+        for strip in live
+            .iter()
+            .filter_map(|&n| match self.steps[n] {
+                Step::Monitor(strip, _) => Some(strip),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+        {
+            let ramp = self.state(
+                StateKey {
+                    owner: Owner::Strip(strip),
+                    role: StateRole::Monitor,
+                    channel: 0,
+                },
+                ramp(0),
+            );
+            monitor_gains.insert(strip, ramp);
+            work_pass.push(Operation::Monitor {
+                ramp,
+                recorder: None,
+            });
+            work_pass.extend(
+                self.graph
+                    .loops
+                    .iter()
+                    .filter(|l| l.strip == Some(strip) && l.composite.is_none())
+                    .map(|l| Operation::Monitor {
+                        ramp,
+                        recorder: Some(l.id),
+                    }),
+            );
+        }
         let mut jobs = 0u32;
         let mut emitted = 0;
         let mut input_ports = 0;
@@ -427,6 +469,11 @@ impl<'a> Plan<'a> {
                 },
                 Step::Gain(ramp, a) => Operation::Gain {
                     ramp,
+                    source: source(a),
+                    destination,
+                },
+                Step::Monitor(strip, a) => Operation::Gain {
+                    ramp: monitor_gains[&strip],
                     source: source(a),
                     destination,
                 },
