@@ -1159,6 +1159,30 @@ mod tests {
     }
 
     #[shoop_test]
+    fn remote_track_targets_without_a_default_do_not_offer_bus_processors() {
+        use shoop_rt_protocol::Capabilities;
+        for local in [None, Some(super::PreparedProcessor::INLINE_TIMING)] {
+            let mut host = super::testing::OfflineHost::new_with_processors(
+                &super::EngineDescription::default(),
+                super::PreparedProcessors {
+                    dynamic_carla: super::DynamicCarla {
+                        local,
+                        remote: Some(super::PreparedProcessor::INLINE_TIMING),
+                    },
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let capabilities = host.endpoint().capabilities();
+            assert!(capabilities.contains(Capabilities::TRACK_PROCESSORS));
+            assert_eq!(
+                capabilities.contains(Capabilities::BUS_PROCESSORS),
+                local.is_some()
+            );
+        }
+    }
+
+    #[shoop_test]
     fn offline_minimal_host_resolves_auto_policy_without_implementations() {
         let mut host = super::testing::OfflineHost::new(&super::EngineDescription {
             processors: shoop_rt_protocol::ProcessorSettings::default(),

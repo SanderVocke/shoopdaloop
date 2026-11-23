@@ -407,6 +407,7 @@ dependencies = [
  "rt_buffered",
  "rt_profiling",
  "rt_runtime",
+ "rtrb",
  "shoop_loops",
  "shoop_processor_protocol",
  "shoop_rt_protocol",

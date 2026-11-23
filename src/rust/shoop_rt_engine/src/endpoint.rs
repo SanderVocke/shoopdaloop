@@ -762,12 +762,14 @@ impl ControlEndpoint {
         if self.settings.external_dry_wet {
             capabilities = capabilities.union(Capabilities::EXTERNAL_DRY_WET);
         }
-        if self
-            .processor_catalog
-            .kinds
-            .iter()
-            .any(|kind| kind.supports_bus())
-        {
+        if self.processor_catalog.kinds.iter().any(|kind| {
+            kind.supports_bus()
+                && (!kind.is_remote_carla()
+                    || self
+                        .hosted_processors
+                        .as_ref()
+                        .is_some_and(|controls| controls.has_default_remote_target()))
+        }) {
             capabilities = capabilities.union(Capabilities::BUS_PROCESSORS);
         }
         if !self.processor_catalog.kinds.is_empty() {
