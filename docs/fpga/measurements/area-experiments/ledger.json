@@ -1236,11 +1236,13 @@
         "All187boundaryrows/width,207deepdirectoryrows/width and1282publicstorerows matchevery noncyclefield of C4audio-identicalC3controls; modelsourcehash equivalenceverified",
         "Deep setup1810451->1903895(+93444)clocks AXI64; store1282operationstotal1224008->1245317(+21309)clocks",
         "All33shortmixedcallbacklogical outputs/work/cachecounters exactC4. Steadymedian53258unchanged,max53948vs53947,cold92670vs92745; coldAudioAXIreads694->750/native4016->4464, writesunchanged. Trafficdifference retained, not claimedbitwise-performancematch.",
-        "RerunwithlinkedpinnedDRAMsim3 passes full deferredsuite; media suiteinprogress"
+        "RerunwithlinkedpinnedDRAMsim3 passes full deferredsuite; media suiteinprogress",
+        "Optimized35868LUT28751FF3172CARRY4: vsC4 -60LUT/+18FF/-33carry/+150F7/+25F8/+4controlsets, unchangedBRAM/DSP; setupstillfails-5.320ns",
+        "Full deferredsuite passes62.95sec afterruntimepathrepair; fullmedia suite passes370.55sec"
       ],
       "pending": [
-        "Remainingfullmedia/metadata/validity/ownershipregressions",
-        "Optimizedscreen thenrouteifviable"
+        "Remainingmetadata/validity/ownershipregressions",
+        "Routedresource/timingcomparison, thenrepeatonlyifselectingsmallwin"
       ],
       "unit_performance": "s4-audio-address-unit-performance.json",
       "unit_summaries": [
@@ -1250,7 +1252,20 @@
         "s4-audio-address-store-operations-unit-summary.json"
       ],
       "environment_followup": "Firstfullregressionrun passedInstant/Fixeddeferredcases thenmissingDRAMsim3library undernewSourceRoot. Existingpinnedwork/dramsim3linkedintoroot/work, hashesrecordedsetup/s4-audio-address/dramsim3-runtime-link.json; originalfailurelogretained, exactfullcommandrerunning. NoRTL/test/config/clockchange.",
-      "callback_performance": "s4-audio-address-callback-performance.json"
+      "callback_performance": "s4-audio-address-callback-performance.json",
+      "optimized_summary": "s4-audio-address-opt-summary.json",
+      "optimized_deltas_vs_c4": {
+        "lut": -60,
+        "logic_lut": -60,
+        "memory_lut": 0,
+        "ff": 18,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -33,
+        "muxf7": 150,
+        "muxf8": 25,
+        "control_sets": 4
+      }
     }
   ],
   "provisioning": {
