@@ -1630,6 +1630,7 @@
       "FullStage11 combinationandCIgates"
     ],
     "selection_branch": "feat/backend-replacement-area-selected",
-    "branch_promotion": "pending completedexperimentmerge"
+    "branch_promotion": "complete; all38productionHDL hashes match measured7eba4933",
+    "selection_commit": "b7bd11a75725bb2ed939208f5b547b1f53bc83c3"
   }
 }
