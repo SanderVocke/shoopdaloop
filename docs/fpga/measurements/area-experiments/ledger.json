@@ -1432,10 +1432,11 @@
         "Both reserved/relocation tests and dense record/merge/read/stop focused test pass",
         "All10311boundary+54reserved+108relocated rows exactly match C6, including cycles and memory traffic",
         "All33mixed+40musical rows exactC6 including cycles/traffic/work/state/finalmixedmemory; all16mainMIDItests passonspace-corrected rerun, expression/reserved running",
-        "All23affected suites pass: MIDI16/405.22sec, expression5/489.28sec, reserved2/1.95sec. Earlier8StorageFullfailures retained andallpasswithunchangedsource/assertions aftercachecleanup."
+        "All23affected suites pass: MIDI16/405.22sec, expression5/489.28sec, reserved2/1.95sec. Earlier8StorageFullfailures retained andallpasswithunchangedsource/assertions aftercachecleanup.",
+        "FrozenDCP EDIF provesactualpayloadbank128to96FDRE; everycontrolmidi_store directFD name/type exactlymatches completedVivadoquery. Other5globalFFreduction outsidepayload; no over-attribution."
       ],
       "pending": [
-        "Connectedrouteandrepeat ifretained; actualpayloadregister query",
+        "Connectedrouteandrepeat ifretained",
         "1041extendedcallbackcomparison running"
       ],
       "rtl_source_revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
@@ -1448,7 +1449,8 @@
       "opt_summary": "s5-payload-lifetime-opt-summary.json",
       "callback_performance": "s5-payload-lifetime-callback-performance.json",
       "mapped_screen": "-21LUT/-37FF/+13MUXF7/-2controlsets vsC6; BRAM/DSP/carry unchanged. OptWNS-0.151ns vs+.412control; physicalroutepending.",
-      "regression_summary": "s5-payload-lifetime-regressions-summary.json"
+      "regression_summary": "s5-payload-lifetime-regressions-summary.json",
+      "cells_summary": "s5-payload-lifetime-cells-summary.json"
     }
   ],
   "provisioning": {
