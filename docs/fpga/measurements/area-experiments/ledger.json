@@ -1296,15 +1296,24 @@
         "All38production control HDL hashes verified C4 before edit",
         "Strict lint default/min/odd/primary passed",
         "Independent closed-form/u64-wrap arithmetic preflight:144000boundary+100000seededrandomcases; notRTL qualification",
-        "Focused both-width high-bit/malformed-queue boundary test passed35.76sec"
+        "Focused both-width high-bit/malformed-queue boundary test passed35.76sec",
+        "All187boundary rows/width,207deep rows/width,and1282public-store rows exactnoncycleC4control;finalDDRandtrafficexact",
+        "Deep77828growthwrites setup+1712176clocks: AXI32 1817747to3529923,AXI64 1810451to3522627;207postsetuprequests+46clocks;publicstore1224008to1238082(+14074)"
       ],
       "pending": [
         "Full11affected regressions",
-        "Both-width raw boundary/deep setup and public-store comparison",
         "Connected cold/warm/steady callback comparison",
         "Pinned optimization screen, route/repeat if viable"
       ],
-      "contract": "stage4-iterative-capacity-contract.md"
+      "contract": "stage4-iterative-capacity-contract.md",
+      "unit_performance": "s4-iterative-capacity-unit-performance.json",
+      "unit_summaries": [
+        "s4-iterative-capacity-directory-unit-summary.json",
+        "s4-iterative-capacity-width-axi32-summary.json",
+        "s4-iterative-capacity-width-axi64-summary.json",
+        "s4-iterative-capacity-store-operations-unit-summary.json"
+      ],
+      "arithmetic_preflight": "s4-iterative-capacity-arithmetic-summary.json"
     }
   ],
   "provisioning": {
@@ -1444,6 +1453,26 @@
         "CodeQL"
       ],
       "native_verification": "Complete nativeMarlin job137392124794 passed on testedmerge1ba135dd; reference/integration/dependencyisolation also passed. Standaloneunusedbit gate failed; focusedstrictsynthesisfixpass archivedonarea/base-integration."
+    },
+    "selected_control_c4": {
+      "head": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+      "fpga_run": 45088624815,
+      "fpga_native": "passed137412851641;reference/dependencypassed;standalonefailedknownunusedbits137412851540",
+      "workspace_run": 45088624810,
+      "workspace": "Completedfailure: same3legacyCarlaexpectations, packagedbuscatalog/capability mismatch, wasmreleaseunknowncarla.hosting_mode. Integrationfixesisolatedarea/base-integration,notmeasuredC4.",
+      "firmware_run": 45088624808,
+      "firmware": "Failed;knownnestedlockrequiresintegrationrepair;freshjoblogsnotyetinspected",
+      "passed": [
+        "Native JACK acceptance",
+        "Hosted track processors",
+        "Docs",
+        "CodeQL",
+        "Web wasm32 debug",
+        "Bare-metal runtime/session",
+        "Sharedmediafoundation",
+        "Host process inspectionsallOS"
+      ],
+      "status": "Incomplete; requiredintegrationandCIgatesremain"
     }
   },
   "selected_control": {

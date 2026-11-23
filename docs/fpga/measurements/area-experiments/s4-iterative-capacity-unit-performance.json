@@ -1,0 +1,95 @@
+{
+  "control": "10cddabdbfe015f8a64c1105449aa5634be2f2fc",
+  "candidate": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+  "control_audio_sources_verified": true,
+  "cases": [
+    {
+      "kind": "width",
+      "axi_width": 32,
+      "case": 0,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 678,
+      "candidate_cycles_total": 718
+    },
+    {
+      "kind": "width",
+      "axi_width": 32,
+      "case": 1,
+      "rows": 73,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1245,
+      "candidate_cycles_total": 1315
+    },
+    {
+      "kind": "width",
+      "axi_width": 32,
+      "case": 2,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1588,
+      "candidate_cycles_total": 1758
+    },
+    {
+      "kind": "directory",
+      "axi_width": 32,
+      "rows": 207,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 27518,
+      "candidate_cycles_total": 27564,
+      "setup_cycles": {
+        "control": 1817747,
+        "candidate": 3529923,
+        "delta": 1712176
+      }
+    },
+    {
+      "kind": "width",
+      "axi_width": 64,
+      "case": 0,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 654,
+      "candidate_cycles_total": 694
+    },
+    {
+      "kind": "width",
+      "axi_width": 64,
+      "case": 1,
+      "rows": 73,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1205,
+      "candidate_cycles_total": 1275
+    },
+    {
+      "kind": "width",
+      "axi_width": 64,
+      "case": 2,
+      "rows": 57,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 1532,
+      "candidate_cycles_total": 1702
+    },
+    {
+      "kind": "directory",
+      "axi_width": 64,
+      "rows": 207,
+      "exact_noncycle_fields": true,
+      "control_cycles_total": 23790,
+      "candidate_cycles_total": 23836,
+      "setup_cycles": {
+        "control": 1810451,
+        "candidate": 3522627,
+        "delta": 1712176
+      }
+    },
+    {
+      "kind": "public_store",
+      "rows": 1282,
+      "exact_noncycle_fields": true,
+      "final_memory_exact": true,
+      "control_cycles_total": 1224008,
+      "candidate_cycles_total": 1238082
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "candidate": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
+  "preflight": {
+    "scope": "Arithmetic preparation only; no production RTL applied or hardware optimization claimed.",
+    "boundary_cases": 144000,
+    "random_cases": 100000,
+    "seed": 20261123,
+    "maximum_nodes_u32_levels8": 286331153,
+    "unit_bits": 34,
+    "preserved": "Unsigned64 underflow/wrap and capacity refusal for all checked cases; node totals against direct closed-form big integers",
+    "script_sha256": "980bef06ecd3b4dbe3994f35e5408f313f1af276f00151c58478acaf68bc5312"
+  },
+  "focused_boundary": "passed35.76sec bothwidth highbits and malformedqueue; fullregression pending",
+  "retention": "s4-iterative-capacity-arithmetic-retention.json"
+}
