@@ -116,6 +116,21 @@ fn encode(instruction: component::Instruction) -> Result<Bits, CompileError> {
         .map_err(|_| CompileError::InvalidProgram)
 }
 
+fn append_work(instructions: &mut Vec<Bits>, work: Vec<Bits>, interleave: bool) {
+    let is_midi = |word: &Bits| matches!(word.0[0] & 0xff, 0x0e..=0x15);
+    if !interleave || !work.iter().any(is_midi) || work.iter().all(is_midi) {
+        instructions.extend(work);
+        return;
+    }
+    let (midi, audio): (Vec<_>, Vec<_>) = work.into_iter().partition(is_midi);
+    let mut midi = midi.into_iter();
+    for job in audio {
+        instructions.push(job);
+        instructions.extend(midi.next());
+    }
+    instructions.extend(midi);
+}
+
 #[derive(Clone, Copy, Default)]
 struct Access {
     read_slot: usize,
@@ -323,6 +338,15 @@ impl RtlTarget<'_> {
         &self,
         logical: &LogicalStateProgram,
         merge_output: bool,
+    ) -> Result<CompiledProgram, CompileError> {
+        self.build_with_midi_options(logical, merge_output, true)
+    }
+
+    pub fn build_with_midi_options(
+        &self,
+        logical: &LogicalStateProgram,
+        merge_output: bool,
+        interleave: bool,
     ) -> Result<CompiledProgram, CompileError> {
         logical.validate(self.limits())?;
         if usize::from(self.state_base) + logical.initial_state.len()
@@ -549,10 +573,10 @@ impl RtlTarget<'_> {
         }
         let mut work = work.into_iter();
         let mut instructions = Vec::with_capacity(sync_count + logical.work_pass.len());
-        instructions.extend(work.next().unwrap());
+        append_work(&mut instructions, work.next().unwrap(), interleave);
         for (sync, work) in sync_instructions.into_iter().zip(work) {
             instructions.push(sync);
-            instructions.extend(work);
+            append_work(&mut instructions, work, interleave);
         }
         if instructions.len() > self.limits().instructions as usize {
             return Err(CompileError::Capacity(Resource::Instructions));

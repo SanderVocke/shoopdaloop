@@ -151,6 +151,24 @@ pub enum Job {
     },
 }
 
+impl Job {
+    pub(crate) fn is_midi(self) -> bool {
+        matches!(
+            self,
+            Self::MidiRestoreState { .. }
+                | Self::MidiCleanupState { .. }
+                | Self::MidiInput { .. }
+                | Self::MidiEmpty { .. }
+                | Self::MidiReadView { .. }
+                | Self::MidiBeginCapture { .. }
+                | Self::MidiAppend { .. }
+                | Self::MidiFinishCapture { .. }
+                | Self::MidiMerge { .. }
+                | Self::MidiOutput { .. }
+        )
+    }
+}
+
 /// A finite FIFO. This functional model emits a whole quantum before draining it.
 pub struct JobQueue {
     jobs: VecDeque<Job>,
@@ -187,6 +205,127 @@ impl JobQueue {
         }
         self.jobs.push_back(job);
         Ok(())
+    }
+}
+
+pub(crate) struct JobQueues {
+    pub audio: JobQueue,
+    pub midi: JobQueue,
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::*;
+    use crate::{
+        midi::{BufferLimits, InputEvent, Io, Message, MidiMemory, OutputEvent, StoreLimits},
+        storage::MediaStore,
+    };
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn audio_and_midi_queues_can_drain_in_either_order() {
+        let message = Message::parse(&[0x90, 60, 80]).unwrap();
+        let events = [InputEvent {
+            input: 0,
+            offset: 3,
+            message,
+        }];
+        for midi_first in [false, true] {
+            let mut queues = JobQueues::new(2);
+            let mut jobs = JobProcessor::new(4, 1);
+            jobs.prepare_midi(BufferLimits {
+                buffers: 1,
+                cursors: 1,
+                scratch_events: 2,
+                input_ports: 1,
+                output_ports: 1,
+            })
+            .unwrap();
+            for job in [
+                Job::Constant {
+                    value: 87,
+                    destination: BufferId(0),
+                },
+                Job::MidiInput {
+                    port: 0,
+                    destination: crate::midi::BufferId(0),
+                },
+                Job::Output {
+                    source: BufferId(0),
+                    port: 0,
+                },
+                Job::MidiOutput {
+                    source: crate::midi::BufferId(0),
+                    port: 0,
+                },
+            ] {
+                queues.push(job).unwrap();
+            }
+            let mut audio = MediaStore::new(1).unwrap();
+            let mut midi = MidiMemory::prepare(
+                StoreLimits {
+                    block_events: 4,
+                    blocks: 2,
+                    max_events: 8,
+                    views: 2,
+                    retirements: 2,
+                },
+                1,
+            )
+            .unwrap();
+            let mut captured = Vec::new();
+            let mut sink = |event| {
+                captured.push(event);
+                Ok(())
+            };
+            let mut io = Io {
+                memory: &mut midi,
+                inputs: &events,
+                sink: &mut sink,
+            };
+            let mut samples = [Fixed::ZERO; 4];
+            if midi_first {
+                jobs.run_midi_at(&mut queues.midi, Some(&mut io), 0)
+                    .unwrap();
+            }
+            jobs.run_at(&mut queues.audio, &mut audio, &[], &mut [&mut samples], 0)
+                .unwrap();
+            if !midi_first {
+                jobs.run_midi_at(&mut queues.midi, Some(&mut io), 0)
+                    .unwrap();
+            }
+            assert!(queues.is_empty());
+            assert_eq!(samples, [Fixed(87); 4]);
+            assert_eq!(
+                captured,
+                [OutputEvent {
+                    destination: 0,
+                    offset: 3,
+                    message
+                }]
+            );
+        }
+    }
+}
+
+impl JobQueues {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            audio: JobQueue::new(capacity),
+            midi: JobQueue::new(capacity),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.audio.is_empty() && self.midi.is_empty()
+    }
+
+    pub fn push(&mut self, job: Job) -> Result<(), Error> {
+        if job.is_midi() {
+            self.midi.push(job)
+        } else {
+            self.audio.push(job)
+        }
     }
 }
 
@@ -280,21 +419,7 @@ impl JobProcessor {
         outputs: &mut [&mut [Fixed]],
         base: usize,
     ) -> Result<(), Error> {
-        self.run_at_mixed(queue, memory, inputs, outputs, base, None)
-    }
-    pub(crate) fn run_at_mixed(
-        &mut self,
-        queue: &mut JobQueue,
-        memory: &mut impl Memory,
-        inputs: &[&[Fixed]],
-        outputs: &mut [&mut [Fixed]],
-        base: usize,
-        mut midi: Option<&mut crate::midi::Io<'_>>,
-    ) -> Result<(), Error> {
         self.ready.fill(false);
-        if let Some(buffers) = &mut self.midi {
-            buffers.begin();
-        }
         for output in outputs.iter_mut() {
             output[base..base + self.quantum].fill(Fixed::ZERO);
         }
@@ -313,22 +438,23 @@ impl JobProcessor {
                     (self.quantum / memory.chunk_frames()) as u64,
                 );
             }
-            match job {
-                Job::MidiInput { .. }
-                | Job::MidiEmpty { .. }
-                | Job::MidiReadView { .. }
-                | Job::MidiBeginCapture { .. }
-                | Job::MidiAppend { .. }
-                | Job::MidiFinishCapture { .. }
-                | Job::MidiMerge { .. }
-                | Job::MidiOutput { .. }
-                | Job::MidiRestoreState { .. }
-                | Job::MidiCleanupState { .. } => {
-                    self.execute_midi(job, midi.as_deref_mut().ok_or(Error::UnsupportedJob)?, base)
-                        .map_err(Error::Midi)?;
-                }
-                job => self.execute_at(job, memory, inputs, outputs, base)?,
-            }
+            self.execute_at(job, memory, inputs, outputs, base)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn run_midi_at(
+        &mut self,
+        queue: &mut JobQueue,
+        mut midi: Option<&mut crate::midi::Io<'_>>,
+        base: usize,
+    ) -> Result<(), Error> {
+        if let Some(buffers) = &mut self.midi {
+            buffers.begin();
+        }
+        while let Some(job) = queue.pop() {
+            self.execute_midi(job, midi.as_deref_mut().ok_or(Error::UnsupportedJob)?, base)
+                .map_err(Error::Midi)?;
         }
         Ok(())
     }

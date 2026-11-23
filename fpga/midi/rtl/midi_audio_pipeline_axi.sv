@@ -2,6 +2,8 @@
 `include "state_processor_defs.svh"
 module midi_audio_pipeline_axi #(
 parameter integer EXTERNAL_IO = 0,
+    parameter integer SPLIT_MIDI_JOBS = 1,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer DDR_PROGRAM = 0,
@@ -282,6 +284,8 @@ parameter integer EXTERNAL_IO = 0,
     wire [127:0] midi_memory_read_record;
     midi_audio_pipeline #(
         .EXTERNAL_IO(EXTERNAL_IO),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS),
+        .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
         .DDR_PROGRAM(DDR_PROGRAM),

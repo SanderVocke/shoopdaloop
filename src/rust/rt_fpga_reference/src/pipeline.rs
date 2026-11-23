@@ -1,7 +1,7 @@
 //! One quantum of state, job and media execution.
 use crate::{
     fixed::Fixed,
-    jobs::{Job, JobProcessor, JobQueue, Memory},
+    jobs::{Job, JobProcessor, JobQueues, Memory},
     state::{Address, ModePlan, PlannedTransition, Program, StateProcessor, Value},
     transitions::*,
     Error,
@@ -39,7 +39,7 @@ pub struct Pipeline {
     region: u8,
     state: StateProcessor,
     program: Program,
-    queue: JobQueue,
+    queues: JobQueues,
     fault: Option<PipelineError>,
     trace_jobs: bool,
     emitted: Vec<Job>,
@@ -74,7 +74,7 @@ impl Pipeline {
         limits: rt_fpga_compiler::ProgramLimits,
     ) -> Result<(), PipelineError> {
         self.state.reserve_loading(limits);
-        self.queue = JobQueue::new(limits.jobs as usize);
+        self.queues = JobQueues::new(limits.jobs as usize);
         self.emitted = Vec::with_capacity(limits.jobs as usize);
         Ok(())
     }
@@ -87,10 +87,10 @@ impl Pipeline {
             || image.layout.revision <= self.revision
             || (self.revision != 0 && image.layout.region == self.region)
             || self.fault.is_some()
-            || !self.queue.is_empty()
+            || !self.queues.is_empty()
             || image.compiled.program.quantum != self.program.quantum
             || image.compiled.program.chunk_frames != self.program.chunk_frames
-            || image.compiled.program.jobs_per_quantum > self.queue.remaining()
+            || image.compiled.program.jobs_per_quantum > self.queues.audio.remaining()
         {
             return Err(PipelineError::State(Error::InvalidState));
         }
@@ -153,7 +153,7 @@ impl Pipeline {
             region: 0,
             state: StateProcessor::with_loops(plan, initial_state),
             program,
-            queue: JobQueue::new(capacity),
+            queues: JobQueues::new(capacity),
             fault: None,
             trace_jobs: false,
             emitted: Vec::with_capacity(capacity),
@@ -187,7 +187,7 @@ impl Pipeline {
         &self.emitted
     }
     pub fn queued_jobs(&self) -> impl Iterator<Item = &Job> {
-        self.queue.iter()
+        self.queues.audio.iter().chain(self.queues.midi.iter())
     }
     fn ready(&self) -> Result<(), TransitionError> {
         if self.fault.is_some() {
@@ -463,14 +463,16 @@ impl Pipeline {
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
+        let trace = if self.trace_jobs {
+            Some(&mut self.emitted)
+        } else {
+            None
+        };
         let state_result = self
             .state
-            .run_with_intents(&self.program, &mut self.queue, |intent| {
+            .run_split(&self.program, &mut self.queues, trace, |intent| {
                 intent.prefetch(memory)
             });
-        if self.trace_jobs {
-            self.emitted.extend(self.queue.iter().copied());
-        }
         state_result.map_err(|error| match error {
             Error::Transition(error) => PipelineError::Transition(error),
             error => PipelineError::State(error),
@@ -478,18 +480,13 @@ impl Pipeline {
         if publish {
             observer.settled(&self.state);
         }
-        jobs.run_at_mixed(
-            &mut self.queue,
-            memory,
-            inputs,
-            outputs,
-            base,
-            midi.as_deref_mut(),
-        )
-        .map_err(PipelineError::Jobs)?;
+        jobs.run_at(&mut self.queues.audio, memory, inputs, outputs, base)
+            .map_err(PipelineError::Jobs)?;
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
+        jobs.run_midi_at(&mut self.queues.midi, midi.as_deref_mut(), base)
+            .map_err(PipelineError::Jobs)?;
         if let Some(io) = midi {
             io.memory.store.maintenance(64);
         }

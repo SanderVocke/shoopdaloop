@@ -351,10 +351,10 @@ impl crate::sim::Agent for Jobs {
             return;
         }
         if m.get("monitor_valid") != 0 && m.get("monitor_ready") != 0 {
-            let target = if m.get("jobs_busy") != 0 {
-                &mut self.consumed
-            } else {
+            let target = if m.get("drain_valid") != 0 {
                 &mut self.drained
+            } else {
+                &mut self.consumed
             };
             target.push(codec::job(&m.bits("monitor_data")));
         }

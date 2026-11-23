@@ -10,6 +10,7 @@ module state_processor #(
     parameter integer STATE_ADDR_BITS = (STATE_DEPTH > 1) ? $clog2(STATE_DEPTH) : 1,
     parameter integer STREAM_JOBS = 0,
     parameter integer DDR_PROGRAM = 0,
+    parameter integer EXTERNAL_JOB_FIFO = 0,
     parameter integer JOB_COUNT_BITS = $clog2(JOB_DEPTH + 1)
 ) (
     input  wire                                clk,
@@ -255,10 +256,17 @@ module state_processor #(
         .write_data(loop_ram_write ? loop_ram_write_data : cfg_write_data[63:0])
     );
 
-    sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS(JOB_COUNT_BITS)) jobs (
-        .clk(clk), .reset(reset),
-        .push_valid(engine_job_valid), .push_ready(engine_job_ready), .push_data(engine_job_data),
-        .pop_valid(fifo_valid), .pop_ready(job_ready && jobs_visible),
-        .pop_data(job_data), .count(fifo_count)
-    );
+    generate if (EXTERNAL_JOB_FIFO != 0) begin : external_jobs
+        assign fifo_valid = engine_job_valid;
+        assign engine_job_ready = job_ready && jobs_visible;
+        assign job_data = engine_job_data;
+        assign fifo_count = 0;
+    end else begin : buffered_jobs
+        sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS(JOB_COUNT_BITS)) jobs (
+            .clk(clk), .reset(reset),
+            .push_valid(engine_job_valid), .push_ready(engine_job_ready), .push_data(engine_job_data),
+            .pop_valid(fifo_valid), .pop_ready(job_ready && jobs_visible),
+            .pop_data(job_data), .count(fifo_count)
+        );
+    end endgenerate
 endmodule

@@ -2,6 +2,8 @@
 `include "state_processor_defs.svh"
 module midi_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer SPLIT_MIDI_JOBS = 1,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer DDR_PROGRAM = 0,
@@ -326,6 +328,8 @@ module midi_audio_pipeline #(
     assign store_cfg_ready=gated_store_cfg_ready && phase==IDLE;
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS),
+        .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
         .DDR_PROGRAM(DDR_PROGRAM),

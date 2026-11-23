@@ -6,6 +6,31 @@ use rt_fpga_rtl::target::RtlTarget;
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn independent_audio_and_midi_jobs_alternate_within_their_sync_slot() {
+    let mut program = programs::mono_loops(32, 1);
+    program.work_pass = vec![
+        Operation::Input {
+            port: 0,
+            destination: 0,
+        },
+        Operation::Output { source: 0, port: 0 },
+    ];
+    let program = program
+        .with_midi_data(&[
+            M::Input {
+                port: 0,
+                destination: 0,
+            },
+            M::Output { source: 0, port: 0 },
+        ])
+        .unwrap();
+    let target = RtlTarget::new([64, 16, 32, 32, 16, 2, 3], 3, &[0]);
+    let instructions = target.build(&program).unwrap().instructions;
+    let opcodes: Vec<_> = instructions.iter().map(|word| word.get(0, 8)).collect();
+    assert_eq!(opcodes, [0, 14, 5, 18, 12]);
+}
+
+#[shoop_test]
 fn audio_jobs_use_the_first_sync_slot_allowed_by_their_dependencies() {
     let mut program = programs::mono_loops(32, 3);
     let (a, b, c) = (

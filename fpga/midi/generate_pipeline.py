@@ -18,6 +18,7 @@ def generate():
     audio, audio_ports = header((HERE.parent / 'axi_memory/rtl/media_audio_pipeline_axi.sv').read_text())
     service, service_ports = header((HERE / 'rtl/midi_data_jobs.sv').read_text())
     audio_params = [p.strip() for p in audio[2].split(',') if not re.search(r'\bENABLE_MIDI\b', p)]
+    audio_params = [p.replace('SPLIT_MIDI_JOBS = 0', 'SPLIT_MIDI_JOBS = 1') for p in audio_params]
     audio_names = [re.search(r'(\w+)\s*=', p)[1] for p in audio_params]
     ports = [(p, n) for p, n in audio_ports if not n.startswith('midi_job_')]
     ports += [('output wire ', 'midi_publication_valid'), ('input wire ', 'midi_publication_commit'),

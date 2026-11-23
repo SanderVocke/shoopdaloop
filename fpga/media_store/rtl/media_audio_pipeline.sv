@@ -3,6 +3,8 @@
 module media_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
     parameter integer ENABLE_MIDI = 0,
+    parameter integer SPLIT_MIDI_JOBS = 0,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer DDR_PROGRAM = 0,
@@ -164,7 +166,8 @@ module media_audio_pipeline #(
     audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .LIVE_LOADING(LIVE_LOADING), .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .DDR_PROGRAM(DDR_PROGRAM), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .READ_HINT_DEPTH(READ_HINT_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
-        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1), .ENABLE_MIDI(ENABLE_MIDI)
+        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1), .ENABLE_MIDI(ENABLE_MIDI),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS), .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH)
     ) pipeline (
         .midi_job_valid(midi_job_valid), .midi_job_ready(midi_job_ready), .midi_job_data(midi_job_data),
         .midi_job_done(midi_job_done), .midi_job_error(midi_job_error), .midi_error_code(midi_error_code),

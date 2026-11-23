@@ -10,14 +10,64 @@ use crate::{
     memory::{Backend, Control, Memory, Mode, Shared, axi::Axi},
     model::{Model, Probe},
     sim::{Agent, Sim},
-    timing::Fixed,
+    timing::{Fixed, SharedPort, Timing, dram::Dram},
 };
 use rt_fpga_reference::{
     midi::{InputEvent, Message, OutputEvent},
     transitions::{LoopKind, LoopSpec},
 };
 use serde_json::{Value, json};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, path::Path, rc::Rc};
+
+const FABRIC_HZ: u64 = 100_000_000;
+const AUDIO_BUSY: &str = "core.audio.core.pipeline.sample_busy";
+const MIDI_BUSY: &str = "core.audio.core.pipeline.midi_lane_busy";
+const AUDIO_QUEUED: &str = "core.audio.core.pipeline.audio_queued_jobs";
+const MIDI_QUEUED: &str = "core.audio.core.pipeline.midi_queued_jobs";
+const SP_VALID: &str = "core.audio.core.pipeline.state_engine.engine_job_valid";
+const SP_READY: &str = "core.audio.core.pipeline.state_engine.engine_job_ready";
+
+#[derive(Default)]
+struct LaneActivity {
+    active: bool,
+    audio_busy: u64,
+    midi_busy: u64,
+    overlap: u64,
+    sp_stalled: u64,
+    audio_peak: u64,
+    midi_peak: u64,
+}
+
+impl Agent for LaneActivity {
+    fn sample(&mut self, m: &Model<'_>, e: Edges) {
+        if self.active && e.rises(0) {
+            let audio = m.get(AUDIO_BUSY);
+            let midi = m.get(MIDI_BUSY);
+            self.audio_busy += audio;
+            self.midi_busy += midi;
+            self.overlap += audio & midi;
+            self.sp_stalled += m.get(SP_VALID) & (1 - m.get(SP_READY));
+            self.audio_peak = self.audio_peak.max(m.get(AUDIO_QUEUED));
+            self.midi_peak = self.midi_peak.max(m.get(MIDI_QUEUED));
+        }
+    }
+}
+
+pub struct JobOptions<'a> {
+    pub merge_output: bool,
+    pub interleave: bool,
+    pub shared_ddr: Option<&'a Path>,
+}
+
+impl Default for JobOptions<'_> {
+    fn default() -> Self {
+        Self {
+            merge_output: true,
+            interleave: true,
+            shared_ddr: None,
+        }
+    }
+}
 
 #[derive(Default)]
 struct Output(Vec<OutputEvent>);
@@ -298,7 +348,17 @@ pub fn run_parameters(
     parameters: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
     run_case(
-        audio, midi, loops, frames, quanta, delay, state, false, false, true, parameters,
+        audio,
+        midi,
+        loops,
+        frames,
+        quanta,
+        delay,
+        state,
+        false,
+        false,
+        JobOptions::default(),
+        parameters,
     )
 }
 pub fn tracks(
@@ -306,22 +366,12 @@ pub fn tracks(
     frames: usize,
     quanta: usize,
     delay: u64,
-    merge_output: bool,
+    options: JobOptions<'_>,
     parameters: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
     assert!(quanta >= 8);
     run_case(
-        audio,
-        true,
-        64,
-        frames,
-        quanta,
-        delay,
-        false,
-        false,
-        true,
-        merge_output,
-        parameters,
+        audio, true, 64, frames, quanta, delay, false, false, true, options, parameters,
     )
 }
 pub fn musical(delay: u64) -> Result<Value> {
@@ -335,7 +385,7 @@ pub fn musical(delay: u64) -> Result<Value> {
         true,
         true,
         false,
-        true,
+        JobOptions::default(),
         &Default::default(),
     )
 }
@@ -349,7 +399,7 @@ fn run_case(
     state: bool,
     musical: bool,
     tracks: bool,
-    merge_output: bool,
+    options: JobOptions<'_>,
     parameters: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
     assert!(quanta > 0 && (quanta + 17) * QUANTUM <= frames);
@@ -360,6 +410,16 @@ fn run_case(
     let mut design = crate::suites::pipeline::design(cap, &geometry, 64, Mode::Fixed, 1);
     design.top = "midi_audio_pipeline_axi".into();
     design.probes.clear();
+    for signal in [
+        AUDIO_BUSY,
+        MIDI_BUSY,
+        AUDIO_QUEUED,
+        MIDI_QUEUED,
+        SP_VALID,
+        SP_READY,
+    ] {
+        design.probes.push(Probe::observe(signal));
+    }
     for bank in 0..3 {
         for counter in ["hits", "misses", "fills", "writebacks"] {
             design.probes.push(Probe::observe(&format!(
@@ -394,6 +454,8 @@ fn run_case(
         ("MIDI_RETIREMENTS", 128),
         ("MIDI_MAINTENANCE", 64),
         ("MIDI_RECORD_BURSTS", 1),
+        ("SPLIT_MIDI_JOBS", 1),
+        ("MIDI_JOB_FIFO_DEPTH", 128),
         ("MIDI_AXI_DATA_WIDTH", 64),
         ("READ_HINT_DEPTH", 256),
     ] {
@@ -428,12 +490,36 @@ fn run_case(
     let compiled = design.build(&crate::root().join("work/marlin-suite/midi-data-benchmark"))?;
     let mut sim = Sim::new(compiled.benchmark_session()?, &[("clk", 10_000, 0)]);
     sim.max_ps = 10_000_000_000_000_000;
+    let controller = if let Some(output) = options.shared_ddr {
+        let root = crate::root();
+        let config = std::env::var_os("SHOOP_DRAMSIM3_CONFIG")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| root.join("fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini"));
+        let dram: Box<dyn Timing> = Box::new(Dram::new(
+            &root.join("work/dramsim3/build/libshoop_dram.so"),
+            &config,
+            output,
+            FABRIC_HZ,
+        )?);
+        Some(Rc::new(RefCell::new(dram)))
+    } else {
+        None
+    };
+    let port = |advances_clock| -> Box<dyn Timing> {
+        if let Some(controller) = &controller {
+            Box::new(SharedPort {
+                controller: controller.clone(),
+                advances_clock,
+            })
+        } else {
+            Box::new(Fixed::new(delay))
+        }
+    };
     let size = sim.model.get("midi_arena_bytes") as usize + 32768;
     let midi_memory = Rc::new(RefCell::new(Memory {
         control: Control::default(),
         backend: Backend::Axi(Box::new(
-            Axi::new(size / 4, 0x30000000, 8, Box::new(Fixed::new(delay)), 119)
-                .with_prefix("midi_"),
+            Axi::new(size / 4, 0x30000000, 8, port(false), 119).with_prefix("midi_"),
         )),
         words: size / 4,
         base: 0x30000000,
@@ -444,6 +530,8 @@ fn run_case(
     sim.agent(midi_memory.clone());
     let output = Rc::new(RefCell::new(Output::default()));
     sim.agent(output.clone());
+    let activity = Rc::new(RefCell::new(LaneActivity::default()));
+    sim.agent(activity.clone());
     let mut driver = Pipeline::new(&mut sim, cap, geometry, Mode::Fixed, 1021)?;
     if model_parameters
         .get("DDR_PROGRAM")
@@ -457,7 +545,7 @@ fn run_case(
         );
     }
     if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
-        memory.timing = Box::new(Fixed::new(delay));
+        memory.timing = port(true);
     }
     let mut reference = Reference::prepare_profile(audio, midi, loops, frames, state, tracks);
     if musical {
@@ -466,8 +554,11 @@ fn run_case(
     let views: Vec<_> = (0..if audio { loops * 2 } else { 0 })
         .map(|i| i as u64)
         .collect();
-    let image = crate::target::RtlTarget::new(cap, 256, &views)
-        .build_with_midi_merge_output(&reference.logical, merge_output)?;
+    let image = crate::target::RtlTarget::new(cap, 256, &views).build_with_midi_options(
+        &reference.logical,
+        options.merge_output,
+        options.interleave,
+    )?;
     driver.audio.load_compiled(&mut sim, &image);
     let event_address = (size - 32768 + 271) & !15;
     sim.model.set_all(&[
@@ -617,12 +708,17 @@ fn run_case(
             ("run_outputs", driver.audio.outputs),
             ("job_enable", 1),
         ]);
+        *activity.borrow_mut() = LaneActivity {
+            active: true,
+            ..Default::default()
+        };
         driver.audio.start(&mut sim);
         let start = sim.cycles - 1;
         sim.until(20_000_000, "64-loop MIDI data-job completion", |m| {
             m.get("done") != 0
         });
         let cycles = sim.cycles - start;
+        activity.borrow_mut().active = false;
         assert_eq!(sim.model.get("error_code"), 0);
         assert_eq!(sim.model.get("midi_error_code"), 0);
         assert_eq!(
@@ -672,6 +768,7 @@ fn run_case(
         if !midi {
             assert!(reference.emitted.is_empty());
         }
+        let lane = activity.borrow();
         measurements.push(json!({
             "kind":label,
             "position":reference.position(), "cycles":cycles, "us_at_100mhz":cycles as f64/100.0,
@@ -680,6 +777,9 @@ fn run_case(
             "audio_axi_reads_writes_native_reads_writes":audio_traffic,
             "audio_metadata_table_reference_stack_hits_misses_fills_writebacks":cache_delta,
             "midi_axi_reads_writes_native_reads_writes":midi_traffic,
+            "job_activity":{"sample_engine_busy_cycles":lane.audio_busy,"midi_lane_busy_cycles":lane.midi_busy,
+                "overlap_cycles":lane.overlap,"sp_job_backpressure_cycles":lane.sp_stalled,
+                "audio_or_mixed_queue_peak":lane.audio_peak,"midi_queue_peak":lane.midi_peak},
         }));
         eprintln!("RTL audio={audio} midi={midi}, delay={delay}, quantum {tick}: {cycles} clocks");
     }
@@ -687,15 +787,17 @@ fn run_case(
         "scenario":if audio && midi {"stereo_and_midi"} else if audio {"audio_only"} else {"midi_only"},
         "loops":loops, "sample_rate":SAMPLE_RATE, "quantum_frames":QUANTUM, "chunk_frames":QUANTUM,
         "sequence_frames":frames, "midi_events_per_loop":(!tracks).then(|| if midi {records(0,frames).len()} else {0}),
-        "ddr_added_delay_clocks":delay,
+        "ddr_added_delay_clocks":options.shared_ddr.is_none().then_some(delay),
         "rtl_parameters":model_parameters,
         "simulation_optimization":3, "waveform_instrumentation":false,
-        "memory":format!("two independent 64-bit AXI ports, fixed {delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects"),
-        "scope":"same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "memory":if options.shared_ddr.is_some() {"two 64-bit AXI ports sharing one DRAMsim3 DDR3 controller".into()} else {format!("two independent 64-bit AXI ports, fixed {delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects")},
+        "shared_ddr":controller.map(|c| c.borrow_mut().report(true)),
+        "scope":"full compiled SP and job execution from acceptance through done, including input validation and cleanup; preparation and readback excluded",
         "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
         "compiled_instructions":image.instructions.len(), "maximum_jobs":image.jobs_per_quantum,
         "validation":if musical {"every SP job, MIDI message, sync frame and loop position/length matches Rust; note/pedal meaning checked by independent receiver fixtures"} else if tracks {"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; playback MIDI independently checked against fixture records"} else {"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked"},
-        "musical_fixture":musical,"tracks_fixture":tracks,"merge_output":merge_output,"midi_state_hardware":true, "midi_state_tracking":state&&midi, "measurements":measurements,
+        "musical_fixture":musical,"tracks_fixture":tracks,"merge_output":options.merge_output,"interleave_jobs":options.interleave,
+        "midi_state_hardware":true, "midi_state_tracking":state&&midi, "measurements":measurements,
     }))
 }
 
