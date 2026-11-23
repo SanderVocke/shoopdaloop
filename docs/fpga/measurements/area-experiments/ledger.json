@@ -1299,11 +1299,12 @@
         "Focused both-width high-bit/malformed-queue boundary test passed35.76sec",
         "All187boundary rows/width,207deep rows/width,and1282public-store rows exactnoncycleC4control;finalDDRandtrafficexact",
         "Deep77828growthwrites setup+1712176clocks: AXI32 1817747to3529923,AXI64 1810451to3522627;207postsetuprequests+46clocks;publicstore1224008to1238082(+14074)",
-        "All33mixed/on/delay7 callback rows match C4 including cycles,metadata/cache counters,traffic andwork; finalmemoryexact. Cold92745,steady median53258/max53947. Deepgrowthsetup reported separately."
+        "All33mixed/on/delay7 callback rows match C4 including cycles,metadata/cache counters,traffic andwork; finalmemoryexact. Cold92745,steady median53258/max53947. Deepgrowthsetup reported separately.",
+        "Pinned optimization:35857LUT28769FF3094carry458controlsets;vsC4 -71LUT/+36FF/-111carry/+34netF7F8/+8control;BRAM78/DSP4 unchanged. OptWNS+0.412ns/WHS+0.002ns is notroutedtiming qualification."
       ],
       "pending": [
-        "Full11affected regressions",
-        "Pinned optimization screen, route/repeat if viable"
+        "Complete11affected regressions (deferred1,media1,metadata6passed;validity/ownershiprunning)",
+        "Route100MHz forpacking/timing;repeat if selected"
       ],
       "contract": "stage4-iterative-capacity-contract.md",
       "unit_performance": "s4-iterative-capacity-unit-performance.json",
@@ -1314,7 +1315,20 @@
         "s4-iterative-capacity-store-operations-unit-summary.json"
       ],
       "arithmetic_preflight": "s4-iterative-capacity-arithmetic-summary.json",
-      "callback_performance": "s4-iterative-capacity-callback-performance.json"
+      "callback_performance": "s4-iterative-capacity-callback-performance.json",
+      "optimized_summary": "s4-iterative-capacity-opt-summary.json",
+      "optimized_deltas_vs_c4": {
+        "lut": -71,
+        "logic_lut": -71,
+        "memory_lut": 0,
+        "ff": 36,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -111,
+        "muxf7": 43,
+        "muxf8": -9,
+        "control_sets": 8
+      }
     }
   ],
   "provisioning": {
