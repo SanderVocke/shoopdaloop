@@ -41,8 +41,9 @@ The FIFO count includes the prefetched output head.
 
 Opcode `0x0c` is `ProcessLoop`: arg0 is the loop slot and arg1/arg2 are its
 generation halves; the remaining bits optionally encode the inline sync source.
-`run_instruction_count` counts the entire program. `run_sync_count` counts the
-`ProcessLoop` instructions, which can be interleaved with work instructions.
+`run_instruction_count` counts every program row. `run_sync_count` counts
+`ProcessLoop` and `ProcessCompositeChild` visits. Work instructions can run
+between loop visits.
 The compiler supplies canonical source-before-dependent order. Per-loop frame
 stamps reject duplicate visits, unprocessed sources and stale render state.
 Generation and capacity checks precede RAM addressing. Self-sync is handled
@@ -133,6 +134,47 @@ Run `cargo test --locked -p rt_fpga_testbench --features sim --test sync` for
 1,152 sync quanta compared to Rust (including full-width sequences admitted out
 of order), 120 combined SP/JP quanta compared sample for sample, wide counter and
 overflow cases, and malformed-prefix/generation/bounds/fault checks.
+
+### Bounded composite spans
+
+A timing-only loop uses the ordinary position and length words. Word 0 bits
+60–63 hold the same-quantum snapshot, snapshot restart, explicit program kind
+and wrap marker, in that order. Word 4 holds the previous rendered position or
+all ones when the previous render was stopped. Word 6 holds the unit in frames.
+Word 1 bits 42–45 hold repeat wait, authored capture ownership, composite-child
+timing and the composite timing-slot marker.
+
+`ProcessCompositeChild` (opcode `0x16`) uses the usual child slot and generation.
+Bits [71:56] name its sync source, with `0xffff` for no source. Bits [87:72]
+give the number of following data rows. Each parent starts with a header row
+containing its slot [15:0], generation [47:16], span count with low bits
+[53:48] and high bits [79:70], and whole-program audio writer count [69:54]
+when authored recording is present. The span rows follow that header within
+the bounds of the instruction's row count. Each 96-bit span row contains the
+inclusive start frame [31:0], exclusive end frame [63:32], and mode [65:64]
+(1 Play, 2 Stop, 3 Record). The positions are relative to the parent's pass.
+Schedule rows count toward the program length. The child visit counts once toward `run_sync_count`. Normal instruction
+fetch skips the data rows.
+
+The compiler puts parents in priority order and visits each parent before its
+children. The processor reads the preceding and current parent positions to
+find due actions. It evaluates the first eligible parent before saving child
+render state. Direct plans remain part of the same absolute and pulse passes.
+Seek uses the shared adder for a bounded remainder calculation. Ordinary
+playback and zero-offset starts bypass division.
+
+The media wrapper provides conservative capture credits from available
+sample blocks, table pages and retired-root slots. The compiler counts all
+audio capture lanes in a recording program. The state processor samples the
+credits at the start of the quantum and admits authored Record when the
+compiled count fits. This assumes prepared, distinct writable views and
+exclusive job-processor writes during the quantum. A refused start keeps the
+old take. An authored writer that runs out of space closes its accepted
+prefix. The job processor continues to consume the usual capture and
+playback jobs.
+
+See the [RTL reference](../../docs/fpga/rtl-reference/manual.md#composite-audio-loops)
+for the supported behaviour and its role in live loading.
 
 ## Clock and control protocol
 

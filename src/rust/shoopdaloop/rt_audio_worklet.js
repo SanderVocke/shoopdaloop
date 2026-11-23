@@ -100,6 +100,13 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
         } catch (error) { this.fail('load', 0, String(error)); }
         break;
       }
+      case 'cancel-image': {
+        try {
+          const revision = BigInt(data.revision);
+          if (this.wasm.shoop_rt_worklet_cancel_image?.(revision) !== 0) throw new Error('reference image cancellation refused');
+        } catch (error) { this.fail('load', 0, String(error)); }
+        break;
+      }
       case 'midi':
         this.inbound[MIDI_IN].push(bytesOf(data.bytes));
         break;

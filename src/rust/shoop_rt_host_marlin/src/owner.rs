@@ -1,6 +1,6 @@
 use super::bridge::{Block, Shared};
 use anyhow::{ensure, Result};
-use rt_fpga_compiler::{Identity, ProgramLimits};
+use rt_fpga_compiler::{loading::CompositeCut, Identity, ProgramLimits};
 use rt_fpga_reference::{
     fixed::Fixed,
     transitions::{LoopId, Mode},
@@ -8,18 +8,20 @@ use rt_fpga_reference::{
 use rt_fpga_rtl::{
     bits::Bits,
     host::control::{
-        apply_plan, clear_plan, descriptor, gain_value, loop_plan, loop_state, protocol_mode,
-        reference_mode,
+        apply_iteration, apply_plan, clear_plan, composite_telemetry, descriptor, gain_value,
+        loop_plan, loop_state, protocol_mode, reference_mode, set_repeat_sync,
     },
     host::{Upload, UploadStep},
     pipeline::{design, Geometry},
     sim::Sim,
     target::{ProgramImage, Space},
 };
-use shoop_rt_host_reference::{program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS};
+use shoop_rt_host_reference::{
+    fpga::UploadRequest, program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS,
+};
 use shoop_rt_protocol::{
     codec,
-    immediate::{Code, Command, CommandRecord, Header, TransitionMode, COMMANDS},
+    immediate::{Code, Command, CommandRecord, Header, SwitchProgram, TransitionMode, COMMANDS},
     snapshot::{self, Record},
     DspMeasurement, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
 };
@@ -36,6 +38,7 @@ struct StagedUpload {
     upload: Upload,
     done: bool,
     announced: bool,
+    cancelled: bool,
 }
 impl StagedUpload {
     fn new(upload: Upload) -> Self {
@@ -43,6 +46,7 @@ impl StagedUpload {
             upload,
             done: false,
             announced: false,
+            cancelled: false,
         }
     }
 }
@@ -56,9 +60,11 @@ struct Row {
     last_pulse: Option<u64>,
 }
 struct Pending {
+    program_lane: bool,
     header: Header,
     records: Vec<CommandRecord>,
     frame: u64,
+    future: bool,
 }
 struct Owner<'a> {
     sim: Sim<'a>,
@@ -183,7 +189,7 @@ impl Owner<'_> {
             self.upload = Some(upload);
             return Ok(false);
         }
-        if !upload.done {
+        if !upload.done && !upload.cancelled {
             for _ in 0..32 {
                 match upload.upload.next_step() {
                     Some(UploadStep::Configure(w)) => {
@@ -205,7 +211,7 @@ impl Owner<'_> {
                 }
             }
         }
-        if upload.done {
+        if upload.done || upload.cancelled {
             if ready
                 .push((upload.upload.image.layout.revision, true))
                 .is_ok()
@@ -267,10 +273,18 @@ impl Owner<'_> {
         Ok(())
     }
     fn loop_words(&mut self, id: Identity) -> Result<[u64; 16]> {
-        let mut words = [0; 16];
+        self.read_loop_words(id, 0)
+    }
+    fn read_loop_words<const N: usize>(&mut self, id: Identity, offset: u32) -> Result<[u64; N]> {
+        let mut words = [0; N];
         for (i, w) in words.iter_mut().enumerate() {
             *w = self
-                .access("cfg", 2, u64::from(id.slot) * 16 + i as u64, None)?
+                .access(
+                    "cfg",
+                    2,
+                    u64::from(id.slot) * 16 + u64::from(offset) + i as u64,
+                    None,
+                )?
                 .get(0, 64);
         }
         Ok(words)
@@ -289,6 +303,7 @@ impl Owner<'_> {
             Command::Transition(id, _)
             | Command::ClearPlannedTransitions(id, _)
             | Command::LoopGain(id, _) => id,
+            Command::LoopIteration(id, _) | Command::LoopRepeatSync(id, _) => id.0.index,
             _ => return Ok(Code::Unsupported),
         };
         let Some(index) = self.rows.iter().position(|r| r.id.slot == target) else {
@@ -315,24 +330,41 @@ impl Owner<'_> {
             self.store_loop(physical, &words)?;
             return Ok(Code::Applied);
         }
-        let Command::Transition(_, plan) = command else {
-            unreachable!()
-        };
         let state = loop_state(physical, &words, self.rows[index].last_pulse);
-        let image = self.current.as_ref().unwrap();
-        let source = image
-            .layout
-            .loops
-            .iter()
-            .find(|l| l.physical == physical)
-            .and_then(|l| l.sync_source)
-            .map(|logical| image.layout.loop_id(logical))
-            .transpose()?
-            .map(|id| LoopId {
-                slot: id.slot,
-                generation: id.generation,
-            });
-        match apply_plan(&mut words, state, source, self.frame, plan) {
+        let control = match command {
+            Command::LoopIteration(id, request)
+                if id.0.generation == self.rows[index].id.generation =>
+            {
+                apply_iteration(&mut words, state, self.frame, request)
+            }
+            Command::LoopRepeatSync(id, enabled)
+                if id.0.generation == self.rows[index].id.generation =>
+            {
+                set_repeat_sync(&mut words, enabled);
+                Ok(Code::Applied)
+            }
+            Command::LoopIteration(..) | Command::LoopRepeatSync(..) => {
+                Err(Code::TargetUnavailable)
+            }
+            Command::Transition(_, plan) => {
+                let image = self.current.as_ref().unwrap();
+                let source = image
+                    .layout
+                    .loops
+                    .iter()
+                    .find(|l| l.physical == physical)
+                    .and_then(|l| l.sync_source)
+                    .map(|logical| image.layout.loop_id(logical))
+                    .transpose()?
+                    .map(|id| LoopId {
+                        slot: id.slot,
+                        generation: id.generation,
+                    });
+                apply_plan(&mut words, state, source, self.frame, plan)
+            }
+            _ => unreachable!(),
+        };
+        match control {
             Ok(code) => {
                 self.store_loop(physical, &words)?;
                 Ok(code)
@@ -341,39 +373,75 @@ impl Owner<'_> {
         }
     }
     fn command_turn(&mut self, execution: &mut rt::Execution) -> Result<bool> {
-        execution.commands.begin_callback();
-        if self.pending.is_some() {
-            if self.sim.model.get("switch_response_valid") == 0 {
+        let mut progress = self.command_lane(&mut execution.commands, false)?;
+        if let Some(switches) = &mut execution.switches {
+            progress |= self.command_lane(switches, true)?;
+        }
+        Ok(progress)
+    }
+
+    fn command_lane(
+        &mut self,
+        commands: &mut rt::CommandConsumer,
+        program_lane: bool,
+    ) -> Result<bool> {
+        commands.begin_callback();
+        if let Some(pending) = self
+            .pending
+            .as_ref()
+            .filter(|p| !p.future || p.program_lane == program_lane)
+        {
+            if pending.program_lane != program_lane {
+                return Ok(false);
+            }
+            let still_armed = pending.future && self.frame == pending.frame;
+            let cancelled =
+                still_armed && self.upload.as_ref().is_some_and(|upload| upload.cancelled);
+            if (still_armed && !cancelled)
+                || (!pending.future && self.sim.model.get("switch_response_valid") == 0)
+            {
                 return Ok(false);
             }
             let pending = self.pending.take().unwrap();
-            ensure!(
-                self.sim.model.get("switch_response_error") == 0,
-                "RTL ownership fence failed"
-            );
-            let group = execution
-                .commands
-                .pop()
-                .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
-            let mut i = 0;
-            group.respond(
-                pending.header.complete(pending.frame, Code::Applied),
-                |_| {
-                    let r = pending.records[i];
-                    i += 1;
-                    r
-                },
-            );
-            self.sim.model.set("switch_response_ready", 1);
-            self.tick()?;
-            self.sim.model.set("switch_response_ready", 0);
-            return Ok(true);
+            if cancelled {
+                self.sim.model.set("switch_valid", 0);
+            }
+            if !pending.future || self.sim.model.get("active_revision") != pending.header.graph() {
+                ensure!(
+                    self.sim.model.get("switch_response_error") == 0,
+                    "RTL ownership fence failed"
+                );
+                let group = commands
+                    .pop()
+                    .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
+                let mut i = 0;
+                group.respond(
+                    pending.header.complete(pending.frame, Code::Applied),
+                    |_| {
+                        let r = pending.records[i];
+                        i += 1;
+                        r
+                    },
+                );
+                if !pending.future {
+                    self.acknowledge_switch()?;
+                }
+                return Ok(true);
+            }
         }
-        let Some(group) = execution.commands.pop() else {
+        let Some(group) = commands.pop() else {
             return Ok(false);
         };
         let header = group.header;
         let records = group.commands().copied().collect::<Vec<_>>();
+        if self.retired.is_some()
+            && records
+                .iter()
+                .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
+        {
+            group.leave_unread();
+            return Ok(false);
+        }
         let code = if (header.graph(), header.topology())
             != (
                 self.sim.model.get("active_revision"),
@@ -390,39 +458,63 @@ impl Owner<'_> {
             Code::Applied
         };
         if code != Code::Applied {
+            for record in &records {
+                if let Command::SwitchProgram(next) = record.command() {
+                    self.retire_refused_upload(next);
+                }
+            }
             group.respond(header.complete(self.frame, code), |r| r.complete(code));
             return Ok(true);
         }
+        if let [record] = records.as_slice() {
+            if let Command::SwitchProgram(descriptor) = record.command() {
+                if self.waits_for_composite_cut(descriptor)? {
+                    group.leave_unread();
+                    return Ok(false);
+                }
+            }
+        }
         let mut complete = Vec::with_capacity(COMMANDS);
         let mut switching = false;
+        let mut future = false;
         for record in &records {
             let code = if let Command::SwitchProgram(d) = record.command() {
-                if self.retired.is_some()
-                    || !self
-                        .upload
-                        .as_ref()
-                        .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
+                let cut = self
+                    .upload
+                    .as_ref()
+                    .filter(|_| records.len() == 1)
+                    .and_then(|upload| upload.upload.image.layout.future_switch());
+                if !self
+                    .upload
+                    .as_ref()
+                    .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
                 {
                     Code::CannotApply
+                } else if self.upload.as_ref().unwrap().cancelled {
+                    Code::Cancelled
+                } else if cut.is_none() && !self.prepare_composite_cuts()? {
+                    Code::CannotApply
                 } else {
-                    let changed = self
-                        .upload
-                        .as_ref()
-                        .unwrap()
-                        .upload
-                        .image
-                        .layout
-                        .changed_sources()
-                        .to_vec();
-                    for loop_id in changed {
-                        let code = self.execute(Command::ClearPlannedTransitions(
-                            loop_id.slot,
-                            shoop_rt_protocol::immediate::ClearPlanned::Both,
-                        ))?;
-                        ensure!(
-                            code == Code::Applied,
-                            "RTL could not clear the continuing loop plan"
-                        );
+                    if cut.is_none() {
+                        let changed = self
+                            .upload
+                            .as_ref()
+                            .unwrap()
+                            .upload
+                            .image
+                            .layout
+                            .changed_sources()
+                            .to_vec();
+                        for loop_id in changed {
+                            let code = self.execute(Command::ClearPlannedTransitions(
+                                loop_id.slot,
+                                shoop_rt_protocol::immediate::ClearPlanned::Both,
+                            ))?;
+                            ensure!(
+                                code == Code::Applied,
+                                "RTL could not clear the continuing loop plan"
+                            );
+                        }
                     }
                     self.sim.model.set_all(&[
                         ("switch_valid", 1),
@@ -433,20 +525,34 @@ impl Owner<'_> {
                         ("switch_sync_count", u64::from(d.sync_count)),
                         ("switch_states", u64::from(d.states)),
                         ("switch_buffers", u64::from(d.buffers)),
+                        (
+                            "switch_future",
+                            cut.map_or(0, |cut| {
+                                u64::from(cut.before) << 12 | u64::from(cut.target.slot)
+                            }),
+                        ),
                     ]);
                     switching = true;
+                    future = cut.is_some();
                     Code::Applied
                 }
             } else {
                 self.execute(record.command())?
             };
+            if code != Code::Applied {
+                if let Command::SwitchProgram(next) = record.command() {
+                    self.retire_refused_upload(next);
+                }
+            }
             complete.push(record.complete(code));
         }
         if switching {
             self.pending = Some(Pending {
+                program_lane,
                 header,
                 records: complete,
                 frame: self.frame,
+                future,
             });
             group.leave_unread();
         } else {
@@ -459,10 +565,106 @@ impl Owner<'_> {
         }
         Ok(true)
     }
+
+    fn acknowledge_switch(&mut self) -> Result<()> {
+        self.sim.model.set("switch_response_ready", 1);
+        self.tick()?;
+        self.sim.model.set("switch_response_ready", 0);
+        Ok(())
+    }
+
+    fn retire_refused_upload(&mut self, requested: SwitchProgram) {
+        if self
+            .upload
+            .as_ref()
+            .is_some_and(|upload| upload.announced && descriptor(&upload.upload.image) == requested)
+        {
+            self.retired = self.upload.take().map(|upload| upload.upload.image);
+        }
+    }
+
+    fn waits_for_composite_cut(&mut self, switch: SwitchProgram) -> Result<bool> {
+        let Some(upload) = self.upload.as_ref() else {
+            return Ok(false);
+        };
+        if self.retired.is_some()
+            || upload.cancelled
+            || !upload.announced
+            || descriptor(&upload.upload.image) != switch
+            || upload.upload.image.layout.future_switch().is_some()
+        {
+            return Ok(false);
+        }
+        if let Some(slot) = upload.upload.image.layout.retiring_composite() {
+            let mut words = self.loop_words(slot)?;
+            let code = rt_fpga_rtl::host::control::prepare_composite_retirement(
+                slot, &mut words, self.frame,
+            );
+            if code == Code::Scheduled {
+                self.store_loop(slot, &words)?;
+            }
+            return Ok(code == Code::Scheduled);
+        }
+        let upload = self.upload.take().unwrap();
+        let result = (|| {
+            let [cut] = upload.upload.image.layout.composite_cuts() else {
+                return Ok(false);
+            };
+            if !cut.waits_for_control() {
+                return Ok(false);
+            }
+            let words = self.loop_words(cut.old_slot)?;
+            Ok(self.composite_cut_status(cut, &words)? == Code::Scheduled)
+        })();
+        self.upload = Some(upload);
+        result
+    }
+
+    fn composite_cut_status(&mut self, cut: &CompositeCut, words: &[u64; 16]) -> Result<Code> {
+        rt_fpga_rtl::host::control::composite_cut_status(cut, words, |id| {
+            let words = self.read_loop_words::<4>(id, 0)?;
+            rt_fpga_rtl::host::control::restart_clock_state(id, self.frame, words, |offset| {
+                self.read_loop_words::<2>(id, offset)
+            })
+        })
+    }
+
+    fn prepare_composite_cuts(&mut self) -> Result<bool> {
+        let upload = self.upload.take().unwrap();
+        let result = (|| {
+            for cut in upload.upload.image.layout.composite_cuts() {
+                let old = self.loop_words(cut.old_slot)?;
+                if self.composite_cut_status(cut, &old)? != Code::Applied {
+                    return Ok(false);
+                }
+                if let Some(next) = cut.restart_slot.filter(|_| (old[0] >> 33) & 3 != 0) {
+                    let mut words = self.loop_words(next)?;
+                    if rt_fpga_rtl::host::control::prepare_composite_restart(
+                        next,
+                        &old,
+                        &mut words,
+                        self.quantum,
+                    ) != Code::Applied
+                    {
+                        return Ok(false);
+                    }
+                    self.store_loop(next, &words)?;
+                }
+            }
+            Ok(true)
+        })();
+        self.upload = Some(upload);
+        result
+    }
     fn publish(&mut self, execution: &mut rt::Execution, processed: bool) -> Result<()> {
         let mut bytes = std::mem::take(&mut self.snapshot);
         let mut position = snapshot::HEADER;
         let mut records = 0;
+        let frame = self.frame.saturating_sub(if processed {
+            u64::from(self.quantum)
+        } else {
+            0
+        });
         for index in 0..self.rows.len() {
             let row = self.rows[index].clone();
             let words = self.loop_words(row.physical)?;
@@ -540,6 +742,25 @@ impl Owner<'_> {
                     .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
                 records += 1;
             }
+            let staged = self
+                .upload
+                .as_ref()
+                .filter(|staged| !staged.cancelled)
+                .map(|staged| (&staged.upload.image.layout, staged.announced));
+            let playhead = if processed { words[8] } else { state.position };
+            if let Some(composite) = composite_telemetry(
+                row.id,
+                frame,
+                playhead,
+                &words,
+                &self.current.as_ref().unwrap().layout,
+                staged,
+            ) {
+                position +=
+                    codec::encode_snapshot(&Record::Telemetry(composite), &mut bytes[position..])
+                        .map_err(|e| anyhow::anyhow!("snapshot encode {e:?}"))?;
+                records += 1;
+            }
             if processed {
                 let mut peak = 0f32;
                 if let Some(buffer) = meter {
@@ -560,11 +781,7 @@ impl Owner<'_> {
         }
         let revision = self.sim.model.get("active_revision");
         snapshot::Header {
-            frame: self.frame.saturating_sub(if processed {
-                u64::from(self.quantum)
-            } else {
-                0
-            }),
+            frame,
             graph: revision,
             topology: revision,
             records,
@@ -602,12 +819,25 @@ impl Owner<'_> {
         ]);
         let mut accepted_at = None;
         for _ in 0..2_000_000 {
-            if self.pending.is_some() && self.sim.model.get("switch_response_valid") != 0 {
+            if let Some(pending) = self
+                .pending
+                .as_ref()
+                .filter(|_| self.sim.model.get("switch_response_valid") != 0)
+            {
                 self.sim.model.set("run_valid", 0);
-                self.command_turn(execution)?;
-                for _ in 0..128 {
-                    if !self.command_turn(execution)? {
-                        break;
+                if pending.future {
+                    ensure!(
+                        self.sim.model.get("switch_response_error") == 0,
+                        "RTL future switch admission failed"
+                    );
+                    self.sim.model.set("switch_valid", 0);
+                    self.acknowledge_switch()?;
+                } else {
+                    self.command_turn(execution)?;
+                    for _ in 0..128 {
+                        if !self.command_turn(execution)? {
+                            break;
+                        }
                     }
                 }
                 self.sim.model.set("run_valid", 1);
@@ -639,6 +869,7 @@ impl Owner<'_> {
         );
         self.tick()?;
         self.frame += u64::from(self.quantum);
+        self.select()?;
         ensure!(
             self.sim.model.get("sync_frame") == self.frame,
             "RTL logical frame mismatch"
@@ -681,7 +912,7 @@ pub(super) fn run(
     memory_mb: u32,
     shared: &Shared,
     mut execution: rt::Execution,
-    mut uploads: rtrb::Consumer<Upload>,
+    mut uploads: rtrb::Consumer<UploadRequest>,
     mut ready: rtrb::Producer<(u64, bool)>,
     mut retired: rtrb::Producer<ProgramImage>,
     mut requests: rtrb::Consumer<Block>,
@@ -772,11 +1003,23 @@ pub(super) fn run(
                 work = true;
             }
         }
-        if owner.upload.is_none() {
-            if let Ok(upload) = uploads.pop() {
-                owner.upload = Some(StagedUpload::new(upload));
-                work = true;
+        if let Ok(request) = uploads.pop() {
+            match request {
+                UploadRequest::Stage(upload) => {
+                    ensure!(owner.upload.is_none(), "one staged program");
+                    owner.upload = Some(StagedUpload::new(upload));
+                }
+                UploadRequest::Cancel(revision) => {
+                    if let Some(upload) = owner
+                        .upload
+                        .as_mut()
+                        .filter(|u| u.upload.image.layout.revision == revision)
+                    {
+                        upload.cancelled = true;
+                    }
+                }
             }
+            work = true;
         }
         work |= owner.upload_turn(&mut ready)?;
         work |= owner.command_turn(&mut execution)?;

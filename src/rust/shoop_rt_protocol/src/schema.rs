@@ -550,6 +550,8 @@ impl Capabilities {
     pub const EXTERNAL_PROCESSOR_EDITOR: Self = Self(1 << 17);
     pub const PROCESSOR_LOGS: Self = Self(1 << 18);
     pub const PROCESSOR_CHECKPOINTS: Self = Self(1 << 19);
+    pub const CANCEL_PREPARED_COMPOSITES: Self = Self(1 << 20);
+    pub const PREPARED_AUTOMATIC_MONITORING: Self = Self(1 << 21);
     pub const INPUT_BATCH: Self = Self(1 << 12);
     pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);

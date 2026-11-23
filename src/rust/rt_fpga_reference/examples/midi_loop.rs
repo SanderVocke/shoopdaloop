@@ -18,6 +18,7 @@ fn main() {
     };
     let logical = LogicalStateProgram {
         quantum: 32,
+        composites: vec![],
         chunk_frames: 32,
         sync_pass: vec![logical_id],
         work_pass: vec![],

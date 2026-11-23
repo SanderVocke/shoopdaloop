@@ -106,9 +106,12 @@ These are compilation features, not a claim that every UI action has an immediat
 runtime implementation. Loop gain, record/play/stop, sync scheduling, selection,
 names and supported structural changes work through the current endpoint. Other
 immediate controls, media reads/import/export, loop clearing and copying still
-need endpoint support. MIDI, processors, composites, dry/wet execution and
-automatic monitoring are compiler refusals. Unsupported operations use the normal
-error path. Track removal and creation can provide fresh empty loops.
+need endpoint support. The prepared graph transport accepts
+[bounded composite audio programs](../rt_fpga_compiler/README.md#composite-audio-programs),
+including authored audio capture and guarded image switches. The application
+composite editor and iteration controls remain separate. MIDI, processors,
+dry/wet execution and automatic monitoring are compiler refusals. Track removal
+and creation can provide fresh empty loops.
 
 The application service automatically commits a complete graph edit, including
 its loops and default connections. `RtBackend` collects that desired graph on the

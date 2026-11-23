@@ -4,6 +4,28 @@ use shoop_graph::{Graph, GraphView, Owner};
 mod plan;
 mod validate;
 
+pub(crate) fn sync_order(
+    loops: impl Iterator<Item = (Identity, Option<Identity>)> + Clone,
+    parents: &alloc::collections::BTreeMap<Identity, Vec<Identity>>,
+) -> Result<Vec<Identity>, CompileError> {
+    let count = loops.clone().count();
+    let mut order = Vec::with_capacity(count);
+    while order.len() < count {
+        let (next, _) = loops
+            .clone()
+            .filter(|(id, _)| !order.contains(id))
+            .find(|(id, source)| {
+                source.is_none_or(|source| source == *id || order.contains(&source))
+                    && parents
+                        .get(id)
+                        .is_none_or(|parents| parents.iter().all(|parent| order.contains(parent)))
+            })
+            .ok_or(CompileError::InvalidProgram)?;
+        order.push(next);
+    }
+    Ok(order)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct CompileContext {
     pub quantum: u32,
@@ -37,11 +59,29 @@ pub fn compile_with_chunk_frames(
     context: CompileContext,
     chunk_frames: u32,
 ) -> Result<LogicalStateProgram, CompileError> {
+    lower(graph, context, chunk_frames, false)
+}
+
+/// Compile prepared regular and explicit composite programs with their audio graph.
+pub fn compile_composites(
+    graph: &impl GraphView,
+    context: CompileContext,
+    chunk_frames: u32,
+) -> Result<LogicalStateProgram, CompileError> {
+    lower(graph, context, chunk_frames, true)
+}
+
+fn lower(
+    graph: &impl GraphView,
+    context: CompileContext,
+    chunk_frames: u32,
+    composites: bool,
+) -> Result<LogicalStateProgram, CompileError> {
     if !chunk_frames.is_power_of_two() || context.quantum % chunk_frames != 0 {
         return Err(CompileError::InvalidProgram);
     }
     let mut graph = Graph::capture(graph);
-    validate::graph(&graph, context)?;
+    validate::graph(&graph, context, composites)?;
     graph.strips.sort_by_key(|s| s.id);
     graph.loops.sort_by_key(|l| l.id);
     graph.buses.sort_by_key(|b| b.id);

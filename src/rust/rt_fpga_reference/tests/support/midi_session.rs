@@ -48,6 +48,7 @@ pub fn limits(loops: u16) -> SessionLimits {
 pub fn logical(q: u32, limits: SessionLimits) -> rt_fpga_compiler::LogicalStateProgram {
     use rt_fpga_compiler::{LogicalStateProgram, Operation as Op, Resources};
     LogicalStateProgram {
+        composites: Vec::new(),
         quantum: q,
         chunk_frames: 1,
         sync_pass: (0..limits.loops)

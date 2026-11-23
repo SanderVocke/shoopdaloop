@@ -10,8 +10,8 @@ use alloc::{sync::Arc, vec, vec::Vec};
 use anyhow::{ensure, Result};
 use core::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 use rt_fpga_compiler::{
-    compile_with_chunk_frames, loading::Allocator, CompileContext, CompileError, Feature,
-    ProgramLimits, Resource,
+    compile_composites, compile_with_chunk_frames, loading::Allocator, CompileContext,
+    CompileError, Feature, ProgramLimits, Resource,
 };
 use rt_fpga_reference::{
     fixed::Fixed,
@@ -126,6 +126,9 @@ struct Pending {
     descriptor: SwitchProgram,
     ready: Option<bool>,
     published: bool,
+    cancel_key: Option<u64>,
+    cancel_requested: bool,
+    notify: bool,
     usage: ProgramUsage,
 }
 struct ImageUpload {
@@ -289,6 +292,7 @@ pub trait ProgramLoader {
         logical: &rt_fpga_compiler::LogicalStateProgram,
         layout: rt_fpga_compiler::loading::Layout,
     ) -> Result<SwitchProgram>;
+    fn cancel_program(&mut self, revision: u64) -> Result<(), CarrierError>;
     fn program_ready(&mut self) -> Option<(u64, bool)>;
     fn reclaim_programs(&mut self);
 }
@@ -318,6 +322,11 @@ impl ProgramLoader for ProgramControl {
     fn program_ready(&mut self) -> Option<(u64, bool)> {
         self.ready().map(|r| (r.revision, r.result.is_ok()))
     }
+    fn cancel_program(&mut self, revision: u64) -> Result<(), CarrierError> {
+        self.cancel(revision)
+            .then_some(())
+            .ok_or(CarrierError::Full)
+    }
     fn reclaim_programs(&mut self) {
         while self.reclaim().is_some() {}
     }
@@ -328,15 +337,15 @@ pub fn prepare_control(
     latency: u32,
 ) -> Result<(rt::Endpoint, rt::Execution)> {
     let pool = program_limits();
-    let (control, execution) = rt::channel(
+    let (control, execution) = rt::prepared_channel(
         256,
         4,
         shoop_rt_protocol::snapshot::capacity(0, pool.loop_slots as usize, 1).unwrap(),
     )?;
     let limits = Limits {
-        composite_entries: 0,
-        composite_segments: 0,
-        timing_relations: 0,
+        composite_entries: pool.instructions,
+        composite_segments: pool.instructions,
+        timing_relations: pool.instructions,
         content_chunk_bytes: 0,
         strips: 0,
         loops: pool.loop_slots,
@@ -364,7 +373,12 @@ pub fn prepare_control(
             driver,
         },
     )?
-    .with_capabilities(Capabilities::PREPARED_GRAPH.union(Capabilities::LIVE_PROGRAMS));
+    .with_capabilities(
+        Capabilities::PREPARED_GRAPH
+            .union(Capabilities::LIVE_PROGRAMS)
+            .union(Capabilities::CANCEL_PREPARED_COMPOSITES)
+            .union(Capabilities::PREPARED_AUTOMATIC_MONITORING),
+    );
     Ok((control, execution))
 }
 pub struct Prepared {
@@ -667,14 +681,25 @@ impl<L: ProgramLoader> Endpoint<L> {
                         }
                     }
                 }
-                Command::ActivateGraph if index + 1 == batch.commands().len() => {
+                Command::ActivateGraph | Command::ActivateCompositeGraph(_)
+                    if index + 1 == batch.commands().len() =>
+                {
+                    ensure!(command.valid(), "invalid graph activation");
                     if let Some(upload) = self.image_upload.take() {
                         ensure!(
                             upload.graph == revision && upload.bytes.len() == upload.expected,
                             "incomplete graph image"
                         );
                         let graph = shoop_graph::Graph::decode(&upload.bytes)?;
-                        let logical = compile_with_chunk_frames(
+                        if graph.loops.iter().any(|entry| {
+                            entry
+                                .composite
+                                .as_ref()
+                                .is_some_and(|plan| plan.sample_rate != self.status.sample_rate)
+                        }) {
+                            anyhow::bail!(GraphRefusal(Code::InvalidValue));
+                        }
+                        let logical = compile_composites(
                             &graph,
                             CompileContext {
                                 quantum: upload.quantum,
@@ -718,7 +743,13 @@ impl<L: ProgramLoader> Endpoint<L> {
         batch: Batch,
         logical: rt_fpga_compiler::LogicalStateProgram,
     ) -> Result<()> {
-        let layout = self.allocator.stage(&logical)?;
+        let cancel_key = match batch.commands().last() {
+            Some(Command::ActivateCompositeGraph(key)) => Some(*key),
+            _ => None,
+        };
+        let layout = self
+            .allocator
+            .stage_with_composite_retirement(&logical, cancel_key.is_none())?;
         let revision = layout.revision;
         let staged = self.programs.stage_program(&logical, layout);
         match staged {
@@ -728,6 +759,9 @@ impl<L: ProgramLoader> Endpoint<L> {
                     descriptor,
                     ready: None,
                     published: false,
+                    cancel_key,
+                    cancel_requested: false,
+                    notify: true,
                     usage: ProgramUsage {
                         instructions: u32::from(descriptor.instructions),
                         jobs: logical.resources.queue_capacity,
@@ -753,18 +787,21 @@ impl<L: ProgramLoader> Endpoint<L> {
             Response::new(header.complete(frame, code), &records).unwrap(),
         )
     }
-    fn translate(&mut self, message: EngineMessage) -> EngineMessage {
+    fn translate(&mut self, message: EngineMessage) -> Option<EngineMessage> {
         if let EngineMessage::ImmediateResponse(response) = &message {
-            if response
-                .records()
-                .iter()
-                .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
-                && self.pending.as_ref().is_some_and(|p| p.published)
-            {
+            if let Some(record) = self.pending.as_ref().filter(|p| p.published).and_then(|p| {
+                response
+                    .records()
+                    .iter()
+                    .find(|r| r.command() == Command::SwitchProgram(p.descriptor))
+            }) {
                 let pending = self.pending.take().unwrap();
-                let success = response.records().iter().any(|r| {
-                    matches!(r.command(), Command::SwitchProgram(_)) && r.code() == Code::Applied
-                });
+                let code = match record.code() {
+                    Code::Applied => Code::Applied,
+                    Code::Cancelled => Code::Cancelled,
+                    _ => Code::CannotApply,
+                };
+                let success = code == Code::Applied;
                 if success {
                     self.allocator
                         .complete(pending.descriptor.revision)
@@ -774,29 +811,51 @@ impl<L: ProgramLoader> Endpoint<L> {
                     self.allocator
                         .refused(pending.descriptor.revision)
                         .expect("refused pending image");
-                    let old = self.allocator.revision();
-                    self.control.set_configuration(old, old);
                 }
-                return Self::response(
-                    pending.batch,
-                    response.header.frame(),
-                    if success {
-                        Code::Applied
-                    } else {
-                        Code::CannotApply
-                    },
-                    success.then_some(pending.descriptor.revision),
-                );
+                return pending.notify.then(|| {
+                    Self::response(
+                        pending.batch,
+                        response.header.frame(),
+                        code,
+                        success.then_some(pending.descriptor.revision),
+                    )
+                });
             }
         }
-        message
+        Some(message)
+    }
+
+    fn cancel_graph(&mut self, batch: Batch) -> Result<Code, CarrierError> {
+        if !self.control.is_connected() {
+            return Err(CarrierError::Disconnected);
+        }
+        let revision = self.allocator.revision();
+        if (batch.graph, batch.topology) != (revision, revision) {
+            return Ok(Code::StaleConfiguration);
+        }
+        let [Command::CancelCompositeGraph(key)] = batch.commands() else {
+            return Ok(Code::InvalidValue);
+        };
+        if *key == 0 || batch.deadline.is_some() {
+            return Ok(Code::InvalidValue);
+        }
+        let Some(pending) = self.pending.as_mut().filter(|p| p.cancel_key == Some(*key)) else {
+            return Ok(Code::TargetUnavailable);
+        };
+        if !pending.cancel_requested {
+            self.programs.cancel_program(pending.descriptor.revision)?;
+            pending.cancel_requested = true;
+        }
+        Ok(Code::Applied)
     }
     fn flush(&mut self, out: &mut Outbox) -> bool {
         loop {
             let Some(message) = self.held.take().or_else(|| self.replies.pop()) else {
                 return true;
             };
-            let message = self.translate(message);
+            let Some(message) = self.translate(message) else {
+                continue;
+            };
             if out.available(message.lane()) == 0 {
                 self.held = Some(message);
                 return false;
@@ -815,6 +874,22 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
             return Err(CarrierError::Disconnected);
         }
         if let ClientMessage::Immediate(batch) = message {
+            if batch
+                .commands()
+                .iter()
+                .any(|c| matches!(c, Command::CancelCompositeGraph(_)))
+            {
+                if out.available(Lane::Reliable) == 0 {
+                    return Err(CarrierError::Full);
+                }
+                let code = self.cancel_graph(batch)?;
+                return out.push(Self::response(
+                    batch,
+                    self.status.frame.load(Ordering::Acquire),
+                    code,
+                    None,
+                ));
+            }
             if batch.commands().iter().any(|c| {
                 matches!(
                     c,
@@ -823,6 +898,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
                         | Command::BeginGraphImage { .. }
                         | Command::GraphImageData { .. }
                         | Command::ActivateGraph
+                        | Command::ActivateCompositeGraph(_)
                 )
             }) {
                 if out.available(Lane::Reliable) == 0 {
@@ -844,15 +920,21 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
                 return out.push(Self::response(batch, 0, Code::CannotApply, None));
             }
         }
-        if matches!(
+        let new_session = matches!(
             message,
             ClientMessage::Hello { .. } | ClientMessage::Goodbye
-        ) {
+        );
+        self.control.try_deliver(message, out)?;
+        if new_session {
             self.upload = None;
             self.image_upload = None;
+            if let Some(pending) = &mut self.pending {
+                pending.cancel_key = None;
+                pending.notify = false;
+            }
             self.usage = UsageTelemetry::default();
         }
-        self.control.try_deliver(message, out)
+        Ok(())
     }
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
         let _ = self.try_deliver(message, out);
@@ -878,13 +960,15 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
             {
                 let pending = self.pending.take().unwrap();
                 let frame = self.status.frame.load(Ordering::Acquire);
-                out.push(Self::response(
-                    pending.batch,
-                    frame,
-                    Code::CannotApply,
-                    None,
-                ))
-                .expect("available failure response slot");
+                if pending.notify {
+                    out.push(Self::response(
+                        pending.batch,
+                        frame,
+                        Code::CannotApply,
+                        None,
+                    ))
+                    .expect("available failure response slot");
+                }
             }
             self.failed = out
                 .push(EngineMessage::Disconnected(
@@ -915,30 +999,23 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
         {
             let pending = self.pending.take().unwrap();
             self.allocator.cancel(pending.descriptor.revision).unwrap();
-            self.held = Some(Self::response(pending.batch, 0, Code::CannotApply, None));
+            self.held = pending
+                .notify
+                .then(|| Self::response(pending.batch, 0, Code::CannotApply, None));
             if !self.flush(out) {
                 return;
             }
         }
         if let Some(pending) = &mut self.pending {
             if pending.ready == Some(true) && !pending.published {
-                let batch = Batch::new(
-                    self.allocator.revision(),
-                    self.allocator.revision(),
-                    &[Command::SwitchProgram(pending.descriptor)],
-                )
-                .unwrap();
+                let revision = self.allocator.revision();
                 if self
                     .control
-                    .try_deliver(ClientMessage::Immediate(batch), &mut self.replies)
+                    .submit_switch(Header::new(revision, revision, None), pending.descriptor)
                     .is_ok()
                 {
                     self.allocator.publish(pending.descriptor.revision).unwrap();
                     pending.published = true;
-                    self.control.set_configuration(
-                        pending.descriptor.revision,
-                        pending.descriptor.revision,
-                    );
                 }
             }
         }

@@ -253,7 +253,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return Ok(false);
         }
         match self.client.immediate(batch) {
-            Ok(()) => Ok(true),
+            Ok(()) => {
+                if let Some(graph) = &mut self.prepared_graph {
+                    graph.ui_immediate_in_flight += 1;
+                }
+                Ok(true)
+            }
             Err(shoop_rt_transport::client::ClientError::Carrier(
                 shoop_rt_transport::carrier::CarrierError::Full,
             )) => Ok(false),

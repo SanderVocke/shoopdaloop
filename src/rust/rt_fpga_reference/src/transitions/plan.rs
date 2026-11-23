@@ -61,12 +61,36 @@ pub struct TransitionPlanImage {
     pub components: Vec<Vec<LoopId>>,
 }
 
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct CompositeClock {
+    pub version: u64,
+    pub unit_frames: u32,
+    pub explicit: bool,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct ParentSpans {
+    pub parent: LoopId,
+    pub spans: Vec<rt_fpga_compiler::FrameSpan>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_span_at_wrap: Option<rt_fpga_compiler::PreviousSpan>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_spans: Vec<rt_fpga_compiler::FrameSpan>,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransitionPlan {
     pub(crate) image: TransitionPlanImage,
     pub(crate) specs: Vec<Option<LoopSpec>>,
     pub(crate) followers: Vec<LoopId>,
     pub(crate) follower_ranges: Vec<Range<usize>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) composite_clocks: Vec<Option<CompositeClock>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) composite_parents: Vec<Vec<ParentSpans>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) authored_recording: bool,
 }
 impl TransitionPlan {
     pub fn compile(
@@ -169,6 +193,9 @@ impl TransitionPlan {
             specs,
             followers,
             follower_ranges,
+            composite_clocks: Vec::new(),
+            composite_parents: Vec::new(),
+            authored_recording: false,
         })
     }
     pub fn image(&self) -> &TransitionPlanImage {

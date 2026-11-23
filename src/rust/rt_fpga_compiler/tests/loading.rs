@@ -1,3 +1,5 @@
+#[path = "support/composite.rs"]
+mod composite;
 #[path = "support/mono.rs"]
 mod mono;
 use rt_fpga_compiler::{compile, CompileContext};
@@ -218,4 +220,203 @@ fn staging_requires_explicit_state_ownership_without_inference() {
     assert!(allocator.pending().is_none());
     let valid = allocator.stage(&graph(&[0])).unwrap();
     assert_eq!(valid.loops[0].physical.generation, 1);
+}
+
+#[shoop_test]
+fn dropping_a_child_at_the_end_of_a_pass_uses_one_optional_instruction_row() {
+    use rt_fpga_compiler::shoop_graph::CompositeKind;
+
+    for kind in [CompositeKind::Regular, CompositeKind::Explicit] {
+        check_ending_row_budget(kind);
+    }
+}
+
+fn check_ending_row_budget(kind: rt_fpga_compiler::shoop_graph::CompositeKind) {
+    use rt_fpga_compiler::shoop_graph::CompositeKind;
+
+    let mut graph = composite::arbitration_graph();
+    graph.loops[1].composite.as_mut().unwrap().kind = kind;
+    let context = CompileContext {
+        quantum: 16,
+        limits: ProgramLimits {
+            loop_slots: 8,
+            ..limits()
+        },
+    };
+    let before = compile_composites(&graph, context, 16).unwrap();
+    let replacement = graph.loops[0].id;
+    let edited = graph.loops[1].composite.as_mut().unwrap();
+    edited.version = 2;
+    let dropped = edited.spans[0].target;
+    edited.spans.to_mut()[0].target = replacement;
+    let after = compile_composites(&graph, context, 16).unwrap();
+    let used = (1..64)
+        .find(|&instructions| {
+            after
+                .validate_logical(ProgramLimits {
+                    instructions,
+                    ..context.limits
+                })
+                .is_ok()
+        })
+        .unwrap();
+
+    for extra in [0, 1] {
+        let capacity = ProgramLimits {
+            instructions: used + extra,
+            ..context.limits
+        };
+        let mut allocator = Allocator::new(capacity);
+        let first = allocator.stage(&before).unwrap();
+        allocator.publish(first.revision).unwrap();
+        allocator.complete(first.revision).unwrap();
+        let next = allocator.stage(&after).unwrap();
+        let cut = &next.composite_cuts()[0];
+        assert_eq!(
+            cut.allow_restart,
+            extra == 1 && kind == CompositeKind::Regular
+        );
+        assert_eq!(
+            cut.finish_at_boundary,
+            extra == 1 && kind == CompositeKind::Explicit
+        );
+        assert_eq!(cut.reconcile_ending, extra == 1);
+        assert!(!cut.preserves_transport_at_finish(true));
+        let bound = next.relocate(&after).unwrap();
+        bound.validate(capacity).unwrap();
+        let child = next.loop_id(dropped).unwrap();
+        assert_eq!(
+            bound
+                .composite_parents(child)
+                .filter(|(_, child)| child.spans.is_empty())
+                .count(),
+            extra as usize
+        );
+    }
+}
+
+#[shoop_test]
+fn guarded_clock_change_counts_the_outgoing_spans_against_the_program_limit() {
+    let mut graph = composite::arbitration_graph();
+    let context = CompileContext {
+        quantum: 16,
+        limits: ProgramLimits {
+            loop_slots: 8,
+            ..limits()
+        },
+    };
+    let before = compile_composites(&graph, context, 16).unwrap();
+    let new_source = graph.loops[0].id;
+    graph.loops[1].sync_source = Some(new_source);
+    let changed = graph.loops[1].composite.as_mut().unwrap();
+    changed.version = 2;
+    let span = &mut changed.spans.to_mut()[0];
+    span.start = 1;
+    span.occurrence_start = 1;
+    let after = compile_composites(&graph, context, 16).unwrap();
+    let used = (1..64)
+        .find(|&instructions| {
+            after
+                .validate_logical(ProgramLimits {
+                    instructions,
+                    ..context.limits
+                })
+                .is_ok()
+        })
+        .unwrap();
+
+    for extra in [0, 1] {
+        let limits = ProgramLimits {
+            instructions: used + extra,
+            ..context.limits
+        };
+        let mut allocator = Allocator::new(limits);
+        let old = allocator.stage(&before).unwrap();
+        allocator.publish(old.revision).unwrap();
+        allocator.complete(old.revision).unwrap();
+        let image = allocator.stage(&after).unwrap();
+        if extra == 0 {
+            assert_eq!(image.future_switch(), None);
+            assert!(image.composite_cuts()[0].waits_for_boundary(16, 64, false, false));
+        } else {
+            let cut = image.future_switch().unwrap();
+            assert!(cut.at_restart());
+            assert_eq!(cut.previous_source(), Some(None));
+        }
+        let bound = image.relocate(&after).unwrap();
+        bound.validate(limits).unwrap();
+        assert_eq!(
+            bound
+                .composites
+                .iter()
+                .flat_map(|schedule| &schedule.children)
+                .map(|child| child.previous_spans.len())
+                .sum::<usize>(),
+            extra as usize,
+        );
+    }
+}
+
+#[shoop_test]
+fn replacing_a_future_nested_branch_checks_its_ancestors_for_transport() {
+    use composite::timing_loop;
+    use rt_fpga_compiler::shoop_graph::{CompositeKind, Graph};
+
+    let mut graph = Graph {
+        loops: vec![
+            timing_loop(1, 0, &[]),
+            timing_loop(2, 0, &[]),
+            timing_loop(3, 2, &[(2, 0, 2)]),
+            timing_loop(4, 2, &[(2, 0, 2)]),
+            timing_loop(5, 8, &[(1, 0, 8), (3, 6, 8)]),
+            timing_loop(6, 8, &[(5, 0, 8)]),
+            timing_loop(7, 8, &[(6, 0, 8)]),
+        ],
+        ..Default::default()
+    };
+    let context = CompileContext {
+        quantum: 16,
+        limits: ProgramLimits {
+            loop_slots: 8,
+            ..limits()
+        },
+    };
+    let before = compile_composites(&graph, context, 16).unwrap();
+    let mut allocator = Allocator::new(context.limits);
+    let first = allocator.stage(&before).unwrap();
+    allocator.publish(first.revision).unwrap();
+    allocator.complete(first.revision).unwrap();
+    let replacement = graph.loops[3].id;
+    let edited = graph.loops[4].composite.as_mut().unwrap();
+    edited.version += 1;
+    edited.spans.to_mut()[1].target = replacement;
+    let after = compile_composites(&graph, context, 16).unwrap();
+    let second = allocator.stage(&after).unwrap();
+    assert!(
+        second.future_switch().is_none(),
+        "replacing a child changes sync relations"
+    );
+    let [cut] = second.composite_cuts() else {
+        panic!("expected a cut for only the edited composite");
+    };
+    assert_eq!(cut.future_before, Some(80));
+    let parent = first.loop_id(graph.loops[5].id).unwrap();
+    let grandparent = first.loop_id(graph.loops[6].id).unwrap();
+    assert_eq!(cut.parent_guards, [parent, grandparent]);
+
+    let ready = |pending| {
+        cut.playback_ready(16, 128, false, |id| {
+            Ok::<_, ()>((pending != Some(id)).then_some(ClockState {
+                kind: Some(CompositeKind::Regular),
+                playing: true,
+                at_end: false,
+                repeat_sync: false,
+            }))
+        })
+        .unwrap()
+    };
+    assert!(cut.allows_playing(16, 128, ready(None), false));
+    for ancestor in [parent, grandparent] {
+        assert!(cut.waits_for_boundary(16, 128, ready(Some(ancestor)), false));
+    }
 }

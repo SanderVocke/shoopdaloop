@@ -3,7 +3,10 @@ use crate::{
     fixed::{Fixed, Ramp},
     jobs::BufferId,
     state::{Address, Instruction, Program, SyncInstruction, Value},
-    transitions::{LoopId, LoopKind, LoopSpec, PlanDescription, TransitionLimits, TransitionPlan},
+    transitions::{
+        CompositeClock, LoopId, LoopKind, LoopSpec, ParentSpans, PlanDescription, TransitionLimits,
+        TransitionPlan,
+    },
 };
 use alloc::vec::Vec;
 use rt_fpga_compiler::{
@@ -115,6 +118,19 @@ impl StateProgramTarget for RustTarget<'_> {
                 })
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
+        if logical.has_authored_recording() {
+            let mut writers = alloc::collections::BTreeSet::new();
+            for operation in &logical.work_pass {
+                if let Operation::Capture { view, .. } = *operation {
+                    let id = memory[view as usize]
+                        .word()
+                        .map_err(|_| CompileError::InvalidProgram)?;
+                    if !writers.insert(id) {
+                        return Err(CompileError::InvalidProgram);
+                    }
+                }
+            }
+        }
         if logical
             .work_pass
             .iter()
@@ -224,6 +240,10 @@ impl StateProgramTarget for RustTarget<'_> {
                     source: BufferId(source as usize),
                     destination: BufferId(destination as usize),
                 },
+                Operation::Monitor { ramp, recorder } => Instruction::ProcessInputMonitor {
+                    ramp: Address(ramp as usize),
+                    recorder: recorder.map(id),
+                },
                 Operation::Smoothing {
                     loop_id,
                     control,
@@ -257,7 +277,7 @@ impl StateProgramTarget for RustTarget<'_> {
             .map(|l| l.id.slot + 1)
             .max()
             .unwrap_or(1);
-        let plan = TransitionPlan::compile(
+        let mut plan = TransitionPlan::compile(
             PlanDescription {
                 quantum: logical.quantum,
                 loops: logical
@@ -279,6 +299,31 @@ impl StateProgramTarget for RustTarget<'_> {
             },
         )
         .map_err(|_| CompileError::InvalidProgram)?;
+        plan.authored_recording = logical.has_authored_recording();
+        if !logical.composites.is_empty() {
+            plan.composite_clocks.resize(slots as usize, None);
+            plan.composite_parents.resize_with(slots as usize, Vec::new);
+            plan.image.components = logical
+                .sync_pass
+                .iter()
+                .map(|&v| alloc::vec![id(v)])
+                .collect();
+            for schedule in &logical.composites {
+                plan.composite_clocks[schedule.id.slot as usize] = Some(CompositeClock {
+                    version: schedule.version,
+                    unit_frames: schedule.unit_frames,
+                    explicit: schedule.explicit,
+                });
+                for child in &schedule.children {
+                    plan.composite_parents[child.id.slot as usize].push(ParentSpans {
+                        parent: id(schedule.id),
+                        spans: child.spans.clone(),
+                        previous_span_at_wrap: child.previous_span_at_wrap,
+                        previous_spans: child.previous_spans.clone(),
+                    });
+                }
+            }
+        }
         let sync_instructions: Vec<_> = logical
             .sync_pass
             .iter()

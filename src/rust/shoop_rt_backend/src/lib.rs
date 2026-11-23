@@ -728,7 +728,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
-        if let Some(sequence) = self.prepared_graph.as_mut().and_then(|g| g.pending.take()) {
+        let sequence = match self.prepared_graph.as_mut().and_then(|g| g.pending.take()) {
+            Some(prepared_graph::PendingGraph::Layout(sequence)) => Some(sequence),
+            Some(prepared_graph::PendingGraph::Edit(pending)) if pending.sequence != 0 => {
+                Some(pending.sequence)
+            }
+            _ => None,
+        };
+        if let Some(sequence) = sequence {
             self.mutation_completions.push(BackendMutationCompletion {
                 sequence,
                 result: Err(reason.clone()),

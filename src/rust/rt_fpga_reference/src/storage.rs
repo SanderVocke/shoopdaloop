@@ -777,6 +777,43 @@ fn chunk_count(frames: usize, chunk_frames: usize) -> usize {
 }
 
 impl crate::jobs::Memory for MediaStore {
+    fn prepare_capture_writes(
+        &mut self,
+        writes: &mut dyn Iterator<Item = Result<crate::jobs::CaptureWrite, Error>>,
+        frames: usize,
+    ) -> Result<(), Error> {
+        let mut required = 0usize;
+        for write in writes {
+            let write = write?;
+            let view = self
+                .views
+                .get(write.view.0)
+                .and_then(Option::as_ref)
+                .ok_or(Error::InvalidView)?;
+            if view.range.is_some() {
+                return Err(Error::InvalidState);
+            }
+            let (prefix, blocks) = if write.reset {
+                (0, 0)
+            } else {
+                (view.frames, view.blocks.len())
+            };
+            let total = usize::try_from(prefix)
+                .ok()
+                .and_then(|prefix| prefix.checked_add(frames))
+                .ok_or(Error::MemoryFull)?;
+            required = required
+                .checked_add(chunk_count(total, self.block_frames()) - blocks)
+                .ok_or(Error::MemoryFull)?;
+            self.reserve_view_capacity(write.view, total)?;
+        }
+        let growth = required.saturating_sub(self.free_chunks.len());
+        let slots = growth
+            .checked_mul(self.block_chunks)
+            .and_then(|growth| self.slot_count().checked_add(growth))
+            .ok_or(Error::MemoryFull)?;
+        self.reserve_chunk_capacity(slots)
+    }
     fn prepare_unused_view(&mut self, view: ViewId) -> Result<bool, Error> {
         if self
             .views

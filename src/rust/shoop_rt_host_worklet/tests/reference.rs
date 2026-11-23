@@ -25,11 +25,15 @@ static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 const Q: usize = 16;
+enum ImageRequest {
+    Upload(Vec<u8>),
+    Cancel(u64),
+}
 #[derive(Default)]
 struct Wire {
     to_worklet: VecDeque<Vec<u8>>,
     to_main: VecDeque<Vec<u8>>,
-    images: VecDeque<Vec<u8>>,
+    images: VecDeque<ImageRequest>,
     ready: VecDeque<(u64, bool)>,
 }
 #[derive(Clone, Default)]
@@ -47,7 +51,17 @@ impl RecordPort for Port {
 }
 impl ImagePort for Port {
     fn upload(&mut self, bytes: &[u8]) -> Result<(), CarrierError> {
-        self.0.borrow_mut().images.push_back(bytes.to_vec());
+        self.0
+            .borrow_mut()
+            .images
+            .push_back(ImageRequest::Upload(bytes.to_vec()));
+        Ok(())
+    }
+    fn cancel_image(&mut self, revision: u64) -> Result<(), CarrierError> {
+        self.0
+            .borrow_mut()
+            .images
+            .push_back(ImageRequest::Cancel(revision));
         Ok(())
     }
     fn image_ready(&mut self) -> Option<(u64, bool)> {
@@ -108,8 +122,13 @@ impl Browser {
         }
     }
     fn step(&mut self) -> Vec<shoop_rt_protocol::immediate::Response> {
-        while let Some(bytes) = self.port.0.borrow_mut().images.pop_front() {
-            self.host.load_reference_image(&bytes).unwrap();
+        while let Some(request) = self.port.0.borrow_mut().images.pop_front() {
+            match request {
+                ImageRequest::Upload(bytes) => self.host.load_reference_image(&bytes).unwrap(),
+                ImageRequest::Cancel(revision) => {
+                    self.host.cancel_reference_image(revision).unwrap()
+                }
+            }
         }
         while let Some(bytes) = self.port.0.borrow_mut().to_worklet.pop_front() {
             assert_eq!(self.host.write(Inbound::Records, &bytes), bytes.len());
@@ -203,6 +222,91 @@ fn graph(rev: u64) -> Batch {
     )
     .unwrap()
 }
+
+#[shoop_test]
+fn a_separate_heap_can_cancel_an_uploaded_graph_and_reuse_its_region() {
+    let mut browser = Browser::new();
+    let [begin, row, _] = *graph(0).commands() else {
+        unreachable!()
+    };
+    let key = 0xa421_7bc5_e193;
+    let activate = Command::ActivateCompositeGraph(key);
+    browser
+        .client
+        .immediate(Batch::new(0, 0, &[begin, row, activate]).unwrap())
+        .unwrap();
+    let cancel = Command::CancelCompositeGraph(key);
+    browser
+        .client
+        .immediate(Batch::new(0, 0, &[cancel]).unwrap())
+        .unwrap();
+    let mut answers = Vec::new();
+    for _ in 0..20 {
+        answers.extend(browser.step());
+        if answers.len() == 2 {
+            break;
+        }
+    }
+    assert!(answers
+        .iter()
+        .any(|r| r.records()[0].command() == cancel && r.header.code() == Code::Applied));
+    assert!(answers.iter().any(|r| r
+        .records()
+        .iter()
+        .any(|record| record.command() == activate)
+        && r.header.code() == Code::Cancelled));
+    assert!(browser.published.iter().all(|header| header.graph == 0));
+    browser.send(graph(0));
+    for _ in 0..8 {
+        browser.step();
+    }
+    assert!(browser
+        .published
+        .iter()
+        .any(|header| header.graph == 2 && header.loops == 1));
+}
+
+#[shoop_test]
+fn an_admitted_image_settles_across_an_application_reconnect() {
+    for reconnect_after in [0, 16] {
+        let mut browser = Browser::new();
+        let [begin, row, _] = *graph(0).commands() else {
+            unreachable!()
+        };
+        browser
+            .client
+            .immediate(
+                Batch::new(0, 0, &[begin, row, Command::ActivateCompositeGraph(17)]).unwrap(),
+            )
+            .unwrap();
+        browser.client.disconnect();
+        assert!(matches!(
+            browser.client.poll(),
+            Some(EngineMessage::Disconnected(_))
+        ));
+        for _ in 0..reconnect_after {
+            assert!(browser.step().is_empty());
+        }
+        browser.client.connect().unwrap();
+        let mut welcomed = false;
+        while let Some(message) = browser.client.poll() {
+            assert!(!matches!(message, EngineMessage::ImmediateResponse(_)));
+            welcomed |= matches!(message, EngineMessage::Welcome { .. });
+        }
+        assert!(welcomed);
+        browser.client.observe_snapshots(true).unwrap();
+        for _ in reconnect_after..24 {
+            assert!(browser.step().is_empty());
+        }
+        assert!(browser.published.iter().any(|header| header.graph == 1));
+        browser.send(graph(1));
+        for _ in 0..8 {
+            browser.step();
+        }
+        assert!(browser.published.iter().any(|header| header.graph == 2));
+    }
+}
+
 #[shoop_test]
 fn separate_heap_image_loading_records_plays_and_retains_media_without_render_allocation() {
     let mut browser = Browser::new();

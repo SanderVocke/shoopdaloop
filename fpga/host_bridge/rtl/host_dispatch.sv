@@ -77,6 +77,7 @@ module host_dispatch #(
     output wire [15:0] switch_sync_count,
     output wire [15:0] switch_states,
     output wire [15:0] switch_buffers,
+    output wire [43:0] switch_future,
     input wire switch_response_valid,
     output wire switch_response_ready,
     input wire switch_response_error,
@@ -119,8 +120,8 @@ module host_dispatch #(
     wire writing = args[8];
     wire [HOST_PAYLOAD_WORDS*32-1:0] request = command_data;
     wire [31:0] request_control = request[0 +: 32];
-    wire bad_switch_width = |{request[159:129], request[191:176], request[223:208],
-        request[255:240], request[287:272], request[319:304]};
+    wire bad_switch_width = |{request[159:141], request[255:240], request[287:272], request[319:304]}
+        || ({request[223:208],request[191:176]} == 0 && request[140:129] != 0);
     wire request_extra = |request[HOST_PAYLOAD_WORDS*32-1:320];
     wire executing = phase != IDLE && phase != RESPOND;
     wire unused_argument_bits = &{1'b0,args[319:304],args[287:240]};
@@ -157,6 +158,7 @@ module host_dispatch #(
     assign switch_sync_count = args[192 +: 16];
     assign switch_states = args[224 +: 16];
     assign switch_buffers = args[288 +: 16];
+    assign switch_future = {args[223:208],args[191:176],args[140:129]};
     assign switch_response_ready = phase == SWITCH_WAIT;
     assign run_valid = (phase == RUN_REQUEST && (!paced || quantum_valid)) || phase == SWITCH_REQUEST;
     assign run_quantum = QUANTUM;

@@ -11,8 +11,8 @@ use rt_fpga_reference::{
 use rt_fpga_rtl::{
     host::{
         control::{
-            descriptor, loop_plan, loop_state, protocol_mode, reference_mode, ControlWindow,
-            ProgramSession,
+            composite_telemetry, descriptor, loop_plan, loop_state, protocol_mode, reference_mode,
+            ControlWindow, ProgramSession,
         },
         registers::{HOST_PAYLOAD_WORDS, RESULT_OK},
         Client, Error, Geometry, Mailbox, RegisterBus, Request,
@@ -39,6 +39,13 @@ struct Row {
     last_pulse: Option<u64>,
 }
 
+#[derive(Clone, Copy)]
+struct FutureAttempt {
+    program: SwitchProgram,
+    frame: u64,
+    program_lane: bool,
+}
+
 pub struct Owner<B> {
     session: ProgramSession<B>,
     execution: rt::Execution,
@@ -48,6 +55,9 @@ pub struct Owner<B> {
     status: Arc<Status>,
     ready: Option<SwitchProgram>,
     announced: bool,
+    cancelled: bool,
+    retry_switch_after: Option<u64>,
+    future_attempt: Option<FutureAttempt>,
     retired: Option<ProgramImage>,
     rows: Vec<Row>,
     next_rows: Vec<Row>,
@@ -101,6 +111,9 @@ where
             status,
             ready: None,
             announced: false,
+            cancelled: false,
+            retry_switch_after: None,
+            future_attempt: None,
             retired: None,
             rows: Vec::with_capacity(rows),
             next_rows: Vec::with_capacity(rows),
@@ -191,10 +204,14 @@ where
 
     pub fn fail(&mut self) {
         let _ = self.session.client().abort();
-        self.execution.commands.begin_callback();
-        while let Some(group) = self.execution.commands.pop() {
-            let header = group.header.complete(self.frame, Code::CannotApply);
-            group.respond(header, |command| command.complete(Code::CannotApply));
+        for commands in
+            core::iter::once(&mut self.execution.commands).chain(self.execution.switches.iter_mut())
+        {
+            commands.begin_callback();
+            while let Some(group) = commands.pop() {
+                let header = group.header.complete(self.frame, Code::CannotApply);
+                group.respond(header, |command| command.complete(Code::CannotApply));
+            }
         }
         // A failing guest retains the PL's assigned DDR region until full hardware reset.
         self.status.update_driver(DriverStatus {
@@ -206,8 +223,15 @@ where
     /// Service a bounded number of uploads per turn so the control task can run.
     pub fn step(&mut self, mut within_budget: impl FnMut() -> bool) -> Result<()> {
         self.drain_sync()?;
+        let switched = self.finish_future_switch(&mut within_budget)?;
+        if self.future_attempt.is_some() {
+            return Ok(());
+        }
         self.upload(&mut within_budget)?;
-        let updated = self.command(&mut within_budget)?;
+        let updated = self.command(&mut within_budget)? || switched;
+        if self.future_attempt.is_some() {
+            return Ok(());
+        }
         if self.audio_enabled || updated {
             let state = device_result(request(
                 self.session.client(),
@@ -250,13 +274,80 @@ where
         Ok(())
     }
 
+    fn finish_future_switch(&mut self, within_budget: &mut impl FnMut() -> bool) -> Result<bool> {
+        let Some(attempt) = self.future_attempt else {
+            return Ok(false);
+        };
+        let status = device_result(request(
+            self.session.client(),
+            Request::capture_snapshot(0),
+            within_budget,
+        ))?;
+        let frame = join(status[1], status[2]);
+        if frame == attempt.frame {
+            return Ok(false);
+        }
+        ensure!(
+            frame
+                .checked_sub(attempt.frame)
+                .is_some_and(|elapsed| elapsed >= u64::from(self.geometry.quantum)),
+            "FPGA future switch has not run a complete quantum"
+        );
+        self.frame = frame;
+        self.status.set_frame(frame);
+        self.future_attempt = None;
+        let revision = join(status[3], status[4]);
+        if revision
+            == self
+                .session
+                .active()
+                .map_or(0, |image| image.layout.revision)
+        {
+            return Ok(false);
+        }
+        self.retired = device_result(self.session.accept_future_switch(
+            attempt.program,
+            revision,
+            attempt.frame,
+        ))?
+        .map(|upload| upload.image);
+        self.select_rows();
+        self.ready = None;
+        self.announced = false;
+        self.cancelled = false;
+        self.retry_switch_after = None;
+        let commands = if attempt.program_lane {
+            self.execution
+                .switches
+                .as_mut()
+                .expect("prepared switch lane")
+        } else {
+            &mut self.execution.commands
+        };
+        commands.begin_callback();
+        let group = commands.pop().expect("armed FPGA switch");
+        ensure!(
+            group
+                .commands()
+                .next()
+                .is_some_and(|record| record.command() == Command::SwitchProgram(attempt.program)),
+            "FPGA future switch command moved"
+        );
+        let header = group.header;
+        group.respond(header.complete(attempt.frame, Code::Applied), |record| {
+            record.complete(Code::Applied)
+        });
+        Ok(true)
+    }
+
     fn drain_sync(&mut self) -> Result<()> {
         let revision = self.session.active().map_or(0, |p| p.layout.revision);
+        let future_revision = self.future_attempt.map(|attempt| attempt.program.revision);
         for _ in 0..128 {
             let Some(event) = device_result(self.session.client().sync_event())? else {
                 break;
             };
-            if event.revision != revision {
+            if event.revision != revision && Some(event.revision) != future_revision {
                 continue;
             }
             if let Some(row) = self
@@ -282,22 +373,36 @@ where
                 self.retired = Some(image);
             }
         }
+        if self.retired.is_some() {
+            return Ok(());
+        }
+        if let Ok(request) = self.images.uploads.pop() {
+            match request {
+                super::UploadRequest::Stage(upload) => {
+                    if let Err(upload) = self.session.stage(upload) {
+                        let revision = upload.image.layout.revision;
+                        self.retired = Some(upload.image);
+                        ensure!(
+                            self.images.ready.push((revision, false)).is_ok(),
+                            "FPGA upload result queue full"
+                        );
+                        return Ok(());
+                    }
+                }
+                super::UploadRequest::Cancel(revision) => {
+                    if let Some(image) = self
+                        .session
+                        .staged()
+                        .filter(|image| image.layout.revision == revision)
+                    {
+                        self.ready = Some(descriptor(image));
+                        self.cancelled = true;
+                    }
+                }
+            }
+        }
         if self.session.staged().is_none() {
-            if self.retired.is_some() {
-                return Ok(());
-            }
-            let Ok(upload) = self.images.uploads.pop() else {
-                return Ok(());
-            };
-            if let Err(upload) = self.session.stage(upload) {
-                let revision = upload.image.layout.revision;
-                self.retired = Some(upload.image);
-                ensure!(
-                    self.images.ready.push((revision, false)).is_ok(),
-                    "FPGA upload result queue full"
-                );
-                return Ok(());
-            }
+            return Ok(());
         }
         if !self.announced {
             for _ in 0..24 {
@@ -314,8 +419,26 @@ where
     }
 
     fn command(&mut self, within_budget: &mut impl FnMut() -> bool) -> Result<bool> {
-        self.execution.commands.begin_callback();
-        let Some(group) = self.execution.commands.pop() else {
+        let ordinary = self.command_lane(false, within_budget)?;
+        let switched = self.future_attempt.is_none() && self.command_lane(true, within_budget)?;
+        Ok(ordinary || switched)
+    }
+
+    fn command_lane(
+        &mut self,
+        program_lane: bool,
+        within_budget: &mut impl FnMut() -> bool,
+    ) -> Result<bool> {
+        let commands = if program_lane {
+            self.execution
+                .switches
+                .as_mut()
+                .expect("prepared switch lane")
+        } else {
+            &mut self.execution.commands
+        };
+        commands.begin_callback();
+        let Some(group) = commands.pop() else {
             return Ok(false);
         };
         let header = group.header;
@@ -327,24 +450,71 @@ where
         }
         group.leave_unread();
         let records = &mut records[..count];
+        if program_lane
+            && !self.cancelled
+            && self
+                .retry_switch_after
+                .is_some_and(|frame| self.frame <= frame)
+        {
+            return Ok(false);
+        }
+        if self.retired.is_some()
+            && records
+                .iter()
+                .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
+        {
+            return Ok(false);
+        }
         let revision = self.session.active().map_or(0, |p| p.layout.revision);
         let outcome = if (header.graph(), header.topology()) != (revision, revision) {
-            Ok((self.frame, Code::StaleConfiguration))
+            Ok(Some((self.frame, Code::StaleConfiguration)))
         } else if records
             .iter()
             .enumerate()
             .any(|(i, r)| matches!(r.command(), Command::SwitchProgram(_)) && i + 1 != count)
         {
-            Ok((self.frame, Code::CannotApply))
+            Ok(Some((self.frame, Code::CannotApply)))
         } else {
-            self.apply(revision, header.deadline(), records, within_budget)
+            self.apply(
+                revision,
+                header.deadline(),
+                records,
+                program_lane,
+                within_budget,
+            )
         };
-        self.execution.commands.begin_callback();
-        let group = self
-            .execution
-            .commands
-            .pop()
-            .expect("queued FPGA command group");
+        if matches!(outcome, Ok(None)) {
+            return Ok(false);
+        }
+        if program_lane {
+            self.retry_switch_after = None;
+        }
+        let outcome = outcome.map(|result| result.expect("completed control attempt"));
+        if outcome
+            .as_ref()
+            .is_ok_and(|(_, code)| *code != Code::Applied)
+        {
+            for record in records.iter() {
+                if let Command::SwitchProgram(requested) = record.command() {
+                    if let Some(upload) = self.session.discard_staged(requested) {
+                        self.retired = Some(upload.image);
+                        self.ready = None;
+                        self.announced = false;
+                        self.cancelled = false;
+                    }
+                }
+            }
+        }
+        let commands = if program_lane {
+            self.execution
+                .switches
+                .as_mut()
+                .expect("prepared switch lane")
+        } else {
+            &mut self.execution.commands
+        };
+        commands.begin_callback();
+        let group = commands.pop().expect("queued FPGA command group");
         let (frame, code) = outcome
             .as_ref()
             .copied()
@@ -366,8 +536,9 @@ where
         revision: u64,
         deadline: Option<u64>,
         records: &mut [CommandRecord],
+        program_lane: bool,
         within_budget: &mut impl FnMut() -> bool,
-    ) -> Result<(u64, Code)> {
+    ) -> Result<Option<(u64, Code)>> {
         let switching = records.last().and_then(|record| match record.command() {
             Command::SwitchProgram(candidate) => Some(candidate),
             _ => None,
@@ -375,7 +546,10 @@ where
         self.changed_sources.clear();
         if let Some(next) = switching {
             if !self.announced || self.ready != Some(next) || self.retired.is_some() {
-                return Ok((self.frame, Code::CannotApply));
+                return Ok(Some((self.frame, Code::CannotApply)));
+            }
+            if self.cancelled {
+                return Ok(Some((self.frame, Code::Cancelled)));
             }
             let staged = self.session.staged().filter(|p| descriptor(p) == next);
             let staged = staged.ok_or_else(|| anyhow::anyhow!("FPGA staged image mismatch"))?;
@@ -383,13 +557,56 @@ where
                 .extend_from_slice(staged.layout.changed_sources());
         }
 
-        let (active, client) = self.session.active_and_client();
+        let composite_wrap_frame = self.session.composite_wrap_frame();
+        let (active, staged, client) = self.session.programs_and_client();
         let mut window =
             device_result(ControlWindow::begin(client, revision, &mut *within_budget))?;
         let frame = window.frame();
         if deadline.is_some_and(|deadline| frame > deadline) {
             device_result(window.release())?;
-            return Ok((frame, Code::DeadlineMissed));
+            return Ok(Some((frame, Code::DeadlineMissed)));
+        }
+        if switching.is_some() {
+            if composite_wrap_frame == Some(frame) {
+                device_result(window.release())?;
+                self.retry_switch_after = Some(frame);
+                return Ok(None);
+            }
+            let layout = &staged.unwrap().layout;
+            if let Some((program, cut)) = switching
+                .filter(|_| records.len() == 1)
+                .zip(layout.future_switch())
+            {
+                device_result(window.arm_future_switch(program, cut))?;
+                device_result(window.release())?;
+                self.future_attempt = Some(FutureAttempt {
+                    program,
+                    frame,
+                    program_lane,
+                });
+                return Ok(None);
+            }
+            let cuts = layout.composite_cuts();
+            let mut status = Code::Applied;
+            if let Some(slot) = layout.retiring_composite() {
+                status = device_result(window.prepare_composite_retirement(slot))?;
+            } else {
+                for cut in cuts {
+                    status =
+                        device_result(window.prepare_composite_cut(cut, self.geometry.quantum))?;
+                    if status != Code::Applied {
+                        break;
+                    }
+                }
+            }
+            if status != Code::Applied {
+                device_result(window.release())?;
+                if status == Code::Scheduled && cuts.len() == 1 && records.len() == 1 {
+                    self.retry_switch_after = Some(frame);
+                    return Ok(None);
+                }
+                return Ok(Some((frame, Code::CannotApply)));
+            }
         }
         for record in records {
             let command = record.command();
@@ -416,6 +633,7 @@ where
                     Command::Transition(id, _)
                     | Command::ClearPlannedTransitions(id, _)
                     | Command::LoopGain(id, _) => id,
+                    Command::LoopIteration(id, _) | Command::LoopRepeatSync(id, _) => id.0.index,
                     _ => {
                         *record = record.complete(Code::Unsupported);
                         continue;
@@ -448,9 +666,9 @@ where
                 ))?;
                 self.audio_enabled = true;
             }
-            return Ok((selected.frame, Code::Applied));
+            return Ok(Some((selected.frame, Code::Applied)));
         }
-        Ok((frame, Code::Applied))
+        Ok(Some((frame, Code::Applied)))
     }
 
     fn select_rows(&mut self) {
@@ -490,7 +708,7 @@ where
             .map(|row| row.physical.slot + 1)
             .max()
             .unwrap_or(0);
-        let client = self.session.client();
+        let (active, staged, client) = self.session.programs_and_client();
         let latch = device_result(request(
             client,
             Request::capture_snapshot(extent),
@@ -499,6 +717,10 @@ where
         let frame = join(latch[1], latch[2]);
         let revision = join(latch[3], latch[4]);
         let mut offset = snapshot::HEADER;
+        let mut records = 0;
+        let staged = staged
+            .filter(|_| !self.cancelled)
+            .map(|image| (&image.layout, self.announced));
         for row in &self.rows {
             let mut words = [0; 16];
             for (index, block) in words.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
@@ -515,13 +737,24 @@ where
             for record in loop_records(*row, &words) {
                 offset += codec::encode_snapshot(&record, &mut self.snapshot[offset..])
                     .map_err(|error| anyhow::anyhow!("FPGA snapshot encoding {error:?}"))?;
+                records += 1;
+            }
+            if let Some(composite) = active.and_then(|image| {
+                composite_telemetry(row.logical, frame, words[2], &words, &image.layout, staged)
+            }) {
+                offset += codec::encode_snapshot(
+                    &Record::Telemetry(composite),
+                    &mut self.snapshot[offset..],
+                )
+                .map_err(|error| anyhow::anyhow!("FPGA snapshot encoding {error:?}"))?;
+                records += 1;
             }
         }
         snapshot::Header {
             frame,
             graph: revision,
             topology: revision,
-            records: self.rows.len() as u32 * 4,
+            records,
             loops: self.rows.len() as u32,
             strips: 0,
             buses: 0,
@@ -540,6 +773,13 @@ fn edit_loop<B: RegisterBus, F: FnMut() -> bool>(
     command: Command,
 ) -> Result<Code, Error<B::Error>> {
     match command {
+        Command::LoopIteration(id, request) if id.0.generation == row.logical.generation => {
+            window.apply_iteration(row.physical, request)
+        }
+        Command::LoopRepeatSync(id, enabled) if id.0.generation == row.logical.generation => {
+            window.set_repeat_sync(row.physical, enabled)
+        }
+        Command::LoopIteration(..) | Command::LoopRepeatSync(..) => Ok(Code::TargetUnavailable),
         Command::Transition(_, plan) => {
             let source = image
                 .layout

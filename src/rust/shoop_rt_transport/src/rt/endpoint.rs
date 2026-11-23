@@ -3,7 +3,9 @@ use super::{Control, Error};
 use crate::carrier::{CarrierError, Endpoint as CarrierEndpoint, Outbox};
 use alloc::{boxed::Box, vec};
 use shoop_rt_protocol::{
-    immediate::{Batch, CommandRecord, Response, COMMANDS},
+    immediate::{
+        Batch, Command, CommandRecord, Header as CommandHeader, Response, SwitchProgram, COMMANDS,
+    },
     snapshot::{Chunk, Header, SnapshotDelivery, CHUNK_BYTES},
     Capabilities, ClientMessage, DisconnectReason, DriverStatus, EngineMessage, Lane, Limits,
     PROTOCOL_VERSION,
@@ -110,6 +112,11 @@ impl Endpoint {
         if !self.connected {
             return Err(CarrierError::Disconnected);
         }
+        if let [Command::SwitchProgram(program)] = batch.commands() {
+            if self.ports.switches.is_some() {
+                return self.submit_switch(batch.header(), *program);
+            }
+        }
         let mut records = [CommandRecord::new(batch.commands()[0]); COMMANDS];
         for (record, &command) in records.iter_mut().zip(batch.commands()) {
             *record = CommandRecord::new(command);
@@ -121,44 +128,70 @@ impl Endpoint {
         self.pending += 1;
         Ok(())
     }
+
+    /// Handoffs belong to the program loader and outlive its application connection.
+    pub fn submit_switch(
+        &mut self,
+        header: CommandHeader,
+        program: SwitchProgram,
+    ) -> Result<(), CarrierError> {
+        self.ports
+            .switches
+            .as_mut()
+            .expect("prepared switch queue")
+            .push(
+                header,
+                &[CommandRecord::new(Command::SwitchProgram(program))],
+            )
+            .map_err(|_| CarrierError::Full)
+    }
+
     /// Returns false when the next response remains queued because the outbox is full.
     pub fn drain_responses(&mut self, out: &mut Outbox) -> bool {
-        while let Some(group) = self.ports.commands.response() {
-            if self.connected && self.discard == 0 {
-                if out.available(Lane::Reliable) == 0 {
-                    group.leave_unread();
-                    return false;
-                }
-                let mut records =
-                    [CommandRecord::new(shoop_rt_protocol::immediate::Command::BusMute(0, false));
-                        COMMANDS];
-                let mut count = 0;
-                for &record in group.commands() {
-                    if let shoop_rt_protocol::immediate::Command::SwitchProgram(d) =
-                        record.command()
-                    {
-                        if record.code() == shoop_rt_protocol::immediate::Code::Applied
-                            && self.settings.graph != d.revision
-                        {
-                            self.settings.graph = d.revision;
-                            self.settings.topology = d.revision;
-                            self.snapshots.configuration_sent = false;
-                            self.snapshots.len = 0;
-                            self.snapshots.offset = 0;
-                            self.snapshots.sent_frame = None;
-                        }
+        for (lane, queue) in core::iter::once(&mut self.ports.commands)
+            .chain(self.ports.switches.iter_mut())
+            .enumerate()
+        {
+            let switch_lane = lane != 0;
+            while let Some(group) = queue.response() {
+                if switch_lane || (self.connected && self.discard == 0) {
+                    if out.available(Lane::Reliable) == 0 {
+                        group.leave_unread();
+                        return false;
                     }
-                    records[count] = record;
-                    count += 1;
+                    let mut records = [CommandRecord::new(
+                        shoop_rt_protocol::immediate::Command::BusMute(0, false),
+                    ); COMMANDS];
+                    let mut count = 0;
+                    for &record in group.commands() {
+                        if let shoop_rt_protocol::immediate::Command::SwitchProgram(d) =
+                            record.command()
+                        {
+                            if record.code() == shoop_rt_protocol::immediate::Code::Applied
+                                && self.settings.graph != d.revision
+                            {
+                                self.settings.graph = d.revision;
+                                self.settings.topology = d.revision;
+                                self.snapshots.configuration_sent = false;
+                                self.snapshots.len = 0;
+                                self.snapshots.offset = 0;
+                                self.snapshots.sent_frame = None;
+                            }
+                        }
+                        records[count] = record;
+                        count += 1;
+                    }
+                    out.push(EngineMessage::ImmediateResponse(
+                        Response::new(group.header, &records[..count])
+                            .expect("completed command group"),
+                    ))
+                    .expect("available response slot");
                 }
-                out.push(EngineMessage::ImmediateResponse(
-                    Response::new(group.header, &records[..count])
-                        .expect("completed command group"),
-                ))
-                .expect("available response slot");
+                if !switch_lane {
+                    self.discard = self.discard.saturating_sub(1);
+                    self.pending -= 1;
+                }
             }
-            self.discard = self.discard.saturating_sub(1);
-            self.pending -= 1;
         }
         true
     }

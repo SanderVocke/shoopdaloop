@@ -3,7 +3,7 @@ use crate::{
     fixed::{Fixed, Ramp},
     jobs::{BufferId, JobProcessor, Memory},
     pipeline::{Observer, Pipeline, PipelineError},
-    state::{Address, ModePlan, ModeStep, StateProcessor, Value},
+    state::{prepare_composite_iteration, Address, ModePlan, ModeStep, StateProcessor, Value},
     transitions::{LoopId, Mode, TransitionError},
     Error,
 };
@@ -153,6 +153,7 @@ impl Processor {
             configuration: self.engine.configuration,
             bytes: &mut self.snapshot_bytes,
             publisher: &mut self.ports.snapshots,
+            staged: self.next_program.as_deref(),
         };
         publication.settled(self.engine.pipeline.state());
     }
@@ -251,130 +252,200 @@ impl Processor {
             }
             let frame = self.engine.pipeline.state().frame();
             let mut switched = false;
-            if base == 0 || self.programs.is_some() {
-                self.ports.commands.begin_callback();
-            }
-            while let Some(group) = self.ports.commands.pop() {
-                if self.pending_switch.is_some() {
-                    if !memory
-                        .completion_fence_ready()
-                        .map_err(PipelineError::Jobs)?
-                    {
-                        group.leave_unread();
-                        break;
-                    }
-                    let pending = self.pending_switch.take().unwrap();
-                    assert_eq!(pending.header, group.header, "pending FIFO barrier");
-                    let mut index = 0;
-                    group.respond(
-                        pending.header.complete(pending.frame, Code::Applied),
-                        |_| {
-                            let r = pending.records[index];
-                            index += 1;
-                            r
-                        },
-                    );
-                    assert_eq!(index, pending.count);
-                    assert!(
-                        self.retired_program.is_none(),
-                        "bounded reclamation storage"
-                    );
-                    self.retired_program = Some(pending.retired);
-                    continue;
-                }
-                let header = group.header;
-                if fault.is_none()
-                    && self.retired_program.is_some()
-                    && group
-                        .commands()
-                        .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
-                {
-                    group.leave_unread();
+            let mut future_switch = None;
+            for (lane, commands) in core::iter::once(&mut self.ports.commands)
+                .chain(self.ports.switches.iter_mut())
+                .enumerate()
+            {
+                if future_switch.is_some() {
                     break;
                 }
-                let configuration = self.engine.configuration;
-                let count = group.commands().count();
-                let malformed = group.commands().enumerate().any(|(i, r)| {
-                    matches!(r.command(), Command::SwitchProgram(_)) && i + 1 != count
-                });
-                let code = if (header.graph(), header.topology())
-                    != (configuration.graph, configuration.topology)
-                {
-                    Code::StaleConfiguration
-                } else if header.deadline().is_some_and(|limit| frame > limit) {
-                    Code::DeadlineMissed
-                } else if fault.is_some() || malformed {
-                    Code::CannotApply
-                } else {
-                    Code::Applied
-                };
-                let mut records =
-                    [shoop_rt_protocol::immediate::CommandRecord::new(Command::BusMute(0, false));
-                        shoop_rt_protocol::immediate::COMMANDS];
-                let mut retired = None;
-                for (i, record) in group.commands().enumerate() {
-                    let applied = if code != Code::Applied {
-                        code
-                    } else if let Command::SwitchProgram(descriptor) = record.command() {
-                        if let Some(mut image) = self.next_program.take() {
-                            if let Err(error) = memory.begin_completion_fence() {
-                                self.next_program = Some(image);
-                                return Err(PipelineError::Jobs(error));
-                            }
-                            let code = self.engine.switch(&mut image, descriptor, jobs);
-                            if code == Code::Applied {
-                                retired = Some(image);
-                                switched = true;
-                            } else {
-                                self.next_program = Some(image);
-                            }
-                            code
-                        } else {
-                            Code::CannotApply
-                        }
-                    } else {
-                        self.engine.execute(record.command())
-                    };
-                    records[i] = record.complete(applied);
+                let program_lane = lane != 0;
+                if base == 0 || self.programs.is_some() {
+                    commands.begin_callback();
                 }
-                if let Some(retired) = retired {
-                    self.pending_switch = Some(loading::PendingSwitch {
-                        header,
-                        frame,
-                        records,
-                        count,
-                        retired,
-                    });
-                    if !memory
-                        .completion_fence_ready()
-                        .map_err(PipelineError::Jobs)?
+                if self
+                    .pending_switch
+                    .as_ref()
+                    .is_some_and(|pending| pending.program_lane != program_lane)
+                {
+                    continue;
+                }
+                while let Some(group) = commands.pop() {
+                    if self.pending_switch.is_some() {
+                        if !memory
+                            .completion_fence_ready()
+                            .map_err(PipelineError::Jobs)?
+                        {
+                            group.leave_unread();
+                            break;
+                        }
+                        let pending = self.pending_switch.take().unwrap();
+                        assert_eq!(pending.header, group.header, "pending FIFO barrier");
+                        let mut index = 0;
+                        group.respond(
+                            pending.header.complete(pending.frame, Code::Applied),
+                            |_| {
+                                let r = pending.records[index];
+                                index += 1;
+                                r
+                            },
+                        );
+                        assert_eq!(index, pending.count);
+                        assert!(
+                            self.retired_program.is_none(),
+                            "bounded reclamation storage"
+                        );
+                        self.retired_program = Some(pending.retired);
+                        continue;
+                    }
+                    let header = group.header;
+                    if fault.is_none()
+                        && self.retired_program.is_some()
+                        && group
+                            .commands()
+                            .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
                     {
                         group.leave_unread();
                         break;
                     }
-                    assert!(
-                        self.retired_program.is_none(),
-                        "bounded reclamation storage"
+                    let configuration = self.engine.configuration;
+                    let count = group.commands().count();
+                    let malformed = group.commands().enumerate().any(|(i, r)| {
+                        matches!(r.command(), Command::SwitchProgram(_)) && i + 1 != count
+                    });
+                    let code = if (header.graph(), header.topology())
+                        != (configuration.graph, configuration.topology)
+                    {
+                        Code::StaleConfiguration
+                    } else if header.deadline().is_some_and(|limit| frame > limit) {
+                        Code::DeadlineMissed
+                    } else if fault.is_some() || malformed {
+                        Code::CannotApply
+                    } else {
+                        Code::Applied
+                    };
+                    if code == Code::Applied && count == 1 {
+                        let record = *group.commands().next().unwrap();
+                        if let Command::SwitchProgram(descriptor) = record.command() {
+                            if let Some(cut) = self
+                                .next_program
+                                .as_ref()
+                                .filter(|stage| stage.descriptor() == descriptor && stage.ready())
+                                .and_then(|stage| stage.image.layout.future_switch())
+                            {
+                                future_switch =
+                                    Some((program_lane, header, record, descriptor, cut));
+                                group.leave_unread();
+                                break;
+                            }
+                            if self.next_program.as_ref().is_some_and(|stage| {
+                                stage.descriptor() == descriptor
+                                    && stage.ready()
+                                    && self.engine.waits_for_composite_cut(stage)
+                            }) {
+                                group.leave_unread();
+                                break;
+                            }
+                        }
+                    }
+                    let mut records = [shoop_rt_protocol::immediate::CommandRecord::new(
+                        Command::BusMute(0, false),
                     );
-                    self.retired_program = Some(self.pending_switch.take().unwrap().retired);
+                        shoop_rt_protocol::immediate::COMMANDS];
+                    let mut retired = None;
+                    for (i, record) in group.commands().enumerate() {
+                        let applied = if code != Code::Applied {
+                            code
+                        } else if let Command::SwitchProgram(descriptor) = record.command() {
+                            if let Some(mut image) = self.next_program.take() {
+                                let code = if image.descriptor() == descriptor && image.cancelled {
+                                    Code::Cancelled
+                                } else {
+                                    if let Err(error) = memory.begin_completion_fence() {
+                                        self.next_program = Some(image);
+                                        return Err(PipelineError::Jobs(error));
+                                    }
+                                    self.engine.switch(&mut image, descriptor, jobs, false)
+                                };
+                                if code == Code::Applied {
+                                    retired = Some(image);
+                                    switched = true;
+                                } else {
+                                    self.next_program = Some(image);
+                                }
+                                code
+                            } else {
+                                Code::CannotApply
+                            }
+                        } else {
+                            self.engine.execute(record.command())
+                        };
+                        if applied != Code::Applied {
+                            if let Command::SwitchProgram(descriptor) = record.command() {
+                                if self.retired_program.is_none()
+                                    && self
+                                        .next_program
+                                        .as_ref()
+                                        .is_some_and(|image| image.descriptor() == descriptor)
+                                {
+                                    self.retired_program = self.next_program.take();
+                                }
+                            }
+                        }
+                        records[i] = record.complete(applied);
+                    }
+                    if let Some(retired) = retired {
+                        self.pending_switch = Some(loading::PendingSwitch {
+                            program_lane,
+                            header,
+                            frame,
+                            records,
+                            count,
+                            retired,
+                        });
+                        if !memory
+                            .completion_fence_ready()
+                            .map_err(PipelineError::Jobs)?
+                        {
+                            group.leave_unread();
+                            break;
+                        }
+                        assert!(
+                            self.retired_program.is_none(),
+                            "bounded reclamation storage"
+                        );
+                        self.retired_program = Some(self.pending_switch.take().unwrap().retired);
+                    }
+                    let mut index = 0;
+                    group.respond(header.complete(frame, code), |_| {
+                        let r = records[index];
+                        index += 1;
+                        r
+                    });
                 }
-                let mut index = 0;
-                group.respond(header.complete(frame, code), |_| {
-                    let r = records[index];
-                    index += 1;
-                    r
-                });
             }
             if let Some(error) = fault {
                 return Err(error);
             }
+            let restart = future_switch
+                .map(|(_, _, _, _, cut)| cut)
+                .filter(|cut| cut.at_restart());
+            if let Some(cut) = restart {
+                let staged = self.next_program.as_mut().expect("armed image");
+                self.engine
+                    .pipeline
+                    .swap_restart_program(&mut staged.image, Some(cut));
+            }
+            let publish = base == 0 || switched;
             let mut observer = Publication {
                 loops: &mut self.engine.loops,
                 configuration: self.engine.configuration,
                 bytes: &mut self.snapshot_bytes,
                 publisher: &mut self.ports.snapshots,
+                staged: self.next_program.as_deref(),
             };
-            if let Some(io) = midi.as_deref_mut() {
+            let result = if let Some(io) = midi.as_deref_mut() {
                 self.engine.pipeline.process_quantum_mixed(
                     jobs,
                     memory,
@@ -382,7 +453,7 @@ impl Processor {
                     outputs,
                     base,
                     &mut observer,
-                    base == 0 || switched,
+                    publish && restart.is_none(),
                     Some(io),
                 )
             } else {
@@ -393,9 +464,42 @@ impl Processor {
                     outputs,
                     base,
                     &mut observer,
-                    base == 0 || switched,
+                    publish && restart.is_none(),
                 )
+            };
+            if restart.is_some() {
+                let staged = self.next_program.as_mut().expect("armed image");
+                self.engine
+                    .pipeline
+                    .swap_restart_program(&mut staged.image, None);
             }
+            result?;
+            if let Some((program_lane, header, record, descriptor, cut)) = future_switch {
+                if self.engine.pipeline.state().permits_future_switch(cut) {
+                    memory
+                        .begin_completion_fence()
+                        .map_err(PipelineError::Jobs)?;
+                    let mut image = self.next_program.take().expect("armed image");
+                    if self.engine.switch(&mut image, descriptor, jobs, true) != Code::Applied {
+                        self.next_program = Some(image);
+                        return Err(PipelineError::State(Error::InvalidState));
+                    }
+                    let mut records = [record; shoop_rt_protocol::immediate::COMMANDS];
+                    records[0] = record.complete(Code::Applied);
+                    self.pending_switch = Some(loading::PendingSwitch {
+                        program_lane,
+                        header,
+                        frame,
+                        records,
+                        count: 1,
+                        retired: image,
+                    });
+                    self.publish_initial_snapshot();
+                } else if restart.is_some() && publish {
+                    self.publish_initial_snapshot();
+                }
+            }
+            Ok(())
         });
         if let Err(error) = result {
             self.engine.pipeline.latch_fault(error);
@@ -445,6 +549,7 @@ impl Engine {
             Command::Transition(id, _)
             | Command::ClearPlannedTransitions(id, _)
             | Command::LoopGain(id, _) => id,
+            Command::LoopIteration(id, _) | Command::LoopRepeatSync(id, _) => id.0.index,
             _ => return Code::Unsupported,
         };
         let Ok(index) = self
@@ -471,6 +576,31 @@ impl Engine {
             Command::ClearPlannedTransitions(_, mask) => {
                 self.pipeline.clear_mode_plan(binding.id, mask as u8)
             }
+            Command::LoopIteration(id, request) => (|| {
+                if id.0.generation != binding.public_id.generation {
+                    return Err(TransitionError::InvalidId);
+                }
+                let sp = self.pipeline.state();
+                let slot = sp.loop_state(binding.id)?;
+                let composite = sp
+                    .composite_status(binding.id)
+                    .ok_or(TransitionError::InvalidId)?;
+                let plan = prepare_composite_iteration(
+                    slot.state,
+                    composite.unit_frames,
+                    sp.frame(),
+                    request.iteration,
+                    request.retrigger,
+                    request.seek,
+                )?;
+                self.pipeline.write_plans(binding.id, [Some(plan), None])
+            })(),
+            Command::LoopRepeatSync(id, enabled)
+                if id.0.generation == binding.public_id.generation =>
+            {
+                self.pipeline.set_repeat_sync(binding.id, enabled)
+            }
+            Command::LoopRepeatSync(..) => Err(TransitionError::InvalidId),
             Command::LoopGain(_, gain) => {
                 let Some(address) = binding.gain else {
                     return Code::Unsupported;
@@ -488,6 +618,10 @@ impl Engine {
             _ => unreachable!(),
         };
         match result {
+            Err(TransitionError::InvalidId) => Code::TargetUnavailable,
+            Err(TransitionError::InvalidFrame) if matches!(command, Command::LoopIteration(..)) => {
+                Code::InvalidValue
+            }
             Ok(())
                 if matches!(command, Command::Transition(..))
                     && self
@@ -504,6 +638,7 @@ impl Engine {
             }
             Ok(()) => Code::Applied,
             Err(TransitionError::Exhausted | TransitionError::Capacity) => Code::CaptureUnavailable,
+            Err(TransitionError::Unsupported) => Code::Unsupported,
             Err(_) => Code::CannotApply,
         }
     }
@@ -513,11 +648,15 @@ struct Publication<'a> {
     configuration: Configuration,
     bytes: &'a mut [u8],
     publisher: &'a mut shoop_rt_transport::rt::SnapshotPublisher,
+    staged: Option<&'a PreparedProgram>,
 }
 impl Observer for Publication<'_> {
     fn settled(&mut self, state: &StateProcessor) {
         let mut position = snapshot::HEADER;
         let mut records = 0;
+        let frame = state
+            .frame()
+            .saturating_sub(u64::from(state.quantum().unwrap_or(0)));
         for row in self.loops.iter_mut() {
             let Ok(value) = state.render_state(row.binding.id) else {
                 self.publisher.fail();
@@ -590,11 +729,45 @@ impl Observer for Publication<'_> {
                 position += len;
                 records += 1;
             }
+            if let Some(composite) = state.composite_status(row.binding.id) {
+                let pending = self.staged.and_then(|staged| {
+                    if staged.cancelled {
+                        return None;
+                    }
+                    let id = row.binding.public_id;
+                    staged
+                        .image
+                        .layout
+                        .composite_schedule(rt_fpga_compiler::Identity {
+                            slot: id.slot,
+                            generation: id.generation,
+                        })
+                        .filter(|plan| plan.version != composite.version)
+                });
+                let record = Record::Telemetry(Telemetry::Composite {
+                    loop_id: id,
+                    frame,
+                    mode: protocol_mode(value.mode),
+                    position: value.position,
+                    length: value.content_length,
+                    active_version: composite.version,
+                    pending_version: pending.map(|plan| plan.version),
+                    pending_admitted: pending.is_some()
+                        && self.staged.is_some_and(PreparedProgram::ready),
+                    iteration: composite.iteration,
+                    passes: composite.passes,
+                    waiting_repeat: composite.waiting_repeat,
+                });
+                let Ok(len) = codec::encode_snapshot(&record, &mut self.bytes[position..]) else {
+                    self.publisher.fail();
+                    return;
+                };
+                position += len;
+                records += 1;
+            }
         }
         snapshot::Header {
-            frame: state
-                .frame()
-                .saturating_sub(u64::from(state.quantum().unwrap_or(0))),
+            frame,
             graph: self.configuration.graph,
             topology: self.configuration.topology,
             records,

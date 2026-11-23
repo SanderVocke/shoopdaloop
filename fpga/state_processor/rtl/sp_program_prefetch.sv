@@ -5,6 +5,7 @@ module sp_program_prefetch (
     input wire [16:0] restart_count,
     input wire take_instruction,
     output reg instruction_valid,
+    output reg [15:0] instruction_address,
     output reg [95:0] instruction_data,
     output reg instruction_error,
     input wire cfg_valid, output wire cfg_ready, output wire cfg_busy,
@@ -63,11 +64,13 @@ module sp_program_prefetch (
     always @(posedge clk) begin
         if (reset || restart) begin
             head <= 0;
+            instruction_address <= reset ? 16'd0 : restart_address;
             read_step <= 0;
             instruction_valid <= 0;
             instruction_data <= 0;
         end else if (pull) begin
             head <= head + 1'b1;
+            instruction_address <= instruction_address + 1'b1;
             read_step <= 0;
             instruction_valid <= 0;
         end else if (!instruction_valid && head != tail) begin

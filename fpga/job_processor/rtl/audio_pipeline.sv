@@ -42,6 +42,7 @@ module audio_pipeline #(
     input wire [63:0] switch_expected, switch_revision,
     input wire switch_region,
     input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_buffers,
+    input wire [43:0] switch_future,
     output reg switch_response_valid, input wire switch_response_ready,
     output reg switch_response_error,
     output reg [63:0] switch_first_frame,
@@ -50,6 +51,7 @@ module audio_pipeline #(
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
+    input wire [15:0] capture_credits,
     input wire [31:0] run_buffers,
     input wire [31:0] run_inputs,
     input wire [31:0] run_outputs,
@@ -159,12 +161,27 @@ module audio_pipeline #(
     wire [31:0] state_pc;
     reg active_region, handoff_pending, handoff_drained;
     reg [15:0] active_instructions, active_sync_count, active_states, active_buffers;
+    reg future_pending;
+    reg [43:0] future_switch;
+    reg [63:0] future_revision;
+    reg [15:0] future_instructions, future_sync_count;
+    wire future_switch_ready;
+    wire guarded_switch = switch_future[43:12] != 0;
+    wire restart_preview = future_pending && future_switch[43:28] == `SHOOP_SP_RESTART_SWITCH_TAG;
+    wire bad_switch = switch_expected != active_revision || switch_revision <= active_revision
+        || (active_revision != 0 && switch_region == active_region)
+        || (guarded_switch && (active_revision == 0 || switch_states != active_states
+            || switch_buffers != active_buffers
+            || 32'(switch_future[11:0]) >= LOOP_DEPTH
+            || (switch_future[43:28] == `SHOOP_SP_RESTART_SWITCH_TAG && switch_future[27:12] != `SHOOP_SP_RESTART_KEEP_SOURCE
+                && switch_future[27:12] != `SHOOP_SP_RESTART_NO_SOURCE && 32'(switch_future[27:12]) >= LOOP_DEPTH)));
     wire [31:0] selected_instructions = LIVE_LOADING != 0 ? {16'b0,active_instructions} : run_instruction_count;
     wire [31:0] selected_sync_count = LIVE_LOADING != 0 ? {16'b0,active_sync_count} : run_sync_count;
     wire [31:0] selected_states = LIVE_LOADING != 0 ? {16'b0,active_states} : run_state_count;
     wire [31:0] selected_buffers = LIVE_LOADING != 0 ? {16'b0,active_buffers} : run_buffers;
     wire boundary_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
-    assign switch_ready = LIVE_LOADING != 0 && run_valid && boundary_ready && !handoff_pending && !switch_response_valid;
+    assign switch_ready = LIVE_LOADING != 0 && run_valid && boundary_ready
+        && !handoff_pending && !future_pending && !switch_response_valid;
     assign handoff_request = LIVE_LOADING != 0 && handoff_pending && handoff_drained;
     wire read_intent_valid, late_hint_valid, late_hint_ready, hint_push_ready, hint_pop_valid;
     wire [`SHOOP_SP_JOB_BITS-1:0] read_intent_data, hint_pop_data;
@@ -289,6 +306,8 @@ module audio_pipeline #(
         .run_valid(phase == STATE_START && !media_failed), .run_ready(state_run_ready),
         .run_instruction_count(state_instructions), .run_sync_count(state_sync_count), .run_program_region(state_region), .run_state_count(state_count),
         .run_quantum(quantum), .run_chunk_frames(chunk_frames),
+        .capture_credits(capture_credits),
+        .future_switch_valid(future_pending), .future_switch(future_switch), .future_switch_ready(future_switch_ready),
         .busy(state_busy), .done(state_done), .error_code(state_error), .instruction_pc(state_pc),
         .cfg_valid(cfg_valid && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write)) && !(PROGRAM_REGIONS == 2 && state_admission)), .cfg_ready(state_cfg_ready),
         .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
@@ -345,20 +364,40 @@ module audio_pipeline #(
             active_revision <= 0; active_region <= 0; handoff_pending <= 0; handoff_drained <= 0;
             active_instructions <= 0; active_sync_count <= 0; active_states <= 0; active_buffers <= 0;
             switch_first_frame <= 0; switch_response_valid <= 0; switch_response_error <= 0;
+            future_pending <= 0; future_switch <= 0; future_revision <= 0;
+            future_instructions <= 0; future_sync_count <= 0;
         end else if (LIVE_LOADING != 0) begin
             if (handoff_pending && hint_count == 0 && !hint_stage_valid && queued_jobs == 0) handoff_drained <= 1;
             if (switch_response_valid && switch_response_ready) switch_response_valid <= 0;
             if (switch_valid && switch_ready) begin
                 switch_first_frame <= sync_frame;
-                switch_response_error <= switch_expected != active_revision || switch_revision <= active_revision
-                    || (active_revision != 0 && switch_region == active_region);
-                if (switch_expected != active_revision || switch_revision <= active_revision
-                    || (active_revision != 0 && switch_region == active_region)) switch_response_valid <= 1;
+                switch_response_error <= bad_switch;
+                if (bad_switch) switch_response_valid <= 1;
+                else if (guarded_switch) begin
+                    future_pending <= 1;
+                    future_switch <= switch_future;
+                    future_revision <= switch_revision;
+                    future_instructions <= switch_instructions;
+                    future_sync_count <= switch_sync_count;
+                    switch_response_valid <= 1;
+                end
                 else begin
                     active_revision <= switch_revision; active_region <= switch_region;
                     active_instructions <= switch_instructions; active_sync_count <= switch_sync_count;
                     active_states <= switch_states; active_buffers <= switch_buffers;
                     handoff_pending <= 1; handoff_drained <= 0;
+                end
+            end
+            if (future_pending && phase != IDLE) begin
+                if (stop_jobs) future_pending <= 0;
+                else if (phase == JOB_WAIT && state_complete && jobs_complete && midi_lane_complete) begin
+                    future_pending <= 0;
+                    if (future_switch_ready) begin
+                        active_revision <= future_revision;
+                        active_region <= !active_region;
+                        active_instructions <= future_instructions;
+                        active_sync_count <= future_sync_count;
+                    end
                 end
             end
             if (handoff_request && handoff_complete) begin
@@ -387,9 +426,10 @@ module audio_pipeline #(
                 error_code <= 8; error_stage <= 2; done <= 1; phase <= IDLE;
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
-                    state_instructions <= selected_instructions; state_sync_count <= selected_sync_count;
+                    state_instructions <= restart_preview ? {16'b0,future_instructions} : selected_instructions;
+                    state_sync_count <= restart_preview ? {16'b0,future_sync_count} : selected_sync_count;
                     state_count <= selected_states;
-                    state_region <= LIVE_LOADING != 0 ? active_region : run_program_region;
+                    state_region <= LIVE_LOADING != 0 ? active_region ^ restart_preview : run_program_region;
                     quantum <= run_quantum; chunk_frames <= run_chunk_frames; chunk_shift <= shift_for(run_chunk_frames);
                     buffers <= selected_buffers;
                     inputs <= run_inputs;

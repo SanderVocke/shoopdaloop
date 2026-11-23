@@ -12,10 +12,12 @@ pub type SnapshotPublisher = snapshot::Publisher;
 
 pub struct Control {
     pub commands: CommandProducer,
+    pub switches: Option<CommandProducer>,
     pub snapshots: SnapshotReader,
 }
 pub struct Execution {
     pub commands: CommandConsumer,
+    pub switches: Option<CommandConsumer>,
     pub snapshots: SnapshotPublisher,
 }
 
@@ -33,11 +35,26 @@ pub fn channel(
     Ok((
         Control {
             commands,
+            switches: None,
             snapshots: reader,
         },
         Execution {
             commands: consumer,
+            switches: None,
             snapshots,
         },
     ))
+}
+
+/// Single in-flight program handoff, independent of the ordinary control queue.
+pub fn prepared_channel(
+    command_records: usize,
+    snapshot_slots: usize,
+    snapshot_bytes: usize,
+) -> Result<(Control, Execution), Error> {
+    let (mut control, mut execution) = channel(command_records, snapshot_slots, snapshot_bytes)?;
+    let (switches, consumer) = immediate::paired_channel(2);
+    control.switches = Some(switches);
+    execution.switches = Some(consumer);
+    Ok((control, execution))
 }

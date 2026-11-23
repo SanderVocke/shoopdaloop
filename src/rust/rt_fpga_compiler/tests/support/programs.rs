@@ -54,6 +54,7 @@ pub fn mono_loops(quantum: u32, count: u32) -> LogicalStateProgram {
         });
     }
     LogicalStateProgram {
+        composites: Vec::new(),
         quantum,
         chunk_frames: 1,
         sync_pass: (0..count).map(id).collect(),
@@ -104,6 +105,7 @@ pub fn sync_smoothing(quantum: u32) -> LogicalStateProgram {
         generation: 7,
     };
     LogicalStateProgram {
+        composites: Vec::new(),
         quantum,
         chunk_frames: 1,
         sync_pass: vec![id],

@@ -155,7 +155,9 @@ pub fn write_plans(program: &mut Program, s: &mut Sim<'_>, slot: u32, row: &Bits
     let mut flags = access(program, s, address, None);
     flags.set(56, 1, row.get(56, 1));
     access(program, s, address, Some(&flags));
-    write_words(program, s, slot, row, 1, 2);
+    let mut control = access(program, s, address + 1, None);
+    control.set(32, 10, row.get(96, 10));
+    access(program, s, address + 1, Some(&control));
     write_words(program, s, slot, row, 10, 16);
 }
 pub fn read_loop(program: &mut Program, s: &mut Sim<'_>, slot: u32) -> Bits {

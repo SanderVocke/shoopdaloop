@@ -28,7 +28,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .loops
             .get(&id)
             .and_then(|entry| entry.program)
-            .is_some_and(|program| program.version == 0)
+            .is_some_and(|program| {
+                program.version == 0 || (self.prepared_graph.is_some() && program.id == 0)
+            })
             && self.composites.jobs.iter().any(|job| job.id == id)
     }
     pub(crate) fn pending_conversion(&self, id: BackendLoopId) -> bool {
@@ -272,7 +274,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
     pub(crate) fn confirm_composite_reset(&mut self, id: BackendLoopId, slot: LoopSlotId) {
         self.composites.applied_frames.remove(&id);
-        if let Some(entry) = self.mirror.loops.get_mut(&id) {
+        Self::reset_composite_in_mirror(&mut self.mirror, id, slot);
+        self.composites
+            .removed
+            .push(BackendCompositeId::from_raw(id.raw()));
+    }
+    pub(crate) fn reset_composite_in_mirror(
+        mirror: &mut crate::Mirror,
+        id: BackendLoopId,
+        slot: LoopSlotId,
+    ) {
+        if let Some(entry) = mirror.loops.get_mut(&id) {
             let old = entry.slot;
             entry.slot = slot;
             entry.timing = Default::default();
@@ -282,12 +294,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             entry.program_spans.clear();
             entry.composite = None;
             entry.view = crate::mirror::LoopView::default();
-            self.mirror.slot_loops.remove(&old);
-            self.mirror.slot_loops.insert(slot, id);
+            mirror.slot_loops.remove(&old);
+            mirror.slot_loops.insert(slot, id);
         }
-        self.composites
-            .removed
-            .push(BackendCompositeId::from_raw(id.raw()));
     }
     fn finish_composite_control(
         &mut self,

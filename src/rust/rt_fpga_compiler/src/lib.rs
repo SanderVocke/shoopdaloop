@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 mod graph;
-pub use graph::{compile, compile_with_chunk_frames, CompileContext, Feature};
+pub use graph::{compile, compile_composites, compile_with_chunk_frames, CompileContext, Feature};
 pub use shoop_graph;
 pub mod loading;
 use alloc::vec::Vec;
@@ -16,6 +16,55 @@ pub struct Loop {
     pub length: u64,
     pub sync_source: Option<Identity>,
     pub repeat_sync: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SpanMode {
+    Stop,
+    Play,
+    Record,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PreviousSpan {
+    Idle,
+    Active(SpanMode),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FrameSpan {
+    pub start: u32,
+    pub end: u32,
+    pub mode: SpanMode,
+}
+
+const MAX_PREVIOUS_SPANS: usize = (1 << 13) - 1;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeChild {
+    pub id: Identity,
+    pub spans: Vec<FrameSpan>,
+    /// Previous ownership at the boundary where this image first takes over.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_span_at_wrap: Option<PreviousSpan>,
+    /// The outgoing schedule for a child affected by a guarded restart.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub previous_spans: Vec<FrameSpan>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeSchedule {
+    pub id: Identity,
+    pub version: u64,
+    pub length: u32,
+    pub explicit: bool,
+    pub unit_frames: u32,
+    pub children: Vec<CompositeChild>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -182,6 +231,11 @@ pub enum Operation {
         source: u32,
         port: u32,
     },
+    /// Clear a track's monitor gain, or set it if the given loop is recording.
+    Monitor {
+        ramp: u32,
+        recorder: Option<Identity>,
+    },
 }
 /// Stable ownership of persistent values, independent of instruction and allocation order.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -199,6 +253,7 @@ pub enum StateRole {
     Smoothing(u32),
     /// Immutable coefficients receive a new slot when their value changes.
     Coefficient(i32),
+    Monitor,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -238,6 +293,8 @@ pub struct LogicalStateProgram {
     pub bindings: Vec<LoopBinding>,
     pub jobs_per_quantum: u32,
     pub resources: Resources,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub composites: Vec<CompositeSchedule>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -305,12 +362,59 @@ pub trait StateProgramTarget {
 }
 
 impl LogicalStateProgram {
+    pub(crate) fn instruction_rows(&self) -> u64 {
+        (self.sync_pass.len() + self.work_pass.len()) as u64
+            + self
+                .composites
+                .iter()
+                .flat_map(|schedule| &schedule.children)
+                .map(|child| 1 + (child.spans.len() + child.previous_spans.len()) as u64)
+                .sum::<u64>()
+    }
+
+    pub fn has_authored_recording(&self) -> bool {
+        self.composites
+            .iter()
+            .flat_map(|c| &c.children)
+            .flat_map(|c| &c.spans)
+            .any(|s| s.mode == SpanMode::Record)
+    }
+
+    /// Entries are ordered by action priority before physical relocation.
+    pub fn composite_parents(
+        &self,
+        id: Identity,
+    ) -> impl Iterator<Item = (&CompositeSchedule, &CompositeChild)> {
+        self.composites.iter().filter_map(move |parent| {
+            parent
+                .children
+                .iter()
+                .find(|child| child.id == id)
+                .map(|child| (parent, child))
+        })
+    }
+
     /// Logical identities are names, not physical state-memory addresses.
     pub fn validate_logical(&self, limits: ProgramLimits) -> Result<(), CompileError> {
         if self.loops.len() as u64 > u64::from(limits.loop_slots) {
             return Err(CompileError::Capacity(Resource::Loops));
         }
         if self.state_bindings.len() != self.initial_state.len() {
+            return Err(CompileError::InvalidProgram);
+        }
+        if self
+            .composites
+            .windows(2)
+            .any(|pair| (!pair[0].explicit, pair[0].id) >= (!pair[1].explicit, pair[1].id))
+        {
+            return Err(CompileError::InvalidProgram);
+        }
+        if self
+            .composites
+            .iter()
+            .flat_map(|schedule| &schedule.children)
+            .any(|child| child.previous_span_at_wrap.is_some() || !child.previous_spans.is_empty())
+        {
             return Err(CompileError::InvalidProgram);
         }
         self.validate(ProgramLimits {
@@ -410,7 +514,7 @@ impl LogicalStateProgram {
         for (resource, needed, available) in [
             (
                 Resource::Instructions,
-                (self.sync_pass.len() + self.work_pass.len()) as u64,
+                self.instruction_rows(),
                 limits.instructions,
             ),
             (
@@ -461,9 +565,78 @@ impl LogicalStateProgram {
                 }
             }
         }
+        let mut parents = alloc::collections::BTreeSet::new();
+        let mut authors = alloc::collections::BTreeSet::new();
+        for schedule in &self.composites {
+            let (index, parent) = self
+                .loops
+                .iter()
+                .enumerate()
+                .find(|(_, l)| l.id == schedule.id)
+                .ok_or(InvalidProgram)?;
+            let parent_position = self
+                .sync_pass
+                .iter()
+                .position(|&id| id == parent.id)
+                .ok_or(InvalidProgram)?;
+            if !parents.insert(parent.id)
+                || schedule.version == 0
+                || parent.length != u64::from(schedule.length)
+                || schedule.unit_frames == 0
+                || schedule.unit_frames % self.quantum != 0
+                || parent.length % u64::from(schedule.unit_frames) != 0
+                || schedule.children.is_empty() != (parent.length == 0)
+                || (parent.length == 0 && schedule.explicit)
+            {
+                return Err(InvalidProgram);
+            }
+            let binding = &self.bindings[index];
+            if binding.gain.is_some() || binding.view.is_some() || binding.meter.is_some() {
+                return Err(InvalidProgram);
+            }
+            let mut local_children = alloc::collections::BTreeSet::new();
+            for child in &schedule.children {
+                if !local_children.insert(child.id)
+                    || !self.sync_pass[parent_position + 1..].contains(&child.id)
+                    || child.previous_spans.len() > MAX_PREVIOUS_SPANS
+                    || (child.spans.is_empty() && !child.previous_spans.is_empty())
+                    || (child.spans.is_empty()
+                        && !matches!(child.previous_span_at_wrap, Some(PreviousSpan::Active(_))))
+                {
+                    return Err(InvalidProgram);
+                }
+                for (spans, previous) in [(&child.spans, false), (&child.previous_spans, true)] {
+                    let mut previous_end = 0;
+                    for span in spans {
+                        if span.start < previous_end
+                            || span.start >= span.end
+                            || span.start % schedule.unit_frames != 0
+                            || span.end % schedule.unit_frames != 0
+                            || (!schedule.explicit && span.mode != SpanMode::Play)
+                            || (previous && span.mode == SpanMode::Record)
+                            || u64::from(span.end) > parent.length
+                        {
+                            return Err(InvalidProgram);
+                        }
+                        previous_end = span.end;
+                        if span.mode == SpanMode::Record {
+                            authors.insert(child.id);
+                        }
+                    }
+                }
+            }
+        }
+        for id in authors {
+            if parents.contains(&id)
+                || !self.work_pass.iter().any(|op| matches!(op, Operation::Capture { loop_id, .. } if *loop_id == id))
+                || self.work_pass.iter().any(|op| matches!(op, Operation::MidiData(MidiOperation::Capture { loop_id, .. }) if *loop_id == id))
+            {
+                return Err(InvalidProgram);
+            }
+        }
         let state = |slot: u32| self.initial_state.get(slot as usize).ok_or(InvalidProgram);
         let loop_id = |id| {
-            if self.loops.iter().any(|l| l.id == id) {
+            if !parents.contains(&id) && self.loops.iter().any(|l| l.id == id) {
                 Ok(())
             } else {
                 Err(InvalidProgram)
@@ -589,6 +762,14 @@ impl LogicalStateProgram {
                         return Err(InvalidProgram);
                     }
                 }
+                Operation::Monitor { ramp, recorder } => {
+                    if let Some(recorder) = recorder {
+                        loop_id(recorder)?;
+                    }
+                    if !matches!(state(ramp)?, InitialValue::Ramp(_)) {
+                        return Err(InvalidProgram);
+                    }
+                }
                 Operation::Smoothing {
                     loop_id: id,
                     control,
@@ -627,6 +808,7 @@ impl LogicalStateProgram {
                     n.checked_add(match op {
                         Operation::MidiData(op) => op.jobs(),
                         Operation::Capture { .. } => 2,
+                        Operation::Monitor { .. } => 0,
                         _ => 1,
                     })
                 })
@@ -742,6 +924,7 @@ impl LogicalStateProgram {
                     n.checked_add(match op {
                         Operation::Midi { phase, .. } => phase.jobs(),
                         Operation::Capture { .. } => 2,
+                        Operation::Monitor { .. } => 0,
                         _ => 1,
                     })
                 })
@@ -766,7 +949,7 @@ impl LogicalStateProgram {
                     (binding.key.role, value),
                     (StateRole::View, InitialValue::MediaView(_))
                         | (
-                            StateRole::Gain | StateRole::Coefficient(_),
+                            StateRole::Gain | StateRole::Coefficient(_) | StateRole::Monitor,
                             InitialValue::Ramp(_)
                         )
                         | (StateRole::Smoothing(_), InitialValue::Smoothing { .. })

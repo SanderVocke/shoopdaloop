@@ -84,6 +84,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             let entry = candidate.loops.get_mut(&id).unwrap();
             entry.program = Some(d);
             entry.program_spans = spans;
+            entry.sync = plan.sync_source;
             entry.view.length = plan
                 .unit_frames
                 .checked_mul(plan.iterations)

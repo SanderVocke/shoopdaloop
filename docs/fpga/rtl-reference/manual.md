@@ -7,8 +7,9 @@ lang: en
 # System architecture
 
 This reference describes the shared audio/event pipeline at
-`feat/backend-replacement` revision `cc410f27`, extended with the optional MIDI
-expression-state implementation at `462ce74e`. Source links pin the relevant
+`feat/backend-replacement` revision `cc410f27`, the optional MIDI expression-state
+implementation at `462ce74e`, and the bounded composite audio extension described
+in the state processor chapter. Historical source links pin the relevant
 revision. For each processing quantum, the **state processor (SP)**
 determines which loops are playing or recording and where they are in their
 content. It writes an ordered list of jobs for the **job processor (JP)**,
@@ -16,7 +17,7 @@ which processes samples and packets using the on-chip audio buffers and
 media services. The host, device controller, or testbench supplies input,
 configuration, and the signal to start each quantum.
 
-![Figure 1. The SP keeps its program and loop state on the FPGA. Audio and MIDI reach external DDR through separate hardware services.](figures/system.svg)
+![Figure 1. SP keeps loop state on the FPGA. Its program can be in local RAM or DDR. Audio and MIDI reach DDR through separate hardware services.](figures/system.svg)
 
 ## Where to read the RTL
 
@@ -70,11 +71,11 @@ Sources. [Architecture index](https://github.com/SanderVocke/shoopdaloop/blob/cc
 
 # State processor
 
-The RTL compiler emits one `ProcessLoop` per loop in source-before-dependent
-order. It schedules work among those instructions according to its loop and
-resource dependencies. The schedule preserves ordering on shared views, ramps,
-histories, MIDI sequences, scratch buffers and the MIDI packet stream. The state
-processor reads the instruction stream once per quantum.
+The RTL compiler emits one visit per loop in source-before-dependent order.
+A visit uses `ProcessLoop` or, for a composite's child, `ProcessCompositeChild`
+with the child's schedule rows. The compiler places work between the visits
+according to its dependencies on loop state, ramps, histories, media and
+scratch buffers. The state processor reads the stream once per quantum.
 
 With `DDR_PROGRAM=1`, the instruction regions occupy a 64-byte-aligned range
 after the audio media arena. Each instruction uses a 16-byte DDR record with
@@ -93,21 +94,21 @@ starts with an empty FIFO and its selected program region.
 
 ## What lives on the FPGA
 
-The program, node-state and loop RAMs in Figure 2 are **all on-chip
-synchronous memories**. The job FIFO also uses on-chip RAM and a registered
-head. These RTL arrays can infer FPGA block RAM (BRAM). The synthesis result
+The node-state and loop RAMs are on-chip synchronous memories. The program
+uses local RAM or DDR with an on-chip prefetch FIFO. The job FIFO uses
+on-chip RAM and a registered head. These RTL arrays can infer FPGA block RAM (BRAM). The synthesis result
 depends on the target and memory geometry. Consult the post-synthesis
 utilization for the target profile to see the BRAM mapping.
 
 | Storage | What it holds |
 | --- | --- |
-| Program storage | 96-bit instructions in local RAM or DDR. Live loading can provide a second program region. |
+| Program storage | 96-bit instructions and composite schedule rows in local RAM or DDR. Live loading can provide a second program region. |
 | Node-state RAM | 129-bit entries for values such as view IDs, enables and gain ramps. |
 | Loop RAM | Sixteen 64-bit words per loop. They hold loop identity, mode, positions, capture length, revisions and two plan slots. |
 | Job FIFO | 256-bit job descriptors for the current run. |
 | Engine registers | Working operands while the engine processes one instruction or loop. The sync event shares a descriptor register with job emission. |
 
-SP has **no DDR master or DDR-backed state RAM**. A view ID stored in SP
+SP keeps its state on-chip and reaches DDR through the shared burst DMA. A view ID stored in SP
 identifies audio content. The audio store, reached through JP, uses that ID
 to find sample and metadata pages in DDR. A MIDI sequence ID selects
 a view handle in the data-job unit. SP supplies the playback interval,
@@ -141,6 +142,173 @@ the receiver when to play an event. SP loop decisions still occur at the
 boundaries.
 
 ![Figure 3. With Q=32, a request stored for frame 80 waits until the frame-96 boundary. The loop record and FIFO hold different parts of the state handoff.](figures/quantum.svg)
+
+## Composite audio loops
+
+A composite loop keeps a playhead and tells other loops when to act. Suppose
+the composite **Arrangement** controls an ordinary audio loop called **Drums**.
+Arrangement is the parent and Drums is its child. Drums holds the recorded
+audio. A child can also be a composite with children of its own.
+
+A **span** says what one child should do over one stretch of the parent's
+timeline. It lists a start frame, an end frame and an action. Frame numbers
+are measured from the start of the parent's pass. In the example below,
+Arrangement runs for one pass. The Record span starts at frame 0 and ends
+at frame 64, so Drums records frames 0–63. At frame 64, the Play span begins
+and Drums plays the new take during frames 64–127. The two spans make up the
+schedule for Drums.
+
+![Arrangement’s two spans for Drums, shown on the timeline and in program storage. At frame 64 the schedule tells Drums to switch from Record to Play.](figures/composite-spans.svg)
+
+### How the schedule is stored
+
+A **schedule row** is one 96-bit word in the same program region that
+holds the SP instructions. The compiler puts the rows for Drums immediately
+after the `ProcessCompositeChild` instruction that visits Drums. The
+instruction says three rows follow. The first is a **parent header** that
+identifies Arrangement and says it has two spans for Drums. The next two
+rows each hold one span's start frame, end frame and action. If several
+parents schedule the same child, each parent has its own header followed by
+its spans. Appendix A gives the exact bit layout.
+
+For example, if one parent schedules a single Play span for each of 64 child
+loops, each child needs one header row and one span row. That is 128 schedule
+rows in addition to the instructions that visit the loops. These rows share
+the existing program row budget in each program region.
+
+### How the state processor picks an action
+
+With a quantum of 32 frames, here's what happens when Arrangement reaches
+frame 64.
+
+1. **Update the parent first.** The compiler orders parents and sync sources
+   ahead of the loops that depend on them. Arrangement's loop record now
+   shows that its playhead was at frame 32 in the previous quantum and is at
+   frame 64 in this one.
+2. **Find both positions in the schedule.** When SP reaches the instruction
+   for Drums, it uses the header to find Arrangement's loop record. It reads
+   the span rows in start-frame order. A row matches if the position is at
+   or after its start and before its end. Frame 32 matches Record. Frame 64
+   matches Play.
+3. **Apply the change.** SP switches Drums from Record to Play so the usual
+   audio playback jobs can use the completed take. SP then skips the schedule
+   rows to continue with the next instruction. At the following quantum,
+   both positions match Play, so Drums keeps playing.
+
+A parent that leaves a span and enters a gap asks the child to stop. A seek
+can apply the action at the new position even if the playhead stays inside
+the same span. For Play, SP uses the distance from the start of the span to
+position the child.
+
+Drums still emits sync pulses when it starts or wraps. Other loops can use
+those pulses even while Arrangement controls Drums. Drums can also have its
+own sync source. A command scheduled directly on Drums
+for a particular frame can take precedence when it comes due. If several
+parents request a change at the same boundary, SP takes the first in the
+compiled order. One-pass (explicit) programs come before repeating (regular)
+programs. Loop IDs break ties.
+
+SP uses the audio store's capacity report to decide whether a scheduled
+recording can start. See the admission rule under
+[Views, allocation and reclamation](#views-allocation-and-reclamation).
+
+### Supported behaviour
+
+- **Playback.** Regular programs repeat and can be empty. Explicit programs
+  stop after one pass. Nested playback and seek run at quantum boundaries.
+- **Actions.** Regular spans play children. Explicit spans can Play, Stop or
+  Record. Record targets ordinary Direct audio loops with separate writable
+  media views. Authored MIDI, Replace and dry/wet modes are outside this
+  composite profile.
+- **Automatic input monitoring.** On a Direct audio track with automatic
+  monitoring enabled, the live input is audible from the first block that
+  any loop on the track records. This includes recording started by nested
+  composites. The track monitors its input once even when several loops
+  record. It releases automatic monitoring when the last recording ends.
+  Manual input monitoring can keep the input audible independently.
+- **Timing.** Each composite unit is a whole number of quanta. The unit and
+  the full pass each fit in a 32-bit frame count. A loop can sync to itself.
+  Parent and sync links between different loops must be free of cycles.
+- **Capacity.** A child can have several parents, with several spans from
+  each. Every header and span uses a program row. The total must fit
+  alongside the program instructions in the same region.
+- **Host controls.** The prepared Rust and Marlin hosts accept composite graph
+  images, Play and Seek by iteration, and start and stop commands. A mode change
+  can wait for a sync pulse. Immediate and delayed changes share the two plan
+  slots in the loop record. Repeat sync can be changed while a program is
+  running.
+- **Application edits.** After the initial layout is installed, the application
+  can create a composite, convert an empty stopped loop, edit its plan, and
+  clear or remove a composite. For a single composite with no parent, the
+  host can stop it as part of the clear or removal. The old schedule runs
+  for that quantum so its children stop and any take it started can finish.
+  The host compiles each proposed plan
+  into the unused program region. It reports the new version once the region
+  has taken over and the state snapshot shows that version. If a primitive
+  begins recording before conversion takes over, the handoff refuses the
+  conversion and the primitive keeps its take.
+- **Editing during playback.** The prepared hosts can apply compatible
+  future changes, such as adding another child later in the current pass.
+  A parent can keep playing while an edit changes a later part of a nested
+  composite, including which child composite plays there. For this early
+  handoff, the edited composite keeps its timing and sync source, and the
+  first change is beyond the current and next iteration. For supported edits
+  to Play or Stop spans that keep the same children, SP can check the child's
+  position after a parent seek. A seek into the changed part leaves the edit
+  pending. A seek far enough back can let it take effect on that boundary.
+  If an edit changes the opening but keeps the timing and child list, SP
+  can wait for the transport to stop the composite or return it to the
+  start. The staged image carries old spans only for affected children. If
+  the composite restarts, SP compares the old action at the preceding
+  position with the new opening. If a seek lands elsewhere, SP uses the
+  old spans and the edit waits. Clock-controlled repeats use the actual
+  pulse and playback state for that quantum.
+  An edit to a single nested composite can also wait until the child stops,
+  either by finishing its own run or when its parent releases it. Unchanged
+  parents keep playing and use the new plan the next time they start the child.
+  A repeating child can also pick up a compatible edit at its own restart
+  while its parents keep playing. The host waits when an ancestor command
+  could change the child's entry point and SP cannot use the future-edit check.
+  A compatible one-pass child can take up an edit as it finishes. A parent
+  that starts it again at that same boundary starts the replacement plan.
+  An independent repeating composite can pick up an edit at its next restart,
+  including changes to the length of an iteration or the whole pass. Both plans
+  use the same sync source. At an uninterrupted restart, SP compares what was
+  playing with what should play next. Continuing children keep their place.
+  The edit can drop a child from the schedule while leaving the loop and its
+  audio in the session. A child still playing at the end of the old pass needs
+  one extra program row so SP can stop it. When that child is a composite,
+  its schedule also releases its own children. A direct play command for
+  the removed branch can keep it running at the switch. If the row cannot fit,
+  waiting for a sync clock can give the old schedule time to release its children. The
+  clock can be a primitive, a composite, or a chain of loops that sync to
+  one another. The chain keeps the same links and schedules during the edit,
+  and its loops run free of composite parent actions. A primitive can pass
+  along a source pulse. A composite clock supplies its own repeat pulse.
+  For other edits, the host can use this unchanged clock chain to select a
+  restart. If a clock command can act at that boundary and SP cannot use
+  a guarded restart, the edit waits.
+  A compatible edit can also change the clock. SP uses the old clock to
+  find an eligible boundary and installs the schedule and source together.
+  The new clock can keep the composite waiting after the switch. The
+  compiler needs a visit order that works with both sources. While the
+  composite is playing, queued transitions tied to the old clock run
+  before that binding changes.
+  A timing change needs one free loop record while the new program is staged.
+  For a one-pass composite that keeps its sync source, an edit can take effect
+  as the old run ends. When both plans end with the same child modes, the
+  switch needs no extra rows. If the endings differ, the new schedule also
+  carries each child's old action. A dropped child may need a temporary row.
+  If the old ending records a child and the new opening plays it, the usual
+  transition finishes the take and plays it on the same boundary.
+  An independent one-pass edit also keeps pending transport commands when it
+  preserves the ending modes and the iteration and pass lengths. Other
+  one-pass edits can take effect one quantum after the old run stops.
+  Playback controls still run while an edit waits. If a scheduled stop is
+  pending, it takes effect first and the edit can apply once the loop stops.
+  Cancelling an edit that still waits leaves the active version in place. If
+  the edit reaches the handoff first, the application reports the version that
+  took over.
 
 ## How the render state reaches JP
 
@@ -296,6 +464,15 @@ writes and in-flight traffic, cancels speculative work, and invalidates
 matching entries before the block ID is published on the free stack. Pending
 retirements therefore consume capacity. The view pool, block pool, table page
 pool and retirement queue each have independent capacity limits.
+
+For authored composite recording, the media wrapper reports credits based on
+available sample blocks, table pages and retired-root slots. SP samples these
+credits at run admission and compares them with the compiled count of audio
+writer lanes. The count covers all compiled capture lanes when the image can
+perform authored Record, even if only some write in the current quantum. A
+refused start keeps the old take. If capacity runs out during an admitted take,
+the accepted prefix closes and remains playable. Rust preflights the selected
+writes, so RTL can decline a take earlier near capacity.
 
 ## Sample-cache operations
 
@@ -759,7 +936,7 @@ results. HP0 carries audio storage traffic to the reserved DDR aperture.
 The compiled-audio bring-up can use a deterministic source or the external
 I²S adapter, based on the build profile.
 
-| Mailbox concern | Version 6 register anchors |
+| Mailbox concern | Version 10 register anchors |
 | --- | --- |
 | Discover the image | `ID` 0x000, `VERSION` 0x004, `STATUS` 0x008, `EPOCH` 0x00c, geometry at 0x010–0x03c |
 | Submit command | `REQUEST_EPOCH` 0x040, `REQUEST_OP` 0x044, payload from 0x048, `REQUEST_PUSH` 0x078 |
@@ -782,6 +959,40 @@ before returning completion and ownership. SP state remains live across that
 switch. The returned first frame identifies the new program's boundary.
 The host must wait for completion before reclaiming the previous region or
 the retired state bindings.
+
+For a composite edit, the prepared host stages a versioned schedule in the
+inactive region and checks the affected loops before selecting it. Supported
+boundaries include a switch with the affected loops stopped, a compatible
+restart of an independent repeating parent, and a future-only edit that leaves
+the next unit intact. A single compatible switch request can wait while the old
+program runs to a repeat boundary or finishes its one-pass schedule.
+For an uninterrupted repeat, the loader can put each child's old ending mode
+in the new parent header. A dropped child that was still playing gets a header
+with no spans. SP uses the old mode for the wrap at the switch, then reads the
+new spans for subsequent passes. A following switch waits for that quantum to run.
+Continuing child media remains attached to its existing views through the
+handoff.
+
+For a future edit that keeps the same children, audio work, and addresses,
+the host can submit a switch with a loop slot and a position limit. SP checks
+the loop after resolving its transport, parent actions, and sync for the
+quantum. The switch qualifies if the loop is stopped or its render position
+is below the limit. The staged program agrees with the active program on the
+audio and loop actions for that quantum, so SP can finish the block with the
+active rows. The pipeline publishes the new revision after the block succeeds.
+The switch is reported at the frame where SP made its decision, and the next
+quantum fetches from the new region. If the check fails, the host can try
+again on a later boundary with the same staged program.
+
+A guarded restart uses the staged region during the switch attempt. The
+compiler checks that the two versions use the same timing, audio work and
+state addresses. SP settles the target before its children. The children
+use the old spans if the attempt fails, or compare them with the new
+opening on an accepted restart. Completion reports the frame that used
+the new schedule. The extra spans count toward the existing program
+capacity. This path currently keeps timing, the child list and the audio
+work fixed and handles Play and Stop spans. Other edits use the existing
+handoffs or wait for a stop.
 
 ## Audio device clock boundary
 
@@ -811,6 +1022,7 @@ revision, event count and the audio bank release.
 | --- | --- |
 | Did loop mode and render position settle as expected? | Marlin `sync` test and SP sync-event stream |
 | Did the compiled sequence drive the intended jobs and produce the right samples? | `state`, `audio`, `pipeline`, and mixed `midi` tests |
+| Did a composite seek, shared child, authored take or schedule switch settle correctly? | `graph_compiler` in `rt_fpga_testbench` and `shoop_rt_host_marlin`, and `transition_traces` in `rt_fpga_reference` |
 | Did the second read observe intervening writes? | `chunk`, `metadata`, `ownership` and `deferred` tests |
 | Did ownership survive a switch at the intended frame? | `loading` and `shoop_rt_host_marlin` mailbox tests |
 | Did snapshots and musical repairs agree, including held pedals and shared outputs? | `midi_expression` RTL suite and Rust `midi_expression` tests |
@@ -821,6 +1033,8 @@ Run individual suites from the repository root.
 
 ```sh
 cargo test --locked -p rt_fpga_testbench --features sim --test sync
+cargo test --locked -p rt_fpga_testbench --features sim --test graph_compiler
+cargo test --locked -p shoop_rt_host_marlin --features sim --test graph_compiler
 cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=2
 cargo test --locked -p rt_fpga_testbench --features sim --test midi_expression
 cargo test --locked -p rt_fpga_reference --test midi_expression

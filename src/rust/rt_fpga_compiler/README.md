@@ -39,10 +39,10 @@ loop input/output ports are also accepted; otherwise loops capture their strip's
 processed input and contribute playback to its output. Unconnected inputs are
 silence. No particular bus is required and Master is not hardwired.
 
-MIDI use, dry/wet or hosted processors, composite execution and automatic
-monitoring remain explicit refusals. Those need additional execution semantics;
-they are not flattened away or treated as supported passthroughs. Unused host
-MIDI ports do not prevent an audio graph from compiling. Audio dependencies that
+`compile` and `compile_with_chunk_frames` accept primitive audio graphs.
+`compile_composites` also accepts the bounded composite programs described below.
+All three refuse MIDI routing, dry/wet or hosted processors, and automatic
+monitoring. Graphs may include unused host MIDI ports. Audio dependencies that
 cannot be scheduled within a quantum and cyclic sync chains are invalid.
 
 ## State identity and loading
@@ -114,6 +114,47 @@ cargo test --locked -p shoop_rt_host_marlin --features sim
 ```
 
 See [the loading design](../../../LOADING_DESIGN.md) for the ownership contract.
+
+## Composite audio programs
+
+`compile_composites(view, context, chunk_frames)` lowers prepared, quantum-aligned
+regular and explicit composite programs. It covers empty regular composites,
+nested playback and seek, shared children with a deterministic action priority,
+and authored Play, Stop and Record on Direct audio loops. Children may have
+their own sync source. The compiler checks the combined acyclic action and sync
+graph. Composite slots own timing only.
+
+Both targets charge span rows and parent headers to the instruction budget.
+The program region bounds the total number of parents and spans. A composite's
+duration and unit fit in 32-bit frame counts.
+Capture uses existing primitive views and jobs. Rust preflights the selected
+quantum's writes, while RTL checks conservative capacity for all compiled
+audio capture lanes. Near capacity, RTL can refuse work that would fit the
+actual selected writers.
+
+The prepared graph transport carries the same programs to both hosts. It
+publishes the active version and settled transport state. Hosts accept Play
+and Seek by iteration and check the requested iteration against the active
+program. Composite mode changes can also wait for sync pulses, and the host
+can toggle whether a repeating composite waits for its sync source. Scheduled
+mode changes share the two existing plan slots with any immediate mode change.
+The UI editing capability remains separate. Authored MIDI capture,
+Replace, dry/wet modes and graphs with inter-loop timing cycles are outside
+the current FPGA profile.
+
+The existing loader stages edited tables in the inactive program region. It
+checks affected loops before switching and retains displaced allocations until
+the memory fence. Supported cuts are stopped, a compatible independent restart,
+and a future-only edit with the next unit protected. A prepared host can hold a
+single compatible switch request until the next restart. The caller can retry a
+candidate after a refused cut. Edits that change timing geometry require a
+stopped cut.
+
+```sh
+cargo test --locked -p rt_fpga_reference --all-features
+cargo test --locked -p rt_fpga_testbench --features sim --test graph_compiler
+cargo test --locked -p shoop_rt_host_marlin --features sim --test graph_compiler
+```
 
 ## Mixed MIDI work
 

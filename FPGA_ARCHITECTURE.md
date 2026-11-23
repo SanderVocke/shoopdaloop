@@ -63,6 +63,12 @@ explicit record fixtures. No separate TP RTL or former ARM interface is restored
 [resource optimization report](docs/fpga/sp-sync-resource-optimization.md)
 for the measured loop-storage and execution costs.
 
+Composite audio programs extend the sync prefix with bounded schedule rows in
+program RAM. The SP settles nested and shared children at the quantum boundary,
+and their media uses the existing playback and capture jobs. See the
+[composite audio reference](docs/fpga/rtl-reference/manual.md#composite-audio-loops)
+for the supported transport, recording and live-edit behaviour.
+
 See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the
 [implementation plan](PLAN_FPGA_COMPONENT_RETIREMENT.md). Old timing and board

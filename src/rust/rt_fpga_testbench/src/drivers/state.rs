@@ -58,6 +58,7 @@ impl State {
             "run_state_count",
             "run_quantum",
             "run_chunk_frames",
+            "capture_credits",
             "cfg_valid",
             "cfg_state",
             "cfg_write",

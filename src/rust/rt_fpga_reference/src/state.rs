@@ -1,8 +1,8 @@
 //! Sync-ordered loop evolution followed by audio-ordered state/job emission.
 
 use crate::{
-    fixed::Ramp,
-    jobs::{BufferId, Job, JobQueue, JobQueues},
+    fixed::{Fixed, Ramp},
+    jobs::{BufferId, CaptureWrite, Job, JobQueue, JobQueues},
     records::{Identity, Mode, SettledRecords},
     storage::ViewId,
     Error,
@@ -13,8 +13,8 @@ use crate::transitions::{
     Event, EventKind, LoopId, LoopState, Operation, TransitionError, TransitionPlan,
 };
 pub use sync::{
-    apply_mode_command, LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution,
-    SyncInstruction,
+    apply_mode_command, prepare_composite_iteration, prepare_composite_mode_plan, LoopSlot,
+    ModePlan, ModeStep, PlannedTransition, Resolution, SyncInstruction,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -59,6 +59,7 @@ impl Program {
                         | Instruction::ProcessMidiState { .. } => 3,
                         Instruction::ProcessLogicalCapture { .. }
                         | Instruction::ProcessLoopCapture { .. } => 2,
+                        Instruction::ProcessInputMonitor { .. } => 0,
                         _ => 1,
                     })
                 })
@@ -206,6 +207,10 @@ pub enum Instruction {
         source: BufferId,
         destination: BufferId,
     },
+    ProcessInputMonitor {
+        ramp: Address,
+        recorder: Option<Identity>,
+    },
     ProcessMix {
         left: BufferId,
         right: BufferId,
@@ -256,6 +261,36 @@ pub struct StateProcessor {
     loops: Option<sync::LoopMemory>,
     fault: Option<Error>,
 }
+pub(crate) enum PrepareWork<'a> {
+    Read(crate::resolver::ReadIntent),
+    Captures {
+        requests: &'a mut dyn Iterator<Item = Result<CaptureWrite, Error>>,
+        frames: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompositeStatus {
+    pub version: u64,
+    pub unit_frames: u32,
+    pub iteration: u64,
+    pub passes: u64,
+    pub waiting_repeat: bool,
+}
+
+fn without_capture_preparation(
+    work: PrepareWork<'_>,
+    sink: &mut impl FnMut(crate::resolver::ReadIntent),
+) -> Result<(), Error> {
+    match work {
+        PrepareWork::Read(intent) => {
+            sink(intent);
+            Ok(())
+        }
+        PrepareWork::Captures { .. } => Err(Error::InvalidState),
+    }
+}
+
 impl StateProcessor {
     pub fn reserve_loading(&mut self, limits: rt_fpga_compiler::ProgramLimits) {
         self.memory
@@ -265,11 +300,66 @@ impl StateProcessor {
             loops.reserve_loading(limits.loop_slots as usize);
         }
     }
-    pub(crate) fn switch_image(&mut self, image: &mut crate::target::ProgramImage) {
+    pub(crate) fn switch_image(
+        &mut self,
+        image: &mut crate::target::ProgramImage,
+        rendered_restart: bool,
+    ) -> Result<(), Error> {
+        use rt_fpga_compiler::loading::CompositeCut;
+
+        let loops = self.loops.as_mut().expect("prepared loop pool");
+        let mut wrap_pending = false;
+        for cut in image.layout.composite_cuts() {
+            let old = loops
+                .slot(LoopId {
+                    slot: cut.old_slot.slot,
+                    generation: cut.old_slot.generation,
+                })
+                .map_err(|_| Error::InvalidState)?;
+            if old.state.mode != crate::transitions::Mode::Playing {
+                continue;
+            }
+            wrap_pending |= !rendered_restart
+                && cut.reconciles_wrap(
+                    old.state.position,
+                    old.state.content_length,
+                    old.composite_wait,
+                );
+            let Some(destination) = cut.restart_slot else {
+                continue;
+            };
+            let slot = image
+                .new_loops
+                .iter_mut()
+                .flatten()
+                .find(|slot| {
+                    (slot.state.id.slot, slot.state.id.generation)
+                        == (destination.slot, destination.generation)
+                })
+                .ok_or(Error::InvalidState)?;
+            let length = slot.state.content_length;
+            let quantum = image.compiled.program.quantum;
+            if length < u64::from(quantum) {
+                return Err(Error::InvalidState);
+            }
+            slot.state.mode = old.state.mode;
+            slot.state.position = length;
+            slot.state.repeat_sync = old.state.repeat_sync;
+            slot.state.cycles = old.state.cycles;
+            slot.state.last_pulse = old.state.last_pulse;
+            slot.render.mode = old.render.mode;
+            slot.render.position = CompositeCut::restart_previous(
+                old.render.position,
+                old.state.content_length,
+                length,
+                quantum,
+            );
+            slot.composite_wait = old.composite_wait;
+            slot.mode_failures = old.mode_failures;
+        }
         for &(address, value) in &image.initializers {
             self.memory[address.0] = value;
         }
-        let loops = self.loops.as_mut().expect("prepared loop pool");
         for slot in &mut image.new_loops {
             if let Some(slot) = slot.take() {
                 let index = slot.state.id.slot as usize;
@@ -277,6 +367,42 @@ impl StateProcessor {
             }
         }
         core::mem::swap(&mut loops.plan, &mut image.compiled.plan);
+        loops.program_changed = wrap_pending;
+        Ok(())
+    }
+    pub(crate) fn composite_wrap_pending(&self) -> bool {
+        self.loops
+            .as_ref()
+            .is_some_and(|loops| loops.program_changed)
+    }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn swap_restart_plan(
+        &mut self,
+        plan: &mut TransitionPlan,
+        candidate: Option<rt_fpga_compiler::loading::FutureSwitch>,
+    ) {
+        let loops = self.loops.as_mut().expect("prepared loop pool");
+        loops.restart_candidate = candidate;
+        core::mem::swap(&mut loops.plan, plan);
+    }
+
+    pub(crate) fn permits_future_switch(
+        &self,
+        cut: rt_fpga_compiler::loading::FutureSwitch,
+    ) -> bool {
+        if cut.at_restart() {
+            return self.loops.as_ref().is_some_and(|loops| loops.restart_ready);
+        }
+        self.loop_state(LoopId {
+            slot: cut.target.slot,
+            generation: cut.target.generation,
+        })
+        .is_ok_and(|slot| {
+            use crate::records::Mode;
+            slot.render.mode == Mode::Stopped
+                || (slot.render.mode == Mode::Playing
+                    && slot.render.position < u64::from(cut.before))
+        })
     }
     pub fn new(memory: Vec<Value>) -> Self {
         Self {
@@ -310,6 +436,74 @@ impl StateProcessor {
             .as_ref()
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
+    }
+    pub(crate) fn composite_playback_ready(
+        &self,
+        cut: &rt_fpga_compiler::loading::CompositeCut,
+        slot: &LoopSlot,
+    ) -> bool {
+        use rt_fpga_compiler::{loading::ClockState, shoop_graph::CompositeKind};
+
+        let Some(loops) = self.loops.as_ref() else {
+            return false;
+        };
+        cut.playback_ready(
+            slot.state.position,
+            slot.state.content_length,
+            slot.state.repeat_sync,
+            |source| {
+                let id = LoopId {
+                    slot: source.slot,
+                    generation: source.generation,
+                };
+                let clock = loops.slot(id).ok().filter(|clock| {
+                    !clock.planned.iter().flatten().any(|plan| {
+                        (clock.mode_plan || plan.effective <= loops.frame)
+                            && (!plan.on_pulse || plan.remaining_ticks == 0)
+                    })
+                });
+                Ok::<_, core::convert::Infallible>(clock.map(|clock| {
+                    let kind = loops
+                        .plan
+                        .composite_clocks
+                        .get(id.slot as usize)
+                        .copied()
+                        .flatten()
+                        .map(|clock| {
+                            if clock.explicit {
+                                CompositeKind::Explicit
+                            } else {
+                                CompositeKind::Regular
+                            }
+                        });
+                    ClockState {
+                        kind,
+                        playing: clock.state.mode == crate::transitions::Mode::Playing,
+                        at_end: clock.state.at_end(),
+                        repeat_sync: clock.state.repeat_sync,
+                    }
+                }))
+            },
+        )
+        .unwrap()
+    }
+    pub fn composite_status(&self, id: LoopId) -> Option<CompositeStatus> {
+        let loops = self.loops.as_ref()?;
+        let clock = loops
+            .plan
+            .composite_clocks
+            .get(id.slot as usize)?
+            .as_ref()?;
+        let slot = loops.slot(id).ok()?;
+        let unit = u64::from(clock.unit_frames);
+        Some(CompositeStatus {
+            version: clock.version,
+            unit_frames: clock.unit_frames,
+            iteration: (slot.render.position / unit)
+                .min((slot.state.content_length / unit).saturating_sub(1)),
+            passes: slot.state.cycles,
+            waiting_repeat: slot.composite_wait,
+        })
     }
     pub(crate) fn validate_midi_contents(
         &self,
@@ -364,6 +558,11 @@ impl StateProcessor {
                 })
                 .map(|slot| slot.state)
         })
+    }
+    pub fn authored_capture_refusals(&self) -> u64 {
+        self.loops
+            .as_ref()
+            .map_or(0, |loops| loops.capture_refusals)
     }
     pub fn events(&self) -> &[Event] {
         self.loops
@@ -426,6 +625,23 @@ impl StateProcessor {
             .as_mut()
             .ok_or(TransitionError::InvalidState)?
             .write_mode_plan(id, plan)
+    }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn set_repeat_sync(
+        &mut self,
+        id: LoopId,
+        enabled: bool,
+    ) -> Result<(), TransitionError> {
+        if self.fault.is_some() {
+            return Err(TransitionError::InvalidState);
+        }
+        self.loops
+            .as_mut()
+            .ok_or(TransitionError::InvalidState)?
+            .slot_mut(id)?
+            .state
+            .repeat_sync = enabled;
+        Ok(())
     }
     pub fn clear_mode_plan(&mut self, id: LoopId, mask: u8) -> Result<(), TransitionError> {
         if self.fault.is_some() {
@@ -492,7 +708,7 @@ impl StateProcessor {
         ))
     }
     pub fn run(&mut self, program: &Program, queue: &mut JobQueue) -> Result<(), Error> {
-        self.run_inner(program, JobSink::Single(queue), None, &mut |_| {})
+        self.run_with_intents(program, queue, |_| {})
     }
     pub fn run_with_records(
         &mut self,
@@ -500,7 +716,7 @@ impl StateProcessor {
         queue: &mut JobQueue,
         records: SettledRecords<'_>,
     ) -> Result<(), Error> {
-        self.run_inner(program, JobSink::Single(queue), Some(records), &mut |_| {})
+        self.run_with_records_and_intents(program, queue, records, |_| {})
     }
     pub fn run_with_intents(
         &mut self,
@@ -508,7 +724,9 @@ impl StateProcessor {
         queue: &mut JobQueue,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
-        self.run_inner(program, JobSink::Single(queue), None, &mut sink)
+        self.run_inner(program, JobSink::Single(queue), None, &mut |work| {
+            without_capture_preparation(work, &mut sink)
+        })
     }
     pub fn run_with_records_and_intents(
         &mut self,
@@ -517,28 +735,30 @@ impl StateProcessor {
         loops: SettledRecords<'_>,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
-        self.run_inner(program, JobSink::Single(queue), Some(loops), &mut sink)
+        self.run_inner(program, JobSink::Single(queue), Some(loops), &mut |work| {
+            without_capture_preparation(work, &mut sink)
+        })
     }
     pub(crate) fn run_split(
         &mut self,
         program: &Program,
         queues: &mut JobQueues,
         trace: Option<&mut Vec<Job>>,
-        mut sink: impl FnMut(crate::resolver::ReadIntent),
+        mut prepare: impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        self.run_inner(program, JobSink::Split(queues, trace), None, &mut sink)
+        self.run_inner(program, JobSink::Split(queues, trace), None, &mut prepare)
     }
     fn run_inner(
         &mut self,
         program: &Program,
         queue: JobSink<'_>,
         loops: Option<SettledRecords<'_>>,
-        sink: &mut impl FnMut(crate::resolver::ReadIntent),
+        prepare: &mut impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Some(error) = self.fault {
             return Err(error);
         }
-        let result = self.run_program(program, queue, loops, sink);
+        let result = self.run_program(program, queue, loops, prepare);
         if self.loops.is_some() {
             self.fault = result.err();
         }
@@ -549,7 +769,7 @@ impl StateProcessor {
         program: &Program,
         mut queue: JobSink<'_>,
         loops: Option<SettledRecords<'_>>,
-        sink: &mut impl FnMut(crate::resolver::ReadIntent),
+        prepare: &mut impl FnMut(PrepareWork<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         program.check_job_budget()?;
         if !queue.can_emit(program.jobs_per_quantum) {
@@ -565,9 +785,45 @@ impl StateProcessor {
             if loops.is_some() {
                 return Err(Error::InvalidState);
             }
-            memory
-                .run(&program.sync_instructions, program.quantum)
-                .map_err(Error::Transition)?;
+            let values = &self.memory;
+            memory.settle(&program.sync_instructions, program.quantum, |settled| {
+                if !program.sync_instructions.iter().any(|instruction| {
+                    let SyncInstruction::ProcessLoop { loop_id, .. } = *instruction;
+                    settled
+                        .slot(loop_id)
+                        .is_ok_and(|slot| slot.authored_recording)
+                }) {
+                    return Ok(());
+                }
+                let mut requests = program.instructions.iter().filter_map(|instruction| {
+                    let Instruction::ProcessLogicalCapture { loop_id, view, .. } = *instruction
+                    else {
+                        return None;
+                    };
+                    let record = match settled.slot(loop_id) {
+                        Ok(slot) if slot.render.mode == Mode::Recording => slot.render,
+                        Ok(_) => return None,
+                        Err(error) => return Some(Err(Error::Transition(error))),
+                    };
+                    Some(
+                        values
+                            .get(view.0)
+                            .ok_or(Error::InvalidState)
+                            .and_then(|value| value.word())
+                            .and_then(|value| {
+                                usize::try_from(value).map_err(|_| Error::InvalidView)
+                            })
+                            .map(|index| CaptureWrite {
+                                view: ViewId(index),
+                                reset: record.begin_capture,
+                            }),
+                    )
+                });
+                prepare(PrepareWork::Captures {
+                    requests: &mut requests,
+                    frames: program.quantum as usize,
+                })
+            })?;
         } else if !program.sync_instructions.is_empty() {
             return Err(Error::InvalidState);
         }
@@ -580,12 +836,12 @@ impl StateProcessor {
                 ..
             } = job
             {
-                sink(crate::resolver::ReadIntent {
+                prepare(PrepareWork::Read(crate::resolver::ReadIntent {
                     view,
                     position,
                     length,
                     chunks: u64::from(program.quantum / program.chunk_frames),
-                });
+                }))?;
             }
             Ok::<(), Error>(())
         };
@@ -848,6 +1104,15 @@ impl StateProcessor {
                     })?;
                     value.advance(program.quantum);
                     self.write(ramp, Value::Ramp(value))?;
+                }
+                Instruction::ProcessInputMonitor { ramp, recorder } => {
+                    if let Some(loop_id) = recorder {
+                        if self.loop_record(None, loop_id)?.mode == Mode::Recording {
+                            self.write(ramp, Value::Ramp(Ramp::constant(Fixed::ONE)))?;
+                        }
+                    } else {
+                        self.write(ramp, Value::Ramp(Ramp::constant(Fixed::ZERO)))?;
+                    }
                 }
                 Instruction::ProcessMix {
                     left,

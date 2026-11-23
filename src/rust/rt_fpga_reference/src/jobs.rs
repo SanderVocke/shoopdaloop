@@ -330,7 +330,20 @@ impl JobQueues {
 }
 
 /// Positions and lengths are in chunks; sample streams retain sample units.
+#[derive(Clone, Copy)]
+pub struct CaptureWrite {
+    pub view: ViewId,
+    pub reset: bool,
+}
+
 pub trait Memory {
+    fn prepare_capture_writes(
+        &mut self,
+        _writes: &mut dyn Iterator<Item = Result<CaptureWrite, Error>>,
+        _frames: usize,
+    ) -> Result<(), Error> {
+        Err(Error::InvalidState)
+    }
     fn prepare_unused_view(&mut self, _view: ViewId) -> Result<bool, Error> {
         Ok(true)
     }

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 960 452" width="960" height="452" role="img" aria-labelledby="title desc">
+  <title id="title">A composite timeline and its program rows</title>
+  <desc id="desc">The parent Arrangement schedules two spans for the audio loop Drums. The previous playhead position, frame 32, is in Record. The current position, frame 64, starts Play. Program storage holds an instruction for Drums followed by one parent header and two span rows.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 z" fill="#4b626f"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="450" rx="16" fill="#fbfcfd" stroke="#ced9e0" stroke-width="2"/>
+  <g inkscape:label="Parent timeline" font-family="DejaVu Sans, sans-serif" fill="#1b3244">
+    <text x="34" y="39" font-size="23" font-weight="700">Arrangement’s timeline for Drums</text>
+    <text x="34" y="67" font-size="17" fill="#435d6d">Frames from the start of Arrangement</text>
+    <text x="926" y="67" text-anchor="end" font-size="17" fill="#435d6d">One quantum = 32 frames</text>
+    <rect x="48" y="110" width="432" height="52" rx="5" fill="#eaf1fb" stroke="#456a9f"/>
+    <rect x="480" y="110" width="432" height="52" rx="5" fill="#e4f3ed" stroke="#30775f"/>
+    <g text-anchor="middle" font-size="18">
+      <text x="48" y="96">0</text>
+      <text x="264" y="96">32</text>
+      <text x="480" y="96">64</text>
+      <text x="696" y="96">96</text>
+      <text x="912" y="96">128</text>
+      <text x="264" y="142" font-weight="700" fill="#28466e">Record</text>
+      <text x="696" y="142" font-weight="700" fill="#245844">Play</text>
+    </g>
+    <g stroke="#4b626f" fill="none">
+      <path d="M 48,102 v 8 M 264,102 v 8 M 480,102 v 8 M 696,102 v 8 M 912,102 v 8"/>
+      <path d="M 264,162 v 19 M 480,162 v 19" stroke-width="1.75"/>
+      <path d="M 271,181 H 471" stroke-width="1.75" marker-end="url(#arrow)"/>
+    </g>
+    <circle cx="264" cy="181" r="4" fill="#456a9f"/>
+    <circle cx="480" cy="181" r="4" fill="#30775f"/>
+    <text x="264" y="206" text-anchor="middle" font-size="17" fill="#435d6d">Previous position</text>
+    <text x="480" y="206" text-anchor="middle" font-size="17" fill="#435d6d">Current position</text>
+  </g>
+  <g inkscape:label="Program rows" font-family="DejaVu Sans, sans-serif" fill="#1b3244">
+    <text x="34" y="247" font-size="23" font-weight="700">Program rows for the Drums visit</text>
+    <text x="926" y="247" text-anchor="end" font-size="17" fill="#435d6d">96 bits per row</text>
+    <rect x="34" y="264" width="892" height="38" rx="5" fill="#ffffff" stroke="#a9beca"/>
+    <rect x="34" y="307" width="892" height="38" rx="5" fill="#ffffff" stroke="#a9beca"/>
+    <rect x="34" y="350" width="892" height="38" rx="5" fill="#eaf1fb" stroke="#456a9f"/>
+    <rect x="34" y="393" width="892" height="38" rx="5" fill="#e4f3ed" stroke="#30775f"/>
+    <g font-size="19" font-weight="700">
+      <text x="51" y="290">Instruction</text>
+      <text x="51" y="333">Parent header</text>
+      <text x="51" y="376" fill="#28466e">Record span</text>
+      <text x="51" y="419" fill="#245844">Play span</text>
+    </g>
+    <g font-size="19">
+      <text x="247" y="290"><tspan font-family="DejaVu Sans Mono, monospace">ProcessCompositeChild</tspan> for Drums · 3 schedule rows follow</text>
+      <text x="247" y="333">Arrangement’s ID · 2 span rows follow</text>
+      <text x="247" y="376">Start 0 · End 64 · Record</text>
+      <text x="247" y="419">Start 64 · End 128 · Play</text>
+    </g>
+  </g>
+</svg>

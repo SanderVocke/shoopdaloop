@@ -3,6 +3,8 @@
 
 module host_pipeline_axi #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer SPLIT_MIDI_JOBS = 0,
+    parameter integer MIDI_JOB_FIFO_DEPTH = 128,
     parameter integer LIVE_LOADING = 1,
     parameter integer EXPORT_SYNC_EVENTS = 1,
     parameter integer DDR_PROGRAM = 0,
@@ -189,6 +191,7 @@ module host_pipeline_axi #(
     wire [15:0] switch_sync_count;
     wire [15:0] switch_states;
     wire [15:0] switch_buffers;
+    wire [43:0] switch_future;
     wire switch_response_valid;
     wire switch_response_ready;
     wire switch_response_error;
@@ -271,6 +274,8 @@ module host_pipeline_axi #(
         .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
+        .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS),
+        .MIDI_JOB_FIFO_DEPTH(MIDI_JOB_FIFO_DEPTH),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
         .DDR_PROGRAM(DDR_PROGRAM),

@@ -120,6 +120,10 @@ pub enum Instruction {
         source: u16,
         destination: u16,
     },
+    ProcessInputMonitor {
+        ramp: u16,
+        recorder: Option<Identity>,
+    },
     ProcessMix {
         left: u16,
         right: u16,
@@ -258,6 +262,17 @@ pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
             source,
             destination,
         } => (2, vec![ramp, source, destination]),
+        Instruction::ProcessInputMonitor { ramp, recorder } => {
+            let (slot, generation) = if let Some(loop_id) = recorder {
+                (u16::try_from(loop_id.slot)?, loop_id.generation)
+            } else {
+                (u16::MAX, 0)
+            };
+            (
+                0x17,
+                vec![slot, generation as u16, (generation >> 16) as u16, ramp],
+            )
+        }
         Instruction::ProcessSmoothing {
             loop_id,
             control,

@@ -98,6 +98,7 @@ impl Audio {
             "run_state_count",
             "run_quantum",
             "run_chunk_frames",
+            "capture_credits",
             "run_buffers",
             "run_inputs",
             "run_outputs",

@@ -219,12 +219,10 @@ pub fn run_configuration(
             connected: true,
         },
     )?;
+    let unchanged = command(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     ensure!(
-        matches!(
-            command(&mut client, &mut connection, Command::ActivatePreparedGraph)?,
-            Outcome::Refused { .. }
-        ),
-        "unchanged layout was submitted twice"
+        matches!(unchanged, Outcome::Refused { .. }),
+        "unchanged layout was submitted twice: {unchanged:?}"
     );
     immediate(
         &client,
@@ -403,8 +401,23 @@ pub fn run_configuration(
         loop_view(c, replacement_voice)
             .is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames >= 128)
     })?;
+    let arrangement = loops[1];
+    accepted(
+        &mut client,
+        &mut connection,
+        Command::Composite(shoop_app_protocol::composite::Edit::Append {
+            target: arrangement,
+            add: vec![replacement_voice],
+            parallel: false,
+            convert_if_empty: true,
+        }),
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, arrangement)
+            .is_some_and(|l| l.composite_kind == CompositeKind::Regular && l.length_frames > 0)
+    })?;
     let report = serde_json::json!({"result":"passed","boundary":"shoop_host application API through RtBackend", "recorded_frames": recorded,
-        "live_graph_updates":3,"recording_and_gain_preserved":true,"recycled_logical_slots":true,"unchanged_activation_refused":true,"immediate_controls":true});
+        "live_graph_updates":3,"recording_and_gain_preserved":true,"recycled_logical_slots":true,"unchanged_activation_refused":true,"immediate_controls":true,"composite_edit_verified":true});
     std::fs::write(
         output.join("report.json"),
         serde_json::to_vec_pretty(&report)?,

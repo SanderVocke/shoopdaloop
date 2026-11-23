@@ -1,4 +1,6 @@
 //! Experimental command groups. Identities and epochs are shared with snapshots.
+use crate::{LoopSlotId, SlotId};
+
 pub const COMMANDS: usize = 32;
 pub const FIFO_RECORDS: usize = 256;
 pub const FIFO_SINGLETONS: usize = FIFO_RECORDS / 2;
@@ -66,6 +68,12 @@ pub struct PlannedTransition {
     pub skip: u32,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IterationTransition {
+    pub iteration: u64,
+    pub retrigger: bool,
+    pub seek: bool,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ClearPlanned {
     First = 1,
@@ -117,10 +125,14 @@ pub enum Command {
         bytes: [u8; 20],
     },
     ActivateGraph,
+    ActivateCompositeGraph(u64),
+    CancelCompositeGraph(u64),
     SwitchProgram(SwitchProgram),
     LoopGain(u32, f32),
     LoopBalance(u32, f32),
     Transition(u32, TransitionPlan),
+    LoopIteration(LoopSlotId, IterationTransition),
+    LoopRepeatSync(LoopSlotId, bool),
     ClearPlannedTransitions(u32, ClearPlanned),
     Grab(u32, Grab),
     GrabGesture(u32, GrabGesture),
@@ -201,6 +213,7 @@ pub enum Code {
     GraphBusControlsUnsupported = 26,
     GraphBusesUnsupported = 27,
     GraphRoutingUnsupported = 28,
+    Cancelled = 29,
 }
 impl Code {
     pub fn from_raw(value: u32) -> Option<Self> {
@@ -234,6 +247,7 @@ impl Code {
             26 => Self::GraphBusControlsUnsupported,
             27 => Self::GraphBusesUnsupported,
             28 => Self::GraphRoutingUnsupported,
+            29 => Self::Cancelled,
             _ => return None,
         })
     }
@@ -267,7 +281,7 @@ impl Code {
     }
     pub fn diagnostic(self) -> Option<u8> {
         match self {
-            Self::Unprocessed | Self::Applied | Self::Scheduled => None,
+            Self::Unprocessed | Self::Applied | Self::Scheduled | Self::Cancelled => None,
             Self::StaleConfiguration => Some(2),
             Self::TargetUnavailable => Some(3),
             Self::Unsupported | Self::CannotApply => Some(4),
@@ -375,6 +389,8 @@ impl CommandRecord {
                 0,
             ],
             ActivateGraph => [18, 0, 0, 0, 0, 0, 0, 0],
+            ActivateCompositeGraph(id) => [24, id as u32, (id >> 32) as u32, 0, 0, 0, 0, 0],
+            CancelCompositeGraph(id) => [25, id as u32, (id >> 32) as u32, 0, 0, 0, 0, 0],
             SwitchProgram(s) => [
                 19,
                 s.revision as u32,
@@ -393,6 +409,26 @@ impl CommandRecord {
                 plan.first.map_or(0, |s| s.skip),
                 plan.second.map_or(u32::MAX, |s| s.mode as u32),
                 plan.second.map_or(0, |s| s.skip),
+                0,
+            ],
+            LoopIteration(id, plan) => [
+                22,
+                id.0.index,
+                plan.iteration as u32,
+                (plan.iteration >> 32) as u32,
+                u32::from(plan.retrigger) | (u32::from(plan.seek) << 1),
+                id.0.generation,
+                0,
+                0,
+            ],
+            LoopRepeatSync(id, enabled) => [
+                23,
+                id.0.index,
+                id.0.generation,
+                u32::from(enabled),
+                0,
+                0,
+                0,
                 0,
             ],
             Grab(id, grab) => [
@@ -424,7 +460,7 @@ impl CommandRecord {
                     LoopGain(id, v) => (0, id, v.to_bits()),
                     LoopBalance(id, v) => (1, id, v.to_bits()),
                     ClearPlannedTransitions(id, which) => (15, id, which as u32),
-                    Transition(..) => unreachable!(),
+                    Transition(..) | LoopIteration(..) | LoopRepeatSync(..) => unreachable!(),
                     InputGain(id, v) => (4, id, v.to_bits()),
                     InputBalance(id, v) => (5, id, v.to_bits()),
                     OutputGain(id, v) => (6, id, v.to_bits()),
@@ -440,6 +476,8 @@ impl CommandRecord {
                     | BeginGraphImage { .. }
                     | GraphImageData { .. }
                     | SwitchProgram(_)
+                    | ActivateCompositeGraph(_)
+                    | CancelCompositeGraph(_)
                     | ActivateGraph => unreachable!(),
                 };
                 [op, id, value, 0, 0, 0, 0, 0]
@@ -481,6 +519,23 @@ impl CommandRecord {
                 repeat_sync: self.word(6) & 2 != 0,
             }),
             18 => ActivateGraph,
+            24 => ActivateCompositeGraph(u64::from(id) | (u64::from(value) << 32)),
+            25 => CancelCompositeGraph(u64::from(id) | (u64::from(value) << 32)),
+            22 if self.word(4) <= 3 && self.word(6) == 0 => LoopIteration(
+                LoopSlotId(SlotId::new(id, self.word(5))),
+                IterationTransition {
+                    iteration: u64::from(value) | (u64::from(self.word(3)) << 32),
+                    retrigger: self.word(4) & 1 != 0,
+                    seek: self.word(4) & 2 != 0,
+                },
+            ),
+            23 if self.word(3) <= 1
+                && self.word(4) == 0
+                && self.word(5) == 0
+                && self.word(6) == 0 =>
+            {
+                LoopRepeatSync(LoopSlotId(SlotId::new(id, value)), self.word(3) != 0)
+            }
             19 => SwitchProgram(crate::immediate::SwitchProgram {
                 revision: u64::from(id) | (u64::from(value) << 32),
                 region: self.word(3) as u16,
@@ -611,6 +666,8 @@ impl Response {
 impl Command {
     pub fn valid(self) -> bool {
         match self {
+            Self::ActivateCompositeGraph(id) | Self::CancelCompositeGraph(id) => id != 0,
+            Self::LoopIteration(id, _) | Self::LoopRepeatSync(id, _) => id.0.generation != 0,
             Self::BeginGraphImage { quantum, bytes } => {
                 matches!(quantum, 1 | 16 | 32 | 64 | 128) && bytes != 0
             }

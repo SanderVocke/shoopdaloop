@@ -15,12 +15,18 @@ pub struct ActiveProgram {
 pub struct FencedSwitch {
     requested: SwitchProgram,
     selected: ActiveProgram,
+    composite_wrap: bool,
 }
 impl FencedSwitch {
-    pub(super) fn new(requested: SwitchProgram, words: [u32; HOST_PAYLOAD_WORDS]) -> Self {
+    pub(super) fn new(
+        requested: SwitchProgram,
+        words: [u32; HOST_PAYLOAD_WORDS],
+        composite_wrap: bool,
+    ) -> Self {
         let join = |low, high| u64::from(low) | u64::from(high) << 32;
         Self {
             requested,
+            composite_wrap,
             selected: ActiveProgram {
                 frame: join(words[0], words[1]),
                 revision: join(words[2], words[3]),
@@ -29,6 +35,9 @@ impl FencedSwitch {
     }
     pub(super) fn frame(&self) -> u64 {
         self.selected.frame
+    }
+    pub(super) fn revision(&self) -> u64 {
+        self.selected.revision
     }
 }
 
@@ -39,6 +48,7 @@ pub struct ProgramSession<B> {
     staged: Option<Upload>,
     uploaded: bool,
     failed: bool,
+    composite_wrap_frame: Option<u64>,
 }
 
 impl<B: RegisterBus> ProgramSession<B> {
@@ -49,6 +59,7 @@ impl<B: RegisterBus> ProgramSession<B> {
             staged: None,
             uploaded: false,
             failed: false,
+            composite_wrap_frame: None,
         }
     }
 
@@ -64,8 +75,34 @@ impl<B: RegisterBus> ProgramSession<B> {
         self.staged.as_ref().map(|upload| &upload.image)
     }
 
+    pub fn composite_wrap_frame(&self) -> Option<u64> {
+        self.composite_wrap_frame
+    }
+
     pub fn active_and_client(&mut self) -> (Option<&ProgramImage>, &mut Client<B>) {
-        (self.active.as_ref().map(|u| &u.image), &mut self.client)
+        let (active, _, client) = self.programs_and_client();
+        (active, client)
+    }
+
+    pub fn programs_and_client(
+        &mut self,
+    ) -> (Option<&ProgramImage>, Option<&ProgramImage>, &mut Client<B>) {
+        (
+            self.active.as_ref().map(|u| &u.image),
+            self.staged.as_ref().map(|u| &u.image),
+            &mut self.client,
+        )
+    }
+
+    pub fn discard_staged(&mut self, requested: SwitchProgram) -> Option<Upload> {
+        if !self
+            .staged()
+            .is_some_and(|image| descriptor(image) == requested)
+        {
+            return None;
+        }
+        self.uploaded = false;
+        self.staged.take()
     }
 
     pub fn stage(&mut self, upload: Upload) -> Result<(), Upload> {
@@ -106,7 +143,7 @@ impl<B: RegisterBus> ProgramSession<B> {
     pub fn activate(
         &mut self,
         requested: SwitchProgram,
-        time_left: impl FnMut() -> bool,
+        mut time_left: impl FnMut() -> bool,
     ) -> Result<(ActiveProgram, Option<Upload>), Error<B::Error>> {
         if self.failed {
             return Err(Error::Fault);
@@ -118,6 +155,34 @@ impl<B: RegisterBus> ProgramSession<B> {
         else {
             return Err(Error::InvalidRequest);
         };
+        let layout = &staged.image.layout;
+        if !layout.composite_cuts().is_empty() || self.composite_wrap_frame.is_some() {
+            let mut window =
+                super::ControlWindow::begin(&mut self.client, layout.expected, &mut time_left)?;
+            let result = (|| {
+                if self.composite_wrap_frame == Some(window.frame()) {
+                    return Ok(None);
+                }
+                for cut in layout.composite_cuts() {
+                    if window.prepare_composite_cut(cut, staged.image.compiled.quantum)?
+                        != shoop_rt_protocol::immediate::Code::Applied
+                    {
+                        return Ok(None);
+                    }
+                }
+                window.switch_program(requested).map(Some)
+            })();
+            let release = window.release();
+            let fence = match (result, release) {
+                (Ok(Some(fence)), Ok(())) => fence,
+                (Ok(None), Ok(())) => return Err(Error::Rejected(RESULT_REJECTED)),
+                (Err(error), _) | (_, Err(error)) => {
+                    self.failed = true;
+                    return Err(error);
+                }
+            };
+            return self.accept_fence(fence);
+        }
         let response = self.exchange(
             Ok(Request::switch_program(
                 staged.image.layout.expected,
@@ -125,7 +190,7 @@ impl<B: RegisterBus> ProgramSession<B> {
             )),
             time_left,
         )?;
-        self.accept_fence(FencedSwitch::new(requested, response))
+        self.accept_fence(FencedSwitch::new(requested, response, false))
     }
 
     pub fn accept_fence(
@@ -142,8 +207,32 @@ impl<B: RegisterBus> ProgramSession<B> {
             return Err(Error::UnexpectedResponse);
         }
         let staged = self.staged.take().unwrap();
+        self.composite_wrap_frame = fence.composite_wrap.then_some(fence.selected.frame);
         self.uploaded = false;
         Ok((fence.selected, self.active.replace(staged)))
+    }
+
+    /// A guarded switch uses the same media and allocations. The completed
+    /// quantum publishes its revision after all its jobs have drained.
+    pub fn accept_future_switch(
+        &mut self,
+        requested: SwitchProgram,
+        revision: u64,
+        frame: u64,
+    ) -> Result<Option<Upload>, Error<B::Error>> {
+        if self
+            .staged()
+            .and_then(|image| image.layout.future_switch())
+            .is_none()
+        {
+            return Err(Error::UnexpectedResponse);
+        }
+        let fence = FencedSwitch {
+            requested,
+            selected: ActiveProgram { revision, frame },
+            composite_wrap: false,
+        };
+        self.accept_fence(fence).map(|(_, retired)| retired)
     }
 
     fn exchange(

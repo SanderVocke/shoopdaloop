@@ -4,6 +4,7 @@ module media_store #(
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer BLOCK_CHUNKS = 32,
+    parameter integer CAPTURE_FRAMES = CHUNK_FRAMES,
     parameter integer RETIRED_TABLES = 256,
     parameter integer RECLAIM_BLOCKS = 0, parameter integer RECLAIM_CYCLES = 5000,
     parameter integer RECLAIM_GUARD = 1024,
@@ -34,6 +35,7 @@ module media_store #(
     input wire [63:0] cmd_length, input wire [31:0] cmd_count,
     output reg busy, output reg done, output reg [7:0] error_code,
     output wire memory_fault,
+    output wire [15:0] capture_credits,
     output reg [31:0] result_view, output reg result_empty,
     input wire write_valid, output wire write_ready, input wire [31:0] write_data,
     output wire read_valid, input wire read_ready, output wire [31:0] read_data,
@@ -96,6 +98,15 @@ module media_store #(
     reg reference_zero, reference_one, reference_max;
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
+    localparam integer CAPTURE_BLOCKS = 32'((64'(CAPTURE_FRAMES)+BLOCK_FRAMES-1)/BLOCK_FRAMES);
+    localparam integer CAPTURE_LEVELS = BLOCKS < 2 ? 1 : ($clog2(BLOCKS)+3)/4;
+    wire [31:0] sample_credits = (slot_limit-slot_count+free_count) >> $clog2(CAPTURE_BLOCKS);
+    wire [31:0] page_credits = reclaim_pages_available >> $clog2(CAPTURE_BLOCKS*CAPTURE_LEVELS);
+    wire [31:0] retire_credits = 32'(RETIRED_TABLES)-reclaim_pending;
+    wire [31:0] growth_credits = sample_credits < page_credits ? sample_credits : page_credits;
+    wire [31:0] available_credits = growth_credits < retire_credits ? growth_credits : retire_credits;
+    assign capture_credits = memory_fault || slot_limit<slot_count ? 16'b0
+        : |available_credits[31:16] ? 16'hffff : available_credits[15:0];
     wire [31:0] views_used;
     wire views_initialized, views_count_ready;
     generate if (REUSE_VIEWS != 0) begin : count_views

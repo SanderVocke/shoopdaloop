@@ -345,6 +345,21 @@ pub extern "C" fn shoop_rt_worklet_image_commit() -> u32 {
 }
 #[cfg(feature = "fpga-reference")]
 #[no_mangle]
+pub extern "C" fn shoop_rt_worklet_cancel_image(revision: u64) -> u32 {
+    WORKLET.with(|cell| {
+        match cell
+            .borrow_mut()
+            .host
+            .as_mut()
+            .map(|host| host.cancel_reference_image(revision))
+        {
+            Some(Ok(())) => 0,
+            _ => ENGINE_REFUSED,
+        }
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
 pub extern "C" fn shoop_rt_worklet_image_ready() -> u64 {
     WORKLET.with(|cell| {
         let mut w = cell.borrow_mut();

@@ -55,6 +55,20 @@ pub(crate) struct Job {
     cancel_sent: bool,
 }
 
+impl Job {
+    fn restage(&mut self) {
+        self.phase = Phase::Queued;
+        self.description = None;
+        self.spans.clear();
+        self.sent = 0;
+        self.failure = None;
+        self.applied = None;
+        self.telemetry = None;
+        self.cancel_sent = false;
+        self.yielding = false;
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Composites {
     pub jobs: VecDeque<Job>,
@@ -113,6 +127,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// Creates a timing slot for negotiated prepared-plan clients.
     pub fn create_prepared_composite(&mut self) -> Result<BackendCompositeId> {
         self.ready()?;
+        self.structure_mutable()?;
+        let version = if self.prepared_graph.is_some() {
+            self.composites.next_version = self
+                .composites
+                .next_version
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("composite version space exhausted"))?;
+            self.composites.next_version
+        } else {
+            0
+        };
         let slot = LoopSlotId(
             self.mirror
                 .loop_slots
@@ -126,7 +151,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             sync: None,
             previous: None,
             expected_version: 0,
-            version: 0,
+            version,
             kind: CompositeKind::Regular,
             unit_frames: u64::from(self.limits().quantum),
             iterations: 0,
@@ -609,6 +634,49 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             && job.outstanding == 0
         {
             terminal = Some(self.install_composite(&mut job));
+        } else if self.prepared_graph.is_some() {
+            match job.phase {
+                Phase::Confirming => {}
+                Phase::Commit => {
+                    let yield_for_sync = job.cancel.is_none()
+                        && self.can_yield_prepared_composite()
+                        && self
+                            .requests
+                            .outgoing
+                            .iter()
+                            .any(|pending| matches!(pending.purpose, Purpose::LoopSync(..)));
+                    if (job.cancel.is_some() || yield_for_sync) && !job.cancel_sent {
+                        if self.cancel_composite_upload(job.sequence) {
+                            if yield_for_sync {
+                                job.restage();
+                            } else {
+                                terminal = job.cancel.take();
+                            }
+                        } else {
+                            match self.send_prepared_composite_cancel(job.sequence) {
+                                Ok(sent) => {
+                                    job.cancel_sent = sent;
+                                    job.yielding = sent && yield_for_sync;
+                                }
+                                Err(error) => {
+                                    self.composites.jobs.push_front(job);
+                                    self.lose(alloc::format!(
+                                        "composite cancellation submission failed: {error:?}"
+                                    ));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    terminal = job.cancel.take().or_else(|| {
+                        self.advance_prepared_composite(&mut job)
+                            .err()
+                            .map(|error| BackendCompositeOutcome::Refused(error.to_string()))
+                    })
+                }
+            }
         } else if job.outstanding == 0
             && job
                 .retry_after
@@ -701,7 +769,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Request::Route { .. }
                     )
             });
-        if job.phase == Phase::Commit
+        if self.prepared_graph.is_none()
+            && job.phase == Phase::Commit
             && job.outstanding == 1
             && !job.cancel_sent
             && (job.cancel.is_some() || structural_waiting)
@@ -719,6 +788,69 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         } else {
             self.composites.jobs.push_front(job);
         }
+    }
+
+    fn advance_prepared_composite(&mut self, job: &mut Job) -> Result<()> {
+        let graph = self.prepared_graph.as_ref().unwrap();
+        if !graph.active || graph.pending.is_some() || graph.dirty || !self.requests.is_empty() {
+            return Ok(());
+        }
+        if job.description.is_none() && !self.prepare_composite_job(job)? {
+            return Ok(());
+        }
+        let mut candidate = self.mirror.clone();
+        Self::set_composite_program(&mut candidate, job)
+            .ok_or_else(|| anyhow!("composite was removed"))?;
+        self.submit_composite_image(job.sequence, &candidate)?;
+        job.phase = Phase::Commit;
+        Ok(())
+    }
+
+    pub(crate) fn prepared_composite_answer(
+        &mut self,
+        sequence: u64,
+        result: Result<(), BackendCompositeOutcome>,
+        frame: u64,
+    ) {
+        let Some(mut job) = self.composites.jobs.pop_front() else {
+            return;
+        };
+        if job.sequence != sequence {
+            self.composites.jobs.push_front(job);
+            return;
+        }
+        match result {
+            Ok(()) => {
+                job.applied = Some(frame);
+                job.phase = Phase::Confirming;
+                self.composites.jobs.push_front(job);
+            }
+            Err(BackendCompositeOutcome::Cancelled) if job.yielding && job.cancel.is_none() => {
+                job.restage();
+                self.composites.jobs.push_front(job);
+            }
+            Err(outcome) => {
+                let outcome = if outcome == BackendCompositeOutcome::Cancelled {
+                    job.cancel.take().unwrap_or(outcome)
+                } else {
+                    outcome
+                };
+                self.finish_composite(job, outcome);
+            }
+        }
+    }
+
+    pub(crate) fn knows_staged_composite(&self, loop_id: LoopSlotId, version: u64) -> bool {
+        self.composites.jobs.front().is_some_and(|job| {
+            job.version == version && job.description.is_some_and(|d| d.loop_id == loop_id)
+        })
+    }
+
+    pub(crate) fn prepared_composite_confirming(&self) -> bool {
+        self.composites
+            .jobs
+            .front()
+            .is_some_and(|job| job.phase == Phase::Confirming)
     }
 
     fn prepare_composite_job(&mut self, job: &mut Job) -> Result<bool> {
@@ -901,13 +1033,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             && job.outstanding == 0
             && job.cancel.is_none()
         {
-            job.phase = Phase::Queued;
-            job.description = None;
-            job.spans.clear();
-            job.sent = 0;
-            job.failure = None;
-            job.cancel_sent = false;
-            job.yielding = false;
+            job.restage();
             job.retry_after = Some(self.status.callbacks);
             terminal = None;
         }
@@ -967,14 +1093,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
-    fn install_composite(&mut self, job: &mut Job) -> BackendCompositeOutcome {
+    fn set_composite_program<'a>(mirror: &'a mut crate::Mirror, job: &Job) -> Option<&'a mut Loop> {
         let description = job.description.unwrap();
-        let frame = job.applied.unwrap();
-        let Some(entry) = self.mirror.loops.get_mut(&job.id) else {
-            return BackendCompositeOutcome::Refused(
-                "composite disappeared before confirmation".to_string(),
-            );
-        };
+        let entry = mirror.loops.get_mut(&job.id)?;
         let old = entry.slot;
         entry.slot = description.loop_id;
         if old != entry.slot {
@@ -985,9 +1106,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         entry.program = Some(description);
         entry.program_spans = job.spans.clone();
         entry.sync = job.plan.sync_source;
+        mirror.slot_loops.remove(&old);
+        mirror.slot_loops.insert(description.loop_id, job.id);
+        Some(entry)
+    }
+
+    fn install_composite(&mut self, job: &mut Job) -> BackendCompositeOutcome {
+        let frame = job.applied.unwrap();
+        let Some(entry) = Self::set_composite_program(&mut self.mirror, job) else {
+            return BackendCompositeOutcome::Refused(
+                "composite disappeared before confirmation".to_string(),
+            );
+        };
         Self::apply_composite_telemetry(entry, job.telemetry.unwrap());
-        self.mirror.slot_loops.remove(&old);
-        self.mirror.slot_loops.insert(description.loop_id, job.id);
+        if let Some(graph) = &mut self.prepared_graph {
+            graph.committed = Some(self.mirror.clone());
+        }
         self.composites.applied_frames.insert(job.id, frame);
         self.reads.forget(job.id);
         self.canonical_content.remove(&job.id);

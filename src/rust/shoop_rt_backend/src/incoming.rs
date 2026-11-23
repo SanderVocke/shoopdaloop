@@ -994,11 +994,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         match (purpose, refusal) {
             (Purpose::RepeatSync(id, enabled), None) => {
-                if self
-                    .mirror
-                    .loops
-                    .get(&id)
-                    .is_some_and(|entry| entry.program.is_none())
+                if self.prepared_graph.is_none()
+                    && self
+                        .mirror
+                        .loops
+                        .get(&id)
+                        .is_some_and(|entry| entry.program.is_none())
                 {
                     return;
                 }
@@ -1192,7 +1193,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
-            (Purpose::AutomaticMonitoring(..), None) => {}
+            (Purpose::AutomaticMonitoring(id, enabled), None) => {
+                if self.prepared_graph.is_some() {
+                    if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                        track.automatic_enabled = enabled;
+                    }
+                }
+            }
             (Purpose::AutomaticMonitoring(id, _), Some(refusal)) => self.failure(
                 BackendMutationKind::TrackControl,
                 Some(id.raw()),
