@@ -747,7 +747,7 @@ pub fn processor_settings_from_snapshot(
             .map_err(|error| error.to_string())?,
         carla: Default::default(),
     };
-    if backend == crate::BackendType::Native {
+    if cfg!(not(target_arch = "wasm32")) && backend == crate::BackendType::Native {
         settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
             shoop_settings::CarlaHostingMode::InProcess => shoop_app_api::CarlaHosting::InProcess,
             shoop_settings::CarlaHostingMode::Subprocess => shoop_app_api::CarlaHosting::Subprocess,
@@ -4344,6 +4344,16 @@ mod tests {
         assert_eq!(
             backend_from_snapshot(&defaults).unwrap(),
             crate::BackendType::Native
+        );
+        let processors =
+            processor_settings_from_snapshot(&defaults, crate::BackendType::Native).unwrap();
+        assert_eq!(
+            processors.carla.hosting,
+            if cfg!(target_arch = "wasm32") {
+                shoop_app_api::CarlaHosting::Disabled
+            } else {
+                shoop_app_api::CarlaHosting::InProcess
+            }
         );
         assert_eq!(
             new_engine_pools_from_snapshot(&defaults).unwrap(),
