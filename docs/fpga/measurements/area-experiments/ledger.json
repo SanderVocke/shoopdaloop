@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
-  "stage": 3,
-  "status": "Stages0\u20133 complete; C3 path-context selected after exactfullphysicalrepeat. Stage4 sharedarithmetic experiments next.",
+  "stage": 4,
+  "status": "Stages0\u20133 complete; Stage4firstsharedMIDIstoreaddress trialcomplete, selectedasC4. Scratch/audio/node siblings andStages5\u201311 remain. C4defaultareachoiceincludesexplicitlatencytradeoff; CIintegrationqualificationsstillpending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -39,10 +39,14 @@
     "MIDI raw store boundary fixture86af343f passes independent ContentStore data/order/usage, full pools and retirement wraps, input poisoning, response hold, high-time/invalid handles, generation overflow, fault/reset checks",
     "All16 C1 MIDI tests pass354.11sec serial, includingconnected32/64 AXI, delayed/ideal memory, ownership/retake/refusal and new independent raw-store controls",
     "Path exact-source physical repeat matches allfourstageresource/timing/controlset rows; expanded six-test path metadata suite passes217.75sec",
-    "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification."
+    "BeforeMIDIaddress/stagingtrials:C2reservedDDRcontrols54rows; zero-baseagentextension replaysall54exactly; high/wrappingarena bases108rowsmatchzero-base responses/cycles/transfercounts. Memoryagentdefaultbase0 preserved; standalonewordinterfacescope,notboardmappingqualification.",
+    "C3extended1041callbackrows matchC2exactly, includingboth16,384-frameleafspans: steady1024 median52994/max59446; cold88446. Frozenbinary8c51 andimmutablefe2184ea source.",
+    "Stage5validity-testfoundationa32d1500 passes69.21sec onC3: AXI32/64 x VIEWS1/5/512; total8988requestrows archived;512completedinvalidations plusaccepted-abort/reset, sleepingviewforcedreloadafter256, opaquevalues/highinvalidtrim/rewrites/heldresponses/randomAXIstalls; directInstantbackend, notfixedDDRtiming. Originalfixturesunchanged."
   ],
   "pending": [
-    "Stage3 MIDI bounded types from unchanged C2, then separate local-frame/arena-relative variants"
+    "Complete Stage4 shared arithmetic siblings and decide each from measured behavior, cycles and area",
+    "Execute Stages5\u201310 one candidate at a time",
+    "Stage11 full selected-combination physical, regression and CI qualification"
   ],
   "artifacts": {
     "prepared_baseline": "work/area-experiments/b0-100",
@@ -57,6 +61,11 @@
       "c2-midi-reserved-control-summary.json",
       "c2-midi-reserved-zero-replay-summary.json",
       "c2-midi-relocated-control-summary.json"
+    ],
+    "c3_extended_control": "c3-extended-100-summary.json",
+    "c3_metadata_validity_controls": [
+      "c3-metadata-validity-axi32-summary.json",
+      "c3-metadata-validity-axi64-summary.json"
     ]
   },
   "experiments": [
@@ -1106,6 +1115,74 @@
       "outcome": "selected_as_C3",
       "decision": "Stable82LUT/42slice improvementwithunchangedcycles/BRAM/externalcontract. Accept13morecarry/33moreFF/65morephysicalcontrolsets; timingessentiallyunchangedandstillfails. Completefunctional,sourcecontext andphysicalrepeat evidence retained.",
       "midi_log": "s3-path-context-midi-tests.log"
+    },
+    {
+      "label": "s4-midi-address",
+      "stage": 4,
+      "status": "completed",
+      "rtl_source_revision": "7d2d7cd7",
+      "control_revision": "607c8a0f",
+      "control_summary": "s3-path-context-repeat-100-summary.json",
+      "changed_contract": "Logicalbehavior/publicwidths/capacitiesunchanged; shared64ALUwith3formatterstatesbeforeeachwordrequest plusrecord-addresssetup. Existingmemory_addressregisterholdsbase whilevalid0. Preserveview/tableoffset32wrap,raw32IDs,full64basecarry. See stage4-midi-address-contract.md.",
+      "validation": [
+        "Tworeserved/relocation tests pass21.13sec oncandidate",
+        "Storagewidth/fullpool/boundary test passes92.50sec acrossminimum/odd/primary256view/128retirement indices; existingcompletionguardsunchanged",
+        "Lintwarningfatalpassesminimum/odd/primary; onlyMIDIstoreRTLdiffersfromC3",
+        "All10311rawstore +54reserved +108relocated rows match control in every non-cycle field; same transfer counts and logical replies",
+        "All33mixed/on/delay7connected rows match control in every non-cycle field; cold92745 vs88446, steady median53258 vs52994 and max53947 vs53617 clocks",
+        "All16MIDIregressionspass931.50sec; bothAXIwidths/DDRstalls/faults/full3000events/publicationprogress included",
+        "All5expression/restoration/quanta/AXI32/64stalltests pass883.11sec; tworeserved/relocationtests pass1.87sec; all23affectedtests passed",
+        "All40MIDI-onlymusicaltransitionrowsmatchC3noncyclefields/sourceparameters; steady16880->17144(+1.56%), seek_prefix365340->410865(+45525clocks,+12.46%). BothseekrowsfailnominalQ32budget andtimingstillfails; largerrestorationcostincludedinselectiondecision.",
+        "Fullsource-to-route physicalrepeat exactlymatchesall4stageresource/timing/controlsets; all38HDLhashes andcontextSV/XDChashesexact. Artifactmanifestdiffersbyfullflowvscheckpoint-resumeTcl/inputDCP entries, expected andretained.",
+        "All1041extendedmixedrowsmatchC3every non-cyclefield;1024steady median53258/max59776 vs52994/59446,cold92745vs88446. Both16,384-frameleafspans covered."
+      ],
+      "pending": [],
+      "unit_summaries": [
+        "s4-midi-address-boundaries-summary.json",
+        "s4-midi-address-reserved-summary.json",
+        "s4-midi-address-relocated-summary.json"
+      ],
+      "performance_summary": "s4-midi-address-performance.json",
+      "optimized_summary": "s4-midi-address-opt-summary.json",
+      "optimized_deltas_vs_c3": {
+        "lut": -117,
+        "logic_lut": -117,
+        "memory_lut": 0,
+        "ff": 130,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -151,
+        "muxf7": -57,
+        "muxf8": -35,
+        "control_sets": 3
+      },
+      "regression_summary": "s4-midi-address-regressions-summary.json",
+      "routed_summary": "s4-midi-address-100-summary.json",
+      "routed_deltas_vs_c3": {
+        "lut": -108,
+        "logic_lut": -108,
+        "memory_lut": 0,
+        "ff": 174,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": -151,
+        "muxf7": -57,
+        "muxf8": -35,
+        "slices": -54,
+        "control_sets": 44
+      },
+      "routed_timing": {
+        "wns_ns": -3.668,
+        "whs_ns": 0.006
+      },
+      "timing_met": false,
+      "provisional_decision": "Routedwin54slices108LUT151carry at+174FF/+44controlsets and+0.5%ordinarymedian clocks; fullrepeat andextendedcomparison running before finalselection.",
+      "musical_summary": "s4-musical-comparison-summary.json",
+      "physical_repeat_summary": "s4-midi-address-repeat-100-summary.json",
+      "selected": true,
+      "extended_summary": "s4-midi-address-extended-100-summary.json",
+      "decision": "Retain as C4 area control after exact four-stage physical repeat,23affectedtestpasses,1041extendedmixedrows and40musicalrows. Saves108LUT54slices151carry vsC3 with174moreFF44morecontrolsets andunchangedBRAM/DSP. Ordinarymixedmedian+0.50%, boundarymax+0.56%; musicalseek+12.46% andrawstoragemorelatency. User-authorizedcycletradeoff; preserveC3fasteralternative anddo notclaimtiming/deadlinequalification.",
+      "routed_limiting_path": "Audio metadata new_count_reg[1] -> required_nodes_reg[29]; repeated unrolled node-count arithmetic remains the setup bottleneck."
     }
   ],
   "provisioning": {
@@ -1227,25 +1304,46 @@
       },
       "firmware_retry_job": 137365898513,
       "all_applicable_workflows": "passed after unchanged-codefirmware retry; originaltimeout evidence retained"
+    },
+    "selected_control_c3": {
+      "head": "607c8a0f52de344484a29ccd1cddd82f7c04ee10",
+      "fpga_run": 45082037257,
+      "workspace_run": 45082037273,
+      "firmware_run": 45082037270,
+      "status": "Incomplete: strict standalone unused-bit warnings reproduced; integration of newly advanced base exposes deterministic firmware/browser/capability errors and legacy Carla expectations. Fixes isolated on area/base-integration; measured C3 remains frozen.",
+      "tested_merge": "1ba135dd089c5f185d3bfe946b8f2560a6238b5f",
+      "merge_base": "34f04abde81f1e49f0b22a5b2f82890c5dad610c",
+      "fpga_standalone": "137392124825 failed two Verilator UNUSEDSIGNAL warnings; project-pattern constant unused reductions prepared and full standalone media check running",
+      "firmware": "All failed builds report stale nested Cargo.lock; reproduced only after merging34f04abd; adding rtrb dependency passes pinned1.99.1 locked ARM check",
+      "workspace": "Packaged native smoke bus catalog/capability mismatch; browser release unknown carla.hosting_mode. Focused fixes/tests running on integration branch. Coverage first3551 tests pass; hosted gate3failures under new dynamic-Carla contract retained for later integration followup.",
+      "passing_workflows": [
+        "Hosted track processors",
+        "Docs",
+        "CodeQL"
+      ],
+      "native_verification": "Complete nativeMarlin job137392124794 passed on testedmerge1ba135dd; reference/integration/dependencyisolation also passed. Standaloneunusedbit gate failed; focusedstrictsynthesisfixpass archivedonarea/base-integration."
     }
   },
   "selected_control": {
-    "label": "C3",
-    "implementation": "s3-path-context-100",
-    "rtl_revision": "fe2184ea",
-    "summary": "s3-path-context-100-summary.json",
-    "repeat_summary": "s3-path-context-repeat-100-summary.json",
+    "label": "C4",
+    "implementation": "s4-midi-address-100",
+    "rtl_revision": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
+    "summary": "s4-midi-address-100-summary.json",
+    "repeat_summary": "s4-midi-address-repeat-100-summary.json",
+    "extended_summary": "s4-midi-address-extended-100-summary.json",
+    "musical_summary": "s4-musical-comparison-summary.json",
     "timing_met": false,
     "cumulative_deltas_vs_B0": {
-      "lut": -6573,
-      "slices": -1273,
-      "ff": -4727,
+      "lut": -6681,
+      "slices": -1327,
+      "ff": -4553,
       "bram36": 0.5,
       "dsp": 0,
-      "carry4": -2135,
-      "control_sets": -894
+      "carry4": -2286,
+      "control_sets": -850
     },
     "hints": "original early+late",
-    "short_connected": "All33rows exactC2; ordinarymedian52994/max53617,cold88446. C3extendedrun notyetmeasured."
+    "faster_alternative": "C3 fe2184ea / branch area/s3-path-context",
+    "connected": "1024steady median53258/max59776,cold92745;all1041noncyclefields exactC3. Musicalseek410865vs365340,+12.46%; all40musicalnoncyclefieldsexact."
   }
 }

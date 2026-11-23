@@ -1,4 +1,5 @@
 //! Metadata indexing, detached radix roots, and coherent shared cache transport.
+pub mod validity;
 use crate::{
     Result,
     clock::Edges,

@@ -1,0 +1,22 @@
+{
+  "candidate_revision": "7d2d7cd7541fa0e6cc86e38015741d12205426dc",
+  "control_revision": "607c8a0f52de344484a29ccd1cddd82f7c04ee10",
+  "command": "CARGO_INCREMENTAL=0 SHOOP_FPGA_SOURCE_ROOT=work/area-experiments/s4-midi-address-simulation-source cargo test -p rt_fpga_testbench --features sim --test midi --test midi_reserved --test midi_expression -- --test-threads=1",
+  "environment": "source /workspace/.setup/fpga-activate.sh; RUSTFLAGS=-D warnings; pinned Verilator5.032; Rust1.100.0",
+  "suites": {
+    "midi": {
+      "passed": 16,
+      "seconds": 931.5
+    },
+    "midi_expression": {
+      "passed": 5,
+      "seconds": 883.11
+    },
+    "midi_reserved": {
+      "passed": 2,
+      "seconds": 1.87
+    }
+  },
+  "interpretation": "Wall times include model compilation and concurrent synthesis/long-control load; not FPGA performance. Request/callback clocks are in separate archived fixtures.",
+  "retention": "s4-midi-address-regressions-retention.json"
+}
