@@ -49,6 +49,8 @@ pub struct CompositeCut {
     pub require_empty: bool,
     pub allow_restart: bool,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub wait_for_finish: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub require_repeat_wait: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub restart_source: Option<Identity>,
@@ -85,17 +87,17 @@ impl CompositeCut {
                     .is_some_and(|frame| position < u64::from(frame)))
     }
 
-    pub fn waits_for_restart(
+    pub fn waits_for_boundary(
         self,
         position: u64,
         length: u64,
         restart_ready: bool,
         waited: bool,
     ) -> bool {
-        self.allow_restart
-            && length != 0
+        length != 0
             && position <= length
-            && (position < length || !restart_ready)
+            && (self.wait_for_finish
+                || (self.allow_restart && (position < length || !restart_ready)))
             && !self.allows_playing(position, length, restart_ready, waited)
     }
 }
@@ -547,6 +549,10 @@ impl Allocator {
                                             after.children.iter().any(|child| child.id == old.id)
                                         })))
                         });
+                    let wait_for_finish = changed_composites.contains(&row.logical)
+                        && independent
+                        && before.is_some_and(|schedule| schedule.explicit)
+                        && after.is_some();
                     let future_before = nested_future
                         .filter(|(id, _)| *id == row.logical)
                         .map(|(_, frame)| frame)
@@ -567,6 +573,7 @@ impl Allocator {
                             old_slot: row.physical,
                             require_empty: before.is_none(),
                             allow_restart,
+                            wait_for_finish,
                             require_repeat_wait,
                             restart_source,
                             restart_slot: None,

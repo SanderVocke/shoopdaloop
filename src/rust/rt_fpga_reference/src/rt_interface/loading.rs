@@ -266,7 +266,7 @@ impl Engine {
             .is_ok_and(|slot| {
                 slot.state.mode == Mode::Playing
                     && slot.planned.iter().all(Option::is_none)
-                    && cut.waits_for_restart(
+                    && cut.waits_for_boundary(
                         slot.state.position,
                         slot.state.content_length,
                         state.composite_restart_ready(*cut, slot),

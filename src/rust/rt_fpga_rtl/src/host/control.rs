@@ -142,7 +142,7 @@ pub fn composite_cut_status(
     match (words[0] >> 33) & 3 {
         0 => Code::Applied,
         1 if cut.allows_playing(words[2], words[3], restart_ready, waited) => Code::Applied,
-        1 if cut.waits_for_restart(words[2], words[3], restart_ready, waited) => Code::Scheduled,
+        1 if cut.waits_for_boundary(words[2], words[3], restart_ready, waited) => Code::Scheduled,
         _ => Code::CannotApply,
     }
 }

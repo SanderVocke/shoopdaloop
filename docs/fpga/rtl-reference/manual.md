@@ -243,9 +243,11 @@ recording can start. See the admission rule under
   or a composite that plays on its own. The edit can then change which children
   finish the pass and take effect on the clock's wrap pulse, provided every old
   child still appears somewhere in the new schedule. Changing the
-  timing needs one free loop record while the new program is staged. Other
-  changes require the affected composite loops to stop.
-  Ordinary playback controls can run while an edit waits for a restart.
+  timing needs one free loop record while the new program is staged. An
+  independent one-pass composite can finish its current run before taking up an
+  edit. The replacement stays stopped until it is started. Other changes
+  require the affected composite loops to stop.
+  Ordinary playback controls can run while an edit waits.
   Cancelling an edit that still waits leaves the active version in place. If
   the edit reaches the handoff first, the application reports the version that
   took over.
@@ -912,9 +914,8 @@ For a composite edit, the prepared host stages a versioned schedule in the
 inactive region and checks the affected loops before selecting it. Supported
 boundaries include a switch with the affected loops stopped, a compatible
 restart of an independent repeating parent, and a future-only edit that leaves
-the next unit intact. A single compatible switch request can wait for the
-restart while the old program keeps running. Timing geometry changes require
-the affected loops to stop first.
+the next unit intact. A single compatible switch request can wait while the old
+program runs to a repeat boundary or finishes its one-pass schedule.
 Continuing child media remains attached to its existing views through the
 handoff.
 

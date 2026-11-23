@@ -188,6 +188,7 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     while client.poll().is_some() {}
     let mut graph = stereo_graph();
     graph.loops.truncate(1);
+    let one_shot_iterations = 64;
     let mut parent = graph.loops[0].clone();
     parent.id = id(120);
     parent.strip = None;
@@ -195,7 +196,7 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
         kind: CompositeKind::Explicit,
         version: 1,
         unit_frames: Q as u64,
-        iterations: 8,
+        iterations: one_shot_iterations,
         sample_rate: 48000,
         quantum: Q as u32,
         spans: vec![
@@ -210,7 +211,7 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
             CompositeSpan {
                 target: id(100),
                 start: 2,
-                end: 8,
+                end: one_shot_iterations,
                 occurrence_start: 2,
                 ordinal: 1,
                 mode: LoopMode::Playing,
@@ -247,13 +248,8 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
     client
         .immediate(Batch::new(1, 1, &[transition(120, TransitionMode::Playing)]).unwrap())
         .unwrap();
-    response(&mut client, &mut renderer);
+    let one_shot_started = response(&mut client, &mut renderer);
     assert!((0..8).any(|_| step(&mut renderer) == [0.125, 0.125]));
-    client
-        .immediate(Batch::new(1, 1, &[transition(120, TransitionMode::Stopped)]).unwrap())
-        .unwrap();
-    response(&mut client, &mut renderer);
-    assert_eq!(step(&mut renderer), [0., 0.]);
 
     let plan = graph.loops[1].composite.as_mut().unwrap();
     plan.kind = CompositeKind::Regular;
@@ -268,7 +264,12 @@ fn composite_round_trip<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) {
         mode: LoopMode::Playing,
     }]
     .into();
-    upload(&mut client, &mut renderer, &graph, 1);
+    let switched = upload(&mut client, &mut renderer, &graph, 1);
+    assert_eq!(
+        switched,
+        one_shot_started + (one_shot_iterations + 1) * Q as u64
+    );
+    assert_eq!(step(&mut renderer), [0., 0.]);
     client
         .immediate(Batch::new(2, 2, &[transition(120, TransitionMode::Playing)]).unwrap())
         .unwrap();
