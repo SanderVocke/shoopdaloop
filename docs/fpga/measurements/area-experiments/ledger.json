@@ -3,7 +3,7 @@
   "baseline_revision": "f218087511dc28e72a436ec825445f32a722b5e9",
   "plan_commit": "bd98263d",
   "stage": 5,
-  "status": "Stages0\u20134complete,C5selected/pushed. Stage5firstcold-descriptor trialprepared; implementationnotyetapplied. OtherStage5siblingsandStages6\u201311 pending.",
+  "status": "Stages0\u20134complete,C5selected/pushed. Stage5cold-descriptor source7eba4933 applied; focusedbehavior running, area andfullregressionspending. Stages6\u201311 pending.",
   "completed_checks": [
     "Experiment branch created and plan committed",
     "Prepared B0 HDL manifest matches all 38 archived RTL/header hashes",
@@ -1354,14 +1354,15 @@
     {
       "label": "s5-cold-descriptor",
       "stage": 5,
-      "status": "prepared",
+      "status": "in progress",
       "control_revision": "b0fe222e7500cfc762525d76de9599668785edee",
       "control_rtl_revision": "0e6247004fabc2b6e8c70bfdca113ab73548268a",
       "control_summary": "s4-iterative-capacity-100-summary.json",
       "contract": "stage5-state-contracts.md#cold-midi-descriptor-words",
       "changed_contract": "No intended public orcycle change. Hot13wordbank plus3opaque reservedwords in4x32 synchronous distributedRAM; one sharedread/writeaddress,prefetch within existingSAVED_VIEW clocks,3validbits forreset/create. Actual inference/behavior/cycles unmeasured.",
       "validation": [
-        "All38productionC5HDL hashes verified before edit"
+        "All38productionC5HDL hashes verified before edit",
+        "Default/minimum/odd/connected-primary lint pass; allreportedwarnings exactlymatchcontrol (onlybaselineUNUSEDSIGNAL), no newwidth/otherwarnings."
       ],
       "pending": [
         "Strictlint bothcontrol/candidate min/odd/primary, noadditionalwarnings",
@@ -1369,7 +1370,8 @@
         "All23MIDI/expression/reserved regressions andraw10311+54+108rows",
         "C5musicalcontrol calibration then mixed/musical candidatecomparison",
         "Pinned completeconnected optscreen,route/repeat if viable"
-      ]
+      ],
+      "rtl_source_revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b"
     }
   ],
   "provisioning": {
