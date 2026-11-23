@@ -1,0 +1,404 @@
+{
+  "schema_version": 1,
+  "label": "s5-payload-lifetime-100",
+  "provenance": {
+    "revision": "bbfaa8ad100f0f0b8c833a188246ea74f2beeea1",
+    "working_tree": false,
+    "stage": "route",
+    "parameter_overrides": {},
+    "clock_mhz": 100.0,
+    "part": "xc7z020clg484-1",
+    "vivado": "2021.1",
+    "uncertainty_ns": 0.2,
+    "loops": 64,
+    "audio_channels_per_loop": 2,
+    "sample_rate": 48000,
+    "storage_seconds": 30,
+    "chunk_frames": 32,
+    "quantum_frames": 32,
+    "parameters": {
+      "EXTERNAL_IO": 1,
+      "LIVE_LOADING": 1,
+      "EXPORT_SYNC_EVENTS": 1,
+      "PROGRAM_DEPTH": 2048,
+      "STATE_DEPTH": 256,
+      "JOB_DEPTH": 2048,
+      "MAX_FRAMES": 32,
+      "BUFFERS": 512,
+      "INPUT_PORTS": 2,
+      "OUTPUT_PORTS": 2,
+      "REUSE_VIEWS": 1,
+      "VIEWS": 512,
+      "SLOTS": 5763072,
+      "CHUNK_FRAMES": 32,
+      "BLOCK_CHUNKS": 32,
+      "RETIRED_TABLES": 256,
+      "TABLE_LINES": 128,
+      "REF_LINES": 4,
+      "STACK_LINES": 2,
+      "READ_BUFFERS": 4,
+      "WRITE_BUFFERS": 4,
+      "BURST_MEMORY": 1,
+      "AXI_DATA_WIDTH": 64,
+      "PHYSICAL_BASE": 16777216,
+      "PHYSICAL_BYTES_LIMIT": 1073741824,
+      "READ_HINT_DEPTH": 256,
+      "MIDI_LOOPS": 64,
+      "MIDI_INPUTS": 1,
+      "MIDI_DESTINATIONS": 8,
+      "MIDI_BLOCK_EVENTS": 256,
+      "MIDI_BLOCKS": 2432,
+      "MIDI_MAX_EVENTS": 8192,
+      "MIDI_VIEWS": 256,
+      "MIDI_RETIREMENTS": 128,
+      "MIDI_MAINTENANCE": 64,
+      "MIDI_STATE_SUPPORTED": 1,
+      "MIDI_AXI_DATA_WIDTH": 64,
+      "MIDI_PHYSICAL_BASE": 805306368,
+      "MIDI_PHYSICAL_BYTES_LIMIT": 67108864,
+      "MIDI_BUFFERS": 256,
+      "MIDI_CURSORS": 64,
+      "MIDI_SCRATCH_EVENTS": 131072
+    },
+    "compiled_instructions": 835,
+    "jobs_per_quantum": 1155,
+    "build": "connected shared SP/JP pipeline, registered OOC public boundaries",
+    "memory": "two AXI3 DDR ports; DDR controller arbitration and PS7 outside this fabric build",
+    "threads": 2,
+    "resumed_from": {
+      "directory": "/workspace/shoopdaloop/work/area-experiments/s5-payload-lifetime-opt",
+      "stage": "opt",
+      "checkpoint_sha256": "52c8b3e43aaed218696daa3b9dfdb1036b61b1ee27cb180b23bd46d494ec385a",
+      "manifests": {
+        "source-manifest.json": "eb081c728e33fd14bce74672fabdbbc70cac8f243325909d57451756544b0d44",
+        "artifact-manifest.json": "347e54a666557391ebf5d0740f0d457d0a9f25db0bdd8376df1072914bd9514f"
+      },
+      "provenance_sha256": "2a7272c6c38d43ba9b9f16555192e9321752372b5a52d65796e0a57041bb7665",
+      "run_tcl_sha256": "c738bc62e499ecc54465bba940518929ee51d9364a1f44f618ea122439f6220b"
+    }
+  },
+  "build_directory": "/workspace/shoopdaloop/work/area-experiments/s5-payload-lifetime-100",
+  "manifests": {
+    "source-manifest.json": "eb081c728e33fd14bce74672fabdbbc70cac8f243325909d57451756544b0d44",
+    "artifact-manifest.json": "05fb4a6637eb314593987d679b3f872e79aa6d8494db2e56fafc129a623f692e"
+  },
+  "outcome": {
+    "stage": "route",
+    "status": "0",
+    "message": "0"
+  },
+  "stages": {
+    "synth": {
+      "lut": 37405,
+      "logic_lut": 37051,
+      "memory_lut": 354,
+      "ff": 29556,
+      "bram36": 78,
+      "dsp": 4,
+      "carry4": 3265,
+      "muxf7": 885,
+      "muxf8": 267,
+      "slices": null,
+      "timing": {
+        "wns_ns": -0.151,
+        "whs_ns": 0.002
+      },
+      "control_sets": 457,
+      "timing_met": false
+    },
+    "opt": {
+      "lut": 35842,
+      "logic_lut": 35488,
+      "memory_lut": 354,
+      "ff": 28669,
+      "bram36": 78,
+      "dsp": 4,
+      "carry4": 3094,
+      "muxf7": 885,
+      "muxf8": 267,
+      "slices": null,
+      "timing": {
+        "wns_ns": -0.151,
+        "whs_ns": 0.002
+      },
+      "control_sets": 455,
+      "timing_met": false
+    },
+    "place": {
+      "lut": 35186,
+      "logic_lut": 34838,
+      "memory_lut": 348,
+      "ff": 28811,
+      "bram36": 78,
+      "dsp": 4,
+      "carry4": 3094,
+      "muxf7": 885,
+      "muxf8": 267,
+      "slices": 11941,
+      "timing": {
+        "wns_ns": 0.103,
+        "whs_ns": -0.301
+      },
+      "control_sets": 1642,
+      "timing_met": false
+    },
+    "route": {
+      "lut": 35186,
+      "logic_lut": 34838,
+      "memory_lut": 348,
+      "ff": 28811,
+      "bram36": 78,
+      "dsp": 4,
+      "carry4": 3094,
+      "muxf7": 885,
+      "muxf8": 267,
+      "slices": 11941,
+      "timing": {
+        "wns_ns": -0.201,
+        "whs_ns": 0.045
+      },
+      "control_sets": 1642,
+      "timing_met": false
+    }
+  },
+  "benchmarks": [
+    {
+      "file": "work/area-experiments/s5-payload-lifetime-callbacks/mixed-on-delay7.json",
+      "sha256": "68d128d8613d6c1fcf9648acd6fa96734c7c0a1d394aaf1679c0d4bf5e8327e6",
+      "scenario": "stereo_and_midi",
+      "validation": "every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 92745,
+          "median": 92745,
+          "max": 92745
+        },
+        "warmup": {
+          "count": 16,
+          "min": 53238,
+          "median": 53330.0,
+          "max": 53987
+        },
+        "steady": {
+          "count": 16,
+          "min": 53258,
+          "median": 53258.0,
+          "max": 53947
+        }
+      }
+    },
+    {
+      "file": "work/area-experiments/s5-payload-lifetime-musical.json",
+      "sha256": "5ea871542b2b97f8eaa2f3ee5ec012c91a30e28528407ecddcc26188399ce4f2",
+      "scenario": "midi_only",
+      "validation": "every SP job, MIDI message, sync frame and loop position/length matches Rust; note/pedal meaning checked by independent receiver fixtures",
+      "scope": "same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+      "loops": 64,
+      "quantum_frames": 32,
+      "sample_rate": 48000,
+      "ddr_added_delay_clocks": 7,
+      "midi_state_tracking": true,
+      "implementation_parameter_differences": {},
+      "cycles": {
+        "playback_start": {
+          "count": 1,
+          "min": 63103,
+          "median": 63103,
+          "max": 63103
+        },
+        "warmup": {
+          "count": 16,
+          "min": 17124,
+          "median": 17216.0,
+          "max": 17873
+        },
+        "steady": {
+          "count": 16,
+          "min": 17144,
+          "median": 17144.0,
+          "max": 17817
+        },
+        "retrigger": {
+          "count": 1,
+          "min": 19220,
+          "median": 19220,
+          "max": 19220
+        },
+        "stop_cleanup": {
+          "count": 1,
+          "min": 20166,
+          "median": 20166,
+          "max": 20166
+        },
+        "warm_play": {
+          "count": 1,
+          "min": 32939,
+          "median": 32939,
+          "max": 32939
+        },
+        "seek_prefix": {
+          "count": 1,
+          "min": 410865,
+          "median": 410865,
+          "max": 410865
+        },
+        "wrap_after_seek": {
+          "count": 1,
+          "min": 18551,
+          "median": 18551,
+          "max": 18551
+        },
+        "stop_after_wrap": {
+          "count": 1,
+          "min": 20166,
+          "median": 20166,
+          "max": 20166
+        },
+        "quiet_after_stop": {
+          "count": 1,
+          "min": 17132,
+          "median": 17132,
+          "max": 17132
+        }
+      }
+    }
+  ],
+  "evidence_sha256": {
+    "artifact-manifest.json": "05fb4a6637eb314593987d679b3f872e79aa6d8494db2e56fafc129a623f692e",
+    "outcome.txt": "ebf32806ebf1d14e12d868a1dd13ebe0c99080fc5733c3a61ee303922ab5e711",
+    "post_opt.json": "1341c4a63a2ba54eac05c1ef580a8c5077c3d61bcce402b3fae6bd97684d04e8",
+    "post_opt_audio_utilization.rpt": "3b8f86fe3801bc1dbb603423dfe2ca14c82d43d8e8ca035788c8be4c4c792774",
+    "post_opt_check_timing.rpt": "63f2f3a64edd3f365f49fc2123279f1975f3a637b5f839b62ef8f49857190800",
+    "post_opt_control_sets.rpt": "f866bcbfcbc41829d78443eec0afd3e9cdde1255653beb74e2a080a38522c862",
+    "post_opt_critical_paths.rpt": "5cfdaea52576e425e383bec5961209fe39cdaca582bfed2ed328fc0963bd32ca",
+    "post_opt_hierarchical_utilization.rpt": "c3d26e29c2d477e97284029dce7b7649c4777eebd045a4a279b097573e8c1687",
+    "post_opt_jobs_utilization.rpt": "80a3306601622d81e2036109aecd5edf62512529751f0c7853dadae17979d6ca",
+    "post_opt_midi_from_paths.rpt": "3da28c9646cb355905df0c6e0a667ae33ab7c4048366a1544a4d571e30f4367c",
+    "post_opt_midi_store_utilization.rpt": "0637563c2ea13c9db7a1cfaa349e1f8d5a69dcca361a16ef41c430f22e814f1b",
+    "post_opt_midi_timing.json": "d0988eb2261c4244c6f07add02f859e4746e12f7cd08021a22d15e1bd3af1eab",
+    "post_opt_midi_to_paths.rpt": "6b03eed277e25831508bfb40fd686f92484b634e36a1683a52af6038c452e42a",
+    "post_opt_midi_utilization.rpt": "743155bea50073ff6f174055ea6f84f2cc3d69cca0288d7d15823b9075debf3f",
+    "post_opt_pipeline_utilization.rpt": "15a063cbc8f753faea669b7fd93a1ae22027541baa67334fccc03a1d5d3ad9d9",
+    "post_opt_state_utilization.rpt": "1b68b39b6c06f30f00d93da5438cd7e443b4145013819816ba1c332b682550ae",
+    "post_opt_timing_summary.rpt": "4dc925ab3f4d6e91343c48958bd2bcb3c08202deac51b8a900d6ccdfe031db45",
+    "post_opt_utilization.rpt": "15b37fc9ce20750eb2fdd70ca87e2483e5fad29df99771db147bee4d3043eab9",
+    "post_place.json": "fbf73a391c9ea6120182722201d1f51f5d366f1addbc8164ac663d6cf526bd98",
+    "post_place_audio_utilization.rpt": "3ddaa4e7190943bd139094193a9cdfd59c295202566cb6ecb8308d360dde5108",
+    "post_place_check_timing.rpt": "8d09c96655f02a917a4d3e0e66b0eb1a5b646eb8a51c96ea5cdc0ebb553031ba",
+    "post_place_control_sets.rpt": "f6832e328fb3cdfbe61eeb63542a006aed44f2d4969a9f412683eda6f279a84e",
+    "post_place_critical_paths.rpt": "e93a820626677fbcea85166ccad5bf274175f8d0bedd3c34736ab04d3bd650e2",
+    "post_place_hierarchical_utilization.rpt": "9c99168b55cf8b5f82256d949b0abba569d1816f14f9f4b67b8a61a983c9d1c0",
+    "post_place_jobs_utilization.rpt": "c8d9b1a94f78526a62985ee3d4258f45e08c21e95878aa923360236d93241d80",
+    "post_place_midi_from_paths.rpt": "0665f4030837409f9fd031418eaa5936e191f773d818b14d5d7a0153087f0e8f",
+    "post_place_midi_store_utilization.rpt": "e921d77e99c55c165d85e611100452d7e6f53df4309f2c839d82a992d7748c60",
+    "post_place_midi_timing.json": "c4a39395940b1890adf2bc2bd1288919bd3c83a90c20b05d2a30192953f95ae7",
+    "post_place_midi_to_paths.rpt": "1d4cf5ad87ce89db321479bda79df893634251a6326c9018e846612fa7a6a00f",
+    "post_place_midi_utilization.rpt": "fcc6cb22e3f83c96658f0c5633e4b1884b0efa31397754ac94488f040b4b9692",
+    "post_place_pipeline_utilization.rpt": "eca06f44f9faff2d6c40a60a5e0e2dba8bf56eda3d2396679371178f808c9027",
+    "post_place_state_utilization.rpt": "a87f060307bc67d23942dc8d725c8ceadc22754f6843c27e5fdf9e0daf73b201",
+    "post_place_timing_summary.rpt": "c71b38b73091e6da678195607ff109274fbcf85cdbe5c90198b7b7fac4be63fc",
+    "post_place_utilization.rpt": "bd6d164c6647d1c5cb8ea06a5daa06216b467950c7b34f6b73265a2fa7792cfb",
+    "post_route.json": "617351180805212209a05236764cf128f9566d89e25789daa23e4d69c0dff0d6",
+    "post_route_audio_utilization.rpt": "2fa1a7de5290f78bb1e71490ec3bc2c57dbd9c6b4df444213f29e02166e215e9",
+    "post_route_check_timing.rpt": "7fbc9da0fb006cbb2b9d990676d2e1a863c2ac18d3e4991bf7d2a7536ebff252",
+    "post_route_control_sets.rpt": "5f6381e9cc211ef8512fdff0ba036fc25be6b3f64db3d0ea41eeec875f6f4499",
+    "post_route_critical_paths.rpt": "b913c804422ac5d0d39f8355fdb1ff937c9c588ec2a7e940a800dff58ef5d2f9",
+    "post_route_drc.rpt": "f7752add206165e9ca2cf996819622ca1cecd4966f44557b0ecf4d56bec7a6b9",
+    "post_route_hierarchical_utilization.rpt": "c9a1d21394b009094dae4ec914fb053db426d4f7d64b9363f18514e4bac5f5f7",
+    "post_route_jobs_utilization.rpt": "5ba9ce5b1b64e24b35d704d7ed0a72ba68448c9bd66d98a5dee1800cb519d8d4",
+    "post_route_midi_from_paths.rpt": "889825d51e4b24532e636679e14f1b5dd25039e968bd8d42e8ad70361132dd76",
+    "post_route_midi_store_utilization.rpt": "cc344c1e5b5e80b3ce840dc2be8886d4754cb0b9316ce4e670fd735e122d2f38",
+    "post_route_midi_timing.json": "1102cfd02ea759736d2b52b8be04c1770de907a57be080c56d9201bb1fdae44c",
+    "post_route_midi_to_paths.rpt": "ec0ecff0d1299ac537fd7c3937e91a530ccece51b94ddb2b35c3fe7a79707d1c",
+    "post_route_midi_utilization.rpt": "b17c407f72c22b8b669ad1446f2e07d34fd816116362ed6f607c802d826917de",
+    "post_route_pipeline_utilization.rpt": "6f64af04a311be52ccda16b6a0cd4c253d2ac1610b904b9f138c51809ea4952b",
+    "post_route_route_status.rpt": "d6dfd7f0cbfa2c277a0836d82e12362217d19a0e90aded2daa3c384a07e8406d",
+    "post_route_state_utilization.rpt": "66fcd9a9e6aa74f62a2dc42c0c0f5c73c4502cf00971e18571ccf98c6c3ac675",
+    "post_route_timing_summary.rpt": "a785065f148a987156ee98ccd5a21be8c3b1179c3b25e6e6d4450a0d74e23dfe",
+    "post_route_utilization.rpt": "223b4631a1e65e1b49fb54a9ee2cb6e811bb8cb2a7e8860ce4e5718d5cedc3ff",
+    "post_synth.json": "1341c4a63a2ba54eac05c1ef580a8c5077c3d61bcce402b3fae6bd97684d04e8",
+    "post_synth_audio_utilization.rpt": "ba950cd8aa4f23826d427d410328a1de46cb959a186cea3eb62156e743c3ca1b",
+    "post_synth_check_timing.rpt": "c1a34161dca2d178fea12c1ed53e70492012cc534dda16d1f022b595c9fd8236",
+    "post_synth_control_sets.rpt": "ed72ee529ac1b32bfba4af0de3860de8e0fbf823892b69111c4bf4244a9a2910",
+    "post_synth_critical_paths.rpt": "e983c3a0facc2a11ee665cfa76a788af293594a93cbd2130d61f1aa81d3401e7",
+    "post_synth_hierarchical_utilization.rpt": "c44c1aca6e6cdacb0859f1f835bef8251c3ce375569008b6a799e3790c34e49b",
+    "post_synth_jobs_utilization.rpt": "c236b761e13104221551d9e451b48b0396d747cb55de1b99268eb9678814013d",
+    "post_synth_midi_from_paths.rpt": "c53f73f8d7edd22a12d5df3f1fce4dd8a1e082a0757c7dfd191ff0172fffc13c",
+    "post_synth_midi_store_utilization.rpt": "f68f4e1421337b469666b6aa55c197a286ba466639fa673d3ff7cda08537fa13",
+    "post_synth_midi_timing.json": "d0988eb2261c4244c6f07add02f859e4746e12f7cd08021a22d15e1bd3af1eab",
+    "post_synth_midi_to_paths.rpt": "e786541a1fdd4d500329d13caad2ec8af26a61a407cdf5fc8bed550b999d6927",
+    "post_synth_midi_utilization.rpt": "56e7a35ec8bac87e7ec66e41e301aa77712ce0f5c686a349146e3bd550af11d0",
+    "post_synth_pipeline_utilization.rpt": "ad68885713c60da0ef1959a2f0b65efcdcd0bfb0ea240506353e718a8c717e41",
+    "post_synth_state_utilization.rpt": "b8690532e7e040db6f027c6a87e2e74a91eb50868846bf8ff01aca242c39545b",
+    "post_synth_timing_summary.rpt": "a14d7fb03e9f94b54078eba5c44adc09e7f93a81050ef2bf0888bae353d68925",
+    "post_synth_utilization.rpt": "05b7c8b68ab46f8f79ccf4626f3d9e5d565f698c59c146846544a7dbe2f8f99b",
+    "provenance.json": "4beb08248d4eebc0d407c22ca45c4936e9cf54c551e40431520e4b7df74aff0b",
+    "source-manifest.json": "eb081c728e33fd14bce74672fabdbbc70cac8f243325909d57451756544b0d44"
+  },
+  "comparison": {
+    "label": "s5-cold-descriptor-100",
+    "revision": "7eba493310e3e60506cbbe92eea8d0fa1c89b72b",
+    "parameter_changes": {},
+    "resource_deltas": {
+      "synth": {
+        "lut": -21,
+        "logic_lut": -21,
+        "memory_lut": 0,
+        "ff": -37,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 0,
+        "muxf7": 13,
+        "muxf8": 0,
+        "control_sets": -2
+      },
+      "opt": {
+        "lut": -21,
+        "logic_lut": -21,
+        "memory_lut": 0,
+        "ff": -37,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 0,
+        "muxf7": 13,
+        "muxf8": 0,
+        "control_sets": -2
+      },
+      "place": {
+        "lut": -34,
+        "logic_lut": -34,
+        "memory_lut": 0,
+        "ff": 26,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 0,
+        "muxf7": 13,
+        "muxf8": 0,
+        "slices": 200,
+        "control_sets": 10
+      },
+      "route": {
+        "lut": -34,
+        "logic_lut": -34,
+        "memory_lut": 0,
+        "ff": 26,
+        "bram36": 0,
+        "dsp": 0,
+        "carry4": 0,
+        "muxf7": 13,
+        "muxf8": 0,
+        "slices": 200,
+        "control_sets": 10
+      }
+    }
+  },
+  "retained_evidence": "s5-payload-lifetime-100-retention.json"
+}

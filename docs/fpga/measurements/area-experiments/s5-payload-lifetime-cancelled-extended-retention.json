@@ -1,0 +1,13 @@
+{
+  "archive": "s5-payload-lifetime-cancelled-extended-raw.tar.gz",
+  "archive_sha256": "f8fc567d24404a10556a0f99e9b952e9bfcb412286399e2ffcaa9cd85ce849d1",
+  "members_sha256": {
+    "replay/archive-cancelled-benchmark.py": "b1860e619399f9066098d38f80ba75625188c63763dd47bdf7b22f163222fa19",
+    "logs/runner.log": "f140cd88e80d92bfc9190e8d4936325c2e64738f668fe04bd366a7d945f20a3f",
+    "partial/cancellation.json": "20793fde92ca1e8e06fd2da7eb90c1eecf9c531bccfa7660c35d0f5b2b1dcc6f",
+    "partial/manifest.json": "a75a008ea8c1e6f6cf09797a94788e7ea1e41fa6f8c374db3791fe212d315497",
+    "partial/mixed-on-delay7.log": "ee539e1a602fc351e831d1f059d6fd7c2ced3c0475c2b58425b3442854829f64"
+  },
+  "scope": "Deliberate cancellation of optional long run after complete route rejects candidate; no complete extended result or coverage claim",
+  "reason": "Directed raw10311/54/108, all23regressions andall73short/musicalcallback rows passedexactC6. Complete route rejectsarea tradeoff:+200slices,+26FF,-34LUT,100MHzWNS-.201vs+.142. Stopoptional1041-row stress rather than spendfurthercycles onrejectedcandidate; no completed extended-result claim."
+}

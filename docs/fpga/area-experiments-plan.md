@@ -220,14 +220,15 @@ four-stage physical repeat. It trades 13 LUTs and 159 physical control sets for
 registered context (+0.142/+0.006 ns); board qualification remains outside scope.
 The [separate contracts](measurements/area-experiments/stage5-state-contracts.md)
 for private resets and validity folding remain unexecuted. Payload lifetime
-`bbfaa8ad` has passed its focused and 10,473-row raw storage comparisons; full
-regression, callback and physical measurements are running. The first full suite
-was interrupted by disk exhaustion; its eight failures are all `StorageFull`,
-and the identical source/command is rerunning after cache recovery.
+`bbfaa8ad` is complete and rejected: 34 fewer routed LUTs cost 200 more slices,
+26 more FFs and setup slack −0.201 ns, versus C6's +0.142 ns. The removed bank
+is verified at 128 → 96 FFs, but physical duplication/packing erases that gain.
+All 23 regressions, 10,473 raw rows and 73 callback rows pass exactly; an optional
+long run was stopped after the routed rejection and is not claimed complete.
 Prototype declaration-order cleanup is explicitly reserved for final integration
 and final-source qualification.
 
-- [ ] Keep hot descriptor fields in registers and move colder working fields to
+- [x] Keep hot descriptor fields in registers and move colder working fields to
   synchronous RAM. Separately test reuse of registers with disjoint lifetimes;
   account for extra reads/writes and verify actual RAM inference.
 - [ ] Separately remove unnecessary resets from datapath storage behind explicit
