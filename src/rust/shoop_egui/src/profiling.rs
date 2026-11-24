@@ -196,6 +196,9 @@ fn show_host(
         diagnostics_protocol::{Action, Request},
         task_profiling,
     };
+    show_health(ui, diagnostics);
+    ui.separator();
+    ui.strong("Task statistics");
     let mut control = None;
     let Some(source) = diagnostics
         .sources
@@ -312,6 +315,82 @@ fn show_host(
         });
     });
     control
+}
+
+fn show_health(ui: &mut egui::Ui, diagnostics: &crate::DiagnosticsView) {
+    use shoop_app_api::host_health;
+    ui.strong("Host health");
+    let Some(source) = diagnostics
+        .sources
+        .iter()
+        .find(|source| source.descriptor.stream.source == host_health::SOURCE)
+    else {
+        ui.label("This host does not advertise health diagnostics.");
+        return;
+    };
+    if !source.supported {
+        ui.label("Unsupported host health report schema");
+        return;
+    }
+    let Some(sample) = &diagnostics.health else {
+        ui.label("Waiting for a host health sample");
+        return;
+    };
+    let stale = !source.descriptor.available
+        || source.status.is_none_or(|status| {
+            !status.active
+                || status.outcome != crate::diagnostics_protocol::Outcome::Applied
+                || source.age_ms > u64::from(status.interval_ms).saturating_mul(3)
+        });
+    ui.label(format!(
+        "Health sample: {} ms ago{} · incomplete/lost reports {}",
+        source.age_ms,
+        if stale {
+            " · stale / monitoring inactive"
+        } else {
+            ""
+        },
+        source.assembly_losses
+    ));
+    if sample.temperatures.iter().all(Option::is_none) {
+        ui.label("Temperature sensors unavailable on this host");
+    } else {
+        egui::Grid::new("host_temperatures")
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("Temperature sensor");
+                ui.strong(if stale {
+                    "Last reading (stale)"
+                } else {
+                    "Current"
+                });
+                ui.strong("Sensor maximum");
+                ui.end_row();
+                for sensor in sample.temperatures.iter().flatten() {
+                    ui.label(sensor.name.as_str());
+                    for value in [sensor.current_millicelsius, sensor.peak_millicelsius] {
+                        ui.label(value.map_or_else(
+                            || "Unavailable".into(),
+                            |value| format!("{:.1} °C", f64::from(value) / 1000.),
+                        ));
+                    }
+                    ui.end_row();
+                }
+            });
+        ui.small("Sensor maxima may include readings before this host session.");
+    }
+    match sample.overtemperature {
+        Some(true) => {
+            ui.colored_label(colors::ERROR, "Overtemperature alarm: asserted");
+        }
+        Some(false) => {
+            ui.label("Overtemperature alarm: not asserted in this sample");
+        }
+        None => {
+            ui.label("Overtemperature alarm status unavailable");
+        }
+    }
+    ui.small("Health telemetry is not thermal protection; local safeguards operate independently.");
 }
 
 fn switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
@@ -800,6 +879,73 @@ mod tests {
         }
         labels
     }
+    #[shoop_test]
+    fn health_ui_presents_sensor_absence_temperature_alarm_and_stale_readings() {
+        use shoop_app_api::{diagnostics_protocol as protocol, host_health as health};
+        let mut diagnostics = crate::DiagnosticsView::default();
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text.contains("does not advertise health")));
+        diagnostics.sources.push(shoop_app_api::ProfilingSource {
+            descriptor: health::descriptor(1),
+            status: Some(protocol::Status {
+                stream: health::stream(1),
+                requested: true,
+                active: true,
+                interval_ms: 1000,
+                outcome: protocol::Outcome::Applied,
+                dropped: 0,
+                coalesced: 0,
+            }),
+            supported: true,
+            age_ms: 0,
+            assembly_losses: 0,
+        });
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text.contains("Waiting for a host health sample")));
+        diagnostics.health = Some(health::Snapshot::default());
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text.contains("Temperature sensors unavailable")));
+        let sample = diagnostics.health.as_mut().unwrap();
+        sample.temperatures[0] = Some(health::Temperature {
+            name: protocol::Name::new("SoC die (PS/PL)").unwrap(),
+            current_millicelsius: Some(42500),
+            peak_millicelsius: Some(63000),
+        });
+        sample.overtemperature = Some(true);
+        let labels = host_labels(&diagnostics);
+        for expected in [
+            "SoC die (PS/PL)",
+            "42.5 °C",
+            "63.0 °C",
+            "Overtemperature alarm: asserted",
+        ] {
+            assert!(
+                labels.iter().any(|text| text == expected),
+                "missing {expected}: {labels:?}"
+            );
+        }
+        diagnostics.sources[0].age_ms = 3001;
+        let labels = host_labels(&diagnostics);
+        assert!(labels
+            .iter()
+            .any(|text| text.contains("stale / monitoring inactive")));
+        assert!(labels.iter().any(|text| text == "Last reading (stale)"));
+        diagnostics.health.as_mut().unwrap().temperatures[0]
+            .as_mut()
+            .unwrap()
+            .current_millicelsius = None;
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text == "Unavailable"));
+        diagnostics.sources[0].supported = false;
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text == "Unsupported host health report schema"));
+    }
+
     #[shoop_test]
     fn host_table_displays_interval_cpu_optional_values_freshness_and_delivery_loss() {
         let mut diagnostics = host_data();

@@ -61,6 +61,12 @@ class Contracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "PL arena"):
             boards.Board(data)
 
+    def test_xadc_only_on_physical_boards(self):
+        for name in boards.names():
+            with self.subTest(board=name):
+                self.assertEqual("#define SHOOP_BOARD_XADC 0x1u" in boards.load(name).header(),
+                                 name in ("zturn-v2", "zedboard"))
+
     def test_zturn_v2_phy_initialization(self):
         with tempfile.TemporaryDirectory() as temporary:
             executable = Path(temporary) / "yt8531"

@@ -1,7 +1,7 @@
 use super::*;
-use profiling_protocol::{Action, Descriptor, Name, Outcome, Request, Status};
+use profiling_protocol::{broker::Provider, Action, Descriptor, Name, Outcome, Request, Status};
 
-pub(super) fn broker(epoch: u64) -> profiling_protocol::broker::Broker {
+pub(super) fn broker(epoch: u64, reader: health::Reader) -> profiling_protocol::broker::Broker {
     let mut broker = profiling_protocol::broker::Broker::default();
     broker
         .register(
@@ -17,12 +17,16 @@ pub(super) fn broker(epoch: u64) -> profiling_protocol::broker::Broker {
             None,
         )
         .expect("prepared audio source");
+    let health = Box::new(health::Source::new(epoch, reader));
+    broker
+        .register(health.descriptor(), Some(health))
+        .expect("built-in health source");
     broker
 }
 impl Service {
     pub fn remove_profiling_provider(&mut self, source: u32) -> Result<()> {
-        if source == profiling_data::wire::SOURCE {
-            return Err(anyhow!("the backend owns the audio source"));
+        if source == profiling_data::wire::SOURCE || source == profiling_protocol::health::SOURCE {
+            return Err(anyhow!("cannot remove a built-in diagnostic source"));
         }
         self.diagnostics
             .remove(source)

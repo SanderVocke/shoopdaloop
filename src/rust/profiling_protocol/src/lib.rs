@@ -6,6 +6,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
+pub mod health;
 pub mod memory;
 pub use memory::{MemoryReport, MemoryResource, MemoryUnit, MAX_MEMORY_RESOURCES};
 

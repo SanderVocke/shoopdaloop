@@ -152,7 +152,10 @@ impl Broker {
             source.status.coalesced = source.status.coalesced.saturating_add(1);
             source.status_pending = true;
         }
-        if source.status.outcome == Outcome::Capacity {
+        if matches!(
+            source.status.outcome,
+            Outcome::Capacity | Outcome::Unavailable
+        ) {
             source.status.outcome = Outcome::Applied;
             source.status_pending = true;
         }

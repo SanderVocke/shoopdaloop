@@ -216,7 +216,7 @@ pass is claimed here. Seven board/configuration tests and both corrected Arm
 cross-builds passed. The Arm vendor toolchain used GCC 14.2.1 and Rust 1.99.1;
 its bundled newlib/binutils differ from the pinned Debian CI packages.
 
-## Follow-up: protected FPGA bitstream ready; hardware work on hold
+## Protected FPGA bitstream: offline build checkpoint
 
 A fresh generated-audio, looping-geometry image was built offline with Vivado
 2021.1, SW build 3247384. The exact compiler executable and matching IP catalog
@@ -251,10 +251,152 @@ The credential-bearing host and its pairing remain under the private workspace.
 The complete FPGA marking, including package, speed and temperature grade, is
 still to be checked against the target `xc7z020clg400-2`.
 
-**Stop here until the user has fitted a heatsink and resumes the work.** No board
-commands, SD writes, programming or tests were issued after this hold. The new
-protection is in the candidate only; it has not been applied to the board and
-cannot power off the ARM cores or board regulators. Remove both DC and USB_UART
-power before fitting the heatsink: USB previously kept this board running.
-Do not execute the provisional generated PS/DDR initialization on hardware;
-retain the factory initialization until an exact V2 export is qualified.
+At this offline checkpoint, board work was held pending a heatsink. The user
+subsequently withdrew that requirement and authorized the native test and then
+the first FPGA run described below. At this offline checkpoint the candidate had
+not been applied to the board. Its protection cannot power off the ARM cores or
+board regulators. Remove both DC and USB_UART power
+before mechanical work: USB keeps this board running. Do not execute provisional
+generated PS/DDR initialization; retain the factory setup until an exact V2 export
+is qualified.
+
+## Native temperature reading without heatsink
+
+On 2026-11-24 the user explicitly authorized resuming without a heatsink. USB UART
+was restored at 115200 8N1 and the direct Ethernet link negotiated 1000 Mbit/s,
+full duplex. Factory Linux's IIO XADC initially reported raw 2626, approximately
+50 °C. The laptop used `10.0.2.2/24` and the board `10.0.2.15/24`.
+
+A separate `shoop-health-native.elf` was copied through factory SSH to FAT and
+hash-verified. `BOOT.BIN` and `image.ub` retained their factory hashes. Linux was
+rebooted cleanly and factory U-Boot's countdown interrupted. No Shoop FPGA image,
+generated PS initialization or QSPI image was programmed.
+
+Live U-Boot readings confirmed BOOT_MODE `0x00000005` (SD), IO_PLL_CTRL
+`0x0001e008`, FPGA0_CLK_CTRL `0x00200500` (nominal 100 MHz) and PCAP_CLK_CTRL
+`0x00000501`. The PS-XADC serial interface was held in reset: MCTL `0x10`,
+CFG `0x1114`, status `0x500` (both FIFOs empty). Before launching the tested ELF,
+`mw.l 0xf8007118 0 1` released that communication-interface reset. This does not
+reset the converter or change its sequencer/thermal thresholds. See UG585's
+[PS-XADC interface reset](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM/PS-XADC-Interface-Reset).
+The source now performs this release automatically only with empty FIFOs; that
+follow-up initialization is covered by the C fixture, not this physical run.
+
+Tested build ID: `zturn-health-native`; 7,471,656 bytes, CRC32 `5514a505`, SHA-256
+`449ec992013baf17a32ee360a68bc66e9134bb85901e9db9be43efec923b45f1`.
+It was staged at `0x38000000`, outside all load regions, and launched with a fresh
+boot nonce through `bootelf -p`. Native FreeRTOS/lwIP reached `SHOOP_HOST_READY`
+and gigabit networking at PHY address 7.
+
+The authenticated `zynq_health` probe observed the common `host.health` source at
+approximately 1 Hz for 15 seconds, with no audio/task profiling or stress workload:
+
+- **15 samples**, die temperature **52.539–53.154 °C**.
+- Hardware-stored maximum reached **53.523 °C**; it is not a peak-since-boot claim.
+- All sampled overtemperature states were false.
+- Processed frames advanced from 5,120 to 679,936 over approximately 14.05 seconds,
+  consistent with the nominal 48 kHz dummy renderer.
+- The probe used a conservative **65 °C stop threshold**, stopped on absent/stale
+  readings, and requested shutdown after the short run.
+- Shutdown was confirmed; UART reported all 32 dummy MIDI reset packets, complete
+  cleanup, zero remaining tracked Rust allocation and `SHOOP_HOST_RETURNED`.
+  Peak tracked Rust allocation was **551,220,496 bytes**.
+
+[Evidence and checksums](zturn-v2/2026-11-24/native-health/result.json) contain the
+samples, native UART transcript, register observations and credential-free build
+manifest. The credential-bearing ELF remains private. The firmware was
+intentionally stopped after the test; the board remains powered, not serving a
+session. Another launch requires a reset.
+
+This verifies native startup and live sensor delivery through the diagnostics
+client, not a GUI paint test, sustained load, physical I²S, FPGA functionality,
+thermal-trip behavior or safe heatsink-free operation. Telemetry does not stop
+the ARM locally or cut board power. The protected PL bitstream was still offline
+at this native-test checkpoint.
+
+## First physical FPGA host and connected desktop UI
+
+On 2026-11-25 the user requested the same connected UI setup using the physical
+FPGA backend. The native session had already shut down with zero remaining tracked
+Rust allocation. After one physical reset, factory Linux booted, the direct-link
+address was restored, and separate `shoop-thermal-generated.bit` and
+`shoop-health-fpga.elf` files were staged over SSH and SHA-256 verified. Both
+factory `BOOT.BIN` and `image.ub` hashes were unchanged before and after staging.
+
+Linux rebooted cleanly into factory U-Boot. The original PS/DDR initialization
+and clocks were retained; no generated PS initialization, QSPI write or persistent
+boot-environment change was performed. Live PS IDCODE was `0x23727093` (7020),
+BOOT_MODE `0x5`, IO_PLL_CTRL `0x0001e008`, FCLK0 control `0x00200500` and PCAP
+clock control `0x00000501`.
+
+Factory `fpga loadb` programmed the protected bitstream through PCAP from a DDR
+staging buffer at `0x02000000`. The SD bitstream was 4,045,674 bytes, CRC32
+`4168b660`, with the SHA-256 recorded above. Loading returned success and PCAP
+configuration DONE was asserted. Read-only PS-XADC DRP transactions confirmed
+live protection registers `0x41=0000`, `0x42=0800`, `0x53=b0d3`, `0x57=abc4`.
+Only the PS serial interface was configured/released from reset; the probe did
+not write internal ADC configuration or thresholds. The live FPGA register bank
+reported ID `0x53484f50`, ABI 12, clock contract 100 MHz and a 128 MiB arena at
+`0x30000000`.
+
+The authenticated firmware was `zturn-health-fpga`, 5,962,984 bytes, CRC32
+`de088650`, SHA-256
+`d5fbdf77a974fe40c45b19fc89d50d88be72d671b9f8540f04c5e10886c737f9`.
+It was staged at `0x38000000`, given a fresh verified nonce, and launched with
+`bootelf -p`. UART reported **`SHOOP_FPGA_OWNER_READY`** followed by
+**`SHOOP_HOST_READY`**, with gigabit PHY link at address 7. This was physical RTL
+execution, not the software RTL simulator or ARM-native audio renderer. The host
+currently shares the `BackendType::RtlSim` setting/“RTL simulation” UI label with
+the simulator; that label is not evidence of the physical transport in use.
+
+A 15-second authenticated health/progress preflight, with a 65 °C cutoff and
+stale/missing-sensor abort, passed:
+
+- **16 samples**, current die temperature **54.261–54.631 °C**.
+- Hardware-retained maximum **55.369 °C**, no sampled overtemperature alarm.
+- Processed frames **1,664 → 721,440** across 15.000 seconds of samples, consistent
+  with generated audio at nominal 48 kHz.
+- **Zero reported xruns** throughout the check.
+
+On success the probe used its explicit `--handoff` option to disconnect without
+stopping the host; failures retain shutdown behavior. The laptop desktop UI then
+launched with the existing private profile and its established TCP data connection
+to `10.0.2.15:15400` was verified. The UI log showed no runtime error. At this
+handoff the FPGA host was deliberately left running; the normal UI does **not**
+retain the probe's 65 °C automatic cutoff. Close with **Close UI and stop host…**
+to request clean shutdown.
+
+[Evidence and checksums](zturn-v2/2026-11-25/fpga-host/result.json) retain the
+credential-free startup, FPGA load, live register contract, temperature/progress
+samples, firmware manifest and factory hashes. Credentials, nonce, ELF and local
+bitstream remain private/ignored. Factory `bootelf` emitted its existing cache
+alignment warnings before successful startup. This is initial startup, idle
+rendering and remote-client handoff evidence, not a physical I²S/audio-output,
+recording-loop, sustained-load, thermal-trip or heatsink-free qualification. The
+complete chip package/speed/temperature marking is still unverified.
+
+After the UI handoff, the user reported a crash. They explicitly requested no
+investigation and a repeat of the same setup. No cause was established and no
+stability qualification is implied by the successful initial health check.
+
+### FPGA session capacity at this checkpoint
+
+The bitstream reserves 128 MiB of DDR, of which 124 MiB is audio sample storage
+shared by all channels/loops. The rest accommodates storage metadata, program
+images and headroom. Raw four-byte samples at 48 kHz give an ideal capacity of
+approximately 339 seconds of stereo audio across all recordings; block allocation
+and retained/shared recordings affect usable capacity.
+
+Separately, this firmware configures host-local session admission/transfer limits
+of **32 MiB media**, **1 MiB serialized metadata**, **512 transferred objects**
+(including metadata) and **65,536 MIDI events**. The 1 MiB serialized-metadata
+ceiling is not the FPGA's internal recording-metadata capacity. The 32 MiB media
+ceiling is smaller than the physical recording arena and can constrain session
+load/save/capture paths independently. These are configured ceilings, not proof
+that all those workflows have been hardware-qualified.
+
+The FPGA host settings select eight tracks including sync, 128 loop slots shared
+across tracks, disabled processors and a 32-frame quantum at 48 kHz. MIDI execution
+is disabled in this image despite the common host-side event ceiling. These limits
+come from `shoop_host_freertos`' FPGA host setup, `shoop_rt_host_reference`'s program
+limits, the board profile and the bitstream's looping geometry.

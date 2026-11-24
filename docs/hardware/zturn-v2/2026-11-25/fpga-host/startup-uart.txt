@@ -1,0 +1,11 @@
+bootelf -p 0x38000000
+CACHE: Misaligned operation at range [00417b98, 00417c38]
+CACHE: Misaligned operation at range [00100000, 004186b0]
+## Starting application at 0x00100000 ...
+SHOOP_BOOT FreeRTOS AMD-lwIP board=shoop-zturn-v2-1g-v1 ram_mib=1024
+SHOOP_BUILD zturn-health-fpga
+link speed for phy address 7: 1000
+SHOOP_FPGA_OWNER_READY
+SHOOP_HOST_READY
+SHOOP_MEMORY used=3111824 peak=3111824 c_free=16317560 c_min_free=16317560 control_stack_free=39068 render_stack_free=0 uptime_ms=1968
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0

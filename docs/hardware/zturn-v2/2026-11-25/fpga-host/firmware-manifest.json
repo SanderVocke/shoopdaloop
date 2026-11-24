@@ -1,0 +1,59 @@
+{
+  "board": "zturn-v2",
+  "profile": "shoop-zturn-v2-1g-v1",
+  "board_sha256": "57d728c1463a7a25ae8587cff9ddb607b6d9daae39480d1738411307a2e55af9",
+  "embeddedsw": "97f2baf7f69e9d5f447650110af0d8841e501277",
+  "tinyusb": null,
+  "usb_midi": false,
+  "engine_policy": null,
+  "compiler": "arm-none-eabi-gcc (Arm GNU Toolchain 14.2.Rel1 (Build arm-14.52)) 14.2.1 20241119",
+  "sources": 104,
+  "patch_sha256": {
+    "emacps-read-clear.patch": "d51809de3ef9055035e8cb39897eba53fb21f36bb579daa87bc46c5492bcf68d",
+    "freertos-fpu-irq.patch": "6cb01a0de652142c13b234dfbae3683fc60f991c32fdc152917f46f179be8868",
+    "lwip-yt8531.patch": "c0a2ecad90cafbfeb803fdf1cabba687fcc6b6994dbf998378d97e7f067d2e61"
+  },
+  "elf_sha256": "d5fbdf77a974fe40c45b19fc89d50d88be72d671b9f8540f04c5e10886c737f9",
+  "source_inputs_sha256": "621068cb4b9f19f26874e7b4556ae766bb1c20b9fb3aa230933240927d65b88b",
+  "git_head": "7bffc8efe31e9bb5072e5d3f769bc71683201a73",
+  "rust_target": "armv7a-none-eabihf",
+  "fixture": false,
+  "deployment": false,
+  "build_id": "zturn-health-fpga",
+  "fpga_probe": false,
+  "fpga_renderer": true,
+  "native_i2s": false,
+  "fpga_contract": {
+    "board": "zturn-v2",
+    "profile": "shoop-zturn-v2-1g-v1",
+    "board_sha256": "57d728c1463a7a25ae8587cff9ddb607b6d9daae39480d1738411307a2e55af9",
+    "part": "xc7z020clg400-2",
+    "abi_id": "0x53484f50",
+    "abi_version": 12,
+    "abi_sha256": "f0962ae3de65e6d698d5c486fc045c6911542e0d9d1f552792de7abdf6fabc73",
+    "arena_base": 805306368,
+    "arena_bytes": 134217728,
+    "register_base": 1073741824,
+    "clock_hz": 100000000
+  },
+  "deployment_test_fault": null,
+  "ram_bytes": 1073741824,
+  "load_regions": [
+    [
+      1048576,
+      4294320
+    ],
+    [
+      4308992,
+      4325376
+    ],
+    [
+      5242880,
+      50331648
+    ],
+    [
+      134217728,
+      805306368
+    ]
+  ]
+}

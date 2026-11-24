@@ -272,8 +272,9 @@ ABI and JavaScript processor together.
 ## Host reports and extension points
 
 The profiling window has **Audio** and **Host** panels. Audio retains its graph,
-statistics and xrun inspection controls. Host shows the advertised FreeRTOS task
-report, with an independent collection switch, acknowledged sampling interval,
+statistics and xrun inspection controls. Host shows health diagnostics on every
+backend and the advertised FreeRTOS task report, with an independent task
+collection switch, acknowledged sampling interval,
 report age and delivery/assembly loss counters. A host without this producer shows
 it as unavailable; unknown schemas are identified without disconnecting the app.
 
@@ -309,6 +310,45 @@ and namespaced name, implement its bounded schema/codec and producer, and regist
 it with `Service::register_profiling_provider`. Add the typed decoder and UI in the
 application client. Neither carrier implementations nor outer protocol variants
 need another report-specific case. Reports are not persisted in session files.
+
+## Host health
+
+Every application service advertises the built-in `host.health` diagnostic source,
+regardless of its renderer (native, browser/worklet, reference or FPGA). Health
+monitoring starts automatically at 1 Hz after the Ready handshake, independently
+of audio/task profiling and whether the profiling window is open. Detaching stops
+collection; a fresh attachment restarts it and clears the client's old readings.
+Health reports do not change session revisions and are not saved in sessions.
+
+Open **Profiling… → Host → Host health** for sensor readings and report age.
+Hosts without a temperature provider explicitly report unavailable sensors, not
+zero degrees. Individual failed readings are unavailable. Late reports or inactive
+monitoring are marked stale; retained values are labeled as last readings rather
+than current measurements. Unsupported schemas are identified without decoding.
+
+Zynq physical-board hosts supply the shared PS/PL **SoC die** temperature, the
+XADC's stored maximum when readable, and the current overtemperature alarm state.
+This is one on-die sensor, not separate ARM/FPGA/package/ambient temperatures.
+The maximum's reset boundary is hardware-specific and may precede attachment or
+host startup; it is not claimed to be a peak since boot. Sampling runs on the
+control task, never the render callback. Other hosts currently report no sensors;
+they can install a control-thread sampler using `Service::set_health_reader`.
+
+The versioned schema is `profiling_protocol::health` (source 3, report type 4,
+schema 1). It permits eight unique named sensors with optional signed integer
+millidegree-Celsius readings and an optional alarm state. Client health assemblies
+are capped at 2 KiB. Read failures, absence, source availability and report age
+remain distinct from a measured zero or an unasserted alarm.
+
+**Telemetry is not thermal protection.** Subscription, window visibility and
+network connectivity do not control local safeguards. An unasserted sampled alarm
+is not a guarantee of safe operation. Zynq sampling does not change ADC sequencing,
+alarm thresholds/masks, shutdown policy, ADC reset or the factory PS clock setup.
+A short MYIR native firmware run physically measured approximately 53 °C and
+confirmed diagnostic delivery and cleanup. It required releasing the factory
+PS-interface reset before launch; the sampler now performs that release only with
+empty FIFOs, without resetting the converter. Sustained-load and FPGA thermal
+qualification remain outstanding; a short run is not a safety guarantee.
 
 ## Backend resource usage
 

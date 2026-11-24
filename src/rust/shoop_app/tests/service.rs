@@ -5053,6 +5053,8 @@ fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() 
 #[path = "support/input_cases.rs"]
 mod input_cases;
 
+#[path = "health/cases.rs"]
+mod health_cases;
 #[path = "profiling/cases.rs"]
 mod profiling_cases;
 

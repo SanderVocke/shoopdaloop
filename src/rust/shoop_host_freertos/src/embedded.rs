@@ -1,6 +1,8 @@
 #[cfg(feature = "fpga")]
 #[path = "fpga.rs"]
 mod fpga;
+#[path = "health.rs"]
+mod health;
 #[path = "profiling.rs"]
 mod profiling;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
@@ -755,6 +757,9 @@ pub fn run() {
 }
 
 fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool>) {
+    service
+        .set_health_reader(health::sample)
+        .expect("host health sampler");
     for _ in 0..10_000 {
         if service.is_ready() {
             break;

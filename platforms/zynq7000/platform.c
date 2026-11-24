@@ -8,6 +8,7 @@
 #include "xil_printf.h"
 #include "xil_assert.h"
 #include "xil_io.h"
+#include "temperature.h"
 #include "netif/xtopology.h"
 #include <sys/stat.h>
 #include <errno.h>
@@ -88,6 +89,31 @@ u32 shoop_yt8531_emacps_speed(XEmacPs *emac) {
     return speed ? speed : XST_FAILURE;
 }
 #endif
+
+#ifdef SHOOP_BOARD_XADC
+static uint32_t xadc_read(void *context, unsigned offset) {
+    (void)context;
+    return Xil_In32(0xf8007100u + offset);
+}
+static void xadc_write(void *context, unsigned offset, uint32_t value) {
+    (void)context;
+    Xil_Out32(0xf8007100u + offset, value);
+}
+#endif
+
+int shoop_soc_temperature(struct shoop_temperature *sample) {
+    *sample = (struct shoop_temperature){0};
+#ifdef SHOOP_BOARD_XADC
+    /* Keep the factory clock setup; unavailable if the PCAP interface clock is gated. */
+    if (Xil_In32(0xf8000168u) & 1u) {
+        const struct shoop_xadc_bus bus = {NULL, xadc_read, xadc_write};
+        shoop_xadc_sample(&bus, sample);
+    }
+    return 1;
+#else
+    return 0;
+#endif
+}
 
 static void bsp_assert(const char *file, s32 line) { vApplicationAssert(file, (unsigned long)line); }
 void shoop_platform_init(void) {

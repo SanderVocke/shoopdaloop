@@ -2351,10 +2351,12 @@ pub struct ProfilingSource {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DiagnosticsView {
     pub sources: Vec<ProfilingSource>,
+    pub health: Option<profiling_protocol::health::Snapshot>,
     pub tasks: freertos_profiling::View,
 }
 pub use freertos_profiling as task_profiling;
 pub use profiling_protocol as diagnostics_protocol;
+pub use profiling_protocol::health as host_health;
 
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {

@@ -1,4 +1,4 @@
-use profiling_protocol::{Assembly, Record, MAX_REPORT_BYTES, MAX_SOURCES};
+use profiling_protocol::{health, Assembly, Record, MAX_REPORT_BYTES, MAX_SOURCES};
 use shoop_app_api::{profiling_data, DiagnosticsView, ProfilingSource, ProfilingView};
 
 #[derive(Default)]
@@ -31,7 +31,10 @@ impl Store {
                 && stream.schema == profiling_data::wire::SCHEMA)
                 || (stream.source == freertos_profiling::SOURCE
                     && stream.report_type == freertos_profiling::REPORT_TYPE
-                    && stream.schema == freertos_profiling::SCHEMA);
+                    && stream.schema == freertos_profiling::SCHEMA)
+                || (stream.source == health::SOURCE
+                    && stream.report_type == health::REPORT_TYPE
+                    && stream.schema == health::SCHEMA);
             let next = ProfilingSource {
                 descriptor,
                 status: None,
@@ -55,6 +58,9 @@ impl Store {
                 }
                 if stream.source == freertos_profiling::SOURCE {
                     self.view.tasks = Default::default();
+                }
+                if stream.source == health::SOURCE {
+                    self.view.health = None;
                 }
             } else if self.view.sources.len() < MAX_SOURCES {
                 self.view.sources.push(next);
@@ -84,10 +90,12 @@ impl Store {
                 if !self.view.sources[index].supported {
                     return;
                 }
-                let source_limit = if stream.source == freertos_profiling::SOURCE {
+                let source_limit = if stream.source == health::SOURCE {
+                    health::MAX_REPORT_BYTES
+                } else if stream.source == freertos_profiling::SOURCE {
                     65536
                 } else {
-                    MAX_REPORT_BYTES - 65536
+                    MAX_REPORT_BYTES - 65536 - health::MAX_REPORT_BYTES
                 };
                 if chunk.total as usize > source_limit {
                     self.view.sources[index].assembly_losses =
@@ -121,6 +129,16 @@ impl Store {
                             {
                                 if sample.valid() {
                                     self.view.tasks.receive(sample);
+                                    self.view.sources[index].age_ms = 0;
+                                    accepted = true;
+                                }
+                            }
+                        } else if stream.source == health::SOURCE {
+                            if let Ok(sample) =
+                                profiling_protocol::decode::<health::Snapshot>(bytes)
+                            {
+                                if sample.valid() {
+                                    self.view.health = Some(sample);
                                     self.view.sources[index].age_ms = 0;
                                     accepted = true;
                                 }

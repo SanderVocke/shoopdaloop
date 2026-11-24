@@ -8,6 +8,9 @@ use std::sync::Arc;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+#[path = "health/cases.rs"]
+mod health_cases;
+
 const AUTHORITY: Authority = Authority {
     lease: LeaseId(1),
     client: ClientId(2),

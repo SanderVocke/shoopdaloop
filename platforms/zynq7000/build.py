@@ -112,7 +112,7 @@ def build():
     sources += list((lwip / "src/api").glob("*.c"))
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
-    sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / (args.app + ".c")]
+    sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / "temperature.c", PLATFORM / (args.app + ".c")]
     if board.bsp.get("phy") == "yt8531":
         includes.append(PLATFORM / "boards")
         sources.append(PLATFORM / "boards/yt8531.c")

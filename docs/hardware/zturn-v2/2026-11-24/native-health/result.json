@@ -1,0 +1,51 @@
+{
+  "result": "pass",
+  "date": "2026-11-24",
+  "board": "MYIR Z-Turn V2",
+  "user_authorized_without_heatsink": true,
+  "backend": "native FreeRTOS / AMD lwIP; dummy 48 kHz audio",
+  "firmware_build_id": "zturn-health-native",
+  "elf_sha256": "449ec992013baf17a32ee360a68bc66e9134bb85901e9db9be43efec923b45f1",
+  "elf_bytes": 7471656,
+  "elf_crc32": "5514a505",
+  "provenance": "Recorded base commit plus uncommitted health-source implementation; exact source-input digest is in the manifest. The later automatic interface-reset-release fix was not in the tested ELF.",
+  "launch": "Factory BOOT.BIN/FSBL/U-Boot; separate FAT ELF at 0x38000000; fresh boot nonce; bootelf -p",
+  "manual_ps_xadc_interface_reset_release": {
+    "register": "0xf8007118",
+    "before": "0x10",
+    "after": "0x0",
+    "adc_reset_asserted": false,
+    "fifo_status": "0x500; both empty"
+  },
+  "fabric_clock_nominal_hz": 100000000,
+  "boot_mode": "0x5; SD",
+  "ethernet": "1000 Mbit/s full duplex; PHY address 7",
+  "samples": 15,
+  "requested_observation_seconds": 15,
+  "observed_report_span_ms": 14048,
+  "temperature_c": {
+    "min_sampled": 52.539,
+    "max_sampled": 53.154,
+    "max_sensor_reported": 53.523
+  },
+  "sampled_alarm_asserted": false,
+  "probe_stop_threshold_c": 65,
+  "probe_stale_timeout_seconds": 3,
+  "first_processed_frames": 5120,
+  "last_processed_frames": 679936,
+  "shutdown_confirmed": true,
+  "uart_host_returned": true,
+  "remaining_tracked_rust_bytes": 0,
+  "peak_tracked_rust_bytes": 551220496,
+  "factory_boot_hashes_unchanged": {
+    "BOOT.BIN": "8fd8db988f60898b894987da1c4a837a282301ad963fa95d8f0a5ab2fb26bc6d",
+    "image.ub": "86e08ef3c057d0a9c6e474ff4b5a19269babb2fd784c32fdfaf72f0eacc6473b"
+  },
+  "shoop_fpga_image_loaded": false,
+  "physical_i2s_tested": false,
+  "live_egui_paint_tested": false,
+  "thermal_trip_tested": false,
+  "sustained_load_qualified": false,
+  "final_state": "Firmware intentionally stopped, networking service cleaned up; board still powered. Reset required for another launch.",
+  "thermal_limitations": "Sampled telemetry and a host-side probe stop do not guarantee local PS protection or whole-board power cutoff. Sensor maximum is hardware-retained, not a peak-since-boot claim."
+}

@@ -9,5 +9,7 @@ resources/builtins/**/*.png binary
 platforms/zynq7000/patches/*.patch -whitespace
 docs/hardware/zturn-v2/**/*.rpt -whitespace
 docs/hardware/zturn-v2/**/*.patch -whitespace
+docs/hardware/zturn-v2/**/*-uart.txt -whitespace
+docs/hardware/zturn-v2/**/factory-boot-hashes.txt whitespace=cr-at-eol
 fpga/midi/rtl/midi_control_program.svh linguist-generated=true
 fpga/midi/rtl/midi_control_rom.svh linguist-generated=true

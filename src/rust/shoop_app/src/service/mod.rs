@@ -12,6 +12,7 @@ mod commands;
 mod composites;
 mod deployment;
 mod duplication;
+mod health;
 mod immediate;
 mod management;
 mod media;
@@ -168,6 +169,7 @@ pub struct Service {
     driver_request: u64,
     driver_ticket: u64,
     diagnostics: profiling_protocol::broker::Broker,
+    health_reader: health::Reader,
     profiling_elapsed: Duration,
     profiling_connection: u64,
     host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
@@ -267,6 +269,7 @@ impl Service {
         let bus_processors = backend
             .bus_processor_catalog()
             .unwrap_or_else(|_| Arc::from([]));
+        let health_reader = health::reader();
         let mut service = Self {
             driver_state: observed.audio_drivers.clone(),
             driver_controller: None,
@@ -274,7 +277,11 @@ impl Service {
             driver_request: 0,
             driver_ticket: 0,
             bus_processors,
-            diagnostics: profiling::broker(observed.profiling.connection.max(1)),
+            diagnostics: profiling::broker(
+                observed.profiling.connection.max(1),
+                health_reader.clone(),
+            ),
+            health_reader,
             profiling_connection: observed.profiling.connection,
             profiling_elapsed: Duration::ZERO,
             track_processors,
@@ -706,7 +713,11 @@ impl Service {
                 if revision < lease.snapshot_revision || revision > self.revision {
                     return Err(Refusal::RevisionConflict);
                 }
+                let newly_ready = !lease.ready;
                 lease.ready = true;
+                if newly_ready {
+                    self.start_health();
+                }
             }
             ClientMessage::Detach { authority } => {
                 self.check(connection, authority)?;

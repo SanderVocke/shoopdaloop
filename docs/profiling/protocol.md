@@ -25,7 +25,8 @@ as well as the existing graph (4,096 nodes/16,384 edges), 8,192 capture summarie
 and paged detail bounds. Capacity refusal is explicit rather than silently
 truncating an audio view. Platform providers additionally bound their own data;
 the FreeRTOS task table is limited to 32 tasks. Client task assemblies are capped
-at 64 KiB; audio assemblies reserve that much aggregate headroom for host data.
+at 64 KiB; health assemblies are capped at 2 KiB. Audio assemblies reserve both
+budgets as aggregate headroom for host data.
 Task sampling generations change on re-enable so CPU deltas never span a paused
 collection interval, even when intermediate status messages are coalesced.
 
@@ -34,7 +35,8 @@ interval; the source acknowledges its effective interval, availability and
 outcome. Discover, snapshot, unsubscribe and payload-specific inspect requests
 use generic routing. Inspection payloads are at most 128 bytes. Discovery is
 bounded and repeatable. Unknown sources/unsupported operations receive an explicit
-refusal. Optional collection starts disabled; the existing saved audio preference
+refusal. Optional collection starts disabled; built-in host health automatically
+subscribes at 1 Hz on Ready and stops on detach. The existing saved audio preference
 is applied by the application after attachment. Effective demand is scoped to the
 active service lease, which is currently exclusive; connection candidates do not
 multiply collection work.
@@ -51,6 +53,13 @@ and derived UI views have separate type IDs; graph generations/callback identiti
 remain audio payload fields. Host task sources are declared by their typed schema.
 Graph resets do not reset host task histories. Timestamps identify their clock
 domain; audio frame positions do not substitute for elapsed execution time.
+`profiling_protocol::health` owns host health source 3, report type 4, schema 1.
+It has eight fixed optional temperature slots with unique bounded names, signed
+integer millidegrees Celsius and optional sensor maxima/alarm state. An empty
+report explicitly supplies no sensors; an unreadable known sensor has no current
+value. Health freshness is tracked independently of audio graphs/task histories.
+Every application service registers this source, including hosts without sensors;
+it cannot be removed through the optional-provider API.
 
 Task CPU usage is `100 * delta(task runtime) / delta(total runtime)` for the current
 single-core host. First samples, failed samples, reset epochs and ambiguous wraps

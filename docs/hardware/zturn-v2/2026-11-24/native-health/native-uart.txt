@@ -1,0 +1,26 @@
+Zynq> bootelf -p 0x38000000
+CACHE: Misaligned operation at range [0055d738, 0055d7d8]
+CACHE: Misaligned operation at range [00100000, 0055e270]
+## Starting application at 0x00100000 ...
+SHOOP_BOOT FreeRTOS AMD-lwIP board=shoop-zturn-v2-1g-v1 ram_mib=1024
+SHOOP_BUILD zturn-health-native
+link speed for phy address 7: 1000
+SHOOP_HOST_READY
+SHOOP_MEMORY used=551083720 peak=551083720 c_free=16186488 c_min_free=16186488 control_stack_free=19155 render_stack_free=49306 uptime_ms=5313
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_MEMORY used=551189872 peak=551220496 c_free=16186040 c_min_free=16186040 control_stack_free=19155 render_stack_free=49306 uptime_ms=15316
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3392 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_DUMMY_MIDI_RESET packets=32
+SHOOP_HOST_CLEANUP_COMPLETE
+SHOOP_HOST_STOPPED
+SHOOP_MEMORY used=580368 peak=551220496 c_free=16449072 c_min_free=16186040 control_stack_free=19155 render_stack_free=49306 uptime_ms=22411
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3392 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_STACK name=control free_words=19155
+SHOOP_STACK name=IDLE free_words=925
+SHOOP_STACK name=socket-io free_words=3909
+SHOOP_STACK name=tcpip_thread free_words=3917
+SHOOP_STACK name=Tmr Svc free_words=1935
+SHOOP_STACK name=gem-input free_words=3967
+SHOOP_MEMORY used=0 peak=551220496 c_free=16449552 c_min_free=16186040 control_stack_free=19155 render_stack_free=49306 uptime_ms=22450
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3392 tcp_pcbs=0 netconns=0 sockets=0
+SHOOP_HOST_RETURNED

@@ -247,6 +247,39 @@ correctness on silicon, codec wiring or production boot packaging. The
 `USE_AMP` coherency failure above only appeared on a physical ZedBoard; see the
 [JTAG guide](boards/jtag-development.md) for hardware results.
 
+## In-app host health
+
+Every backend advertises `host.health`; open **Profiling… → Host → Host health**.
+Health automatically samples at 1 Hz on client attachment, independently of audio
+and task profiling. See [host health](../../docs/runtime_profiling.md#host-health)
+for schema, availability and freshness semantics.
+
+Physical Zynq boards report the shared PS/PL die temperature and XADC sensor
+maximum, plus overtemperature alarm state. QEMU does not model the sensor and
+reports no temperature sensors. Failed physical reads remain explicitly
+unavailable. The maximum is the hardware's retained value, not necessarily a
+maximum since this firmware boot.
+
+The control-task sampler uses the PS-XADC serial FIFO at `0xf8007100`, with bounded
+polls and a READ/NOP pipeline. It enables/configures only the PS serial interface;
+it never writes XADC internal registers, resets the ADC, changes interrupt masks,
+changes the factory clocks or weakens PL thermal shutdown. The factory's asserted
+PS-interface reset is released only when both FIFOs are empty; this does not reset
+the converter and never asserts a reset. Gated PCAP clocks or nonempty FIFOs while
+the interface is held in reset yield unavailable readings. The conversion follows UG480's
+`raw16 * 503.975 / 65536 - 273.15` °C with integer millidegree rounding. There is
+one die sensor, not separate ARM and PL temperatures.
+
+`nix develop --command python3 platforms/zynq7000/tests/temperature.py` exercises
+conversion, negative temperatures, FIFO alignment/stale responses, alarm states,
+bounded failure and the absence of ADC-register/reset writes with a simulated
+register bus. A [15-second Z-turn V2 native run](../../docs/hardware/zturn-v2-bringup.md#native-temperature-reading-without-heatsink)
+measured 52.539–53.154 °C, with a stored sensor maximum of 53.523 °C and confirmed
+shutdown. That run manually released the PS-interface reset in factory U-Boot;
+automatic empty-FIFO interface release is subsequently covered by the C fixture.
+This is not sustained-load or heatsink-free thermal qualification. Monitoring is
+not a local PS thermal-stop handler or whole-board power cutoff.
+
 ## In-app task profiling
 
 Open the application's Profiling window and select **Host**, then enable task

@@ -1,0 +1,18 @@
+ATTACHED health-only run; cutoff 65 C; duration 15 s
+{"current_c":52.908,"elapsed_ms":15,"overtemperature":false,"processed_frames":5120,"sensor":"SoC die (PS/PL)","sensor_max_c":53.154}
+{"current_c":52.785,"elapsed_ms":1018,"overtemperature":false,"processed_frames":54272,"sensor":"SoC die (PS/PL)","sensor_max_c":53.154}
+{"current_c":52.662,"elapsed_ms":2018,"overtemperature":false,"processed_frames":102400,"sensor":"SoC die (PS/PL)","sensor_max_c":53.154}
+{"current_c":52.539,"elapsed_ms":3021,"overtemperature":false,"processed_frames":148480,"sensor":"SoC die (PS/PL)","sensor_max_c":53.154}
+{"current_c":52.785,"elapsed_ms":4022,"overtemperature":false,"processed_frames":197632,"sensor":"SoC die (PS/PL)","sensor_max_c":53.154}
+{"current_c":52.908,"elapsed_ms":5027,"overtemperature":false,"processed_frames":245760,"sensor":"SoC die (PS/PL)","sensor_max_c":53.154}
+{"current_c":52.908,"elapsed_ms":6028,"overtemperature":false,"processed_frames":293888,"sensor":"SoC die (PS/PL)","sensor_max_c":53.277}
+{"current_c":53.154,"elapsed_ms":7034,"overtemperature":false,"processed_frames":342016,"sensor":"SoC die (PS/PL)","sensor_max_c":53.277}
+{"current_c":52.908,"elapsed_ms":8044,"overtemperature":false,"processed_frames":391168,"sensor":"SoC die (PS/PL)","sensor_max_c":53.277}
+{"current_c":52.908,"elapsed_ms":9053,"overtemperature":false,"processed_frames":439296,"sensor":"SoC die (PS/PL)","sensor_max_c":53.277}
+{"current_c":52.908,"elapsed_ms":10059,"overtemperature":false,"processed_frames":487424,"sensor":"SoC die (PS/PL)","sensor_max_c":53.4}
+{"current_c":53.031,"elapsed_ms":11058,"overtemperature":false,"processed_frames":536576,"sensor":"SoC die (PS/PL)","sensor_max_c":53.4}
+{"current_c":53.154,"elapsed_ms":12061,"overtemperature":false,"processed_frames":582656,"sensor":"SoC die (PS/PL)","sensor_max_c":53.4}
+{"current_c":53.154,"elapsed_ms":13061,"overtemperature":false,"processed_frames":630784,"sensor":"SoC die (PS/PL)","sensor_max_c":53.4}
+{"current_c":52.785,"elapsed_ms":14063,"overtemperature":false,"processed_frames":679936,"sensor":"SoC die (PS/PL)","sensor_max_c":53.523}
+HEALTH_PASS samples=15
+SHUTDOWN_CONFIRMED
