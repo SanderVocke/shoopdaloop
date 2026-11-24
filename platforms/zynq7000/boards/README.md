@@ -56,16 +56,22 @@ The profile targets `xc7z020clg400-2`. The MYIR V2 schematic confirms two
 256M×16 DDR3 devices, GEM0 RGMII on MIO 16–27, MDIO on MIO 52–53, UART1 on
 MIO 48–49, and PHY address 7. Ethernet reset follows board power-good. The
 schematic labels the part `YT8531SC` and the product page lists `YT8531SH`. The
-firmware checks the Motorcomm YT8531 MDIO ID before configuring the RGMII delays
-and enabling negotiation. Physical bring-up must confirm the populated part,
-link at the advertised speeds, and the board's exact DDR training parameters.
+firmware accepts the exact Motorcomm YT8531 and YT8531S MDIO IDs before
+configuring the RGMII delays and enabling negotiation. YT8531S is supported only
+in strapped copper/RGMII mode, with explicit copper-bank selection. Physical
+bring-up must confirm the populated part, link at the advertised speeds, and the
+board's exact DDR training parameters.
 [MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) ·
 [MYIR specifications](https://www.myirtech.com/list.asp?id=708)
 
 The schematic used for the development profile has SHA-256
 `7fe273655dee3b5a2cade185efc584f68f3e6b86e9b658df405ae679615198ae`.
 The upstream U-Boot Z-turn PS initialization is pinned for reproducible builds.
-The V2-specific PS initialization and physical SD boot are qualification items.
+The V2-specific PS initialization and repository-generated signed SD boot remain
+qualification items. A native host loaded from SD through factory U-Boot passed
+its first authenticated hardware smoke on 2026-11-24, including gigabit Ethernet
+at address 7. That board reports YT8531S ID `0x4f51e91a`. See the
+[bring-up procedure, fixes and evidence](../../../docs/hardware/zturn-v2-bringup.md).
 The DTS overlay selects address 7 in U-Boot. Direct-load QEMU uses the built-in
 Marvell PHY model at the same address. [Pinned Z-turn PS baseline](https://github.com/u-boot/u-boot/blob/5508406582f6f7120dce0c4b3059819a41788db2/board/xilinx/zynq/zynq-zturn/ps7_init_gpl.c)
 

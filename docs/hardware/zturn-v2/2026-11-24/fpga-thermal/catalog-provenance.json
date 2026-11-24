@@ -1,0 +1,15 @@
+{
+  "layer": "sha256:60cd7af3afde6e3e8a55efc2babc577c0220e4be92ce75cd6ed900315996fa13",
+  "catalog_entries": 26198,
+  "hardlinks": 2317,
+  "symlinks": 0,
+  "required_ip_component_sha256": {
+    "processing_system7_v5_5": "5c884fb6b1f01c0cdde22724d3fdf462cdd05f1f31066ea07452c1815006ad10",
+    "proc_sys_reset_v5_0": "cdf76e2f1c8662a8a83fdba40d6dd7e308779c592d7c733d9f331f0d5d721f02",
+    "xlconstant_v1_1": "e9ed0a51b4ecf2b0ba5e5d15f6a3dfe931c045e9712f142eeaee7e86ecfcfc78",
+    "vio_v3_0": "b71b40e35430a6070abf9bec0b1ca962f26ddc492b37563488571789496d3496",
+    "ila_v6_2": "b032fcc961354544796a8dbd8092b23d0ba72e50d984a545f7e85343177efb7b"
+  },
+  "catalog": "catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip",
+  "verified": true
+}

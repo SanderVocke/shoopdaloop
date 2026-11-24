@@ -1,0 +1,25 @@
+PING 10.0.2.15 (10.0.2.15) 56(84) bytes of data.
+64 bytes from 10.0.2.15: icmp_seq=1 ttl=255 time=2.87 ms
+64 bytes from 10.0.2.15: icmp_seq=2 ttl=255 time=0.639 ms
+64 bytes from 10.0.2.15: icmp_seq=3 ttl=255 time=0.640 ms
+64 bytes from 10.0.2.15: icmp_seq=4 ttl=255 time=0.652 ms
+64 bytes from 10.0.2.15: icmp_seq=5 ttl=255 time=0.638 ms
+64 bytes from 10.0.2.15: icmp_seq=6 ttl=255 time=0.638 ms
+64 bytes from 10.0.2.15: icmp_seq=7 ttl=255 time=0.640 ms
+64 bytes from 10.0.2.15: icmp_seq=8 ttl=255 time=0.643 ms
+64 bytes from 10.0.2.15: icmp_seq=9 ttl=255 time=0.636 ms
+64 bytes from 10.0.2.15: icmp_seq=10 ttl=255 time=0.654 ms
+64 bytes from 10.0.2.15: icmp_seq=11 ttl=255 time=0.671 ms
+64 bytes from 10.0.2.15: icmp_seq=12 ttl=255 time=0.647 ms
+64 bytes from 10.0.2.15: icmp_seq=13 ttl=255 time=0.643 ms
+64 bytes from 10.0.2.15: icmp_seq=14 ttl=255 time=0.636 ms
+64 bytes from 10.0.2.15: icmp_seq=15 ttl=255 time=0.650 ms
+64 bytes from 10.0.2.15: icmp_seq=16 ttl=255 time=0.639 ms
+64 bytes from 10.0.2.15: icmp_seq=17 ttl=255 time=0.632 ms
+64 bytes from 10.0.2.15: icmp_seq=18 ttl=255 time=0.634 ms
+64 bytes from 10.0.2.15: icmp_seq=19 ttl=255 time=0.644 ms
+64 bytes from 10.0.2.15: icmp_seq=20 ttl=255 time=0.659 ms
+
+--- 10.0.2.15 ping statistics ---
+20 packets transmitted, 20 received, 0% packet loss, time 3945ms
+rtt min/avg/max/mdev = 0.632/0.755/2.869/0.485 ms

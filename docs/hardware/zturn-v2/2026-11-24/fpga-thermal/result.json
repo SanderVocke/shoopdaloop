@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-24",
+  "scope": "Offline generated-audio FPGA build; no hardware pass implied",
+  "base_commit": "9efe47d7453a29d30de2c746c7b1bc86f6d94452",
+  "part": "xc7z020clg400-2",
+  "physical_package_and_speed_grade_confirmed": false,
+  "geometry": "looping",
+  "audio": "generated",
+  "abi_version": 12,
+  "vivado": "2021.1 SW Build 3247384",
+  "bitstream": {
+    "local_path": "work/zturn-v2/bringup/artifacts/thermal-generated/zturn_v2.bit",
+    "bytes": 4045674,
+    "sha256": "0ee4640b2739ad17587195c6a2dfb77613c41fbe6e22ca63650097f2b5228ba3"
+  },
+  "xsa": {
+    "local_path": "work/zturn-v2/bringup/artifacts/thermal-generated/zturn_v2.xsa",
+    "sha256": "f3ed3d673b50904d27fca0bf3aa2b7956dd98b8645d056263657c55e55e5175e"
+  },
+  "thermal": {
+    "scope": "Automatic PL shutdown only; not ARM or board power-off",
+    "trip_c_nominal": 75,
+    "lower_threshold_c_nominal": 65,
+    "init_40": "0000",
+    "init_41": "0000",
+    "init_42": "0800",
+    "init_53": "B0D3",
+    "init_57": "ABC4",
+    "bitstream_property": "OVERTEMPPOWERDOWN ENABLE",
+    "ctl0_bit_12_verified": true,
+    "xsa_contains_identical_bitstream": true,
+    "physically_tested": false
+  },
+  "implementation": {
+    "clock_mhz": 100,
+    "setup_wns_ns": 0.494,
+    "hold_whs_ns": 0.043,
+    "timing_constraints_met": true,
+    "fully_routed_nets": 38568,
+    "routing_errors": 0,
+    "drc_errors": 0,
+    "drc_critical_warnings": 0,
+    "drc_warnings": 16,
+    "drc_warning_types": [
+      "DPIP-1",
+      "DPOP-1",
+      "DPOP-2"
+    ],
+    "lut_total": 26534,
+    "flip_flops": 17828,
+    "ramb36": 83,
+    "ramb18": 7,
+    "dsp": 4,
+    "xadc": 1
+  },
+  "verification": {
+    "thermal_regression_tests_passed": 7,
+    "probe_pair_verified": true,
+    "host_pair_verified": true,
+    "source_patch_sha256": "20845ba55f8fefc41e968e998b5d129f960d28296b5a4eedb292b13138ce8266"
+  },
+  "board_activity_after_hold": "No commands, SD writes, FPGA programming or board tests issued",
+  "ps_preset_hardware_qualified": false,
+  "hold": "Stop at offline bitstream. No board work until heatsink installed and user resumes.",
+  "remaining": [
+    "Confirm complete FPGA marking including package, speed and temperature grade",
+    "Fit heatsink with power removed, including USB_UART back-power",
+    "Do not apply provisional generated DDR initialization; retain qualified factory initialization",
+    "Hardware startup, thermal monitoring/protection validation and generated-audio tests pending"
+  ]
+}

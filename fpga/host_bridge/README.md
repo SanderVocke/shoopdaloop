@@ -6,6 +6,34 @@ map defined in `registers.json`. Run the generators after changing the ABI or
 wrapper. The generated audio build uses a deterministic mono source at 48 kHz
 and sends each quantum through the stereo audio bank controller.
 
+## Automatic PL temperature protection
+
+Every Z-turn V2 build includes an autonomous XADC monitor and enables
+`BITSTREAM.CONFIG.OVERTEMPPOWERDOWN`. The nominal trip point is **75°C junction
+temperature**, with a nominal lower threshold of 65°C (`INIT_53=B0D3`,
+`INIT_57=ABC4`). The default monitoring sequence and OT alarm remain enabled;
+fabric DRP writes and reset are tied inactive. The monitor is retained even
+though its ordinary fabric outputs are unused. XADC can fall back to its
+internal oscillator if the fabric clock stops.
+
+This is emergency **PL-only** protection, not ARM throttling or a board power
+switch. Sensor accuracy and response delay still require thermal margin. It
+only takes effect after the protected bitstream is configured; it does not
+retrofit protection into the factory image. Fit appropriate cooling before
+hardware tests and do not use repeated thermal trips as normal regulation.
+
+The build checks the retained XADC parameters and shutdown property before
+bitstream generation and again on the routed design, writing `thermal.rpt`.
+Missing/disabled protection aborts the build. The portable regression test
+requires a Tcl interpreter (`TCLSH` can select its path):
+
+```sh
+python3 fpga/host_bridge/test_thermal.py
+```
+
+[AMD XADC thermal management](https://docs.amd.com/r/en-US/ug480_7Series_XADC/Automatic-Alarms) ·
+[Zynq critical overtemperature behavior](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM/Critical-Over-temperature-Alarm)
+
 ## Vivado and diagnostic firmware
 
 Use Vivado 2021.1 with the matching IP catalog. The workspace build uses

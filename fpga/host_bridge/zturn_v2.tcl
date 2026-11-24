@@ -67,6 +67,8 @@ if {$native_pcm} {
 foreach source {audio_lane_ram.sv audio_io.sv} {
     add_files [file join $root fpga audio_io rtl $source]
 }
+add_files [file join $host zynq_thermal_guard.v]
+add_files -fileset constrs_1 [file join $root fpga host_bridge zturn_v2_thermal.xdc]
 if {$audio_mode eq "i2s"} {
     add_files [file join $root fpga audio_io rtl i2s_duplex.sv]
     add_files [file join $host host_i2s_audio.v]
@@ -106,6 +108,7 @@ if {$geometry eq "looping"} {
 set audio_module [expr {$audio_mode eq "i2s" ? "host_i2s_audio" : "host_generated_audio"}]
 set audio [create_bd_cell -type module -reference $audio_module audio]
 set_property CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] $audio
+create_bd_cell -type module -reference zynq_thermal_guard thermal
 if {$audio_mode eq "i2s"} {
     foreach {name direction type} {audio_ref I clk i2s_adc_data I data i2s_bclk O data i2s_lrclk O data i2s_dac_data O data} {
         set port [create_bd_port -dir $direction -type $type $name]
@@ -124,7 +127,7 @@ foreach {name width value} {zero 1 0 one 1 1 boot_epoch 32 1} {
 
 connect_bd_net [get_bd_pins ps/FCLK_CLK0] \
     [get_bd_pins ps/M_AXI_GP0_ACLK] [get_bd_pins gp0/ACLK] [get_bd_pins gp0/S00_ACLK] \
-    [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins audio/clk] [get_bd_pins reset/slowest_sync_clk]
+    [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins audio/clk] [get_bd_pins thermal/clk] [get_bd_pins reset/slowest_sync_clk]
 connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
 connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
@@ -191,10 +194,14 @@ if {$audio_mode eq "i2s"} {
     set skew_report [get_report_configs -quiet impl_1_route_report_bus_skew_0]
     if {[llength $skew_report]} {delete_report_configs $skew_report}
 }
+set thermal_check [file join $root fpga host_bridge zturn_v2_thermal_check.tcl]
+add_files -fileset utils_1 -norecurse $thermal_check
+set_property STEPS.WRITE_BITSTREAM.TCL.PRE $thermal_check [get_runs impl_1]
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Vivado implementation failed"}
 open_run impl_1
+source $thermal_check
 report_timing_summary -file [file join $output timing.rpt]
 report_route_status -file [file join $output route_status.rpt]
 report_cdc -details -file [file join $output cdc.rpt]

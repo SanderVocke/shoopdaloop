@@ -4,7 +4,8 @@ enum {
     CONTROL = 0, STATUS = 1, ID_HIGH = 2, ID_LOW = 3,
     ADVERTISE = 4, ADVERTISE_GIGABIT = 9, PHY_STATUS = 0x11,
     EXT_ADDRESS = 0x1e, EXT_DATA = 0x1f,
-    CHIP_CONFIG = 0xa001, RGMII_CONFIG = 0xa003,
+    REGISTER_SPACE = 0xa000, CHIP_CONFIG = 0xa001, RGMII_CONFIG = 0xa003,
+    REGISTER_SPACE_FIBER = 1 << 1, CHIP_MODE = 7, CHIP_MODE_COPPER_RGMII = 0,
     CONTROL_AN_ENABLE = 1 << 12, CONTROL_AN_RESTART = 1 << 9,
     CONTROL_POWER_DOWN = 1 << 11, CONTROL_ISOLATE = 1 << 10,
     STATUS_AN_COMPLETE = 1 << 5, STATUS_LINK = 1 << 2,
@@ -25,6 +26,12 @@ static bool update(const struct shoop_mdio *bus, unsigned reg, uint16_t mask, ui
            bus->write(bus->context, reg, (uint16_t)((current & ~mask) | value));
 }
 
+static bool read_extended(const struct shoop_mdio *bus, unsigned reg, uint16_t *value)
+{
+    return bus->write(bus->context, EXT_ADDRESS, (uint16_t)reg) &&
+           bus->read(bus->context, EXT_DATA, value);
+}
+
 static bool update_extended(const struct shoop_mdio *bus, unsigned reg, uint16_t mask, uint16_t value)
 {
     return bus->write(bus->context, EXT_ADDRESS, (uint16_t)reg) &&
@@ -35,8 +42,16 @@ unsigned shoop_yt8531_start(const struct shoop_mdio *bus)
 {
     uint16_t high, low;
     if (!bus->read(bus->context, ID_HIGH, &high) || high != SHOOP_YT8531_ID_HIGH ||
-        !bus->read(bus->context, ID_LOW, &low) || low != 0xe91bu)
+        !bus->read(bus->context, ID_LOW, &low) || (low != 0xe91bu && low != 0xe91au))
         return 0;
+
+    if (low == 0xe91au) {
+        uint16_t config;
+        if (!read_extended(bus, CHIP_CONFIG, &config) ||
+            (config & CHIP_MODE) != CHIP_MODE_COPPER_RGMII ||
+            !update_extended(bus, REGISTER_SPACE, REGISTER_SPACE_FIBER, 0))
+            return 0;
+    }
 
     /* RGMII-ID uses 1.95 ns on RX and gigabit TX, in 150 ps steps. */
     if (!update_extended(bus, CHIP_CONFIG, RGMII_RX_DELAY_BASE, 0) ||

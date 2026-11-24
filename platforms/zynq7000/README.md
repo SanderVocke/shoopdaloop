@@ -136,6 +136,13 @@ clobbers those registers. The fixture also verifies allocator alignment up to
 USE_AMP` and compiles out all L2 maintenance if the macro is defined, even as 0.
 GEM DMA then reads stale DDR on silicon (QEMU has no caches to expose this).
 
+The lwIP allocator uses `MEM_ALIGNMENT=64`, matching AMD's generated options.
+DMA payloads must not share cache lines with pbuf metadata: an unaligned cache
+invalidation can flush dirty metadata lines back over newly received frame
+bytes. The first Z-turn V2 hardware test exposed repeated receive loss with
+8-byte alignment; the aligned native host passed authenticated control,
+reconnect and shutdown. See the [hardware evidence](../../docs/hardware/zturn-v2-bringup.md).
+
 The link pulls newlib's ARMv7-A memory routines (`memcpy`, `memset`, `memmove`
 and their `__aeabi_*` entry points) from libc before the Rust library, so they
 override `compiler_builtins`' weak, generic versions for both C and Rust. The

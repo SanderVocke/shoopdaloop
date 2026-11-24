@@ -1,0 +1,196 @@
+diff --git a/platforms/zynq7000/boards/yt8531.c b/platforms/zynq7000/boards/yt8531.c
+index 45d8c1f44..1b341a246 100644
+--- a/platforms/zynq7000/boards/yt8531.c
++++ b/platforms/zynq7000/boards/yt8531.c
+@@ -4,7 +4,8 @@ enum {
+     CONTROL = 0, STATUS = 1, ID_HIGH = 2, ID_LOW = 3,
+     ADVERTISE = 4, ADVERTISE_GIGABIT = 9, PHY_STATUS = 0x11,
+     EXT_ADDRESS = 0x1e, EXT_DATA = 0x1f,
+-    CHIP_CONFIG = 0xa001, RGMII_CONFIG = 0xa003,
++    REGISTER_SPACE = 0xa000, CHIP_CONFIG = 0xa001, RGMII_CONFIG = 0xa003,
++    REGISTER_SPACE_FIBER = 1 << 1, CHIP_MODE = 7, CHIP_MODE_COPPER_RGMII = 0,
+     CONTROL_AN_ENABLE = 1 << 12, CONTROL_AN_RESTART = 1 << 9,
+     CONTROL_POWER_DOWN = 1 << 11, CONTROL_ISOLATE = 1 << 10,
+     STATUS_AN_COMPLETE = 1 << 5, STATUS_LINK = 1 << 2,
+@@ -25,6 +26,12 @@ static bool update(const struct shoop_mdio *bus, unsigned reg, uint16_t mask, ui
+            bus->write(bus->context, reg, (uint16_t)((current & ~mask) | value));
+ }
+ 
++static bool read_extended(const struct shoop_mdio *bus, unsigned reg, uint16_t *value)
++{
++    return bus->write(bus->context, EXT_ADDRESS, (uint16_t)reg) &&
++           bus->read(bus->context, EXT_DATA, value);
++}
++
+ static bool update_extended(const struct shoop_mdio *bus, unsigned reg, uint16_t mask, uint16_t value)
+ {
+     return bus->write(bus->context, EXT_ADDRESS, (uint16_t)reg) &&
+@@ -35,9 +42,17 @@ unsigned shoop_yt8531_start(const struct shoop_mdio *bus)
+ {
+     uint16_t high, low;
+     if (!bus->read(bus->context, ID_HIGH, &high) || high != SHOOP_YT8531_ID_HIGH ||
+-        !bus->read(bus->context, ID_LOW, &low) || low != 0xe91bu)
++        !bus->read(bus->context, ID_LOW, &low) || (low != 0xe91bu && low != 0xe91au))
+         return 0;
+ 
++    if (low == 0xe91au) {
++        uint16_t config;
++        if (!read_extended(bus, CHIP_CONFIG, &config) ||
++            (config & CHIP_MODE) != CHIP_MODE_COPPER_RGMII ||
++            !update_extended(bus, REGISTER_SPACE, REGISTER_SPACE_FIBER, 0))
++            return 0;
++    }
++
+     /* RGMII-ID uses 1.95 ns on RX and gigabit TX, in 150 ps steps. */
+     if (!update_extended(bus, CHIP_CONFIG, RGMII_RX_DELAY_BASE, 0) ||
+         !update_extended(bus, RGMII_CONFIG, RGMII_RX_DELAY | RGMII_TX_GE_DELAY,
+diff --git a/platforms/zynq7000/include/lwipopts.h b/platforms/zynq7000/include/lwipopts.h
+index 9fab6ee79..7e91d4f7f 100644
+--- a/platforms/zynq7000/include/lwipopts.h
++++ b/platforms/zynq7000/include/lwipopts.h
+@@ -15,7 +15,8 @@
+ #define LWIP_SO_SNDTIMEO 1
+ #define LWIP_SO_RCVBUF 1
+ #define LWIP_NETIF_LINK_CALLBACK 1
+-#define MEM_ALIGNMENT 8
++/* Keep DMA payloads on separate cache lines from packet metadata. */
++#define MEM_ALIGNMENT 64
+ #define MEM_SIZE (4 * 1024 * 1024)
+ #define MEMP_NUM_TCP_PCB 64
+ #define MEMP_NUM_TCP_PCB_LISTEN 4
+diff --git a/platforms/zynq7000/tests/boards.py b/platforms/zynq7000/tests/boards.py
+index f6f0c23a9..e920c2f5a 100644
+--- a/platforms/zynq7000/tests/boards.py
++++ b/platforms/zynq7000/tests/boards.py
+@@ -68,6 +68,20 @@ class Contracts(unittest.TestCase):
+                             PLATFORM / "boards/yt8531.c", PLATFORM / "tests/yt8531.c", "-o", executable], check=True)
+             subprocess.run([executable], check=True)
+ 
++    def test_lwip_dma_cacheline_alignment(self):
++        with tempfile.TemporaryDirectory() as temporary:
++            output = Path(temporary)
++            (output / "xil_printf.h").write_text("")
++            (output / "alignment.c").write_text(
++                '#include "lwipopts.h"\n'
++                '_Static_assert(MEM_ALIGNMENT >= 32, "DMA payload shares a Cortex-A9 cache line");\n'
++                '_Static_assert((MEM_ALIGNMENT & (MEM_ALIGNMENT - 1)) == 0, "Invalid alignment");\n'
++                '_Static_assert(PBUF_POOL_BUFSIZE % 32 == 0, "DMA pool payload ends inside a cache line");\n'
++                'int main(void) { return 0; }\n')
++            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", output,
++                            "-I", PLATFORM / "include", output / "alignment.c", "-o", output / "alignment"], check=True)
++            subprocess.run([output / "alignment"], check=True)
++
+     def test_boot_records_for_each_board(self):
+         for name in boards.names():
+             with self.subTest(board=name), tempfile.TemporaryDirectory() as temporary:
+diff --git a/platforms/zynq7000/tests/yt8531.c b/platforms/zynq7000/tests/yt8531.c
+index 2b2cf7226..828c6eee3 100644
+--- a/platforms/zynq7000/tests/yt8531.c
++++ b/platforms/zynq7000/tests/yt8531.c
+@@ -3,11 +3,14 @@
+ 
+ struct fixture {
+     uint16_t registers[32];
+-    uint16_t extended[2];
++    uint16_t extended[3];
+     unsigned selected;
+     unsigned writes;
+     unsigned elapsed_ms;
+     unsigned status_reads;
++    unsigned reads;
++    unsigned fail_read;
++    unsigned fail_write;
+     bool link_partner;
+     bool broken;
+ };
+@@ -15,8 +18,11 @@ struct fixture {
+ static bool read_register(void *context, unsigned reg, uint16_t *value)
+ {
+     struct fixture *f = context;
+-    if (f->broken)
++    f->reads++;
++    if (f->broken || f->reads == f->fail_read)
+         return false;
++    if (f->registers[3] == 0xe91a && (reg == 0 || reg == 1 || reg == 4 || reg == 9))
++        assert(!(f->extended[2] & 2));
+     if (reg == 1) {
+         f->status_reads++;
+         *value = f->link_partner && f->elapsed_ms >= 40 && f->status_reads % 2 == 0 ? 0x24 : 0;
+@@ -32,9 +38,11 @@ static bool write_register(void *context, unsigned reg, uint16_t value)
+ {
+     struct fixture *f = context;
+     f->writes++;
++    if (f->writes == f->fail_write)
++        return false;
+     if (reg == 0x1e) {
+-        assert(value == 0xa001 || value == 0xa003);
+-        f->selected = value == 0xa003;
++        assert(value == 0xa000 || value == 0xa001 || value == 0xa003);
++        f->selected = value == 0xa000 ? 2 : value == 0xa003;
+     } else if (reg == 0x1f) {
+         f->extended[f->selected] = value;
+     } else {
+@@ -59,16 +67,56 @@ int main(void)
+         .link_partner = true,
+     };
+     const unsigned speeds[] = {10, 100, 1000};
+-    for (unsigned mode = 0; mode < 3; ++mode) {
++    for (unsigned variant = 0; variant < 2; ++variant) {
++        for (unsigned mode = 0; mode < 3; ++mode) {
++            f = ready;
++            if (variant) {
++                f.registers[3] = 0xe91a;
++                f.extended[0] &= (uint16_t)~7;
++                f.extended[2] = 0xffff;
++            }
++            f.registers[0x11] = (uint16_t)((mode << 14) | 0x2000);
++            assert(shoop_yt8531_start(&bus) == speeds[mode]);
++            assert(f.extended[0] == (variant ? 0xfef8 : 0xfeff) && f.extended[1] == 0xf7fd);
++            assert(f.extended[2] == (variant ? 0xfffd : 0));
++            assert(f.registers[0] == 0x1200 && f.registers[4] == 0x0941 && f.registers[9] == 0x0200);
++            assert(f.elapsed_ms == 40);
++        }
++    }
++    for (unsigned mode = 1; mode <= 7; ++mode) {
++        f = ready;
++        f.registers[3] = 0xe91a;
++        f.extended[0] = (uint16_t)(0xfff8 | mode);
++        assert(shoop_yt8531_start(&bus) == 0 && f.writes == 1);
++        assert(f.extended[0] == (0xfff8 | mode));
++        assert(f.registers[0] == ready.registers[0]);
++    }
++    f = ready;
++    f.registers[3] = 0xe91a;
++    f.registers[0x11] = 0xa000;
++    f.extended[0] &= (uint16_t)~7;
++    f.extended[2] = 0xffff;
++    const struct fixture copper = f;
++    assert(shoop_yt8531_start(&bus) == 1000);
++    const unsigned read_count = f.reads, write_count = f.writes;
++    for (unsigned failure = 1; failure <= read_count; ++failure) {
++        f = copper;
++        f.fail_read = failure;
++        assert(shoop_yt8531_start(&bus) == 0 && f.reads == failure);
++    }
++    for (unsigned failure = 1; failure <= write_count; ++failure) {
++        f = copper;
++        f.fail_write = failure;
++        assert(shoop_yt8531_start(&bus) == 0 && f.writes == failure);
++    }
++    const uint16_t unsupported[] = {0xe918, 0xe919, 0xe91c, 0xffff};
++    for (unsigned id = 0; id < sizeof unsupported / sizeof unsupported[0]; ++id) {
+         f = ready;
+-        f.registers[0x11] = (uint16_t)((mode << 14) | 0x2000);
+-        assert(shoop_yt8531_start(&bus) == speeds[mode]);
+-        assert(f.extended[0] == 0xfeff && f.extended[1] == 0xf7fd);
+-        assert(f.registers[0] == 0x1200 && f.registers[4] == 0x0941 && f.registers[9] == 0x0200);
+-        assert(f.elapsed_ms == 40);
++        f.registers[3] = unsupported[id];
++        assert(shoop_yt8531_start(&bus) == 0 && f.writes == 0);
+     }
+     f = ready;
+-    f.registers[3] ^= 1;
++    f.registers[2] ^= 1;
+     assert(shoop_yt8531_start(&bus) == 0 && f.writes == 0);
+     f = ready;
+     f.broken = true;

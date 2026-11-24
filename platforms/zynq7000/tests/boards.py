@@ -68,6 +68,20 @@ class Contracts(unittest.TestCase):
                             PLATFORM / "boards/yt8531.c", PLATFORM / "tests/yt8531.c", "-o", executable], check=True)
             subprocess.run([executable], check=True)
 
+    def test_lwip_dma_cacheline_alignment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            (output / "xil_printf.h").write_text("")
+            (output / "alignment.c").write_text(
+                '#include "lwipopts.h"\n'
+                '_Static_assert(MEM_ALIGNMENT >= 32, "DMA payload shares a Cortex-A9 cache line");\n'
+                '_Static_assert((MEM_ALIGNMENT & (MEM_ALIGNMENT - 1)) == 0, "Invalid alignment");\n'
+                '_Static_assert(PBUF_POOL_BUFSIZE % 32 == 0, "DMA pool payload ends inside a cache line");\n'
+                'int main(void) { return 0; }\n')
+            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", output,
+                            "-I", PLATFORM / "include", output / "alignment.c", "-o", output / "alignment"], check=True)
+            subprocess.run([output / "alignment"], check=True)
+
     def test_boot_records_for_each_board(self):
         for name in boards.names():
             with self.subTest(board=name), tempfile.TemporaryDirectory() as temporary:

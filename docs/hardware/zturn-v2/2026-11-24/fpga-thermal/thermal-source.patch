@@ -1,0 +1,221 @@
+diff --git a/fpga/host_bridge/zturn_v2.tcl b/fpga/host_bridge/zturn_v2.tcl
+index 1f313868d..10f59bf52 100644
+--- a/fpga/host_bridge/zturn_v2.tcl
++++ b/fpga/host_bridge/zturn_v2.tcl
+@@ -67,6 +67,8 @@ if {$native_pcm} {
+ foreach source {audio_lane_ram.sv audio_io.sv} {
+     add_files [file join $root fpga audio_io rtl $source]
+ }
++add_files [file join $host zynq_thermal_guard.v]
++add_files -fileset constrs_1 [file join $root fpga host_bridge zturn_v2_thermal.xdc]
+ if {$audio_mode eq "i2s"} {
+     add_files [file join $root fpga audio_io rtl i2s_duplex.sv]
+     add_files [file join $host host_i2s_audio.v]
+@@ -106,6 +108,7 @@ if {$geometry eq "looping"} {
+ set audio_module [expr {$audio_mode eq "i2s" ? "host_i2s_audio" : "host_generated_audio"}]
+ set audio [create_bd_cell -type module -reference $audio_module audio]
+ set_property CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] $audio
++create_bd_cell -type module -reference zynq_thermal_guard thermal
+ if {$audio_mode eq "i2s"} {
+     foreach {name direction type} {audio_ref I clk i2s_adc_data I data i2s_bclk O data i2s_lrclk O data i2s_dac_data O data} {
+         set port [create_bd_port -dir $direction -type $type $name]
+@@ -124,7 +127,7 @@ foreach {name width value} {zero 1 0 one 1 1 boot_epoch 32 1} {
+ 
+ connect_bd_net [get_bd_pins ps/FCLK_CLK0] \
+     [get_bd_pins ps/M_AXI_GP0_ACLK] [get_bd_pins gp0/ACLK] [get_bd_pins gp0/S00_ACLK] \
+-    [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins audio/clk] [get_bd_pins reset/slowest_sync_clk]
++    [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins audio/clk] [get_bd_pins thermal/clk] [get_bd_pins reset/slowest_sync_clk]
+ connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
+ connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
+ connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
+@@ -191,10 +194,14 @@ if {$audio_mode eq "i2s"} {
+     set skew_report [get_report_configs -quiet impl_1_route_report_bus_skew_0]
+     if {[llength $skew_report]} {delete_report_configs $skew_report}
+ }
++set thermal_check [file join $root fpga host_bridge zturn_v2_thermal_check.tcl]
++add_files -fileset utils_1 -norecurse $thermal_check
++set_property STEPS.WRITE_BITSTREAM.TCL.PRE $thermal_check [get_runs impl_1]
+ launch_runs impl_1 -to_step write_bitstream -jobs 4
+ wait_on_run impl_1
+ if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Vivado implementation failed"}
+ open_run impl_1
++source $thermal_check
+ report_timing_summary -file [file join $output timing.rpt]
+ report_route_status -file [file join $output route_status.rpt]
+ report_cdc -details -file [file join $output cdc.rpt]
+diff --git a/fpga/host_bridge/rtl/zynq_thermal_guard.v b/fpga/host_bridge/rtl/zynq_thermal_guard.v
+new file mode 100644
+index 000000000..c673473a0
+--- /dev/null
++++ b/fpga/host_bridge/rtl/zynq_thermal_guard.v
+@@ -0,0 +1,20 @@
++module zynq_thermal_guard(input wire clk);
++    // Autonomous OT protection must survive unused fabric outputs.
++    (* DONT_TOUCH = "TRUE" *)
++    XADC #(
++        .INIT_40(16'h0000),
++        .INIT_41(16'h0000),
++        .INIT_42(16'h0800),
++        .INIT_53(16'hB0D3),
++        .INIT_57(16'hABC4),
++        .SIM_DEVICE("ZYNQ")
++    ) monitor (
++        .DCLK(clk),
++        .DADDR(7'b0), .DEN(1'b0), .DI(16'b0), .DWE(1'b0),
++        .CONVST(1'b0), .CONVSTCLK(1'b0), .RESET(1'b0),
++        .VAUXP(16'b0), .VAUXN(16'b0), .VP(1'b0), .VN(1'b0),
++        .ALM(), .OT(), .BUSY(), .CHANNEL(), .DO(), .DRDY(),
++        .EOC(), .EOS(), .JTAGBUSY(), .JTAGLOCKED(),
++        .JTAGMODIFIED(), .MUXADDR()
++    );
++endmodule
+diff --git a/fpga/host_bridge/zturn_v2_thermal.xdc b/fpga/host_bridge/zturn_v2_thermal.xdc
+new file mode 100644
+index 000000000..b8aa6e350
+--- /dev/null
++++ b/fpga/host_bridge/zturn_v2_thermal.xdc
+@@ -0,0 +1 @@
++set_property BITSTREAM.CONFIG.OVERTEMPPOWERDOWN ENABLE [current_design]
+diff --git a/fpga/host_bridge/zturn_v2_thermal_check.tcl b/fpga/host_bridge/zturn_v2_thermal_check.tcl
+new file mode 100644
+index 000000000..6cbc0afd1
+--- /dev/null
++++ b/fpga/host_bridge/zturn_v2_thermal_check.tcl
+@@ -0,0 +1,20 @@
++set thermal_monitors [get_cells -hierarchical -filter {REF_NAME == XADC}]
++if {[llength $thermal_monitors] != 1} {error "Expected exactly one autonomous XADC thermal monitor"}
++set thermal_shutdown [get_property BITSTREAM.CONFIG.OVERTEMPPOWERDOWN [current_design]]
++if {![string equal -nocase $thermal_shutdown ENABLE]} {error "Automatic PL thermal shutdown is disabled"}
++foreach {name expected} {INIT_40 0000 INIT_41 0000 INIT_42 0800 INIT_53 B0D3 INIT_57 ABC4} {
++    set raw [get_property $name $thermal_monitors]
++    if {![regexp -nocase {^(16'h|0x)?([0-9a-f]{4})$} $raw _ prefix digits] ||
++        ![string equal -nocase $digits $expected]} {
++        error "Unsafe XADC thermal configuration: $name=$raw, expected $expected"
++    }
++}
++set thermal_report [open thermal.rpt w]
++puts $thermal_report "Automatic PL overtemperature shutdown: $thermal_shutdown"
++puts $thermal_report "Nominal OT trip: 75 C; nominal lower threshold: 65 C"
++puts $thermal_report "Scope: PL only; does not power off the PS or board"
++puts $thermal_report "XADC: $thermal_monitors"
++foreach name {INIT_40 INIT_41 INIT_42 INIT_53 INIT_57} {
++    puts $thermal_report "$name: [get_property $name $thermal_monitors]"
++}
++close $thermal_report
+diff --git a/fpga/host_bridge/test_thermal.py b/fpga/host_bridge/test_thermal.py
+new file mode 100644
+index 000000000..9f3fd98eb
+--- /dev/null
++++ b/fpga/host_bridge/test_thermal.py
+@@ -0,0 +1,111 @@
++#!/usr/bin/env python3
++"""Check the autonomous thermal policy and fail-closed bitstream hook."""
++import os
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import tempfile
++import unittest
++
++HERE = Path(__file__).resolve().parent
++TCLSH = os.environ.get("TCLSH") or shutil.which("tclsh") or shutil.which("tclsh8.6")
++STUB = """
++set count [lindex $argv 1]
++set shutdown [lindex $argv 2]
++array set registers {INIT_40 16'h0000 INIT_41 16'h0000 INIT_42 16'h0800 INIT_53 16'hB0D3 INIT_57 16'hABC4}
++foreach override [lrange $argv 3 end] {
++    lassign [split $override =] name value
++    set registers($name) $value
++}
++proc get_cells {args} {global count; return [lrepeat $count monitor]}
++proc current_design {} {return design}
++proc get_property {name object} {
++    global shutdown registers
++    if {$name eq "BITSTREAM.CONFIG.OVERTEMPPOWERDOWN"} {return $shutdown}
++    return $registers($name)
++}
++source [lindex $argv 0]
++"""
++
++
++class Thermal(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        if not TCLSH:
++            raise RuntimeError("Install Tcl or set TCLSH to its interpreter")
++
++    def check_hook(self, count=1, shutdown="ENABLE", **registers):
++        with tempfile.TemporaryDirectory() as directory:
++            stub = Path(directory) / "test.tcl"
++            stub.write_text(STUB)
++            result = subprocess.run([TCLSH, str(stub), str(HERE / "zturn_v2_thermal_check.tcl"),
++                                     str(count), shutdown,
++                                     *[f"{name}={value}" for name, value in registers.items()]],
++                                    cwd=directory, capture_output=True, text=True, timeout=10)
++            report = Path(directory) / "thermal.rpt"
++            return result, report.read_text() if report.exists() else None
++
++    def test_enabled_policy(self):
++        result, report = self.check_hook()
++        self.assertEqual(result.returncode, 0, result.stderr)
++        self.assertIn("shutdown: ENABLE", report)
++        self.assertIn("does not power off the PS", report)
++
++    def test_register_formats(self):
++        for value in ("B0D3", "0xB0D3", "16'hb0d3"):
++            with self.subTest(value=value):
++                result, _ = self.check_hook(INIT_53=value)
++                self.assertEqual(result.returncode, 0, result.stderr)
++
++    def test_missing_or_duplicate_monitor(self):
++        for count in (0, 2):
++            with self.subTest(count=count):
++                result, report = self.check_hook(count=count)
++                self.assertNotEqual(result.returncode, 0)
++                self.assertIn("exactly one", result.stderr)
++                self.assertIsNone(report)
++
++    def test_disabled_shutdown(self):
++        result, report = self.check_hook(shutdown="DISABLE")
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("shutdown is disabled", result.stderr)
++        self.assertIsNone(report)
++
++    def test_unsafe_registers(self):
++        cases = {"INIT_40": ("16'h8000",), "INIT_41": ("16'h0001", "16'h1000"),
++                 "INIT_42": ("16'h0830",),
++                 "INIT_53": ("16'hB0D0", "16'hCA33", "invalid"), "INIT_57": ("16'hCA3E",)}
++        for name, values in cases.items():
++            for value in values:
++                with self.subTest(name=name, value=value):
++                    result, report = self.check_hook(**{name: value})
++                    self.assertNotEqual(result.returncode, 0)
++                    self.assertIn("Unsafe XADC", result.stderr)
++                    self.assertIsNone(report)
++
++    def test_rtl_thresholds(self):
++        rtl = (HERE / "rtl/zynq_thermal_guard.v").read_text()
++        values = {name: int(value, 16) for name, value in
++                  re.findall(r"\.(INIT_[0-9A-F]+)\(16'h([0-9A-F]+)\)", rtl)}
++        self.assertEqual(values["INIT_53"] & 15, 3)
++        self.assertEqual(values["INIT_41"], 0)
++        self.assertEqual(values["INIT_42"], 0x0800)
++        trip = (values["INIT_53"] >> 4) * 503.975 / 4096 - 273.15
++        lower = values["INIT_57"] * 503.975 / 65536 - 273.15
++        self.assertAlmostEqual(trip, 75, delta=0.13)
++        self.assertAlmostEqual(lower, 65, delta=0.02)
++        self.assertIn('DONT_TOUCH = "TRUE"', rtl)
++        self.assertIn(".DWE(1'b0)", rtl)
++        self.assertIn(".RESET(1'b0)", rtl)
++
++    def test_board_build_integration(self):
++        build = (HERE / "zturn_v2.tcl").read_text()
++        self.assertIn("[get_bd_pins thermal/clk]", build)
++        self.assertIn("STEPS.WRITE_BITSTREAM.TCL.PRE $thermal_check", build)
++        self.assertIn("source $thermal_check", build)
++        self.assertIn("OVERTEMPPOWERDOWN ENABLE", (HERE / "zturn_v2_thermal.xdc").read_text())
++
++
++if __name__ == "__main__":
++    unittest.main()

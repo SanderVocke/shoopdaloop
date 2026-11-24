@@ -1,0 +1,28 @@
+SHOOP_BOOT FreeRTOS AMD-lwIP board=shoop-zturn-v2-1g-v1 ram_mib=1024
+SHOOP_BUILD zturn-aligned-native
+link speed for phy address 7: 1000
+SHOOP_HOST_READY
+SHOOP_MEMORY used=551083620 peak=551083620 c_free=16186488 c_min_free=16186488 control_stack_free=19155 render_stack_free=49306 uptime_ms=5293
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_MEMORY used=551083620 peak=551110148 c_free=16186488 c_min_free=16186488 control_stack_free=19155 render_stack_free=49306 uptime_ms=15296
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_MEMORY used=551083620 peak=551110148 c_free=16186488 c_min_free=16186488 control_stack_free=19155 render_stack_free=49306 uptime_ms=25296
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_MEMORY used=551083620 peak=551110148 c_free=16186488 c_min_free=16186488 control_stack_free=19155 render_stack_free=49306 uptime_ms=35297
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_MEMORY used=551083620 peak=551110148 c_free=16186488 c_min_free=16186488 control_stack_free=19155 render_stack_free=49306 uptime_ms=45297
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_DUMMY_MIDI_RESET packets=32
+SHOOP_HOST_CLEANUP_COMPLETE
+SHOOP_HOST_STOPPED
+SHOOP_MEMORY used=580268 peak=551320304 c_free=16449072 c_min_free=16185608 control_stack_free=19155 render_stack_free=49306 uptime_ms=48951
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3200 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_STACK name=control free_words=19155
+SHOOP_STACK name=IDLE free_words=925
+SHOOP_STACK name=Tmr Svc free_words=1935
+SHOOP_STACK name=tcpip_thread free_words=3961
+SHOOP_STACK name=socket-io free_words=3897
+SHOOP_STACK name=gem-input free_words=3979
+SHOOP_MEMORY used=0 peak=551320304 c_free=16449552 c_min_free=16185608 control_stack_free=19155 render_stack_free=49306 uptime_ms=48990
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3200 tcp_pcbs=0 netconns=0 sockets=0
+SHOOP_HOST_RETURNED

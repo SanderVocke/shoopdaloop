@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-24",
+  "completed_utc": "2026-11-24T14:48:25.778704+00:00",
+  "scope": "Physical native FreeRTOS host; not Shoop FPGA, physical audio or custom signed SD boot",
+  "passed": true,
+  "base_commit": "9efe47d7453a29d30de2c746c7b1bc86f6d94452",
+  "local_fixes": [
+    "platforms/zynq7000/boards/yt8531.c",
+    "platforms/zynq7000/include/lwipopts.h",
+    "platforms/zynq7000/tests/boards.py",
+    "platforms/zynq7000/tests/yt8531.c"
+  ],
+  "fix_patch_sha256": "43fa7cc7c1de7af2a1ab3b724acbc85d807491d251fc044022e9201428163de4",
+  "source_inputs_sha256": "734680c4eeec8d1240e0a569e49ee1423f4c629561a9b1054928796694f05a22",
+  "elf_sha256": "4e343a9480304a61bb372c0a1a16c0001da6e925dc35640b65d4150f169b402b",
+  "board_sha256": "57d728c1463a7a25ae8587cff9ddb607b6d9daae39480d1738411307a2e55af9",
+  "build_id": "zturn-aligned-native",
+  "compiler": "arm-none-eabi-gcc (Arm GNU Toolchain 14.2.Rel1 (Build arm-14.52)) 14.2.1 20241119",
+  "rust": "1.99.1",
+  "toolchain_note": "Arm vendor GCC package, not byte-identical Debian newlib/binutils pins",
+  "hardware": {
+    "board": "MYIR Z-turn V2",
+    "ram_bytes": 1073741824,
+    "silicon_uboot": "v3.1",
+    "arm_mhz_reported": 666,
+    "ddr_mhz_reported": 533,
+    "phy_id": "0x4f51e91a",
+    "native_mdio_address": 7,
+    "factory_responding_mdio_addresses": [
+      0,
+      7
+    ],
+    "link_mbps": 1000,
+    "full_duplex": true
+  },
+  "boot": {
+    "loader": "Factory U-Boot 2018.01",
+    "native_image": "Separate ELF loaded from FAT with bootelf -p",
+    "stage_address": "0x38000000",
+    "elf_bytes": 7456096,
+    "elf_crc32": "8276eb2b",
+    "fresh_nonce": true,
+    "bootrom_mode_register_independently_checked": false
+  },
+  "checks": [
+    "Native startup",
+    "20/20 ICMP replies after ARP warm-up",
+    "Authenticated client attachment",
+    "Management settings",
+    "FreeRTOS task runtime and stack diagnostics",
+    "Confirmed control commands",
+    "Rendering continued while disconnected",
+    "Fresh client attachment",
+    "Confirmed shutdown",
+    "32 dummy MIDI resets",
+    "Cleanup completed",
+    "Zero remaining tracked Rust allocation",
+    "SHOOP_HOST_RETURNED"
+  ],
+  "engine": {
+    "tracks": 8,
+    "loops": 64,
+    "input_history": {
+      "seconds": 0,
+      "audio_take_pages": 32768,
+      "midi_pages": 4096,
+      "midi_records": 65536,
+      "writers": 8
+    }
+  },
+  "memory": {
+    "peak_tracked_rust_bytes": 551320304,
+    "tracked_rust_bytes_after_cleanup": 0
+  },
+  "ping": {
+    "sent": 20,
+    "received": 20,
+    "lost": 0,
+    "min_ms": 0.632,
+    "average_ms": 0.755,
+    "max_ms": 2.869
+  },
+  "initial_client_snapshot_xruns": 0,
+  "factory_boot_files_unchanged_sha256": {
+    "BOOT.BIN": "8fd8db988f60898b894987da1c4a837a282301ad963fa95d8f0a5ab2fb26bc6d",
+    "image.ub": "86e08ef3c057d0a9c6e474ff4b5a19269babb2fd784c32fdfaf72f0eacc6473b"
+  },
+  "stock_backup": {
+    "bytes": 31914983424,
+    "decoded_sha256": "2a49e0828a9db3b69effd3aa0f7777b86d28704a1eb5fd4b997921820fa361f5",
+    "copies_on_separate_ssds": 2,
+    "second_independent_device_read": false
+  },
+  "limitations": [
+    "No Shoop FPGA bitstream loaded",
+    "No physical audio",
+    "No long-duration/load qualification",
+    "Full corrected large echo workload not rerun",
+    "No previous-boot-authority test yet",
+    "Factory PS export and DDR qualification pending",
+    "No repository-generated signed SD boot tested",
+    "Pinned QEMU 10.0.13 suite not rerun"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "contract": {
+    "abi_id": "0x53484f50",
+    "abi_sha256": "f0962ae3de65e6d698d5c486fc045c6911542e0d9d1f552792de7abdf6fabc73",
+    "abi_version": 12,
+    "arena_base": 805306368,
+    "arena_bytes": 134217728,
+    "board": "zturn-v2",
+    "board_sha256": "57d728c1463a7a25ae8587cff9ddb607b6d9daae39480d1738411307a2e55af9",
+    "clock_hz": 100000000,
+    "part": "xc7z020clg400-2",
+    "profile": "shoop-zturn-v2-1g-v1",
+    "register_base": 1073741824
+  },
+  "sha256": {
+    "audio.txt": "9f5936ff15d3a2ba7d3d8f21858338a6c1e2adc9fe34c685c7de5b4a00caa29a",
+    "fpga-abi.json": "f0962ae3de65e6d698d5c486fc045c6911542e0d9d1f552792de7abdf6fabc73",
+    "geometry.txt": "eca7c7a0ce28130a10d0aac8bd2077707b57ee90173afa544d7973525097f404",
+    "ps-properties.txt": "6bca7876b06a30e116dc6e1a288a853b31694c338ec467221e4dbf8193210dba",
+    "ps7_init.tcl": "7931b5ab7b8e4dae0f7e03e90a0a71c38ec1e655b66ced7a018f95cc316d1f19",
+    "zturn_v2.bit": "0ee4640b2739ad17587195c6a2dfb77613c41fbe6e22ca63650097f2b5228ba3",
+    "zturn_v2.xsa": "f3ed3d673b50904d27fca0bf3aa2b7956dd98b8645d056263657c55e55e5175e"
+  },
+  "vivado": "2021.1"
+}

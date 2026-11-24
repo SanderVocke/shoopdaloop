@@ -1,0 +1,9 @@
+Automatic PL overtemperature shutdown: ENABLE
+Nominal OT trip: 75 C; nominal lower threshold: 65 C
+Scope: PL only; does not power off the PS or board
+XADC: system_i/thermal/inst/monitor
+INIT_40: 16'h0000
+INIT_41: 16'h0000
+INIT_42: 16'h0800
+INIT_53: 16'hB0D3
+INIT_57: 16'hABC4

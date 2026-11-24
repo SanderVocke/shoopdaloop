@@ -1,0 +1,23 @@
+Runtime and dependencies:
+NAME="Ubuntu"
+VERSION="20.04.4 LTS (Focal Fossa)"
+ID=ubuntu
+ID_LIKE=debian
+PRETTY_NAME="Ubuntu 20.04.4 LTS"
+VERSION_ID="20.04"
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+VERSION_CODENAME=focal
+UBUNTU_CODENAME=focal
+/usr/bin/python3
+Python 3.8.10
+lrwxrwxrwx 1 root root 17 Apr 21  2022 /lib/x86_64-linux-gnu/libudev.so.1 -> libudev.so.1.6.17
+2e7ab128df29319b4754a3ef967c2542f89afafeb5def4869320c52590c7fffd  /tools/Xilinx/Vivado/2021.1/bin/unwrapped/lnx64.o/vivado
+
+Vivado version:
+WARNING: Default location for XILINX_HLS not found
+Vivado v2021.1 (64-bit)
+SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.

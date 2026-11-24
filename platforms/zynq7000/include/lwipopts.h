@@ -15,7 +15,8 @@
 #define LWIP_SO_SNDTIMEO 1
 #define LWIP_SO_RCVBUF 1
 #define LWIP_NETIF_LINK_CALLBACK 1
-#define MEM_ALIGNMENT 8
+/* Keep DMA payloads on separate cache lines from packet metadata. */
+#define MEM_ALIGNMENT 64
 #define MEM_SIZE (4 * 1024 * 1024)
 #define MEMP_NUM_TCP_PCB 64
 #define MEMP_NUM_TCP_PCB_LISTEN 4
