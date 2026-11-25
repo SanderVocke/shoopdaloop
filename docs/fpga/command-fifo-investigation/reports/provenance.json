@@ -1,0 +1,46 @@
+{
+  "base": "163998d0d5547565c40e1ccd2975ba9d0cbf00d0",
+  "working_tree_snapshot": true,
+  "image": "docker.io/siliconbootcamp/xilinx-vivado@sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "sources": [
+    {
+      "path": "fpga/experiments/command_fifo/edit_kernel.sv",
+      "sha256": "bacf1224ab4cbaaa9f3f4bc3c033dac8b4d9e7c23222a0e58421d43483ada68f"
+    },
+    {
+      "path": "fpga/experiments/command_fifo/probe.sv",
+      "sha256": "266b033caa95d3464850dff19299e11e0e209f312f15d11e143f5e530b40f220"
+    }
+  ],
+  "tcl_sha256": "ead0d34fcdca61a591db88ca2bfc34f8ce3505087aac798a0730a89656c4ae1c",
+  "scope": "isolated kernel and synthetic local RAM probe; no PS/audio/FIFO/frontend or board",
+  "cases": {
+    "kernel": {
+      "loops": 128,
+      "route": true
+    },
+    "probe16": {
+      "loops": 16,
+      "states": 512,
+      "route": false
+    },
+    "probe32": {
+      "loops": 32,
+      "states": 512,
+      "route": false
+    },
+    "probe128": {
+      "loops": 128,
+      "states": 512,
+      "route": true
+    },
+    "probe512": {
+      "loops": 512,
+      "states": 512,
+      "route": false
+    }
+  }
+}

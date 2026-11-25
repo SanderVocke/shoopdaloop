@@ -1,0 +1,29 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Wed Nov 25 22:26:50 2026
+| Host         : f0b8718a915c running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file probe16-utilization.rpt
+| Design       : fifo_edit_probe
+| Device       : 7z020clg400-2
+| Design State : Synthesized
+------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+|       Instance      |      Module      | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++---------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+| fifo_edit_probe     |            (top) |       2055 |       2055 |       0 |    0 | 1976 |      3 |      0 |          0 |
+|   (fifo_edit_probe) |            (top) |        276 |        276 |       0 |    0 |    4 |      3 |      0 |          0 |
+|   kernel            | fifo_edit_kernel |       1779 |       1779 |       0 |    0 | 1972 |      0 |      0 |          0 |
++---------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+
+

@@ -3,8 +3,9 @@
 ## Status and execution contract
 
 **Investigation authorized through the Stage 2 decision checkpoint; production
-implementation remains blocked.** Stage 0 is complete; Stage 1 measurements are
-pending. See [the baseline](docs/fpga/command-fifo-investigation/baseline.md).
+implementation remains blocked.** Stages 0 and 1 are complete; work has stopped
+at the Stage 2 user decision. See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
+and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
 Branch: `investigate/fpga-command-fifo`, production base `ff6c09551e9dee2cd3a12d37ccad19fa844b09aa`.
 No board testing is authorized by this investigation.
 
@@ -123,25 +124,25 @@ board state changed. Depends on authorization to begin work.
 
 ### Stage 1 — Investigate semantic complexity and actual FPGA usage
 
-- [ ] Trace `owner::command_lane/apply/edit_loop`, `ControlWindow`, the batch path,
+- [x] Trace `owner::command_lane/apply/edit_loop`, `ControlWindow`, the batch path,
   `host/control.rs`, and `state/sync.rs`. Separate transport/binding overhead from
   required state edits and removed composite live-switch responsibilities.
-- [ ] List exact state fields, branches, loop bounds, arithmetic widths and refusal
+- [x] List exact state fields, branches, loop bounds, arithmetic widths and refusal
   conditions for every retained command. Identify overlap with SP operations and
   the cost/risk of sharing versus a separate bounded kernel.
-- [ ] Build an **isolated offline prototype**, not a production frontend: one local
+- [x] Build an **isolated offline prototype**, not a production frontend: one local
   state-edit kernel covering retained commands, with a differential Rust harness.
   Include primitive/composite transport, iteration multiplication/overflow, two
   slots, repeated targets and refusal-without-mutation cases.
-- [ ] Synthesize the prototype with realistic RAM interfaces and constraints.
+- [x] Synthesize the prototype with realistic RAM interfaces and constraints.
   Report LUT/FF/BRAM/DSP, storage organization, inferred arithmetic, critical
   paths, measured worst-case cycles and scaling with command/loop capacity.
   Check that synthesis has not optimized away the exercised state/result ports.
-- [ ] Account separately for FIFO/reply credits, coherent snapshots, arbitration
+- [x] Account separately for FIFO/reply credits, coherent snapshots, arbitration
   and loader/fence integration. Measure where practical; label estimates and
   synthesis-only timing honestly. Compare replacement cost **net of retired
   patch/snapshot/mailbox machinery**, with no unmeasured savings presented as fact.
-- [ ] Produce a concise investigation report linked here: proposed reduced
+- [x] Produce a concise investigation report linked here: proposed reduced
   capability matrix, candidate ABI/queue layout, group-service policy, total
   quantum budget, numerical resource/latency ceilings, uncertainties and a
   recommendation. Include the cost of removing composite live switching.
@@ -152,11 +153,12 @@ but must not replace the production path, remove its features or load the board.
 
 ### Stage 2 — Mandatory user go/no-go (hard stop)
 
-- [ ] Present the investigation report, measured costs versus estimates, remaining
+- [x] Present the investigation report, measured costs versus estimates, remaining
   integration risks, reduced composite capabilities and proposed numeric ceilings.
-- [ ] Ask the user whether to proceed. Record the decision, report/source SHA,
-  approved resource/timing ceilings, capacity/service policy and capability scope.
-- [ ] **Stop here until an explicit go is received.** On no-go, leave production
+- [x] Request the user's go/no-go on the report's proposed scope, policy and ceilings.
+- [ ] Record the user's decision, report/source SHA, approved resource/timing
+  ceilings, capacity/service policy and capability scope. No approval is inferred.
+- [x] **Stop here until an explicit go is received.** On no-go, leave production
   behavior untouched, retain the evidence and list alternatives without proceeding.
   If a redesign is requested, repeat the relevant investigation before another gate.
 
