@@ -73,6 +73,8 @@ module host_pipeline_axi #(
     input wire [31:0] audio_xruns,
     (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
+    output wire runtime_reset,
+    output wire [31:0] runtime_epoch,
     input wire audio_fault,
     output wire audio_enable,
     input wire quantum_valid,
@@ -148,6 +150,17 @@ module host_pipeline_axi #(
     (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RREADY" *)
     output wire m_axi_rready
 );
+    wire [31:0] fault_epoch;
+    wire [31:0] fault_cause;
+    wire [31:0] fault_tag;
+    wire [31:0] fault_op;
+    wire [31:0] fault_cycles;
+    wire [31:0] fault_control_cycles;
+    wire [31:0] fault_detail;
+    wire [63:0] fault_revision;
+    wire [63:0] fault_frame;
+    wire [2:0] recovery_status;
+    wire recovery_request;
     wire host_abort;
     wire command_valid;
     wire command_ready;
@@ -261,17 +274,28 @@ module host_pipeline_axi #(
     wire [159:0] store_cfg_read_data;
     wire memory_fault;
     wire unused_core_outputs = &{1'b0,midi_job_valid,midi_job_data,midi_error_code,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,reclaim_quiescent,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,monitor_valid,monitor_ready,monitor_data,queued_jobs,drain_valid,loop_read_valid,loop_read_slot,store_busy,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data};
+    wire recovery_quiesce, recovery_reset, mailbox_abort;
+    wire [31:0] mailbox_epoch = recovery_reset ? 32'b0 : runtime_epoch;
+    assign runtime_reset = reset || recovery_reset;
+    assign host_abort = mailbox_abort || recovery_quiesce;
+    host_recovery recovery (.clk(clk), .reset(reset), .seed_epoch(epoch),
+        .request(recovery_request), .state(recovery_status), .epoch(runtime_epoch),
+        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset),
+        .quiescent(!busy && !state_busy && !jobs_busy && !store_busy && !reclaim_active
+            && queued_jobs == 0 && !m_axi_awvalid && !m_axi_arvalid && !m_axi_wvalid),
+        .write_start(m_axi_awvalid && m_axi_awready), .write_done(m_axi_bvalid && m_axi_bready),
+        .read_start(m_axi_arvalid && m_axi_arready), .read_done(m_axi_rvalid && m_axi_rready && m_axi_rlast));
     initial begin
         if (LIVE_LOADING != 1 || PROGRAM_REGIONS != 2) $fatal(1,"host requires live loading");
         if (QUANTUM > MAX_FRAMES || QUANTUM < 1) $fatal(1,"invalid host quantum");
     end
-    host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES),
+    host_mailbox #(.RECOVERY_CAPABLE(1), .CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH > 512 ? 512 : JOB_DEPTH),
         .BUFFERS(BUFFERS), .VIEWS(VIEWS), .MEDIA_BLOCKS(SLOTS/BLOCK_CHUNKS),
-        .CHUNK_FRAMES(CHUNK_FRAMES), .BLOCK_CHUNKS(BLOCK_CHUNKS), .QUANTUM(QUANTUM)) mmio (.*);
+        .CHUNK_FRAMES(CHUNK_FRAMES), .BLOCK_CHUNKS(BLOCK_CHUNKS), .QUANTUM(QUANTUM)) mmio (.epoch(mailbox_epoch), .host_abort(mailbox_abort), .*);
     host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),
         .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .CONTROL_CYCLES(CONTROL_CYCLES),
-        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);
+        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.reset(runtime_reset), .epoch(runtime_epoch), .*);
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .SPLIT_MIDI_JOBS(SPLIT_MIDI_JOBS),
@@ -309,7 +333,7 @@ module host_pipeline_axi #(
         .AXI_DATA_WIDTH(AXI_DATA_WIDTH),
         .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (
         .arena_base({32'b0, ARENA_BASE}),
-        .maintenance_enable(1'b1),
+        .maintenance_enable(!recovery_quiesce),
         .maintenance_tick(1'b0),
         .run_program_region(1'b0),
         .run_sync_count(32'b0),
@@ -331,5 +355,5 @@ module host_pipeline_axi #(
         .midi_job_ready(1'b0),
         .midi_job_done(1'b0),
         .midi_job_error(4'b0),
-        .*);
+        .reset(runtime_reset), .*);
 endmodule

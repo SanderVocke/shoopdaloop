@@ -61,11 +61,13 @@ pub enum HostAction {
     CloseUi,
     CloseUiAndHost,
     Reconnect,
+    RestartBackend,
 }
 
 #[derive(Default)]
 pub(crate) struct HostControls {
     pub state: Option<HostUiState>,
+    pub restart_backend_available: bool,
     pub actions: Vec<HostAction>,
     #[cfg(test)]
     pub status_rect: Option<egui::Rect>,
@@ -143,6 +145,18 @@ impl HostControls {
     }
 
     fn show_shortcuts(&mut self, ui: &mut egui::Ui) {
+        if self.state.as_ref().is_some_and(HostUiState::independent) {
+            self.button(
+                ui,
+                "Restart backend…",
+                HostAction::RestartBackend,
+                self.restart_backend_available
+                    && self
+                        .state
+                        .as_ref()
+                        .is_some_and(|state| !state.shutdown_pending),
+            );
+        }
         self.button(ui, "Host Manager…", HostAction::OpenManager, true);
         self.button(ui, "Profiling…", HostAction::OpenProfiling, true);
         if self.state.as_ref().is_some_and(HostUiState::independent) {
@@ -269,6 +283,12 @@ impl HostControls {
                         ui.label(error);
                     }
                     self.show_reconnect(ui);
+                    self.button(
+                        ui,
+                        "Restart backend…",
+                        HostAction::RestartBackend,
+                        self.restart_backend_available,
+                    );
                 }
                 HostConnectionState::Synchronizing => {
                     ui.spinner();
@@ -342,6 +362,47 @@ mod tests {
                         modifiers: egui::Modifiers::NONE,
                     },
                 ],
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn restart_uses_management_capability_even_when_the_data_connection_is_lost() {
+        for available in [false, true] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let mut host = HostControls {
+                state: Some(HostUiState {
+                    name: "Embedded host".into(),
+                    endpoint: None,
+                    location: HostLocation::RemoteSocket,
+                    connection: HostConnectionState::Lost,
+                    error: None,
+                    shutdown_pending: false,
+                    import_enabled: true,
+                }),
+                restart_backend_available: available,
+                ..Default::default()
+            };
+            frame(&context, &mut host, Vec::new());
+            let status = host.status_rect.unwrap().center();
+            click(&context, &mut host, status);
+            frame(&context, &mut host, Vec::new());
+            let restart = host
+                .action_rects
+                .iter()
+                .find(|(action, _)| *action == HostAction::RestartBackend)
+                .unwrap()
+                .1
+                .center();
+            click(&context, &mut host, restart);
+            assert_eq!(
+                host.actions,
+                if available {
+                    vec![HostAction::RestartBackend]
+                } else {
+                    Vec::new()
+                }
             );
         }
     }

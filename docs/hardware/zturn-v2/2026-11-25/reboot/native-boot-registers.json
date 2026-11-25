@@ -1,0 +1,10 @@
+{
+  "boot_mode": 5,
+  "io_pll_ctrl": 122888,
+  "fpga0_clk_ctrl": 2098432,
+  "pcap_clk_ctrl": 1281,
+  "reboot_status": 4718592,
+  "idcode": 594702483,
+  "xadc_control_before_firmware": 16,
+  "xadc_status_before_firmware": 1280
+}

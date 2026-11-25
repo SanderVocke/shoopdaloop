@@ -202,6 +202,10 @@ where
         Ok(())
     }
 
+    pub fn fault_record(&mut self) -> Result<Option<rt_fpga_rtl::host::FaultRecord>> {
+        device_result(self.session.client().fault_record())
+    }
+
     pub fn fail(&mut self) {
         let _ = self.session.client().abort();
         for commands in

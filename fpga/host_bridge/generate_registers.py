@@ -36,7 +36,12 @@ def generate(check):
             f"pub const HOST_PAYLOAD_WORDS: usize = {words};"]
     rust += [f"pub const REG_{name}: u32 = 0x{offset:03x};" for name, offset in registers.items()]
     rust += [f"pub const STATUS_{name}: u32 = 1 << {bit};" for name, bit in bits.items()]
-    for key, prefix in [("operations", "OP"), ("response_codes", "RESULT")]:
+    fault_bits = spec["fault_bits"]
+    if len(fault_bits) != len(set(fault_bits.values())) or any(not 0 <= bit < 32 for bit in fault_bits.values()):
+        raise ValueError("Overlapping or out-of-range fault bits")
+    sv += [f"localparam logic [31:0] FAULT_{name} = 32'h{1 << bit:08x};" for name, bit in fault_bits.items()]
+    rust += [f"pub const FAULT_{name}: u32 = 1 << {bit};" for name, bit in fault_bits.items()]
+    for key, prefix in [("operations", "OP"), ("response_codes", "RESULT"), ("submission_codes", "SUBMIT")]:
         values = spec[key]
         if len(values) != len(set(values.values())) or any(not 0 <= value <= 0xff for value in values.values()):
             raise ValueError(f"Overlapping or out-of-range {key}")

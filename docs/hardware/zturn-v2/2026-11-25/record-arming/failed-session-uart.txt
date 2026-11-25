@@ -1,0 +1,52 @@
+SHOOP_BOOT FreeRTOS AMD-lwIP board=shoop-zturn-v2-1g-v1 ram_mib=1024
+SHOOP_BUILD zturn-reboot-fpga
+link speed for phy address 7: 1000
+SHOOP_FPGA_OWNER_READY
+SHOOP_HOST_READY
+SHOOP_MEMORY used=3111824 peak=3111824 c_free=16317560 c_min_free=16317560 control_stack_free=39066 render_stack_free=0 uptime_ms=2474
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=704 tcp_pcbs=0 netconns=2 sockets=0
+SHOOP_MEMORY used=3217844 peak=3234240 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=12475
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=960 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3220604 peak=3235684 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=22475
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3220604 peak=3237104 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=32476
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3220604 peak=3237104 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=42476
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3220604 peak=3237104 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=52477
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=1536 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3220604 peak=3237104 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=62477
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=1536 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3220604 peak=3237104 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=72476
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=1536 lwip_peak=3072 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409120 peak=3621088 c_free=16317112 c_min_free=16317112 control_stack_free=39066 render_stack_free=0 uptime_ms=82477
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=4032 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409056 peak=3621088 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=92478
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_FPGA_OWNER_FAILED FPGA mailbox Fault
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=102479
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=112479
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=122478
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=132480
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=142481
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=152481
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=162482
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=896 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=172481
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16317112 control_stack_free=38991 render_stack_free=0 uptime_ms=182483
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16316680 control_stack_free=38991 render_stack_free=0 uptime_ms=192483
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=704 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16316680 control_stack_free=38991 render_stack_free=0 uptime_ms=202483
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16316680 control_stack_free=38991 render_stack_free=0 uptime_ms=212483
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1
+SHOOP_MEMORY used=3409100 peak=3625120 c_free=16317112 c_min_free=16316680 control_stack_free=38991 render_stack_free=0 uptime_ms=222482
+SHOOP_C_MEMORY newlib_committed=0 lwip_used=448 lwip_peak=5056 tcp_pcbs=1 netconns=3 sockets=1

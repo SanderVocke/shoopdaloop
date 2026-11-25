@@ -247,6 +247,96 @@ correctness on silicon, codec wiring or production boot packaging. The
 `USE_AMP` coherency failure above only appeared on a physical ZedBoard; see the
 [JTAG guide](boards/jtag-development.md) for hardware results.
 
+## Remote device reboot
+
+The management endpoint (TCP 15401) accepts a destructive `Reboot` command in
+application protocol 53 (introduced in 52). It uses the same credential-authenticated connection as
+existing embedded management requests; there is no new authentication mechanism.
+From a matching client, use:
+
+```sh
+nix develop --command target/debug/shoopdaloop \
+  --reboot-host --host-profile PATH_TO_DEVICE_PROFILE
+```
+
+The acknowledgment means **request accepted**, not that reboot completed. The ARM
+control task gives the management reply a bounded 250 ms opportunity to drain,
+then disables interrupts and requests a full Zynq PS reset through SLCR. It clears
+only the warm-boot status flags that could make the factory FSBL skip reloading
+PL; other reboot status bits are preserved. It does not change the boot mode,
+factory boot files, DDR initialization, clock configuration or QSPI contents.
+The board follows its configured boot chain, not an in-place restart of the ELF.
+For the factory SD development setup, UART automation must still intercept U-Boot
+and load the desired firmware/bitstream with a fresh nonce.
+
+Unlike **stop host**, this deliberately bypasses renderer/MIDI cleanup and can
+interrupt a live UI. Unsaved session state is lost. It remains usable when the
+engine has failed if the control task and management endpoint still respond;
+a wedged ARM/network path, a stopped host whose listeners have closed, or loss of
+power still requires another recovery method. No automatic retry is performed
+after a lost acknowledgment; observe the boot before trying again.
+
+Only the embedded composition enables this command; desktop/browser services
+return `Unsupported`. Use matching firmware/client/profile versions (currently
+53). The physical reboot evidence below used protocol 52, not the new backend-
+restart implementation.
+The register sequence and reply pacing have offline tests. On 2026-11-25,
+[physical MYIR tests](../../docs/hardware/zturn-v2-bringup.md#physical-management-reboot-test)
+verified acknowledged Ethernet reboot and fresh factory U-Boot output from both
+the native and protected FPGA hosts, without a physical reset. This is basic
+functional evidence, not qualification of recovery from a wedged ARM/network path.
+
+## Restart the FPGA backend without rebooting the device
+
+Current source requires a recovery-capable mailbox **ABI-14** bitstream and
+protocol-53 firmware/client (ABI 14 adds fault-safe submission and diagnostics).
+With a matching pair,
+choose **Host → Restart backend…**, including from a disconnected UI, or run:
+
+```sh
+nix develop --command target/debug/shoopdaloop \
+  --restart-backend --host-profile PATH_TO_DEVICE_PROFILE
+```
+
+This discards the active session and unsaved recordings. The existing authenticated
+management connection supervises cooperative owner-task stop, FPGA AXI drain,
+processing/audio reset, fresh queues/service and verified frame progress. The ARM,
+FreeRTOS scheduler, Ethernet, factory clocks, DDR configuration and thermal guard
+remain running; no bitstream reload or boot/storage change occurs. The UI reconnects
+with a fresh client rather than replaying old work. Native-renderer and desktop
+hosts report `Unsupported`.
+
+A lost reply is not automatically resubmitted. Operation status and runtime
+identity remain queryable while the data endpoint is unavailable. An unsafe drain,
+worker stop or initialization reports **full device reboot required** and retains
+uncertain allocations; it does not silently issue a device reboot. Health sampling
+continues in the control task, but the health data stream needs the new attachment.
+
+A matching protected ABI-13/protocol-53 pair passed **three healthy, recording-active
+restarts** on the Z-turn V2. The subsequent 16-loop bulk-arming phase lost ARM/
+management responsiveness, so **failed-owner recovery remains unqualified**; a
+safety device reboot could not be confirmed and physical RESET was requested.
+The old ABI-12/protocol-52 pair is incompatible and is not automatically updated.
+See [physical results](../../docs/hardware/zturn-v2/2026-11-25/backend-restart/README.md)
+and [mailbox bug and recovery design](../../BUG_MAILBOX.md) for exact limits, the
+additional MMIO bus-error race, and the separate pending bulk-control timing fix.
+
+### Fault containment and ARM exception diagnostics
+
+The ABI-14 source follow-up acknowledges valid register accesses normally even
+when a command is rejected by fault/epoch/queue state. Explicit submission results
+and post-acknowledgement epoch checks replace CPU-trapping semantic rejections.
+The FPGA retains first-fault cause, accepted mailbox command context and timing
+through datapath recovery; the owner logs it before ABORT. A matching new protected
+bitstream is required; the existing physical ABI-13 image is unchanged.
+
+Firmware also installs fatal exception handlers with a cache-flushed, CRC-protected
+RAM journal and bounded PS-UART output. These halt safely rather than resuming an
+uncertain instruction. See [ARM exception journal](crash.md) for layout, reset
+retention caveats and read-only U-Boot inspection. No new watchdog is armed by
+this follow-up; hardware-watchdog qualification and the staged batch timing fix
+remain subsequent work. Compilation/mock tests are not physical qualification.
+
 ## In-app host health
 
 Every backend advertises `host.health`; open **Profiling… → Host → Host health**.
@@ -275,8 +365,9 @@ conversion, negative temperatures, FIFO alignment/stale responses, alarm states,
 bounded failure and the absence of ADC-register/reset writes with a simulated
 register bus. A [15-second Z-turn V2 native run](../../docs/hardware/zturn-v2-bringup.md#native-temperature-reading-without-heatsink)
 measured 52.539–53.154 °C, with a stored sensor maximum of 53.523 °C and confirmed
-shutdown. That run manually released the PS-interface reset in factory U-Boot;
-automatic empty-FIFO interface release is subsequently covered by the C fixture.
+shutdown. That original run manually released the PS-interface reset in factory
+U-Boot. The later native management-reboot test also verified automatic empty-FIFO
+interface release on hardware, starting from MCTL `0x10` and FIFO status `0x500`.
 This is not sustained-load or heatsink-free thermal qualification. Monitoring is
 not a local PS thermal-stop handler or whole-board power cutoff.
 

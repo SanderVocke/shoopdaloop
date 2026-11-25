@@ -1,0 +1,27 @@
+{
+  "captured_at": "2026-11-25T14:13:08.987880+01:00",
+  "read_only_commands": [
+    "md.l 0x0050000c 3",
+    "md.l 0x00100000 8"
+  ],
+  "saved_pcs": {
+    "UndefinedExceptionAddr": "0x00000000",
+    "PrefetchAbortAddr": "0x00000000",
+    "DataAbortAddr": "0x00000000"
+  },
+  "old_elf_sha256": "aac02c8415334b579aca8ca11c16baec1106d2b3dcce76d32e029b6e4f448261",
+  "old_vector_table_matches": false,
+  "read_vector_words": [
+    "0xffffffff",
+    "0xffffffff",
+    "0xffffffff",
+    "0xffffffff",
+    "0xffffffff",
+    "0xffffffff",
+    "0xffffffff",
+    "0xffffffff"
+  ],
+  "interpretation": "No saved exception PC recovered. Old vectors also differ; reset-time RAM is not a reliable pre-reset snapshot. This neither proves nor rules out ARM abort.",
+  "final_state": "Factory U-Boot prompt; no Linux or workload launched; no memory/storage writes issued",
+  "factory_boot_hashes_after_reset_verified": false
+}

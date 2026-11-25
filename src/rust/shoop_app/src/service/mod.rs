@@ -15,6 +15,8 @@ mod duplication;
 mod health;
 mod immediate;
 mod management;
+mod restart;
+pub use restart::BackendRestarts;
 mod media;
 mod monitoring;
 #[path = "persistence/mod.rs"]
@@ -228,6 +230,8 @@ pub struct Service {
     shutdown: Option<OperationId>,
     deployment: Option<shoop_deployment_protocol::Info>,
     updater_operation: Option<OperationId>,
+    system_reboot: Option<bool>,
+    backend_restarts: Option<BackendRestarts>,
     shutdown_ready: bool,
     closed: bool,
     xruns: u32,
@@ -341,6 +345,8 @@ impl Service {
             shutdown: None,
             deployment: None,
             updater_operation: None,
+            system_reboot: None,
+            backend_restarts: None,
             shutdown_ready: false,
             closed: false,
             xruns: 0,
@@ -534,7 +540,16 @@ impl Service {
     }
 
     pub fn is_ready(&self) -> bool {
-        !self.closed
+        !self
+            .backend_restarts
+            .as_ref()
+            .is_some_and(BackendRestarts::unavailable)
+            && self.backend_ready()
+    }
+
+    pub fn backend_ready(&self) -> bool {
+        !self.reboot_requested()
+            && !self.closed
             && self.shutdown.is_none()
             && !self.engine_closed
             && self.released_notes.is_empty()
@@ -675,6 +690,9 @@ impl Service {
                 }
                 if connection.0 == 0 {
                     return Err(Refusal::Identity);
+                }
+                if self.reboot_requested() {
+                    return Err(Refusal::NotReady);
                 }
                 if self.lease.is_some() {
                     return Err(Refusal::Busy);

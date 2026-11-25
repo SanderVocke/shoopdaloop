@@ -120,6 +120,7 @@ void shoop_deploy_control(void) {
     }
 }
 void shoop_deploy_render_stopped(void) { atomic_store(&require_render, 0); }
+void shoop_deploy_render_started(void) { atomic_store(&require_render, 1); }
 void shoop_deploy_stopped(void) {
     if (atomic_load(&ready) && !stable_recorded && record_stable())
         xil_printf("SHOOP_BOOT_CLEAN_RECORD_FAILED\r\n");

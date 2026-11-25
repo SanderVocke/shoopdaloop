@@ -5057,6 +5057,10 @@ mod input_cases;
 mod health_cases;
 #[path = "profiling/cases.rs"]
 mod profiling_cases;
+#[path = "reboot/cases.rs"]
+mod reboot_cases;
+#[path = "restart/cases.rs"]
+mod restart_cases;
 
 #[shoop_test]
 fn dsp_load_keeps_the_peak_while_snapshot_publication_is_paced() {

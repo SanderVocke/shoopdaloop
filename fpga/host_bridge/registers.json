@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 12,
+  "version": 14,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",
@@ -36,7 +36,22 @@
     "COMPLETED_QUANTA": "0x104",
     "PEAK_QUANTUM_CYCLES": "0x108",
     "AUDIO_XRUNS": "0x10c",
-    "ABORT": "0x110"
+    "ABORT": "0x110",
+    "RECOVERY_ID": "0x114",
+    "RECOVERY_STATUS": "0x118",
+    "RECOVERY_REQUEST": "0x11c",
+    "SUBMISSION_RESULT": "0x120",
+    "FAULT_EPOCH": "0x124",
+    "FAULT_CAUSE": "0x128",
+    "FAULT_TAG": "0x12c",
+    "FAULT_OP": "0x130",
+    "FAULT_CYCLES": "0x134",
+    "FAULT_CONTROL_CYCLES": "0x138",
+    "FAULT_DETAIL": "0x13c",
+    "FAULT_REVISION_LOW": "0x140",
+    "FAULT_REVISION_HIGH": "0x144",
+    "FAULT_FRAME_LOW": "0x148",
+    "FAULT_FRAME_HIGH": "0x14c"
   },
   "status_bits": {
     "REQUEST_SPACE": 0,
@@ -56,6 +71,24 @@
     "BEGIN_CONTROL": 10,
     "END_CONTROL": 11,
     "DRAIN_STOP": 12
+  },
+  "submission_codes": {
+    "ACCEPTED": 0,
+    "FULL": 1,
+    "EPOCH": 2,
+    "FAULT": 3,
+    "INVALID": 4,
+    "UNAVAILABLE": 5
+  },
+  "fault_bits": {
+    "MEMORY": 0,
+    "AUDIO": 1,
+    "EVENT_OVERFLOW": 2,
+    "CONTROL_TIMEOUT": 3,
+    "ABORT": 4,
+    "WATCHDOG": 5,
+    "PIPELINE": 6,
+    "RECOVERY": 7
   },
   "response_codes": {
     "OK": 0,

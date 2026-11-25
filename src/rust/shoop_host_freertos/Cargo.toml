@@ -29,3 +29,7 @@ shoop_transport = { path = "../shoop_transport" }
 rt_runtime = { path = "../rt_runtime" }
 rt_fpga_rtl = { path = "../rt_fpga_rtl", optional = true }
 shoop_rt_host_reference = { path = "../shoop_rt_host_reference", features = ["rtl"], optional = true }
+
+[dev-dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

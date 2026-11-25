@@ -1,0 +1,18 @@
+ATTACHED health-only run; cutoff 65 C; duration 15 s
+{"current_c":52.662,"elapsed_ms":10,"overtemperature":false,"processed_frames":4096,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":1022,"overtemperature":false,"processed_frames":53248,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.785,"elapsed_ms":2027,"overtemperature":false,"processed_frames":101376,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":3037,"overtemperature":false,"processed_frames":149504,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":4046,"overtemperature":false,"processed_frames":197632,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.785,"elapsed_ms":5051,"overtemperature":false,"processed_frames":246784,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":6058,"overtemperature":false,"processed_frames":294912,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.785,"elapsed_ms":7067,"overtemperature":false,"processed_frames":343040,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.539,"elapsed_ms":8075,"overtemperature":false,"processed_frames":391168,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.539,"elapsed_ms":9082,"overtemperature":false,"processed_frames":440320,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":10091,"overtemperature":false,"processed_frames":488448,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":11103,"overtemperature":false,"processed_frames":536576,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.662,"elapsed_ms":12108,"overtemperature":false,"processed_frames":584704,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.785,"elapsed_ms":13116,"overtemperature":false,"processed_frames":633856,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+{"current_c":52.539,"elapsed_ms":14122,"overtemperature":false,"processed_frames":681984,"sensor":"SoC die (PS/PL)","sensor_max_c":53.031,"xruns":0}
+HEALTH_PASS samples=15 frames=Some(4096)->Some(724992)
+HANDOFF_READY host left running; thermal cutoff no longer enforced

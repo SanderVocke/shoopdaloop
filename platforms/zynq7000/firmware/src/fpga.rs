@@ -27,6 +27,7 @@ extern "C" {
 }
 
 #[cfg(not(feature = "fixture"))]
+#[derive(Clone)]
 struct DeviceRegisters(usize);
 
 #[cfg(not(feature = "fixture"))]

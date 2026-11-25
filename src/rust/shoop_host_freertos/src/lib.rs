@@ -1,6 +1,11 @@
 #![no_std]
 extern crate alloc;
 
+#[cfg(any(target_os = "none", test))]
+mod reboot;
+#[cfg(any(target_os = "none", test))]
+mod runtime_restart;
+
 #[cfg(target_os = "none")]
 mod embedded;
 #[cfg(all(target_os = "none", feature = "native-i2s"))]

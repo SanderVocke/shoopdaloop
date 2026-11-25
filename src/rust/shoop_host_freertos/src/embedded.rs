@@ -48,6 +48,7 @@ extern "C" {
     fn shoop_deployment_info(info: *mut DeploymentInfo) -> i32;
     fn shoop_deployment_request(client: *const u8, sequence: u64) -> i32;
     fn shoop_deployment_reset();
+    fn shoop_system_reset() -> !;
     fn shoop_memory_report();
 }
 
@@ -756,7 +757,15 @@ pub fn run() {
     serve(service, || render_task.cleanup());
 }
 
-fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool>) {
+fn serve(mut service: Service, mut renderer: impl crate::runtime_restart::Renderer) {
+    let mut restart = renderer
+        .restart_supported()
+        .then(crate::runtime_restart::Restart::new);
+    if let Some(restart) = &restart {
+        service.enable_backend_restart(restart.state.clone());
+    }
+    service.enable_system_reboot();
+    let mut reboot = crate::reboot::Reboot::default();
     service
         .set_health_reader(health::sample)
         .expect("host health sampler");
@@ -795,6 +804,7 @@ fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool
     let mut shutdown_at = None;
     let mut updater_reset = false;
     let mut last_memory = last;
+    let mut last_recovery_health = last;
     assert_eq!(
         unsafe { shoop_deployment_ready() },
         1,
@@ -813,14 +823,42 @@ fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool
         let now = unsafe { shoop_millis() };
         let elapsed = Duration::from_millis(now.saturating_sub(last));
         last = now;
+        if service.reboot_requested() {
+            let reset = reboot.poll(now);
+            managers.retain_mut(|manager| manager.pump(&mut service, elapsed));
+            if reset {
+                log("SHOOP_SYSTEM_REBOOT\n");
+                unsafe { shoop_system_reset() };
+            }
+            unsafe {
+                shoop_control_progress();
+                shoop_delay(2);
+            }
+            continue;
+        }
         if now.saturating_sub(last_memory) >= 10_000 {
             unsafe {
                 shoop_memory_report();
             }
             last_memory = now;
         }
+        let restarting = restart
+            .as_ref()
+            .is_some_and(|restart| restart.state.unavailable());
+        if !restarting {
+            last_recovery_health = now;
+        } else if now.saturating_sub(last_recovery_health) >= 1000 {
+            let _ = health::sample();
+            last_recovery_health = now;
+        }
+        if restarting {
+            for client in clients.drain(..) {
+                service.detach(client.id);
+            }
+            pending_data.clear();
+        }
         for mut port in authenticate(data.0, &mut pending_data, &token, elapsed) {
-            if clients.len() >= 4 {
+            if restarting || clients.len() >= 4 {
                 continue;
             }
             let mut record = [0; MAX_RECORD_BYTES];
@@ -850,16 +888,22 @@ fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool
             client.advance(elapsed);
             client.receive(&mut service);
         }
-        service.tick(elapsed);
+        if !restarting
+            || restart.as_ref().is_some_and(|restart| {
+                restart.state.status().phase == shoop_app_protocol::BackendRestartPhase::Starting
+            })
+        {
+            service.tick(elapsed);
+        }
         #[cfg(feature = "usb-midi")]
         if now.saturating_sub(last_usb) >= 100 {
             usb_release_unused(&mut service);
             last_usb = now;
         }
-        if service.shutdown_ready() {
+        if !restarting && service.shutdown_ready() {
             let update = service.updater_request();
             service.begin_host_cleanup().expect("shutdown authority");
-            if let Some(render_cleaned) = cleanup_renderer() {
+            if let Some(render_cleaned) = renderer.cleanup() {
                 let cleaned = render_cleaned
                     && update.is_none_or(|operation| unsafe {
                         shoop_deployment_request(
@@ -880,6 +924,30 @@ fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool
             }
         }
         managers.retain_mut(|manager| manager.pump(&mut service, elapsed));
+        if let Some(restart) = &mut restart {
+            if let Some(mut replacement) = restart.poll(&mut renderer, service.backend_ready(), now)
+            {
+                replacement.enable_system_reboot();
+                replacement.enable_backend_restart(restart.state.clone());
+                replacement
+                    .set_health_reader(health::sample)
+                    .expect("host health sampler");
+                replacement
+                    .register_profiling_provider(Box::new(profiling::Tasks::new(unsafe {
+                        shoop_nonce()
+                    })))
+                    .expect("task profiling provider");
+                if let Some(info) = deployment_info() {
+                    replacement
+                        .set_deployment_info(info)
+                        .expect("deployment capability");
+                }
+                service = replacement;
+                shutdown_at = None;
+                updater_reset = false;
+                log("SHOOP_BACKEND_RESTARTED\n");
+            }
+        }
         for client in &mut clients {
             client.write(&mut service);
         }
@@ -890,7 +958,9 @@ fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool
             }
             alive
         });
-        if shutdown_at.is_some_and(|time| now.saturating_sub(time) >= 2000) {
+        if !service.reboot_requested()
+            && shutdown_at.is_some_and(|time| now.saturating_sub(time) >= 2000)
+        {
             if updater_reset {
                 unsafe {
                     shoop_deployment_reset();

@@ -9,6 +9,7 @@
 #include "xil_assert.h"
 #include "xil_io.h"
 #include "temperature.h"
+#include "crash.h"
 #include "netif/xtopology.h"
 #include <sys/stat.h>
 #include <errno.h>
@@ -46,6 +47,9 @@ static void fpga_irq(void *context) {
 
 int shoop_fpga_irq_start(void) {
     XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    XScuGic_DistWriteReg(&xInterruptController,
+        XSCUGIC_PENDING_CLR_OFFSET + 4u * (SHOOP_PL_IRQ / 32u),
+        1u << (SHOOP_PL_IRQ % 32u));
     fpga_waiter = xTaskGetCurrentTaskHandle();
     XScuGic_SetPriorityTriggerType(&xInterruptController, SHOOP_PL_IRQ,
         (configMAX_API_CALL_INTERRUPT_PRIORITY + 1) << portPRIORITY_SHIFT, 1);
@@ -119,6 +123,7 @@ static void bsp_assert(const char *file, s32 line) { vApplicationAssert(file, (u
 void shoop_platform_init(void) {
     XUartPs_WriteReg(STDOUT_BASEADDRESS, XUARTPS_CR_OFFSET, XUARTPS_CR_TX_EN | XUARTPS_CR_RX_EN);
     Xil_AssertSetCallback(bsp_assert);
+    shoop_exceptions_init();
 }
 
 void vApplicationAssert(const char *file, unsigned long line) {

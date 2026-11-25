@@ -1,8 +1,64 @@
 use super::*;
 
 impl Service {
+    /// Enable only when the host implements a device reset after replying on management.
+    pub fn enable_system_reboot(&mut self) {
+        self.system_reboot.get_or_insert(false);
+    }
+
+    pub fn reboot_requested(&self) -> bool {
+        self.system_reboot == Some(true)
+    }
+
     pub fn management(&mut self, request: ManagementRequest) -> ManagementReply {
         match request {
+            ManagementRequest::BackendRestartStatus { version }
+            | ManagementRequest::RestartBackend { version, .. } => {
+                if version != VERSION {
+                    return ManagementReply::Refused(Refusal::Version);
+                }
+                if !request.valid() {
+                    return ManagementReply::Refused(Refusal::Invalid);
+                }
+                let Some(restarts) = &self.backend_restarts else {
+                    return ManagementReply::Refused(Refusal::Unsupported);
+                };
+                if let ManagementRequest::RestartBackend {
+                    operation,
+                    expected_generation,
+                    ..
+                } = request
+                {
+                    if self.shutdown.is_some()
+                        || self.updater_operation.is_some()
+                        || self.reboot_requested()
+                    {
+                        return ManagementReply::Refused(Refusal::Busy);
+                    }
+                    restarts.request(operation, expected_generation, self.persistence_epoch)
+                } else {
+                    ManagementReply::BackendRestart(restarts.status())
+                }
+            }
+            ManagementRequest::Reboot { version } => {
+                if version != VERSION {
+                    return ManagementReply::Refused(Refusal::Version);
+                }
+                if self.backend_restarts.as_ref().is_some_and(|state| {
+                    use shoop_app_protocol::BackendRestartPhase::*;
+                    matches!(
+                        state.status().phase,
+                        Accepted | Stopping | Resetting | Starting
+                    )
+                }) {
+                    return ManagementReply::Refused(Refusal::Busy);
+                }
+                let Some(requested) = self.system_reboot.as_mut() else {
+                    return ManagementReply::Refused(Refusal::Unsupported);
+                };
+                *requested = true;
+                ManagementReply::Rebooting { version: VERSION }
+            }
             ManagementRequest::Settings { version } => {
                 ManagementReply::Refused(if version != VERSION {
                     Refusal::Version
@@ -11,6 +67,13 @@ impl Service {
                 })
             }
             ManagementRequest::ClaimShutdown { version, operation } => {
+                if self
+                    .backend_restarts
+                    .as_ref()
+                    .is_some_and(BackendRestarts::unavailable)
+                {
+                    return ManagementReply::Refused(Refusal::Busy);
+                }
                 if version != VERSION {
                     return ManagementReply::Refused(Refusal::Version);
                 }
@@ -78,6 +141,14 @@ impl Service {
                 authority,
                 operation,
             } => {
+                if matches!(request, ManagementRequest::Shutdown { .. })
+                    && self
+                        .backend_restarts
+                        .as_ref()
+                        .is_some_and(BackendRestarts::unavailable)
+                {
+                    return ManagementReply::Refused(Refusal::Busy);
+                }
                 if self.last_authority != Some(authority) {
                     return ManagementReply::Refused(Refusal::StaleAuthority);
                 }

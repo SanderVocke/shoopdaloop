@@ -7,6 +7,27 @@ use shoop_app_protocol::{
 use shoop_wasm_test_support::shoop_test;
 use std::{net::TcpListener, sync::Arc};
 
+mod restart;
+
+#[shoop_test(no_wasm = "Native TCP carrier")]
+fn disconnection_during_upload_progress_also_marks_the_client_lost() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let stream = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    let (_peer, _) = listener.accept().unwrap();
+    let mut port = shoop_transport_socket::Port::from_stream(stream, Default::default()).unwrap();
+    port.close();
+    let mut connection = Connection {
+        port: Port::Socket(port),
+        upload: shoop_app_connection::Upload::new(),
+        heartbeat: None,
+        last: Instant::now(),
+    };
+    let mut client = Client::new();
+    client.attach().unwrap();
+    assert_eq!(connection.poll(&mut client), Err(ClientError::Disconnected));
+    assert_eq!(client.state(), shoop_app_client::State::Lost);
+}
+
 fn image() -> Arc<Image> {
     let frames = 128 * 1024;
     Arc::new(Image {

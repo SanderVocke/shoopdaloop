@@ -146,6 +146,26 @@ The UI never uses this claim as a fallback for stale-owner shutdown.
 Product shutdown does not kill a PID. In-process mode ends with its process; browser
 mode ends with its page. Shared-memory mode cannot reattach after UI exit.
 
+For an embedded device that supports it, `shoopdaloop --reboot-host --host-profile
+PATH` requests a **destructive device reboot** through the existing management
+connection and its existing authentication. It may interrupt a live UI and discards
+unsaved state; it does not wait for renderer cleanup. Acknowledgment means the
+request was accepted, not that reboot completed. Do not automatically retry a lost
+reply. Desktop hosts return `Unsupported`. Matching client/firmware/profile version
+53 is required. The original physical reboot qualification used version 52.
+See [Zynq remote reboot](../../../platforms/zynq7000/README.md#remote-device-reboot)
+for boot-chain and recovery limitations.
+
+For a recovery-capable embedded FPGA host, **Host → Restart backend…** uses
+management even if the data connection is lost. Confirmation warns that audio stops
+and the current session/unsaved recordings are lost. Progress and failures remain
+visible; successful recovery attaches a fresh client without replaying queued work.
+The CLI equivalent is `shoopdaloop --restart-backend --host-profile PATH`.
+Unsupported hosts keep the UI action disabled. A lost reply is only queried, not
+automatically replayed; unsafe recovery requires a separate explicit device reboot.
+Matching application protocol 53 and mailbox ABI 13 are required. The firmware/RTL
+path is offline-tested, not physically qualified. See [backend restart](../../../platforms/zynq7000/README.md#restart-the-fpga-backend-without-rebooting-the-device).
+
 ## Drivers, controls and files
 
 Default native builds include CPAL+midir and native JACK audio/MIDI. The application

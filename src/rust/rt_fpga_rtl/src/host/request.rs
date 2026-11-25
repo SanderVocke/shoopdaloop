@@ -208,6 +208,10 @@ impl<B: RegisterBus> Client<B> {
         self.mailbox.metrics()
     }
 
+    pub fn fault_record(&mut self) -> Result<Option<super::FaultRecord>, Error<B::Error>> {
+        self.mailbox.fault_record()
+    }
+
     pub fn abort(&mut self) -> Result<(), Error<B::Error>> {
         self.mailbox.abort()
     }

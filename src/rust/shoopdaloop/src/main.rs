@@ -48,6 +48,8 @@ use shoop_egui::{TracingStatus, TracingStopped};
 use application::BrowserApplicationRuntime as CooperativeApplicationRuntime;
 mod app_args;
 mod application;
+#[cfg(not(target_arch = "wasm32"))]
+mod backend_restart;
 #[cfg(any(target_arch = "wasm32", test))]
 mod browser_midi;
 #[cfg(target_arch = "wasm32")]
@@ -397,6 +399,8 @@ struct UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     exit: recovery::ExitController,
     #[cfg(not(target_arch = "wasm32"))]
+    backend_restart: backend_restart::BackendRestart,
+    #[cfg(not(target_arch = "wasm32"))]
     host_panel: recovery::HostPanel,
     runtime: Runtime,
     widget: AppWidget,
@@ -548,6 +552,8 @@ impl UnifiedApp {
         Ok(Self {
             #[cfg(not(target_arch = "wasm32"))]
             exit: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            backend_restart: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             host_panel: Default::default(),
             runtime,
@@ -1357,6 +1363,7 @@ impl UnifiedApp {
         self.pending_audio_settings = None;
         self.widget.reset_connection();
         self.exit = Default::default();
+        self.backend_restart = Default::default();
         self.host_panel = Default::default();
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -1387,13 +1394,25 @@ impl UnifiedApp {
                 self.exit.intercept_close(ui.ctx());
                 self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
                 self.host_panel.show(ui.ctx(), &entry);
+                if self.backend_restart.show(ui.ctx(), &entry) {
+                    match Runtime::attach(&self.settings.active(), entry) {
+                        Ok(runtime) => self.use_connection(runtime, ui.ctx()),
+                        Err(error) => self.settings.report_action_error(error.to_string()),
+                    }
+                }
             }
             let status = self.runtime.handle.status();
-            self.widget.set_host_state(recovery::host_ui_state(
-                self.runtime.remote_entry.as_ref(),
-                &status,
-                &self.exit,
-            ));
+            let mut host_state =
+                recovery::host_ui_state(self.runtime.remote_entry.as_ref(), &status, &self.exit);
+            host_state.shutdown_pending |= self.backend_restart.pending;
+            host_state.import_enabled &= !self.backend_restart.pending;
+            if let Some(notice) = self.backend_restart.notice() {
+                host_state.error = Some(notice.to_string());
+            }
+            self.widget.set_host_state(host_state);
+            self.widget.set_backend_restart_available(
+                self.backend_restart.available && !self.backend_restart.pending,
+            );
             if self.runtime.remote_entry.is_some() && status.state != shoop_app_client::State::Ready
             {
                 let settings_state = self.settings.view();
@@ -1551,6 +1570,9 @@ impl UnifiedApp {
                 shoop_egui::HostAction::OpenSettings => self.host_panel.open = true,
                 shoop_egui::HostAction::CloseUi => self.exit.close_ui(context),
                 shoop_egui::HostAction::CloseUiAndHost => self.exit.open = true,
+                shoop_egui::HostAction::RestartBackend => {
+                    self.backend_restart.open = true;
+                }
                 shoop_egui::HostAction::Reconnect => {
                     if let Some(entry) = self.runtime.remote_entry.clone() {
                         match self.runtime.handle.reconnect(entry) {
@@ -3737,6 +3759,23 @@ fn create_app(
 fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     use anyhow::Context;
     use shoop_host::{config::AppTransport, serve::StartOptions};
+    if args.restart_backend {
+        let target = args.host_target()?.context("Host target required")?;
+        shoop_host::connection::restart_backend(&target, Duration::from_secs(30), |status| {
+            println!(
+                "Backend restart {:?} (generation {})",
+                status.phase, status.generation
+            );
+        })?;
+        println!("Backend restart completed; the previous session was discarded");
+        return Ok(true);
+    }
+    if args.reboot_host {
+        let target = args.host_target()?.context("Host target required")?;
+        shoop_host::connection::reboot(&target, Duration::from_secs(5))?;
+        println!("Device reboot request acknowledged; unsaved session state will be discarded");
+        return Ok(true);
+    }
     if args.shutdown_host {
         let target = args.host_target()?.context("Host target required")?;
         shoop_host::connection::shutdown_ownerless(&target, Duration::from_secs(15))?;

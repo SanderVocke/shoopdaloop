@@ -110,6 +110,41 @@ fn portable_host_driven_connection_attaches_confirms_and_detaches() {
 }
 
 #[shoop_test]
+fn management_reboot_uses_the_existing_carrier_and_preserves_acknowledgment_under_backpressure() {
+    for enabled in [false, true] {
+        let mut service = service();
+        if enabled {
+            service.enable_system_reboot();
+        }
+        let mut management = shoop_app_connection::Management::new(Memory {
+            limit: 1,
+            ..Default::default()
+        });
+        management
+            .port
+            .send(WireMessage::ManagementRequest(ManagementRequest::Reboot {
+                version: VERSION,
+            }));
+        assert!(management.pump(&mut service, Duration::from_millis(1)));
+        assert_eq!(service.reboot_requested(), enabled);
+        assert_eq!(
+            codec::decode(&management.port.output.pop_front().unwrap()),
+            Ok(WireMessage::CarrierReady)
+        );
+        assert!(management.pump(&mut service, Duration::from_millis(1)));
+        assert_eq!(
+            codec::decode(&management.port.output.pop_front().unwrap()),
+            Ok(WireMessage::ManagementReply(if enabled {
+                ManagementReply::Rebooting { version: VERSION }
+            } else {
+                ManagementReply::Refused(Refusal::Unsupported)
+            }))
+        );
+        assert!(!management.pump(&mut service, Duration::from_millis(1)));
+    }
+}
+
+#[shoop_test]
 fn management_deployment_envelope_handles_backpressure_and_future_versions() {
     use shoop_deployment_protocol as d;
     let mut service = service();

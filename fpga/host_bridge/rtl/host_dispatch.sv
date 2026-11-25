@@ -15,7 +15,11 @@ module host_dispatch #(
     input wire audio_fault,
     input wire event_overflow,
     input wire host_abort,
+    input wire recovery_quiesce,
     output reg fault,
+    output reg [31:0] fault_epoch, fault_cause, fault_tag, fault_op,
+    output reg [31:0] fault_cycles, fault_control_cycles, fault_detail,
+    output reg [63:0] fault_revision, fault_frame,
     output reg audio_enable,
     input wire quantum_valid,
     output wire quantum_ready,
@@ -102,6 +106,7 @@ module host_dispatch #(
     phase_t phase;
     reg [319:0] args;
     reg [31:0] cycles;
+    reg [31:0] current_tag, current_op;
     reg paced;
     reg audio_started;
     reg control_held;
@@ -128,6 +133,13 @@ module host_dispatch #(
 
     wire control_expired = control_held && control_cycles >= CONTROL_CYCLES-1;
     wire device_fault = memory_fault || audio_fault || event_overflow || control_expired || host_abort;
+    wire watchdog_expired = executing && cycles >= WATCHDOG_CYCLES;
+    wire pipeline_failed = phase == RUN_WAIT && done && error_code != 0;
+    wire [31:0] causes = (memory_fault ? FAULT_MEMORY : 0)
+        | (audio_fault ? FAULT_AUDIO : 0) | (event_overflow ? FAULT_EVENT_OVERFLOW : 0)
+        | (control_expired ? FAULT_CONTROL_TIMEOUT : 0) | (host_abort ? FAULT_ABORT : 0)
+        | (watchdog_expired ? FAULT_WATCHDOG : 0) | (pipeline_failed ? FAULT_PIPELINE : 0)
+        | (host_abort && recovery_quiesce ? FAULT_RECOVERY : 0);
     assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid && !control_held);
     assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !device_fault;
     assign response_valid = phase == RESPOND;
@@ -178,7 +190,33 @@ module host_dispatch #(
 
     always @(posedge clk) begin
         if (reset) begin
+            fault_epoch <= 0;
+            fault_cause <= 0;
+            fault_tag <= 0;
+            fault_op <= 0;
+            fault_cycles <= 0;
+            fault_control_cycles <= 0;
+            fault_detail <= 0;
+            fault_revision <= 0;
+            fault_frame <= 0;
+        end else if (!fault && causes != 0) begin
+            fault_epoch <= epoch;
+            fault_cause <= causes;
+            fault_tag <= current_tag;
+            fault_op <= current_op;
+            fault_cycles <= cycles;
+            fault_control_cycles <= control_cycles;
+            fault_detail <= {8'b0, error_code, 6'b0, error_stage, 3'b0, phase};
+            fault_revision <= active_revision;
+            fault_frame <= sync_frame;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (reset) begin
             fault <= 0;
+            current_tag <= 0;
+            current_op <= 0;
             audio_enable <= 0;
             audio_started <= 0;
             control_held <= 0;
@@ -223,6 +261,8 @@ module host_dispatch #(
                 cycles <= cycles+1;
             case (phase)
                 IDLE: if (command_valid && command_ready) begin
+                    current_tag <= command_tag;
+                    current_op <= command_op;
                     args <= request[319:0];
                     response_epoch <= epoch;
                     response_tag <= command_tag;
@@ -296,6 +336,8 @@ module host_dispatch #(
                         default: phase <= RESPOND;
                     endcase
                 end else if (quantum_valid && !control_held && !fault && !device_fault) begin
+                    current_tag <= 0;
+                    current_op <= OP_RUN_QUANTUM;
                     paced <= 1;
                     cycles <= 0;
                     phase <= RUN_REQUEST;
@@ -357,7 +399,7 @@ module host_dispatch #(
                 end
                 RUN_REQUEST: if (run_valid && run_ready) phase <= RUN_WAIT;
                 RUN_WAIT: if (done) begin
-                    fault <= error_code != 0;
+                    fault <= fault || error_code != 0;
                     if (error_code != 0) audio_enable <= 0;
                     if (paced) begin
                         quantum_done <= error_code == 0;

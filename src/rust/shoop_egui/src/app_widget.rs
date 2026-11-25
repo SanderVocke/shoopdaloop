@@ -1486,6 +1486,10 @@ impl AppWidget {
         self.profiling.open = true;
     }
 
+    pub fn set_backend_restart_available(&mut self, available: bool) {
+        self.host_controls.restart_backend_available = available;
+    }
+
     pub fn set_host_state(&mut self, state: crate::HostUiState) {
         self.host_controls.state = Some(state);
     }

@@ -60,7 +60,7 @@ python3 platforms/zynq7000/fpga_pair.py verify work/zturn-v2/diagnostic-pair.jso
 
 The paired manifest records the board and mailbox contract and hashes the ELF,
 bitstream, XSA and PS files. The signed SD deployment has its own manifest.
-Mailbox version 12 supports composite ending handoffs for Record and Stop
+Mailbox version 14 retains composite ending handoffs for Record and Stop
 and conditional restarts for live edits. A switch can include the edited
 loop slot in bits 12:1 of payload word 4 and a 32-bit condition split across
 bits 31:16 of words 5 and 6, low half
@@ -69,7 +69,7 @@ next audio quantum. Values with high half `0xffff` request a restart check.
 The low half gives the outgoing source slot, `4096` for an absent source, or
 `0xffff` for an unchanged source. The response gives the armed frame and
 the current revision. Read the revision after that quantum to learn whether the switch
-took effect. Use a version 12 bitstream with the matching host or firmware.
+took effect. Use a version 14 bitstream with the matching host or firmware.
 The diagnostic ELF checks the fabric aperture and requests an empty snapshot.
 Pass `looping` after `bitstream` to try the resource bounds used by the
 production image packer. This geometry uses 32 samples per media chunk and
@@ -88,6 +88,67 @@ python3 platforms/zynq7000/fpga_pair.py jtag work/zturn-v2/diagnostic-pair.json 
 
 Expect `SHOOP_FPGA_PROBE_READY` and `SHOOP_FPGA_PROBE_RETURNED` on UART. The
 QEMU startup test exercises the bounded refusal path without a configured PL.
+
+## Fault-safe MMIO and retained diagnostics (mailbox ABI 14)
+
+Aligned, full-strobe writes to defined mailbox command registers receive AXI
+`OKAY` even when the operation is rejected due to a fault, full queue, stale
+identity, missing session or an outdated acknowledgement. Rejected operations do
+not mutate the active command/response/event. Unknown/read-only addresses and
+malformed accesses still produce `SLVERR`; ordinary lifecycle races must not.
+
+After `REQUEST_PUSH`, the exclusive register owner reads `SUBMISSION_RESULT`
+(`0x120`): accepted 0, full 1, epoch mismatch 2, fault 3, invalid tag 4, unavailable
+session 5. It rechecks epoch and translates the receipt into a normal driver
+error. Response/event acknowledgements and ABORT recheck epoch after writing.
+The receipt is acceptance, not execution completion; a later fault still fails
+an accepted command through normal status polling. There must be only one
+mailbox writer; this is not a multi-producer transaction protocol.
+
+`FAULT_EPOCH` through `FAULT_FRAME_HIGH` (`0x124`–`0x14c`) expose one first-fault
+record for the latest runtime that asserted FAULT, including an annotated
+intentional recovery ABORT. The dispatcher latches a cause mask,
+last accepted mailbox tag/op, execution/control cycles, phase/error detail,
+graph revision and frame before software ABORT. Cause bits are memory, audio,
+event overflow, control timeout, ABORT, watchdog, pipeline error and recovery
+annotation (bits 0–7). Detail bits 4:0 contain dispatcher phase, 9:8 pipeline
+error stage, and 23:16 pipeline error code. Paced audio uses tag zero and the
+RUN_QUANTUM operation. This is mailbox context, not an application batch ID.
+
+The always-on mailbox retains the record through epoch-zero/datapath reset.
+Additional causes and ABORT in the same epoch cannot overwrite it; the first
+fault of a later epoch replaces it. Whole-device reset/reconfiguration clears
+it. Readers bracket the record with `FAULT_EPOCH` and reject a changed identity.
+The owner logs `SHOOP_FPGA_FIRST_FAULT` before issuing its failure ABORT. These
+registers are not yet exposed through a new management diagnostic API or UI.
+
+This source requires a matching new protected bitstream and firmware. It has
+simulation/ARM-build coverage, **not new synthesis or physical qualification**.
+The historical ABI-13 physical results do not qualify ABI 14.
+
+## Runtime recovery (introduced in ABI 13, retained in ABI 14)
+
+`RECOVERY_ID` at `0x114` advertises `0x52535431`; `RECOVERY_STATUS` at `0x118`
+reports idle (0), drain (1), reset (2), ready (3), or failed (4). Writing the live
+mailbox epoch with full strobes to `RECOVERY_REQUEST` at `0x11c` starts recovery
+only from idle/ready. The ARM supervisor must first stop the owner; raw reset
+register writes are not a supported user-facing recovery procedure.
+
+The controller is outside the processing reset and tracks accepted AW-to-B and
+AR-to-final-R transactions. It aborts new execution, suppresses maintenance, and
+requires consecutive datapath-idle/zero-outstanding observations before a 128-cycle
+processing reset. Drain has a 100,000,000-cycle bound. The audio adapter receives
+the same runtime reset and fresh epoch; GP0, the recovery aperture and thermal
+monitor remain running. Epoch zero flushes mailbox staging/replies/events during
+reset. Counter errors, timeout or unexpected reset-time traffic fail closed;
+only a ready state with exactly one epoch advance is a successful fence.
+
+No control-window deadline is enlarged. This enables recovery, not the separate
+staged-batch solution for bulk arming. Regression tests are in `rt_fpga_rtl`'s
+`recovery` and `recovery_pipeline` test targets. A new protected bitstream and
+physical qualification of ABI 14 are still required. The historical ABI-13 pair
+passed three healthy restarts but lost ARM responsiveness during bulk arming;
+ABI-12 images do not provide the recovery controller. See [mailbox investigation and proposal](../../BUG_MAILBOX.md).
 
 ## Production FPGA firmware
 

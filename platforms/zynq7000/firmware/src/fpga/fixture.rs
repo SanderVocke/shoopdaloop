@@ -10,6 +10,7 @@ extern "C" {
     fn shoop_fpga_irq_pend_fixture();
 }
 
+#[derive(Clone)]
 pub(super) struct Fixture {
     contract: Contract,
     mode: u64,
@@ -21,6 +22,7 @@ pub(super) struct Fixture {
 }
 
 #[cfg(feature = "fpga")]
+#[derive(Clone)]
 struct Dispatcher {
     request: [u32; HOST_PAYLOAD_WORDS],
     response: [u32; HOST_PAYLOAD_WORDS],
@@ -45,6 +47,8 @@ impl RegisterBus for Fixture {
             REG_ARENA_BASE => self.contract.arena_base,
             REG_ARENA_BYTES => self.contract.arena_bytes,
             REG_EPOCH => 1,
+            REG_SUBMISSION_RESULT => SUBMIT_ACCEPTED,
+            REG_FAULT_EPOCH => 0,
             REG_STATUS if self.tag == 0 => STATUS_REQUEST_SPACE,
             REG_STATUS if self.mode == 2 => 0,
             REG_STATUS => STATUS_RESPONSE_PENDING,

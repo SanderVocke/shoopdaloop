@@ -2,6 +2,7 @@ module host_mailbox #(
     parameter logic [31:0] CORE_CLOCK_HZ = 100_000_000,
     parameter logic [31:0] ARENA_BASE = 32'h30000000,
     parameter logic [31:0] ARENA_BYTES = 32'h08000000,
+    parameter integer RECOVERY_CAPABLE = 0,
     parameter integer PROGRAM_DEPTH = 0, STATE_DEPTH = 0, JOB_DEPTH = 0,
     parameter integer BUFFERS = 0, VIEWS = 0, MEDIA_BLOCKS = 0,
     parameter integer CHUNK_FRAMES = 0, BLOCK_CHUNKS = 0, QUANTUM = 0
@@ -27,6 +28,11 @@ module host_mailbox #(
     input wire s_axi_rready,
     input wire [31:0] epoch,
     input wire fault,
+    input wire [31:0] fault_epoch, fault_cause, fault_tag, fault_op,
+    input wire [31:0] fault_cycles, fault_control_cycles, fault_detail,
+    input wire [63:0] fault_revision, fault_frame,
+    input wire [2:0] recovery_status,
+    output wire recovery_request,
     input wire quantum_done,
     input wire [31:0] quantum_cycles,
     input wire [31:0] audio_xruns,
@@ -74,6 +80,10 @@ module host_mailbox #(
     reg [EVENT_INDEX_BITS:0] event_count;
     reg [31:0] event_tag;
     reg [31:0] completed_quanta, peak_quantum_cycles;
+    reg [31:0] submission_result;
+    reg [31:0] record_epoch, record_cause, record_tag, record_op;
+    reg [31:0] record_cycles, record_control_cycles, record_detail;
+    reg [63:0] record_revision, record_frame;
 
     wire session_live = epoch != 0 && epoch == live_epoch && !reset;
     wire request_space = session_live && !fault && !command_pending;
@@ -87,6 +97,10 @@ module host_mailbox #(
         && event_pending && write_data == event_tag;
     wire event_push = sync_event_valid && sync_event_ready && (event_count < (EVENT_INDEX_BITS+1)'(EVENT_DEPTH) || event_pop);
 
+    assign recovery_request = RECOVERY_CAPABLE != 0 && aw_pending && w_pending
+        && write_strobes == 4'hf && write_address == REG_RECOVERY_REQUEST
+        && session_live && write_data == epoch && (recovery_status == 0 || recovery_status == 3);
+
     assign s_axi_awready = !reset && !aw_pending && !s_axi_bvalid;
     assign s_axi_wready = !reset && !w_pending && !s_axi_bvalid;
     assign s_axi_arready = !reset && !s_axi_rvalid;
@@ -94,6 +108,30 @@ module host_mailbox #(
     assign response_ready = session_live && !response_pending;
     assign irq = session_live && (response_pending || event_pending || fault);
     assign sync_event_ready = session_live;
+
+    always @(posedge clk) begin
+        if (reset) begin
+            record_epoch <= 0;
+            record_cause <= 0;
+            record_tag <= 0;
+            record_op <= 0;
+            record_cycles <= 0;
+            record_control_cycles <= 0;
+            record_detail <= 0;
+            record_revision <= 0;
+            record_frame <= 0;
+        end else if (fault && fault_epoch != 0 && record_epoch != fault_epoch) begin
+            record_epoch <= fault_epoch;
+            record_cause <= fault_cause;
+            record_tag <= fault_tag;
+            record_op <= fault_op;
+            record_cycles <= fault_cycles;
+            record_control_cycles <= fault_control_cycles;
+            record_detail <= fault_detail;
+            record_revision <= fault_revision;
+            record_frame <= fault_frame;
+        end
+    end
 
     always @(posedge clk) begin
         if (!session_live) begin
@@ -147,6 +185,7 @@ module host_mailbox #(
             s_axi_rvalid <= 0;
             s_axi_rresp <= OKAY;
             s_axi_rdata <= 0;
+            submission_result <= SUBMIT_UNAVAILABLE;
             live_epoch <= 0;
             write_address <= 0;
             write_data <= 0;
@@ -169,16 +208,21 @@ module host_mailbox #(
                 w_pending <= 0;
                 s_axi_bvalid <= 1;
                 s_axi_bresp <= SLVERR;
-                if (write_strobes == 4'hf && write_address[1:0] == 0 && session_live) begin
+                if (write_strobes == 4'hf && write_address[1:0] == 0) begin
                     if (write_address == REG_REQUEST_EPOCH || write_address == REG_REQUEST_OP ||
-                        (write_address >= REG_REQUEST_DATA && write_address < REQUEST_END))
+                        (write_address >= REG_REQUEST_DATA && write_address < REQUEST_END) ||
+                        write_address == REG_REQUEST_PUSH || write_address == REG_RESPONSE_POP ||
+                        write_address == REG_EVENT_POP || write_address == REG_ABORT ||
+                        write_address == REG_RECOVERY_REQUEST)
                         s_axi_bresp <= OKAY;
-                    if (write_address == REG_REQUEST_PUSH && request_space && staged_epoch == epoch && write_data != 0)
-                        s_axi_bresp <= OKAY;
-                    if (write_address == REG_RESPONSE_POP && response_pending && write_data == saved_tag)
-                        s_axi_bresp <= OKAY;
-                    if (event_pop || abort_write)
-                        s_axi_bresp <= OKAY;
+                    if (write_address == REG_REQUEST_PUSH) begin
+                        if (!session_live) submission_result <= SUBMIT_UNAVAILABLE;
+                        else if (staged_epoch != epoch) submission_result <= SUBMIT_EPOCH;
+                        else if (write_data == 0) submission_result <= SUBMIT_INVALID;
+                        else if (fault) submission_result <= SUBMIT_FAULT;
+                        else if (!request_space) submission_result <= SUBMIT_FULL;
+                        else submission_result <= SUBMIT_ACCEPTED;
+                    end
                 end
             end
             if (s_axi_rready)
@@ -217,6 +261,20 @@ module host_mailbox #(
                     REG_COMPLETED_QUANTA: s_axi_rdata <= completed_quanta;
                     REG_PEAK_QUANTUM_CYCLES: s_axi_rdata <= peak_quantum_cycles;
                     REG_AUDIO_XRUNS: s_axi_rdata <= audio_xruns;
+                    REG_RECOVERY_ID: s_axi_rdata <= RECOVERY_CAPABLE != 0 ? 32'h52535431 : 0;
+                    REG_RECOVERY_STATUS: s_axi_rdata <= {29'b0,recovery_status};
+                    REG_SUBMISSION_RESULT: s_axi_rdata <= submission_result;
+                    REG_FAULT_EPOCH: s_axi_rdata <= record_epoch;
+                    REG_FAULT_CAUSE: s_axi_rdata <= record_cause;
+                    REG_FAULT_TAG: s_axi_rdata <= record_tag;
+                    REG_FAULT_OP: s_axi_rdata <= record_op;
+                    REG_FAULT_CYCLES: s_axi_rdata <= record_cycles;
+                    REG_FAULT_CONTROL_CYCLES: s_axi_rdata <= record_control_cycles;
+                    REG_FAULT_DETAIL: s_axi_rdata <= record_detail;
+                    REG_FAULT_REVISION_LOW: s_axi_rdata <= record_revision[31:0];
+                    REG_FAULT_REVISION_HIGH: s_axi_rdata <= record_revision[63:32];
+                    REG_FAULT_FRAME_LOW: s_axi_rdata <= record_frame[31:0];
+                    REG_FAULT_FRAME_HIGH: s_axi_rdata <= record_frame[63:32];
                     default: begin
                         if (s_axi_araddr >= REG_RESPONSE_DATA && s_axi_araddr < RESPONSE_END && s_axi_araddr[1:0] == 0)
                             s_axi_rdata <= session_live && response_pending ? saved_data[32*read_index +: 32] : 0;

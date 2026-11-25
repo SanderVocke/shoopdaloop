@@ -60,6 +60,20 @@ pub struct AppArgs {
         conflicts_with = "ui_only"
     )]
     pub shutdown_host: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Reboot the selected embedded device, discarding unsaved state, even with a UI attached.
+    #[arg(
+        help_heading = "Remote Host",
+        long,
+        requires = "host_target",
+        conflicts_with_all = ["ui_only", "shutdown_host"]
+    )]
+    pub reboot_host: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Restart the selected backend without rebooting the ARM; discards unsaved state.
+    #[arg(help_heading = "Remote Host", long, requires = "host_target",
+        conflicts_with_all = ["ui_only", "shutdown_host", "reboot_host"])]
+    pub restart_backend: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
     pub session: Option<String>,
@@ -391,7 +405,12 @@ mod native_tests {
         for flag in ["--host-only", "--manage-hosts", "--host-config", "--lan"] {
             assert!(AppArgs::try_parse_from(["shoopdaloop", flag]).is_err());
         }
-        for role in ["--ui-only", "--shutdown-host"] {
+        for role in [
+            "--ui-only",
+            "--shutdown-host",
+            "--reboot-host",
+            "--restart-backend",
+        ] {
             assert!(AppArgs::try_parse_from(["shoopdaloop", role]).is_err());
             assert!(AppArgs::try_parse_from([
                 "shoopdaloop",
@@ -425,6 +444,26 @@ mod native_tests {
             "--host-address=127.0.0.1:12345"
         ])
         .is_err());
+        for other in ["--ui-only", "--shutdown-host", "--restart-backend"] {
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                "--reboot-host",
+                other,
+                "--host-address",
+                "127.0.0.1:12345"
+            ])
+            .is_err());
+        }
+        for other in ["--ui-only", "--shutdown-host", "--reboot-host"] {
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                "--restart-backend",
+                other,
+                "--host-address",
+                "127.0.0.1:12345"
+            ])
+            .is_err());
+        }
         for flag in [
             "--credential-file",
             "--generate-credential",

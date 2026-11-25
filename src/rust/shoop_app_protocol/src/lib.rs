@@ -28,7 +28,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 51;
+pub const VERSION: u16 = 53;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -784,6 +784,32 @@ impl HostReport {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendRestartPhase {
+    Idle,
+    Accepted,
+    Stopping,
+    Resetting,
+    Starting,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendRestartFailure {
+    WorkerDidNotStop,
+    FabricDidNotQuiesce,
+    InitializationFailed,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendRestartStatus {
+    pub generation: u64,
+    pub operation: Option<OperationId>,
+    pub phase: BackendRestartPhase,
+    pub failure: Option<BackendRestartFailure>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum ManagementRequest {
     Settings {
@@ -805,12 +831,29 @@ pub enum ManagementRequest {
 
         operation: OperationId,
     },
+    /// Destructive device reboot, authorized by the management carrier rather than a UI lease.
+    Reboot {
+        version: u16,
+    },
+    BackendRestartStatus {
+        version: u16,
+    },
+    RestartBackend {
+        version: u16,
+        operation: OperationId,
+        expected_generation: u64,
+    },
 }
 impl ManagementRequest {
     pub fn valid(&self) -> bool {
         match self {
             Self::Settings { .. } => true,
-            Self::Status { .. } => true,
+            Self::Status { .. } | Self::Reboot { .. } | Self::BackendRestartStatus { .. } => true,
+            Self::RestartBackend {
+                operation,
+                expected_generation,
+                ..
+            } => operation.client.0 != 0 && operation.sequence != 0 && *expected_generation != 0,
             Self::ClaimShutdown { operation, .. } => operation_valid(*operation),
             Self::Shutdown {
                 authority,
@@ -850,6 +893,11 @@ pub enum ManagementReply {
         authority: Authority,
         result: OperationResult,
     },
+    /// The reset request was accepted, not proof that the device has restarted.
+    Rebooting {
+        version: u16,
+    },
+    BackendRestart(BackendRestartStatus),
 }
 impl ManagementReply {
     pub fn valid(&self) -> bool {
@@ -867,7 +915,23 @@ impl ManagementReply {
                         .checked_add(bytes.len() as u32)
                         .is_some_and(|end| end <= *total)
             }
-            Self::Status { .. } => true,
+            Self::Status { .. } | Self::Rebooting { .. } => true,
+            Self::BackendRestart(status) => {
+                status.generation != 0
+                    && match status.phase {
+                        BackendRestartPhase::Idle => {
+                            status.operation.is_none() && status.failure.is_none()
+                        }
+                        BackendRestartPhase::Failed => {
+                            status.operation.is_some_and(operation_valid)
+                                && status.failure.is_some()
+                        }
+                        _ => {
+                            status.operation.is_some_and(operation_valid)
+                                && status.failure.is_none()
+                        }
+                    }
+            }
             Self::Refused(_) => true,
             Self::Accepted {
                 authority,

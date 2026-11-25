@@ -20,6 +20,7 @@ void shoop_deploy_render(void);
 void shoop_deploy_broker(void);
 void shoop_deploy_control(void);
 void shoop_deploy_render_stopped(void);
+void shoop_deploy_render_started(void);
 void shoop_deploy_stopped(void);
 int shoop_deploy_confirm(void);
 int shoop_deploy_info(struct shoop_deployment_info *);
@@ -31,6 +32,7 @@ static inline void shoop_deploy_render(void) {}
 static inline void shoop_deploy_broker(void) {}
 static inline void shoop_deploy_control(void) {}
 static inline void shoop_deploy_render_stopped(void) {}
+static inline void shoop_deploy_render_started(void) {}
 static inline void shoop_deploy_stopped(void) {}
 #endif
 #endif

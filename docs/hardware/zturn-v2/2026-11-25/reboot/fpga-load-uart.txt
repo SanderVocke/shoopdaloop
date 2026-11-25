@@ -1,0 +1,9 @@
+fpga loadb 0 0x02000000 0x3dbb6a; echo FPGA_LOAD_RC=$?
+  design filename = "system_wrapper;UserID=0XFFFFFFFF;Version=2021.1"
+  part number = "7z020clg400"
+  date = "2026/11/24"
+  time = "15:36:07"
+  bytes in bitstream = 4045564
+zynq_align_dma_buffer: Align buffer at 200006e to 1ffff80(swap 1)
+FPGA_LOAD_RC=0
+Zynq> 

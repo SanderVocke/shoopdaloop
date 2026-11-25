@@ -34,8 +34,12 @@ SECTIONS {
     __usb_dma_start = .; *(.usb_dma*) . = ALIGN(0x100000); __usb_dma_end = .;
   } > platform
   .dma (NOLOAD) : { . = ALIGN(0x100000); _end = .; . += 0x200000; __platform_end = .; } > platform
+  .crash ORIGIN(platform) + LENGTH(platform) - 0x1000 (NOLOAD) : {
+    __crash_record_start = .; KEEP(*(.noinit.crash)) __crash_record_end = .;
+  } > platform
   .rust_heap (NOLOAD) : { __rust_heap = .; . += @RUST_LENGTH@; __rust_heap_end = .; } > rust
-  ASSERT(__platform_end <= @RUST_START@, "platform exceeds board region")
+  ASSERT(__platform_end <= __crash_record_start, "platform overlaps crash record")
+  ASSERT(__crash_record_end - __crash_record_start <= 0x1000, "crash record exceeds reserved page")
   ASSERT(__usb_dma_end - __usb_dma_start <= 0x100000, "USB DMA exceeds 1 MiB")
   ASSERT(__rust_heap_end <= @RUST_END@, "Rust exceeds board arena")
 }

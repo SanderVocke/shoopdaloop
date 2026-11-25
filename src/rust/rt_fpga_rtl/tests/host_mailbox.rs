@@ -158,7 +158,8 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     let request = [0xdeadbeef, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     device.submit(11, 13, &request).unwrap();
     assert_eq!(device.submit(12, 99, &[]), Err(Error::Full));
-    assert_eq!(Axi(&sim).write(REG_REQUEST_PUSH, 99), Err(2));
+    assert_eq!(Axi(&sim).write(REG_REQUEST_PUSH, 99), Ok(()));
+    assert_eq!(Axi(&sim).read(REG_SUBMISSION_RESULT), Ok(SUBMIT_FULL));
     {
         let mut core = sim.borrow_mut();
         assert_eq!(core.model.get("command_valid"), 1);
@@ -180,7 +181,8 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     assert_eq!(sim.borrow().model.get("irq"), 1);
     assert_eq!(sim.borrow().model.get("response_ready"), 0);
     reply(&sim, 7, 99, [99; HOST_PAYLOAD_WORDS]);
-    assert_eq!(Axi(&sim).write(REG_RESPONSE_POP, 99), Err(2));
+    assert_eq!(Axi(&sim).write(REG_RESPONSE_POP, 99), Ok(()));
+    assert_eq!(Axi(&sim).read(REG_RESPONSE_TAG), Ok(11));
     let response = device.response().unwrap().unwrap();
     assert_eq!(
         (response.tag, response.code, response.data),
@@ -205,7 +207,8 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
         assert_eq!(core.model.get("event_overflow"), 1);
     }
     assert_eq!(Axi(&sim).read(REG_EVENT_COUNT), Ok(0x80000080));
-    assert_eq!(Axi(&sim).write(REG_EVENT_POP, 2), Err(2));
+    assert_eq!(Axi(&sim).write(REG_EVENT_POP, 2), Ok(()));
+    assert_eq!(Axi(&sim).read(REG_EVENT_COUNT), Ok(0x80000080));
     for index in 0..128 {
         let actual = device.sync_event().unwrap().unwrap();
         assert_eq!(actual.data, event(index));
@@ -240,7 +243,9 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     assert_eq!(device.response(), Err(Error::EpochChanged));
     let mut axil = device.into_bus();
     assert_eq!(axil.write(REG_REQUEST_EPOCH, 7), Ok(()));
-    assert_eq!(axil.write(REG_REQUEST_PUSH, 14), Err(2));
+    assert_eq!(axil.write(REG_REQUEST_PUSH, 14), Ok(()));
+    assert_eq!(axil.read(REG_SUBMISSION_RESULT), Ok(SUBMIT_EPOCH));
+    assert_eq!(sim.borrow().model.get("command_valid"), 0);
     let mut device = Mailbox::open(axil, contract).unwrap();
     assert_eq!(device.response(), Ok(None));
     assert_eq!(Axi(&sim).read(REG_EVENT_COUNT), Ok(0));

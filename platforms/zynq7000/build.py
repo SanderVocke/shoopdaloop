@@ -112,7 +112,10 @@ def build():
     sources += list((lwip / "src/api").glob("*.c"))
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
-    sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / "temperature.c", PLATFORM / (args.app + ".c")]
+    sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / "temperature.c", PLATFORM / "reset.c", PLATFORM / "crash.c",
+                PLATFORM / "exceptions.c", PLATFORM / "exception_registers.S", PLATFORM / (args.app + ".c")]
+    if args.fpga:
+        sources.append(PLATFORM / "fpga_task.c")
     if board.bsp.get("phy") == "yt8531":
         includes.append(PLATFORM / "boards")
         sources.append(PLATFORM / "boards/yt8531.c")
@@ -250,6 +253,9 @@ def build():
     image = elf.read_bytes()
     nm = subprocess.check_output([cc, "-print-prog-name=nm"], text=True).strip()
     symbols = subprocess.check_output([nm, "-g", elf], text=True)
+    crash = re.search(r"(?m)^([0-9a-fA-F]+) B shoop_crash_record$", symbols)
+    if not crash or int(crash[1], 16) != board.platform_end - 0x1000:
+        raise SystemExit("Crash journal is not at the reserved end-of-platform page")
     if not args.fixture and ("shoop_fixture_" in symbols or b"SHOOP_FPU_PASS" in image):
         raise SystemExit("Fixture hooks leaked into production firmware")
     if (b"SHOOP_FPGA_PROBE_" in image) != args.fpga_probe:
@@ -287,13 +293,14 @@ def build():
         if not name:
             continue
         path = ROOT / os.fsdecode(name)
-        if path.is_file() and path.suffix in {".rs", ".c", ".h", ".ld", ".py", ".patch", ".toml", ".lock", ".json"}:
+        if path.is_file() and path.suffix in {".rs", ".c", ".h", ".S", ".ld", ".py", ".patch", ".toml", ".lock", ".json"}:
             source_hash.update(name + b"\0" + hashlib.sha256(path.read_bytes()).digest())
     elf.with_suffix(".json").write_text(json.dumps({**board.manifest(), "embeddedsw": REVISION,
         "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
         "engine_policy": policy if not args.fpga else None,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
+        "crash_record": {"address": int(crash[1], 16), "words": 16, "version": 1},
         "elf_sha256": hashlib.sha256(image).hexdigest(),
         "source_inputs_sha256": source_hash.hexdigest(),
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),

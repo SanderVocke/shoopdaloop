@@ -220,6 +220,10 @@ impl Status {
             },
         }
     }
+    pub fn frame(&self) -> u64 {
+        self.frame.load(Ordering::Acquire)
+    }
+
     pub fn set_frame(&self, frame: u64) {
         self.frame.store(frame, Ordering::Release);
     }
@@ -563,6 +567,10 @@ impl<L: ProgramLoader> Endpoint<L> {
             self.programs,
         )
     }
+    pub fn host_status(&self) -> Arc<Status> {
+        self.status.clone()
+    }
+
     pub fn new(control: rt::Endpoint, programs: L, quantum: u32, status: Arc<Status>) -> Self {
         let limits = programs.limits();
         Self {

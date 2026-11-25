@@ -400,3 +400,120 @@ across tracks, disabled processors and a 32-frame quantum at 48 kHz. MIDI execut
 is disabled in this image despite the common host-side event ceiling. These limits
 come from `shoop_host_freertos`' FPGA host setup, `shoop_rt_host_reference`'s program
 limits, the board profile and the bitstream's looping geometry.
+
+## Physical management reboot test
+
+On 2026-11-25, after reconnecting the board, the user authorized deployment and
+physical testing of the new management reboot command. Restoring the laptop's
+USB-UART ACL and direct Ethernet address was sufficient: factory Linux was already
+running, and **no physical reset was needed anywhere in this test**.
+
+Separate `shoop-reboot-native.elf` and `shoop-reboot-fpga.elf` files were staged on
+FAT through factory SSH and hash-verified. The protocol-52 client/profile reused
+the existing credential; no authentication mechanism changed. Factory `BOOT.BIN`
+and `image.ub` hashes remained unchanged before/after staging and after the final
+boot. Neither the boot environment nor QSPI contents were changed. Linux was
+rebooted cleanly, then factory U-Boot loaded each test ELF at `0x38000000` with a
+fresh verified nonce. The FPGA run used the same paired, protected generated-audio
+bitstream as the earlier startup test and verified its live ABI/thermal settings.
+
+| Test | Native ARM renderer | Physical FPGA renderer |
+|---|---|---|
+| Build ID | `zturn-reboot-native` | `zturn-reboot-fpga` |
+| ELF SHA-256 | `243ac69ca02eb7b55af34ca803ec11eebf8912e575cebf25494ddf80915d675d` | `0f185a20f0f592dbb71d1b7994561b4e8efe3fdb8a244dfa04645e1d5d76c4c4` |
+| Preflight duration | 15 seconds | 15 seconds |
+| Temperature samples | 15 | 16 |
+| Current die temperature | 52.539–52.785 °C | 51.185–51.555 °C |
+| Reported xruns | 0 | 0 |
+| Sampled OT alarm | Not asserted | Not asserted |
+| Management reboot acknowledgment | Received | Received |
+| Fresh factory U-Boot after request | Observed | Observed |
+| Time to intercepted U-Boot prompt | 3.033 seconds | 3.109 seconds |
+
+The timings include FSBL, U-Boot, PHY negotiation and UART interruption; they are
+**not** measurements of reset latency or the 250 ms reply-drain interval. The
+pre-reset `SHOOP_SYSTEM_REBOOT` log did not survive either immediate reset, so the
+proof is the management acknowledgment followed by a fresh factory U-Boot boot,
+not the presence of that UART log marker. Post-reset BOOT_MODE remained `0x5` and
+REBOOT_STATUS was `0x00480000` for both runs.
+
+The native run additionally started with PS-XADC MCTL `0x10` and FIFO status
+`0x500`. No manual interface release was issued before the ELF launch; successful
+live temperature reports therefore physically verify the sampler's automatic
+empty-FIFO communication-interface reset release. The FPGA preflight read the
+protection registers through the PS interface before launching its host.
+
+After the two successful remote resets, the board was returned to factory Linux,
+with no Shoop audio workload left active. Final die temperature was approximately
+52.784 °C. The test firmware remains staged separately, not installed as the
+factory default boot target. `--reboot-host` is usable while the new Shoop firmware
+and its management listener are running; this does not make a stopped listener or
+wedged control task remotely reachable.
+
+[Checksummed evidence](zturn-v2/2026-11-25/reboot/result.json) includes both client
+acknowledgments, fresh boot transcripts, preflight samples, live registers,
+credential-free firmware manifests and final factory boot hashes. The manifests
+record the Git base plus exact source-input digests for these uncommitted reboot
+changes. Credential-bearing ELFs, profiles, nonces and full login/capture logs
+remain private. This is a successful normal-running native/FPGA reboot test, not
+a hung-engine/control-task recovery campaign, physical I²S test, thermal-trip test,
+sustained-load test or heatsink-free safety qualification.
+
+## Sixteen-loop recording-arm failure investigation
+
+Later on 2026-11-25, the protocol-52 FPGA host passed a new 15-second temperature/
+progress preflight and its UI was opened through Waypipe. The user confirmed it
+was working, then reported failure while starting recording on 16 loops, before
+the recording boundary. UART recorded `SHOOP_FPGA_OWNER_FAILED FPGA mailbox Fault`.
+ARM diagnostics and authenticated management remained responsive; the initial UI
+TCP connection still received data. The UI subsequently exited, with its exit
+cause unknown. The board was not reset during the investigation.
+
+An [offline RTL reproduction](zturn-v2/2026-11-25/record-arming/README.md) confirmed
+a bulk-arming control-window timing defect. The deployed bitstream allows 16,666
+cycles at 100 MHz (166.66 µs), while the ARM owner edits the entire group inside
+one held window through many mailbox transactions. In the idealized simulation,
+16 next-boundary recording arms already take 150 µs and 3,094 register accesses.
+Only 10 ns of additional synthetic delay per access causes a fault; scheduling
+one extra sync cycle also faults with no added delay. All 20 diagnostic cases
+were checked, with audio disabled and the quantum frame fixed at zero.
+
+This is a strong explanation for the user's observation, not a decoded physical
+first-fault cause. The current mailbox exposes only a combined fault bit and the
+owner sends ABORT after failure; no raw-register diagnostic is exposed by the
+running firmware. No watchdog setting, production code or deployed image was
+changed. The evidence includes the source-matched RTL digests, sanitized UART,
+full simulation results and a standalone reproducer. A proper fix needs bounded/
+staged bulk control with preserved timing semantics, not simply a longer pause.
+
+## Backend restart physical test: partial pass
+
+A protected mailbox ABI-13 bitstream and matching protocol-53 firmware/client were
+built and deployed on 2026-11-25. Routed setup/hold slack was **+0.201/+0.035 ns**;
+XSA identity, CTL0 overtemperature protection and live XADC thresholds were checked.
+Factory files were preserved, with separate SD candidate files and unchanged boot
+hashes before/after staging. No generated PS/DDR initialization was run.
+
+**Three healthy, recording-active backend restarts passed**, reaching Ready in
+307/298/294 ms and fresh attachment in 319/309/305 ms. Fresh leases/persistence
+epochs, discarded sessions, frame progress and health reports were verified. UART
+uptime continued without ARM reboot. Old TCP transports closed after the broker's
+existing two-second grace; this is not datapath restart latency. Current
+53.031–53.769°C, retained peak 55.123°C, no reported OT/xruns before failure.
+
+The following 16-loop extra-sync-cycle arming batch lost management, ping and UART
+diagnostics, without an owner-failure marker. The safety device reboot was not
+acknowledged. The user's physical RESET was later intercepted at U-Boot for
+read-only inspection: saved exception PCs were zero and the old vector table no
+longer matched the preserved ELF. No abort PC was recovered, and the board was
+left at U-Boot without booting Linux or replaying the workload. Final factory hash
+rechecking remains pending. No failed-owner restart was submitted, so this is
+**not** a complete recovery qualification. An offline reproducer additionally
+shows that FAULT racing `REQUEST_PUSH` can produce an AXI bus error; the physical
+first cause remains undecoded. Do not conflate this whole-ARM unresponsiveness
+with the earlier owner-only failure.
+
+[Results, routed reports, source provenance and the MMIO-race reproducer](zturn-v2/2026-11-25/backend-restart/README.md).
+The staged-batch timing fix remains pending. Fault-safe MMIO and retained FPGA/
+ARM exception diagnostics are implemented in the subsequent ABI-14 source, but
+have not been built into a new bitstream or physically qualified; see `BUG_MAILBOX.md`.

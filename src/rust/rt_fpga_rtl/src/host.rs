@@ -1,7 +1,9 @@
 //! ARM-side access to the versioned FPGA host mailbox.
 #[cfg(feature = "rt-interface")]
 pub mod control;
+mod recovery;
 pub mod registers;
+pub use recovery::{Recovery, RecoveryState};
 mod request;
 mod upload;
 use registers::*;
@@ -70,10 +72,24 @@ pub enum Error<E> {
     Rejected(u32),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FaultRecord {
+    pub epoch: u32,
+    pub cause: u32,
+    pub tag: u32,
+    pub operation: u32,
+    pub cycles: u32,
+    pub control_cycles: u32,
+    pub detail: u32,
+    pub revision: u64,
+    pub frame: u64,
+}
+
 pub struct Mailbox<B> {
     bus: B,
     epoch: u32,
     clock_hz: u32,
+    contract: Contract,
 }
 
 impl<B: RegisterBus> Mailbox<B> {
@@ -82,6 +98,7 @@ impl<B: RegisterBus> Mailbox<B> {
             bus,
             epoch: 0,
             clock_hz: expected.clock_hz,
+            contract: expected,
         };
         if device.read(REG_ID)? != HOST_ID
             || device.read(REG_VERSION)? != HOST_VERSION
@@ -122,7 +139,41 @@ impl<B: RegisterBus> Mailbox<B> {
                 args.get(index).copied().unwrap_or(0),
             )?;
         }
-        self.write(REG_REQUEST_PUSH, tag)
+        self.write(REG_REQUEST_PUSH, tag)?;
+        let result = self.read(REG_SUBMISSION_RESULT)?;
+        self.check_epoch()?;
+        match result {
+            SUBMIT_ACCEPTED => Ok(()),
+            SUBMIT_FULL => Err(Error::Full),
+            SUBMIT_EPOCH | SUBMIT_UNAVAILABLE => Err(Error::EpochChanged),
+            SUBMIT_FAULT => Err(Error::Fault),
+            _ => Err(Error::InvalidRequest),
+        }
+    }
+
+    /// The first fault in the latest failed epoch, retained across datapath recovery.
+    pub fn fault_record(&mut self) -> Result<Option<FaultRecord>, Error<B::Error>> {
+        let epoch = self.read(REG_FAULT_EPOCH)?;
+        if epoch == 0 {
+            return Ok(None);
+        }
+        let record = FaultRecord {
+            epoch,
+            cause: self.read(REG_FAULT_CAUSE)?,
+            tag: self.read(REG_FAULT_TAG)?,
+            operation: self.read(REG_FAULT_OP)?,
+            cycles: self.read(REG_FAULT_CYCLES)?,
+            control_cycles: self.read(REG_FAULT_CONTROL_CYCLES)?,
+            detail: self.read(REG_FAULT_DETAIL)?,
+            revision: u64::from(self.read(REG_FAULT_REVISION_LOW)?)
+                | (u64::from(self.read(REG_FAULT_REVISION_HIGH)?) << 32),
+            frame: u64::from(self.read(REG_FAULT_FRAME_LOW)?)
+                | (u64::from(self.read(REG_FAULT_FRAME_HIGH)?) << 32),
+        };
+        if self.read(REG_FAULT_EPOCH)? != epoch {
+            return Err(Error::EpochChanged);
+        }
+        Ok(Some(record))
     }
 
     pub fn response(&mut self) -> Result<Option<Response>, Error<B::Error>> {
@@ -142,6 +193,7 @@ impl<B: RegisterBus> Mailbox<B> {
         }
         self.check_epoch()?;
         self.write(REG_RESPONSE_POP, tag)?;
+        self.check_epoch()?;
         Ok(Some(Response { tag, code, data }))
     }
 
@@ -160,6 +212,7 @@ impl<B: RegisterBus> Mailbox<B> {
         }
         self.check_epoch()?;
         self.write(REG_EVENT_POP, tag)?;
+        self.check_epoch()?;
         Ok(Some(SyncEvent { revision, data }))
     }
 
@@ -198,7 +251,8 @@ impl<B: RegisterBus> Mailbox<B> {
 
     pub fn abort(&mut self) -> Result<(), Error<B::Error>> {
         self.check_epoch()?;
-        self.write(REG_ABORT, self.epoch)
+        self.write(REG_ABORT, self.epoch)?;
+        self.check_epoch()
     }
 
     fn check_epoch(&mut self) -> Result<(), Error<B::Error>> {

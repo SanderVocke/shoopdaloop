@@ -6,6 +6,7 @@ use rt_fpga_rtl::{
 };
 use std::cell::RefCell;
 
+#[derive(Clone, Copy)]
 pub struct Axi<'a, 'model>(pub &'a RefCell<Sim<'model>>);
 
 impl Axi<'_, '_> {
@@ -100,6 +101,7 @@ pub fn build_pipeline(
         "host_registers.sv",
         "host_mailbox.sv",
         "host_dispatch.sv",
+        "host_recovery.sv",
         "host_pipeline_axi.sv",
     ] {
         design

@@ -60,7 +60,7 @@ if {$native_pcm} {
     foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
         add_files [lsort [glob [file join $root fpga $directory rtl *.sv]]]
     }
-    foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
+    foreach source {host_mailbox.sv host_dispatch.sv host_recovery.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
         add_files [file join $host $source]
     }
 }
@@ -131,10 +131,19 @@ connect_bd_net [get_bd_pins ps/FCLK_CLK0] \
 connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
 connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
-connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset] [get_bd_pins audio/reset]
+connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset]
+if {$native_pcm} {
+    connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins audio/reset]
+} else {
+    connect_bd_net [get_bd_pins core/runtime_reset] [get_bd_pins audio/reset]
+}
 connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins reset/aux_reset_in]
 connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked]
-connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins audio/epoch]
+if {$native_pcm} {
+    connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins audio/epoch]
+} else {
+    connect_bd_net [get_bd_pins core/runtime_epoch] [get_bd_pins audio/epoch]
+}
 connect_bd_net [get_bd_pins core/irq] [get_bd_pins ps/IRQ_F2P]
 connect_bd_net [get_bd_pins core/audio_enable] [get_bd_pins audio/enable]
 connect_bd_net [get_bd_pins audio/missed_deadlines] [get_bd_pins core/audio_xruns]

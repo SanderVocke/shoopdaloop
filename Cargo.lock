@@ -5579,6 +5579,7 @@ dependencies = [
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",
+ "shoop_wasm_test_support",
 ]
 
 [[package]]

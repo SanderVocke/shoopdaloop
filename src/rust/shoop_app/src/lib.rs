@@ -13,4 +13,4 @@ mod host_graph;
 mod service;
 pub use audio_driver::{AudioDriverController, DriverCompletion, DriverReply, DriverWork};
 pub use host_graph::{HostGraphController, HostGraphError};
-pub use service::{ConnectionId, Service, ServiceOptions};
+pub use service::{BackendRestarts, ConnectionId, Service, ServiceOptions};

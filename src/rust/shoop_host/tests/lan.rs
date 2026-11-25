@@ -14,6 +14,53 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[shoop_test]
+fn backend_restart_is_unsupported_on_desktop_without_stopping_or_leasing_it() {
+    let host = host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    assert_eq!(
+        connection::backend_restart_status(&host.profile, Duration::from_secs(5)).unwrap(),
+        None
+    );
+    let error = connection::restart_backend(&host.profile, Duration::from_secs(5), |_| {
+        panic!("unsupported restart reported progress")
+    })
+    .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("does not support backend restart"));
+    assert!(matches!(
+        connection::management(
+            &host.profile,
+            ManagementRequest::Status { version: VERSION },
+            Duration::from_secs(5)
+        )
+        .unwrap(),
+        ManagementReply::Status {
+            ready: true,
+            busy: false,
+            closed: false,
+            ..
+        }
+    ));
+}
+
+#[shoop_test]
+fn device_reboot_command_is_unsupported_on_a_desktop_host_without_stopping_it() {
+    let host = host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    let error = connection::reboot(&host.profile, Duration::from_secs(5)).unwrap_err();
+    assert!(error.to_string().contains("Unsupported"));
+    assert!(matches!(
+        connection::management(
+            &host.profile,
+            ManagementRequest::Status { version: VERSION },
+            Duration::from_secs(5)
+        )
+        .unwrap(),
+        ManagementReply::Status { closed: false, .. }
+    ));
+    connection::shutdown_ownerless(&host.profile, Duration::from_secs(5)).unwrap();
+}
+
 struct Host {
     child: Child,
     _root: tempfile::TempDir,

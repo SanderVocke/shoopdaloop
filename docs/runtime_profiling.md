@@ -347,7 +347,8 @@ alarm thresholds/masks, shutdown policy, ADC reset or the factory PS clock setup
 A short MYIR native firmware run physically measured approximately 53 °C and
 confirmed diagnostic delivery and cleanup. It required releasing the factory
 PS-interface reset before launch; the sampler now performs that release only with
-empty FIFOs, without resetting the converter. Sustained-load and FPGA thermal
+empty FIFOs, without resetting the converter. A subsequent native management-reboot
+run physically verified that automatic release. Sustained-load and FPGA thermal
 qualification remain outstanding; a short run is not a safety guarantee.
 
 ## Backend resource usage

@@ -71,6 +71,8 @@ module host_pipeline_bd #(
     input wire [31:0] audio_xruns,
     (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
+    output wire runtime_reset,
+    output wire [31:0] runtime_epoch,
     input wire audio_fault,
     output wire audio_enable,
     input wire quantum_valid,
@@ -211,6 +213,8 @@ module host_pipeline_bd #(
         .fault(fault),
         .audio_xruns(audio_xruns),
         .irq(irq),
+        .runtime_reset(runtime_reset),
+        .runtime_epoch(runtime_epoch),
         .audio_fault(audio_fault),
         .audio_enable(audio_enable),
         .quantum_valid(quantum_valid),

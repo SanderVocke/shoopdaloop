@@ -1,0 +1,300 @@
+{
+  "date": "2026-11-25",
+  "scope": "Investigation, not a deployed fix",
+  "physical_observation": {
+    "observed_at": "2026-11-25T10:37:16.399866+01:00",
+    "user_report": "Attempted recording on 16 loops together; failure before record boundary",
+    "uart_failure": "SHOOP_FPGA_OWNER_FAILED FPGA mailbox Fault",
+    "management_reply": {
+      "version": 52,
+      "ready": false,
+      "busy": true,
+      "closed": false
+    },
+    "management_status_authenticated": true,
+    "ui_pid": 54352,
+    "arm_periodic_memory_logs_continue": true,
+    "ui_tcp_connection_receiving": true,
+    "reset_performed": false,
+    "root_cause": "Not established; mailbox/owner fault observed"
+  },
+  "later_status": {
+    "observed_at": "2026-11-25T10:46:47+01:00",
+    "ready": false,
+    "busy": false,
+    "closed": false,
+    "ui_process_alive": false,
+    "reset_performed": false
+  },
+  "firmware_build": "zturn-reboot-fpga",
+  "firmware_sha256": "0f185a20f0f592dbb71d1b7994561b4e8efe3fdb8a244dfa04645e1d5d76c4c4",
+  "bitstream_sha256": "0ee4640b2739ad17587195c6a2dfb77613c41fbe6e22ca63650097f2b5228ba3",
+  "confirmed_synthesized_parameters": {
+    "CORE_CLOCK_HZ": 100000000,
+    "CONTROL_CYCLES": 16666
+  },
+  "rtl_matching_deployed_source_snapshot": {
+    "fpga/host_bridge/rtl/host_dispatch.sv": "b3d999075ed2261e9c5a5267698d993ec315cf714370d7749219cf10903d0481",
+    "fpga/host_bridge/rtl/host_mailbox.sv": "3037de537ac1af8d2b6da83460eb1ba5b64af2987c10c5449996893ebacdb056",
+    "fpga/host_bridge/rtl/host_pipeline_axi.sv": "8021a75b587225e1a43ee8b21f93ea7a06438ccc9961b9dd4d6c4a596c107715",
+    "fpga/host_bridge/rtl/host_pipeline_bd.v": "817b529f029e5ed96b1497bf81648e845ca8b41d3fa6a810104369c3e256166b"
+  },
+  "simulation": {
+    "model": "Actual host_pipeline_axi RTL via Marlin/Verilator; reduced geometry, no board access",
+    "loops_in_graph": 17,
+    "state_values": 64,
+    "audio_enable": false,
+    "quantum_frame": 0,
+    "added_access_delay_is_synthetic_not_measured_arm_latency": true,
+    "cases": [
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 1,
+        "extra_cycles_per_mmio": 0,
+        "completed": 1,
+        "accesses": 259,
+        "cycles": 1260,
+        "duration_us": 12.6,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 15,
+        "extra_cycles_per_mmio": 0,
+        "completed": 15,
+        "accesses": 2905,
+        "cycles": 14084,
+        "duration_us": 140.84,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 0,
+        "completed": 16,
+        "accesses": 3094,
+        "cycles": 15000,
+        "duration_us": 150.0,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 33332,
+        "loops": 16,
+        "extra_cycles_per_mmio": 0,
+        "completed": 16,
+        "accesses": 3094,
+        "cycles": 15000,
+        "duration_us": 150.0,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 1,
+        "completed": 15,
+        "accesses": 2883,
+        "cycles": 16879,
+        "duration_us": 168.79,
+        "fault": true,
+        "result": "Err(Fault)"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 1,
+        "extra_cycles_per_mmio": 10,
+        "completed": 1,
+        "accesses": 247,
+        "cycles": 3682,
+        "duration_us": 36.82,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 10,
+        "completed": 6,
+        "accesses": 1151,
+        "cycles": 17168,
+        "duration_us": 171.68,
+        "fault": true,
+        "result": "Err(Bus(2))"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 1,
+        "extra_cycles_per_mmio": 20,
+        "completed": 1,
+        "accesses": 245,
+        "cycles": 6104,
+        "duration_us": 61.04,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 20,
+        "completed": 3,
+        "accesses": 702,
+        "cycles": 17488,
+        "duration_us": 174.88,
+        "fault": true,
+        "result": "Err(Fault)"
+      },
+      {
+        "skip": 0,
+        "control_cycles": 33332,
+        "loops": 16,
+        "extra_cycles_per_mmio": 20,
+        "completed": 7,
+        "accesses": 1367,
+        "cycles": 34056,
+        "duration_us": 340.56,
+        "fault": true,
+        "result": "Err(Fault)"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 1,
+        "extra_cycles_per_mmio": 0,
+        "completed": 1,
+        "accesses": 294,
+        "cycles": 1432,
+        "duration_us": 14.32,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 15,
+        "extra_cycles_per_mmio": 0,
+        "completed": 15,
+        "accesses": 3430,
+        "cycles": 16664,
+        "duration_us": 166.64,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 0,
+        "completed": 15,
+        "accesses": 3455,
+        "cycles": 16794,
+        "duration_us": 167.94,
+        "fault": true,
+        "result": "Err(Bus(2))"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 33332,
+        "loops": 16,
+        "extra_cycles_per_mmio": 0,
+        "completed": 16,
+        "accesses": 3654,
+        "cycles": 17752,
+        "duration_us": 177.52,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 1,
+        "completed": 12,
+        "accesses": 2868,
+        "cycles": 16834,
+        "duration_us": 168.34,
+        "fault": true,
+        "result": "Err(Bus(2))"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 1,
+        "extra_cycles_per_mmio": 10,
+        "completed": 1,
+        "accesses": 282,
+        "cycles": 4204,
+        "duration_us": 42.04,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 10,
+        "completed": 5,
+        "accesses": 1149,
+        "cycles": 17140,
+        "duration_us": 171.4,
+        "fault": true,
+        "result": "Err(Bus(2))"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 1,
+        "extra_cycles_per_mmio": 20,
+        "completed": 1,
+        "accesses": 280,
+        "cycles": 6976,
+        "duration_us": 69.76,
+        "fault": false,
+        "result": "Ok(())"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 16666,
+        "loops": 16,
+        "extra_cycles_per_mmio": 20,
+        "completed": 3,
+        "accesses": 702,
+        "cycles": 17488,
+        "duration_us": 174.88,
+        "fault": true,
+        "result": "Err(Fault)"
+      },
+      {
+        "skip": 1,
+        "control_cycles": 33332,
+        "loops": 16,
+        "extra_cycles_per_mmio": 20,
+        "completed": 6,
+        "accesses": 1367,
+        "cycles": 34056,
+        "duration_us": 340.56,
+        "fault": true,
+        "result": "Err(Fault)"
+      }
+    ]
+  },
+  "assessment": "Confirmed bulk-arming control-window overrun defect in simulation; strong explanation for the physical failure, not a decoded physical first-fault cause.",
+  "limitations": [
+    "No raw register or per-cause hardware fault diagnostic is exposed by the running firmware.",
+    "Mailbox ABI 12 exposes only the combined FAULT status bit.",
+    "Owner fail subsequently sends ABORT, so a later generic fault state cannot identify the initiating cause.",
+    "No board reset, replay, firmware/bitstream change or watchdog change was performed during investigation.",
+    "UI exited after the first status snapshot; exit cause not established."
+  ]
+}

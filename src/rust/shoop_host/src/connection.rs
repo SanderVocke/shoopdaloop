@@ -268,7 +268,12 @@ impl Connection {
             }
         }
         self.last = now;
-        self.upload.pump(&mut self.port).map_err(client_error)?;
+        if let Err(error) = self.upload.pump(&mut self.port) {
+            if error == shoop_app_connection::Error::Disconnected {
+                client.disconnect();
+            }
+            return Err(client_error(error));
+        }
         let mut count = 0;
         let mut bytes = [0; MAX_RECORD_BYTES];
         for _ in 0..MAX_MESSAGES_PER_TURN {
@@ -329,6 +334,111 @@ pub fn management(
             return Err(anyhow!("session management response timed out"));
         }
         std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+pub fn backend_restart_status(
+    entry: &impl ConnectionTarget,
+    timeout: Duration,
+) -> Result<Option<shoop_app_protocol::BackendRestartStatus>> {
+    use shoop_app_protocol::VERSION;
+    backend_restart_reply(management(
+        entry,
+        ManagementRequest::BackendRestartStatus { version: VERSION },
+        timeout,
+    )?)
+}
+
+fn backend_restart_reply(
+    reply: ManagementReply,
+) -> Result<Option<shoop_app_protocol::BackendRestartStatus>> {
+    use shoop_app_protocol::Refusal;
+    match reply {
+        ManagementReply::BackendRestart(status) => Ok(Some(status)),
+        ManagementReply::Refused(Refusal::Unsupported) => Ok(None),
+        reply => Err(anyhow!("backend restart status refused: {reply:?}")),
+    }
+}
+
+/// Submit once, then query the accepted operation. Never replay a destructive request after a lost reply.
+pub fn restart_backend(
+    entry: &impl ConnectionTarget,
+    timeout: Duration,
+    progress: impl FnMut(shoop_app_protocol::BackendRestartStatus),
+) -> Result<()> {
+    restart_backend_on(
+        timeout,
+        |request, budget| management(entry, request, budget),
+        progress,
+    )
+}
+
+fn restart_backend_on(
+    timeout: Duration,
+    mut request: impl FnMut(ManagementRequest, Duration) -> Result<ManagementReply>,
+    mut progress: impl FnMut(shoop_app_protocol::BackendRestartStatus),
+) -> Result<()> {
+    use shoop_app_protocol::{BackendRestartPhase as Phase, ClientId, OperationId, VERSION};
+    let deadline = Instant::now() + timeout;
+    let previous = backend_restart_reply(request(
+        ManagementRequest::BackendRestartStatus { version: VERSION },
+        remaining(deadline)?.min(Duration::from_secs(3)),
+    )?)?
+    .context("host does not support backend restart")?;
+    if previous.phase == Phase::Failed {
+        return Err(anyhow!(
+            "previous backend restart failed; full device reboot required"
+        ));
+    }
+    let operation = OperationId {
+        client: ClientId(crate::remote::identity()?),
+        sequence: 1,
+    };
+    let reply = request(ManagementRequest::RestartBackend {
+        version: VERSION, operation, expected_generation: previous.generation,
+    }, remaining(deadline)?.min(Duration::from_secs(3)))
+        .context("backend restart acknowledgment lost or refused; query status before requesting another restart")?;
+    let ManagementReply::BackendRestart(mut status) = reply else {
+        return Err(anyhow!("backend restart refused: {reply:?}"));
+    };
+    loop {
+        if status.operation != Some(operation)
+            || Some(status.generation) != previous.generation.checked_add(1)
+        {
+            return Err(anyhow!("backend restart operation was superseded"));
+        }
+        progress(status);
+        match status.phase {
+            Phase::Ready => return Ok(()),
+            Phase::Failed => {
+                return Err(anyhow!(
+                    "backend restart failed: {:?}; full device reboot required",
+                    status.failure
+                ))
+            }
+            _ => {}
+        }
+        remaining(deadline)?;
+        std::thread::sleep(Duration::from_millis(100));
+        status = backend_restart_reply(request(
+            ManagementRequest::BackendRestartStatus { version: VERSION },
+            remaining(deadline)?.min(Duration::from_secs(3)),
+        )?)?
+        .context("backend restart capability disappeared")?;
+    }
+}
+
+/// Request a destructive device reboot through the existing management connection.
+/// Success acknowledges the request, not completion; do not automatically retry a lost reply.
+pub fn reboot(entry: &impl ConnectionTarget, timeout: Duration) -> Result<()> {
+    use shoop_app_protocol::VERSION;
+    match management(
+        entry,
+        ManagementRequest::Reboot { version: VERSION },
+        timeout,
+    )? {
+        ManagementReply::Rebooting { version } if version == VERSION => Ok(()),
+        reply => Err(anyhow!("device reboot refused: {reply:?}")),
     }
 }
 
