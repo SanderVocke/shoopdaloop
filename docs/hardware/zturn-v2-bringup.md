@@ -546,3 +546,20 @@ loaded or workload replayed. This separate recovery does not upgrade the failed
 MMIO-workflow return path to a pass.
 
 [Evidence, exact artifact digests and latest recovery state](zturn-v2/2026-11-25/fault-containment/README.md).
+
+The watchdog/safe-return follow-up is committed as `e2ff1e882`; its Linux suite
+passed 3583 tests (11 skipped). The safe-return helper enforces an armed reset
+watchdog, cleared PL-warm flags and a fresh full-reset countdown/prompt before
+factory Linux, with mocked-console regression coverage. It was not replayed on
+hardware during the subsequent offline work.
+
+Current source moves bulk future Transition plans to **ABI-15 staged control**:
+ARM upload while audio continues, whole-batch validation, then a local common-frame
+commit under the original 16666-cycle bound. It does not convert every immediate
+or mixed control group. A matching protected pair subsequently passed routing and
+one supervised 16/32-loop future-recording-arm run, with zero xruns/refusals and two
+recording-active backend restarts. Health samples were 50.078–50.447°C; the final
+factory-Linux check was 51.308°C. Factory boot-file hashes still matched after the
+full-reset return; no workload remains active. These are dated measurements, not
+continuous telemetry. See the [physical evidence and limits](zturn-v2/2026-11-25/bulk-arming/README.md)
+and [batch contract](../../fpga/host_bridge/control_batch.md).

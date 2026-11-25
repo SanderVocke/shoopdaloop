@@ -288,8 +288,11 @@ functional evidence, not qualification of recovery from a wedged ARM/network pat
 
 ## Restart the FPGA backend without rebooting the device
 
-Current source requires a recovery-capable mailbox **ABI-14** bitstream and
-protocol-53 firmware/client (ABI 14 adds fault-safe submission and diagnostics).
+Current source requires a recovery-capable mailbox **ABI-15** bitstream and
+protocol-53 firmware/client. ABI 14 added fault-safe submission/diagnostics; ABI 15
+adds staged loop-control batches. The physically tested ABI-14 pair is preserved;
+a matching ABI-15 pair subsequently passed the bounded 16/32-loop physical run
+linked below. Use matching pairs, not an ABI-15 owner with the preserved ABI-14 PL.
 With a matching pair,
 choose **Host → Restart backend…**, including from a disconnected UI, or run:
 
@@ -347,6 +350,20 @@ fix remains pending. Compilation/mock tests alone are not physical qualification
 Do not directly boot factory Linux while a custom PL image remains loaded: its
 device tree probes factory-only peripherals. Retain a watchdog backstop through a
 full device reset/restoration of the factory chain before entering factory Linux.
+
+### Staged bulk arming (ABI 15)
+
+Groups of future loop Transition plans use a preallocated CPU shadow and a staged
+compare/masked-write batch. Audio continues during ARM upload; the FPGA validates
+the entire batch, rebases effective frames and applies it locally at one boundary.
+The existing 16666-cycle control limit is unchanged. Invalid/stale batches do not
+partially mutate active state. Immediate-now, single, mixed/gain and graph-switch
+paths are not converted by this follow-up. See the
+[batch contract and regressions](../../fpga/host_bridge/control_batch.md).
+A protected ABI-15 pair subsequently passed one supervised 16/32-loop future-arm
+and recording run plus two recording-active backend restarts. Factory Linux was
+restored through a full reset and factory boot-file hashes still matched. See the
+[physical evidence and qualification limits](../../docs/hardware/zturn-v2/2026-11-25/bulk-arming/README.md).
 
 ## In-app host health
 

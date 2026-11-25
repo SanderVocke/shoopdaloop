@@ -1,5 +1,24 @@
 # FPGA mailbox failure during simultaneous recording
 
+## ABI-15 bulk-arming timing fix — bounded physical pass
+
+The current owner stages groups of future Transition plans without holding the
+processing window. The FPGA validates the complete batch, rebases plan-effective
+frames to one common boundary and applies masked writes locally under the unchanged
+16666-cycle bound. At most 32 logical commands / 512 patches are accepted. Invalid,
+stale or incomplete batches cannot partially apply. The existing resolver remains
+the semantic source; no musical scheduler is added to hardware.
+
+This covers the 16-loop extra-sync-cycle arm that reproduced the bug. Immediate-now,
+single, mixed/gain and program-switch controls retain their existing paths. The
+new ABI 15 was subsequently routed and loaded: one supervised run passed 16/32-loop
+future-recording arms with skip 1, equal reported capture lengths, zero xruns or
+refusals, and two recording-active backend restarts. Factory Linux was restored
+through a full reset; factory hashes still matched. This is not exhaustive output,
+soak or deployment qualification. The working ABI-14 pair remains preserved. See the
+[physical evidence](docs/hardware/zturn-v2/2026-11-25/bulk-arming/README.md) and
+[batch contract](fpga/host_bridge/control_batch.md).
+
 ## ABI-14 physical follow-up
 
 After commit `1a71e1e45`, a matched protected ABI-14 pair with an opt-in hardware
@@ -7,7 +26,8 @@ watchdog passed three healthy backend restarts and one faulted-owner restart.
 The 16-loop batch still faulted, but ARM management stayed responsive. Retained
 first cause was control timeout (`8`), control cycle 16665; restart generation 5
 reached Ready in 301 ms. This confirms that new incident's FPGA cause, not the
-old ABI-13 ARM-hang cause. The staged atomic-batch timing fix remains unimplemented.
+old ABI-13 ARM-hang cause. At that physical checkpoint the staged timing fix was
+not yet implemented; the later implementation and bounded physical run are described above.
 
 Controlled CPU freeze/undefined runs qualified watchdog reset through factory
 U-Boot; one CRC-valid undefined journal survived. Deterministic faulted/stale PUSH

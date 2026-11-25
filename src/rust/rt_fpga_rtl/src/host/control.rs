@@ -1,10 +1,12 @@
 //! Translate RT controls and observations to the packed loop state.
+mod batch;
 mod session;
 mod window;
 use crate::{
     bits::Bits,
     target::{COMPOSITE_LOOP, ProgramImage},
 };
+pub use batch::LoopBatch;
 use rt_fpga_compiler::{
     Identity,
     loading::{ClockState, CompositeCut, Layout},

@@ -89,7 +89,21 @@ python3 platforms/zynq7000/fpga_pair.py jtag work/zturn-v2/diagnostic-pair.json 
 Expect `SHOOP_FPGA_PROBE_READY` and `SHOOP_FPGA_PROBE_RETURNED` on UART. The
 QEMU startup test exercises the bounded refusal path without a configured PL.
 
-## Fault-safe MMIO and retained diagnostics (mailbox ABI 14)
+## Staged bulk control (mailbox ABI 15)
+
+Current source adds a bounded compare/masked-write batch for future Transition
+groups. ARM staging does not hold audio; whole-batch validation and commit happen
+locally in one unchanged bounded control window. The SP still owns musical sync
+and transition execution; no transition processor is reintroduced. See the
+[wire contract, scope and regression commands](control_batch.md).
+
+A protected matching ABI-15 pair passed routing and one supervised 16/32-loop
+future-recording-arm run plus two recording-active backend restarts. See the
+[physical evidence and limits](../../docs/hardware/zturn-v2/2026-11-25/bulk-arming/README.md).
+This is not physical-output, soak or standalone-SD qualification. The ABI-14 pair
+remains preserved; its recovery results are a separate earlier checkpoint.
+
+## Fault-safe MMIO and retained diagnostics (introduced in mailbox ABI 14)
 
 Aligned, full-strobe writes to defined mailbox command registers receive AXI
 `OKAY` even when the operation is rejected due to a fault, full queue, stale
@@ -122,11 +136,13 @@ it. Readers bracket the record with `FAULT_EPOCH` and reject a changed identity.
 The owner logs `SHOOP_FPGA_FIRST_FAULT` before issuing its failure ABORT. These
 registers are not yet exposed through a new management diagnostic API or UI.
 
-This source requires a matching new protected bitstream and firmware. It has
-simulation/ARM-build coverage, **not new synthesis or physical qualification**.
-The historical ABI-13 physical results do not qualify ABI 14.
+A protected ABI-14 pair subsequently passed three healthy backend restarts and
+one after a retained control-timeout fault, without rebooting ARM. See the
+[physical evidence and limits](../../docs/hardware/zturn-v2/2026-11-25/fault-containment/README.md).
+The later ABI-15 timing-fix run is linked above; the earlier ABI-14 results alone
+do not qualify that timing fix.
 
-## Runtime recovery (introduced in ABI 13, retained in ABI 14)
+## Runtime recovery (introduced in ABI 13, retained in ABI 15)
 
 `RECOVERY_ID` at `0x114` advertises `0x52535431`; `RECOVERY_STATUS` at `0x118`
 reports idle (0), drain (1), reset (2), ready (3), or failed (4). Writing the live
@@ -143,10 +159,10 @@ monitor remain running. Epoch zero flushes mailbox staging/replies/events during
 reset. Counter errors, timeout or unexpected reset-time traffic fail closed;
 only a ready state with exactly one epoch advance is a successful fence.
 
-No control-window deadline is enlarged. This enables recovery, not the separate
-staged-batch solution for bulk arming. Regression tests are in `rt_fpga_rtl`'s
-`recovery` and `recovery_pipeline` test targets. A new protected bitstream and
-physical qualification of ABI 14 are still required. The historical ABI-13 pair
+No control-window deadline is enlarged. Recovery remains distinct from the
+ABI-15 staged-batch timing fix above. Regression tests are in `rt_fpga_rtl`'s
+`recovery` and `recovery_pipeline` test targets. The ABI-15 physical run is bounded
+and does not exhaust recovery/failure scenarios. The historical ABI-13 pair
 passed three healthy restarts but lost ARM responsiveness during bulk arming;
 ABI-12 images do not provide the recovery controller. See [mailbox investigation and proposal](../../BUG_MAILBOX.md).
 

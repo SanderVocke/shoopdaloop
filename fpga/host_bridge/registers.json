@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 14,
+  "version": 15,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",
@@ -70,7 +70,11 @@
     "ENABLE_AUDIO": 9,
     "BEGIN_CONTROL": 10,
     "END_CONTROL": 11,
-    "DRAIN_STOP": 12
+    "DRAIN_STOP": 12,
+    "BEGIN_BATCH": 13,
+    "STAGE_PATCH": 14,
+    "COMMIT_BATCH": 15,
+    "DISCARD_BATCH": 16
   },
   "submission_codes": {
     "ACCEPTED": 0,

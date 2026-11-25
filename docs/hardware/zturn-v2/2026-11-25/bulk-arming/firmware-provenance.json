@@ -1,0 +1,37 @@
+{
+  "board": "zturn-v2",
+  "build_id": "zturn-batch-dev",
+  "elf_sha256": "a85b428f67a4784f172ae6bbff1d446e44d6983dbbc5fce399980b286c956222",
+  "rust_target": "armv7a-none-eabihf",
+  "source_inputs_sha256": "35388ca91f982da8c64faba92615ff905d0fe10d2cbab029ee2abd49d8e2699e",
+  "watchdog": {
+    "enabled": true,
+    "startup_seconds": 30,
+    "ready_seconds": 10,
+    "render_start_grace_ms": 25000,
+    "test_fault": null,
+    "test_after_ready_ms": null
+  },
+  "crash_record": {
+    "address": 134213632,
+    "words": 16,
+    "version": 1
+  },
+  "fpga_contract": {
+    "board": "zturn-v2",
+    "profile": "shoop-zturn-v2-1g-v1",
+    "board_sha256": "57d728c1463a7a25ae8587cff9ddb607b6d9daae39480d1738411307a2e55af9",
+    "part": "xc7z020clg400-2",
+    "abi_id": "0x53484f50",
+    "abi_version": 15,
+    "abi_sha256": "5852b479daf004ec8a7c6484d9ac53510f9b8b67ea0e9ead3892cc2b747a6881",
+    "arena_base": 805306368,
+    "arena_bytes": 134217728,
+    "register_base": 1073741824,
+    "clock_hz": 100000000
+  },
+  "deployment": false,
+  "git_head": "e2ff1e882ccea36fa8973392602c0600f3083065",
+  "fpga_renderer": true,
+  "fixture": false
+}

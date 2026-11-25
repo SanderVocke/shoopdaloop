@@ -1,0 +1,159 @@
+{
+  "protocol_version": 53,
+  "mailbox_abi": 15,
+  "factory_boot_files_replaced": false,
+  "bitstream_sha256": "4f0c995366031c740bf3c3aa25ff2252ebe016047e690841cfbe3406095bb0d1",
+  "firmware_sha256": "a85b428f67a4784f172ae6bbff1d446e44d6983dbbc5fce399980b286c956222",
+  "thermal_cutoff_c": 65,
+  "factory_start_temperature_c": 51.92320556624801,
+  "pre_pl_watchdog_seconds": 60,
+  "backend_restarts": 2,
+  "generations": [
+    2,
+    3
+  ],
+  "temperature_min_c": 50.078,
+  "temperature_max_c": 50.447,
+  "health_samples": 41,
+  "restart_results": [
+    {
+      "event": "restart_pass",
+      "generation": 2,
+      "initial_recovery_ms": 320,
+      "old_lease_fenced": true,
+      "old_transport_retired_ms": 2021,
+      "ready_ms": 309,
+      "session_discarded": true
+    },
+    {
+      "event": "restart_pass",
+      "generation": 3,
+      "initial_recovery_ms": 310,
+      "old_lease_fenced": true,
+      "old_transport_retired_ms": 2020,
+      "ready_ms": 299,
+      "session_discarded": true
+    }
+  ],
+  "batch_results": [
+    {
+      "elapsed_ms": 3128,
+      "equal_capture_lengths": [
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600,
+        1600
+      ],
+      "event": "batch_pass",
+      "first_frame": 299424,
+      "immediate_refused": 0,
+      "last_frame": 447200,
+      "recording": true,
+      "skip": 1,
+      "targets": 16,
+      "xruns": 0
+    },
+    {
+      "elapsed_ms": 3098,
+      "equal_capture_lengths": [
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416,
+        416
+      ],
+      "event": "batch_pass",
+      "first_frame": 735360,
+      "immediate_refused": 0,
+      "last_frame": 881184,
+      "recording": true,
+      "skip": 1,
+      "targets": 32,
+      "xruns": 0
+    }
+  ],
+  "whole_device_boot_during_test": false,
+  "service_replacement_count": 2,
+  "final_factory_temperature_c": 51.308001708828,
+  "result": "pass",
+  "final_state": "Factory Linux, no Shoop audio workload",
+  "physical_reset_button_required": false,
+  "probe_source_sha256": "fb36d6234e65474470c671046a5150795536eaf2fd4f5c0f9b371dbbb866b61b",
+  "probe_binary_sha256": "e3b7bdba1aba6c9465a6cea2833b4555a1ce33828a45975dc8cd9b9e48f7dd9f",
+  "fresh_telemetry_deadline_ms": 3000,
+  "sampled_overtemperature": false,
+  "final_authenticated_device_reset": true,
+  "board_programmed": true,
+  "bitstream_routed": true,
+  "clock_hz": 100000000,
+  "setup_wns_ns": 0.321,
+  "hold_whs_ns": 0.027,
+  "thermal_trip_physically_tested": false,
+  "physical_audio_output_qualified": false,
+  "standalone_sd_boot_qualified": false,
+  "scope": "One bounded 16/32-loop future-recording-arm run, skip=1; generated-audio FPGA backend; two recording-active backend restarts",
+  "test_time": "2026-11-25T20:41:23.294536+01:00",
+  "sync_and_arming_events": [
+    {
+      "event": "sync_running",
+      "length_frames": 49408,
+      "targets": 16
+    },
+    {
+      "elapsed_ms": 33,
+      "event": "batch_armed",
+      "frame": 300320,
+      "targets": 16
+    },
+    {
+      "event": "sync_running",
+      "length_frames": 49824,
+      "targets": 32
+    },
+    {
+      "elapsed_ms": 32,
+      "event": "batch_armed",
+      "frame": 736992,
+      "targets": 32
+    }
+  ]
+}

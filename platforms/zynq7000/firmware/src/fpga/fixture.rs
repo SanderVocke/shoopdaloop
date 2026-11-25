@@ -4,6 +4,8 @@ use super::{run, shoop_fpga_irq_start, shoop_fpga_irq_stop, shoop_fpga_irq_wait}
 #[cfg(feature = "fpga-probe")]
 use core::fmt::Write;
 use rt_fpga_rtl::host::registers::*;
+#[cfg(feature = "fpga")]
+extern crate alloc;
 
 extern "C" {
     fn shoop_boot_nonce() -> u64;
@@ -23,7 +25,48 @@ pub(super) struct Fixture {
 
 #[cfg(feature = "fpga")]
 #[derive(Clone)]
+struct Patch {
+    address: usize,
+    expected: u64,
+    guard: u64,
+    mask: u64,
+    value: u64,
+    rebase: bool,
+}
+
+#[cfg(feature = "fpga")]
+struct Patches(alloc::vec::Vec<Patch>);
+#[cfg(feature = "fpga")]
+impl Clone for Patches {
+    fn clone(&self) -> Self {
+        let mut patches = alloc::vec::Vec::with_capacity(512);
+        patches.extend(self.0.iter().cloned());
+        Self(patches)
+    }
+}
+#[cfg(feature = "fpga")]
+impl core::ops::Deref for Patches {
+    type Target = alloc::vec::Vec<Patch>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+#[cfg(feature = "fpga")]
+impl core::ops::DerefMut for Patches {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "fpga")]
+#[derive(Clone)]
 struct Dispatcher {
+    batch: Patches,
+    batch_open: bool,
+    batch_limit: usize,
+    batch_revision: u64,
+    batch_frame: u64,
+    batch_deadline: Option<u64>,
     request: [u32; HOST_PAYLOAD_WORDS],
     response: [u32; HOST_PAYLOAD_WORDS],
     code: u32,
@@ -123,6 +166,17 @@ impl Dispatcher {
     fn execute(&mut self, operation: u32) {
         self.response.fill(0);
         self.code = RESULT_OK;
+        if matches!(
+            operation,
+            OP_BEGIN_BATCH | OP_STAGE_PATCH | OP_COMMIT_BATCH | OP_DISCARD_BATCH
+        ) && (self.request[9..].iter().any(|word| *word != 0)
+            || (matches!(operation, OP_COMMIT_BATCH | OP_DISCARD_BATCH)
+                && self.request.iter().any(|word| *word != 0)))
+        {
+            self.batch_open = false;
+            self.code = RESULT_INVALID;
+            return;
+        }
         let pair = |offset: usize| {
             u64::from(self.request[offset]) | u64::from(self.request[offset + 1]) << 32
         };
@@ -161,9 +215,94 @@ impl Dispatcher {
                 self.revision = pair(2);
                 self.response[..4].copy_from_slice(&frame_revision(self.frame, self.revision));
             }
+            OP_BEGIN_BATCH
+                if !self.held
+                    && (1..=512).contains(&self.request[4])
+                    && (1..=32).contains(&self.request[5])
+                    && self.request[4] <= self.request[5] * 16
+                    && self.request[6] <= 1 =>
+            {
+                self.batch.clear();
+                self.batch_open = true;
+                self.batch_limit = self.request[4] as usize;
+                self.batch_revision = pair(0);
+                self.batch_frame = pair(2);
+                self.batch_deadline = (self.request[6] != 0).then(|| pair(7));
+            }
+            OP_STAGE_PATCH if self.batch_open => {
+                let address = (self.request[0] & 0xffff) as usize;
+                if self.held
+                    || self.request[0] >> 17 != 0
+                    || (self.request[0] & (1 << 16) != 0 && !matches!(address & 15, 10 | 13))
+                    || self.batch.len() == self.batch_limit
+                    || address >= self.rows.len()
+                    || self.batch.last().is_some_and(|p| p.address >= address)
+                {
+                    self.batch_open = false;
+                    self.code = RESULT_INVALID;
+                } else {
+                    self.batch.push(Patch {
+                        address,
+                        expected: pair(1),
+                        guard: pair(3),
+                        mask: pair(5),
+                        value: pair(7),
+                        rebase: self.request[0] & (1 << 16) != 0,
+                    });
+                }
+            }
+            OP_COMMIT_BATCH => {
+                self.response[..4].copy_from_slice(&frame_revision(self.frame, self.revision));
+                let valid = self.batch_open && self.batch.len() == self.batch_limit;
+                self.batch_open = false;
+                let reason = if !valid {
+                    Some(0)
+                } else if self.batch_revision != self.revision {
+                    Some(2)
+                } else if self.batch_frame > self.frame
+                    || self.batch_deadline.is_some_and(|end| self.frame > end)
+                {
+                    Some(1)
+                } else if self.batch.iter().any(|p| {
+                    (self.rows[p.address] ^ p.expected) & p.guard != 0
+                        || (p.rebase
+                            && p.value
+                                .checked_sub(self.batch_frame)
+                                .and_then(|delta| self.frame.checked_add(delta))
+                                .is_none())
+                }) {
+                    Some(3)
+                } else {
+                    None
+                };
+                if let Some(reason) = reason {
+                    self.code = RESULT_REJECTED;
+                    self.response[4] = reason;
+                } else {
+                    for p in self.batch.iter() {
+                        let value = if p.rebase {
+                            self.frame + (p.value - self.batch_frame)
+                        } else {
+                            p.value
+                        };
+                        self.rows[p.address] = (self.rows[p.address] & !p.mask) | (value & p.mask);
+                    }
+                }
+            }
+            OP_DISCARD_BATCH => self.batch_open = false,
             OP_ENABLE_AUDIO => self.audio = self.request[0] == 1,
             OP_DRAIN_STOP if !self.held => self.audio = false,
-            _ => self.code = RESULT_REJECTED,
+            _ => {
+                if matches!(
+                    operation,
+                    OP_BEGIN_BATCH | OP_STAGE_PATCH | OP_COMMIT_BATCH | OP_DISCARD_BATCH
+                ) {
+                    self.batch_open = false;
+                    self.code = RESULT_INVALID;
+                } else {
+                    self.code = RESULT_REJECTED;
+                }
+            }
         }
     }
 }
@@ -187,6 +326,12 @@ pub(super) fn bus() -> Fixture {
         tag: 0,
         #[cfg(feature = "fpga")]
         dispatcher: Dispatcher {
+            batch: Patches(alloc::vec::Vec::with_capacity(512)),
+            batch_open: false,
+            batch_limit: 0,
+            batch_revision: 0,
+            batch_frame: 0,
+            batch_deadline: None,
             request: [0; HOST_PAYLOAD_WORDS],
             response: [0; HOST_PAYLOAD_WORDS],
             code: 0,

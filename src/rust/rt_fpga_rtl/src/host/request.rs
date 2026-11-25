@@ -73,6 +73,64 @@ impl Request {
         Self::new(OP_END_CONTROL, &[])
     }
 
+    pub fn begin_batch(
+        revision: u64,
+        frame: u64,
+        patches: u32,
+        commands: u32,
+        deadline: Option<u64>,
+    ) -> Self {
+        let end = deadline.unwrap_or(0);
+        Self::new(
+            OP_BEGIN_BATCH,
+            &[
+                revision as u32,
+                (revision >> 32) as u32,
+                frame as u32,
+                (frame >> 32) as u32,
+                patches,
+                commands,
+                u32::from(deadline.is_some()),
+                end as u32,
+                (end >> 32) as u32,
+            ],
+        )
+    }
+
+    pub fn stage_patch(
+        address: u32,
+        expected: u64,
+        guard: u64,
+        mask: u64,
+        value: u64,
+        rebase: bool,
+    ) -> Option<Self> {
+        if address > 0xffff || (rebase && !matches!(address & 15, 10 | 13)) {
+            return None;
+        }
+        Some(Self::new(
+            OP_STAGE_PATCH,
+            &[
+                address | (u32::from(rebase) << 16),
+                expected as u32,
+                (expected >> 32) as u32,
+                guard as u32,
+                (guard >> 32) as u32,
+                mask as u32,
+                (mask >> 32) as u32,
+                value as u32,
+                (value >> 32) as u32,
+            ],
+        ))
+    }
+
+    pub fn commit_batch() -> Self {
+        Self::new(OP_COMMIT_BATCH, &[])
+    }
+    pub fn discard_batch() -> Self {
+        Self::new(OP_DISCARD_BATCH, &[])
+    }
+
     pub fn drain_stop() -> Self {
         Self::new(OP_DRAIN_STOP, &[])
     }

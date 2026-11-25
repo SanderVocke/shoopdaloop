@@ -1,0 +1,23 @@
+{
+  "bitstream_sha256": "4f0c995366031c740bf3c3aa25ff2252ebe016047e690841cfbe3406095bb0d1",
+  "bitstream_bytes": 4045674,
+  "xsa_contains_identical_bitstream": true,
+  "ctl0_writes": [
+    {
+      "offset": 262,
+      "mask": "0x1401",
+      "value": "0x1501",
+      "overtemp_bit_12": true
+    },
+    {
+      "offset": 4044042,
+      "mask": "0x1501",
+      "value": "0x1501",
+      "overtemp_bit_12": true
+    }
+  ],
+  "thermal_report_verified": true,
+  "board_programmed": false,
+  "thermal_trip_physically_tested": false,
+  "verification_stage": "before programming; later successful board programming is recorded in result.json"
+}

@@ -12,7 +12,7 @@ use rt_fpga_rtl::{
     host::{
         control::{
             composite_telemetry, descriptor, loop_plan, loop_state, protocol_mode, reference_mode,
-            ControlWindow, ProgramSession,
+            ControlWindow, LoopBatch, ProgramSession,
         },
         registers::{HOST_PAYLOAD_WORDS, RESULT_OK},
         Client, Error, Geometry, Mailbox, RegisterBus, Request,
@@ -48,6 +48,7 @@ struct FutureAttempt {
 
 pub struct Owner<B> {
     session: ProgramSession<B>,
+    batch: LoopBatch,
     execution: rt::Execution,
     images: ImageOwner,
     geometry: Geometry,
@@ -104,6 +105,7 @@ where
         endpoint,
         Owner {
             session: ProgramSession::new(Client::new(mailbox)),
+            batch: LoopBatch::new(),
             execution,
             images: owner,
             geometry,
@@ -535,6 +537,97 @@ where
         outcome.map(|(_, code)| code == Code::Applied)
     }
 
+    fn future_batch(
+        &mut self,
+        revision: u64,
+        deadline: Option<u64>,
+        records: &mut [CommandRecord],
+        within_budget: &mut impl FnMut() -> bool,
+    ) -> Result<Option<(u64, Code)>> {
+        if records.len() < 2 || !records.iter().all(|record| matches!(record.command(), Command::Transition(_, plan) if plan.now.is_none())) {
+            return Ok(None);
+        }
+        self.batch.clear();
+        if records.iter().any(|record| !record.command().valid()) {
+            return Ok(Some((self.frame, Code::InvalidValue)));
+        }
+        let (active, client) = self.session.active_and_client();
+        let Some(active) = active else {
+            return Ok(Some((self.frame, Code::TargetUnavailable)));
+        };
+        let slots = self
+            .rows
+            .iter()
+            .map(|row| row.physical.slot + 1)
+            .max()
+            .unwrap_or(0);
+        let snapshot = device_result(request(
+            client,
+            Request::capture_snapshot(slots),
+            &mut *within_budget,
+        ))?;
+        let frame = join(snapshot[1], snapshot[2]);
+        if join(snapshot[3], snapshot[4]) != revision {
+            return Ok(Some((frame, Code::StaleConfiguration)));
+        }
+        if deadline.is_some_and(|end| frame > end) {
+            return Ok(Some((frame, Code::DeadlineMissed)));
+        }
+        for record in records.iter_mut() {
+            let Command::Transition(target, plan) = record.command() else {
+                unreachable!()
+            };
+            let Some(row) = self.rows.iter().find(|row| row.logical.slot == target) else {
+                return Ok(Some((frame, Code::TargetUnavailable)));
+            };
+            let mut words = [0; 16];
+            for (index, chunk) in words.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
+                let data = device_result(request(
+                    client,
+                    Request::read_snapshot(
+                        snapshot[0],
+                        row.physical.slot * 16 + (index * (HOST_PAYLOAD_WORDS / 2)) as u32,
+                        chunk.len() as u32,
+                    ),
+                    &mut *within_budget,
+                ))?;
+                for (word, data) in chunk.iter_mut().zip(data.chunks_exact(2)) {
+                    *word = join(data[0], data[1]);
+                }
+            }
+            let source = active
+                .layout
+                .loops
+                .iter()
+                .find(|allocation| allocation.physical == row.physical)
+                .and_then(|allocation| allocation.sync_source)
+                .map(|id| active.layout.loop_id(id))
+                .transpose()
+                .map_err(|_| anyhow::anyhow!("missing FPGA sync source"))?
+                .map(|id| LoopId {
+                    slot: id.slot,
+                    generation: id.generation,
+                });
+            let code = match self
+                .batch
+                .add_future(row.physical, source, words, frame, plan)
+            {
+                Ok(code) => code,
+                Err(code) => return Ok(Some((frame, code))),
+            };
+            *record = record.complete(code);
+        }
+        device_result(self.batch.commit(
+            client,
+            revision,
+            frame,
+            records.len() as u32,
+            deadline,
+            within_budget,
+        ))
+        .map(Some)
+    }
+
     fn apply(
         &mut self,
         revision: u64,
@@ -543,6 +636,9 @@ where
         program_lane: bool,
         within_budget: &mut impl FnMut() -> bool,
     ) -> Result<Option<(u64, Code)>> {
+        if let Some(result) = self.future_batch(revision, deadline, records, within_budget)? {
+            return Ok(Some(result));
+        }
         let switching = records.last().and_then(|record| match record.command() {
             Command::SwitchProgram(candidate) => Some(candidate),
             _ => None,

@@ -1,0 +1,118 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Wed Nov 25 19:37:12 2026
+| Host         : 8a1a662adda4 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_drc -file /build/drc.rpt
+| Design       : system_wrapper
+| Device       : xc7z020clg400-2
+| Speed File   : -2
+| Design State : Fully Routed
+------------------------------------------------------------------------------------
+
+Report DRC
+
+Table of Contents
+-----------------
+1. REPORT SUMMARY
+2. REPORT DETAILS
+
+1. REPORT SUMMARY
+-----------------
+            Netlist: netlist
+          Floorplan: impl_1
+      Design limits: <entire design considered>
+           Ruledeck: default
+             Max violations: <unlimited>
+             Violations found: 16
++--------+----------+------------------------+------------+
+| Rule   | Severity | Description            | Violations |
++--------+----------+------------------------+------------+
+| DPIP-1 | Warning  | Input pipelining       | 8          |
+| DPOP-1 | Warning  | PREG Output pipelining | 4          |
+| DPOP-2 | Warning  | MREG Output pipelining | 4          |
++--------+----------+------------------------+------------+
+
+2. REPORT DETAILS
+-----------------
+DPIP-1#1 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#2 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#3 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#4 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#5 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#6 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#7 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-1#8 Warning
+Input pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0 input system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPOP-1#1 Warning
+PREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0 output system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-1#2 Warning
+PREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0 output system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-1#3 Warning
+PREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0 output system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-1#4 Warning
+PREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0 output system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-2#1 Warning
+MREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0 multiplier stage system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hh_reg0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-2#2 Warning
+MREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0 multiplier stage system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_hl_reg0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-2#3 Warning
+MREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0 multiplier stage system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_lh_reg0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-2#4 Warning
+MREG Output pipelining  
+DSP system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0 multiplier stage system_i/core/inst/bridge/core/core/pipeline/sample_engine/partial_ll_reg0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+

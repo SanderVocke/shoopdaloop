@@ -102,7 +102,9 @@ module host_dispatch #(
     import host_registers::*;
     typedef enum logic [4:0] {IDLE, CFG_REQUEST, CFG_WAIT, AUDIO_REQUEST, AUDIO_WAIT,
         STORE_CFG_REQUEST, STORE_CFG_WAIT, CLEAR_REQUEST, CLEAR_WAIT, SWITCH_REQUEST, SWITCH_WAIT,
-        RUN_REQUEST, RUN_WAIT, SNAPSHOT_REQUEST, SNAPSHOT_WAIT, SNAPSHOT_READ, SNAPSHOT_COPY, RESPOND} phase_t;
+        RUN_REQUEST, RUN_WAIT, SNAPSHOT_REQUEST, SNAPSHOT_WAIT, SNAPSHOT_READ, SNAPSHOT_COPY, RESPOND,
+        BATCH_LOAD, BATCH_SELECT, BATCH_READ_REQUEST, BATCH_READ_WAIT,
+        BATCH_WRITE_REQUEST, BATCH_WRITE_WAIT} phase_t;
     phase_t phase;
     reg [319:0] args;
     reg [31:0] cycles;
@@ -120,6 +122,28 @@ module host_dispatch #(
     reg snapshot_bank;
     reg [2:0] snapshot_reply_word;
 
+    localparam integer BATCH_PATCHES = 512;
+    (* ram_style = "block" *) reg [272:0] batch_memory [0:BATCH_PATCHES-1];
+    (* ram_style = "block" *) reg [63:0] batch_values [0:BATCH_PATCHES-1];
+    reg [272:0] batch_entry;
+    reg [63:0] batch_value;
+    reg batch_open, batch_writing, batch_deadline_valid;
+    reg [9:0] batch_count, batch_limit, batch_index;
+    reg [15:0] batch_last_address;
+    reg [63:0] batch_revision, batch_frame, batch_deadline;
+    wire [15:0] batch_address = batch_entry[15:0];
+    wire batch_rebase = batch_entry[16];
+    wire [63:0] batch_expected = batch_entry[17 +: 64];
+    wire [63:0] batch_guard = batch_entry[81 +: 64];
+    wire [63:0] batch_mask = batch_entry[145 +: 64];
+    wire [63:0] batch_next = batch_entry[209 +: 64];
+    wire [64:0] batch_rebased = {1'b0,sync_frame} + {1'b0,batch_next} - {1'b0,batch_frame};
+    wire [63:0] batch_replacement = batch_rebase ? batch_rebased[63:0] : batch_next;
+    wire batch_reading = phase == BATCH_READ_REQUEST || phase == BATCH_READ_WAIT;
+    wire batch_applying = phase == BATCH_WRITE_REQUEST || phase == BATCH_WRITE_WAIT;
+    wire batch_last = batch_index+1 == batch_limit;
+    wire batch_write_failed = phase == BATCH_WRITE_WAIT && cfg_response_valid && cfg_response_error;
+
     wire [2:0] space = args[2:0];
     wire [31:0] address = args[32 +: 32];
     wire writing = args[8];
@@ -134,7 +158,7 @@ module host_dispatch #(
     wire control_expired = control_held && control_cycles >= CONTROL_CYCLES-1;
     wire device_fault = memory_fault || audio_fault || event_overflow || control_expired || host_abort;
     wire watchdog_expired = executing && cycles >= WATCHDOG_CYCLES;
-    wire pipeline_failed = phase == RUN_WAIT && done && error_code != 0;
+    wire pipeline_failed = (phase == RUN_WAIT && done && error_code != 0) || batch_write_failed;
     wire [31:0] causes = (memory_fault ? FAULT_MEMORY : 0)
         | (audio_fault ? FAULT_AUDIO : 0) | (event_overflow ? FAULT_EVENT_OVERFLOW : 0)
         | (control_expired ? FAULT_CONTROL_TIMEOUT : 0) | (host_abort ? FAULT_ABORT : 0)
@@ -143,12 +167,14 @@ module host_dispatch #(
     assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid && !control_held);
     assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !device_fault;
     assign response_valid = phase == RESPOND;
-    assign cfg_valid = phase == CFG_REQUEST || phase == SNAPSHOT_REQUEST;
+    assign cfg_valid = phase == CFG_REQUEST || phase == SNAPSHOT_REQUEST ||
+        phase == BATCH_READ_REQUEST || phase == BATCH_WRITE_REQUEST;
     assign cfg_state = phase == CFG_REQUEST && space[1:0] == 1;
-    assign cfg_loop = phase == SNAPSHOT_REQUEST || space[1:0] == 2;
-    assign cfg_write = phase == CFG_REQUEST && writing;
-    assign cfg_address = phase == SNAPSHOT_REQUEST ? snapshot_base[15:0]+snapshot_pos[15:0] : address[15:0];
-    assign cfg_write_data = args[64 +: `SHOOP_SP_STATE_BITS];
+    assign cfg_loop = batch_reading || batch_applying || phase == SNAPSHOT_REQUEST || space[1:0] == 2;
+    assign cfg_write = phase == BATCH_WRITE_REQUEST || (phase == CFG_REQUEST && writing);
+    assign cfg_address = batch_reading || batch_applying ? batch_address :
+        phase == SNAPSHOT_REQUEST ? snapshot_base[15:0]+snapshot_pos[15:0] : address[15:0];
+    assign cfg_write_data = batch_applying ? {{(`SHOOP_SP_STATE_BITS-64){1'b0}},batch_value} : args[64 +: `SHOOP_SP_STATE_BITS];
     assign audio_cfg_valid = phase == AUDIO_REQUEST;
     assign audio_cfg_space = space[1:0];
     assign audio_cfg_write = writing;
@@ -184,6 +210,15 @@ module host_dispatch #(
     always @(posedge clk) begin
         if (phase == SNAPSHOT_WAIT && cfg_response_valid && !cfg_response_error)
             snapshot_memory[SNAPSHOT_INDEX'((snapshot_bank ? 0 : SNAPSHOT_WORDS) + snapshot_pos)] <= cfg_read_data[63:0];
+        if (phase == BATCH_LOAD) begin
+            batch_entry <= batch_memory[batch_index[8:0]];
+            batch_value <= batch_values[batch_index[8:0]];
+        end
+        if (phase == BATCH_READ_WAIT && cfg_response_valid && !cfg_response_error)
+            batch_values[batch_index[8:0]] <= (cfg_read_data[63:0] & ~batch_mask) | (batch_replacement & batch_mask);
+        if (phase == IDLE && command_valid && command_ready && command_op == OP_STAGE_PATCH &&
+            batch_open && batch_count < batch_limit && 32'(batch_count) < BATCH_PATCHES)
+            batch_memory[batch_count[8:0]] <= {request[287:32],request[16:0]};
         if (phase == SNAPSHOT_READ)
             snapshot_read_data <= snapshot_memory[SNAPSHOT_INDEX'((snapshot_bank ? SNAPSHOT_WORDS : 0) + snapshot_pos)];
     end
@@ -214,6 +249,16 @@ module host_dispatch #(
 
     always @(posedge clk) begin
         if (reset) begin
+            batch_open <= 0;
+            batch_writing <= 0;
+            batch_deadline_valid <= 0;
+            batch_count <= 0;
+            batch_limit <= 0;
+            batch_index <= 0;
+            batch_last_address <= 0;
+            batch_revision <= 0;
+            batch_frame <= 0;
+            batch_deadline <= 0;
             fault <= 0;
             current_tag <= 0;
             current_op <= 0;
@@ -271,6 +316,9 @@ module host_dispatch #(
                     cycles <= 0;
                     paced <= 0;
                     phase <= RESPOND;
+                    if (command_op == OP_BEGIN_BATCH || command_op == OP_COMMIT_BATCH ||
+                        command_op == OP_DISCARD_BATCH || (command_op == OP_STAGE_PATCH && request_extra))
+                        batch_open <= 0;
                     if (!request_extra) case (command_op)
                         OP_CORE_CONFIG: if ((request_control & ~32'h103) == 0 && request_control[1:0] != 3 &&
                             request[63:48] == 0 && request[319:193] == 0) phase <= CFG_REQUEST;
@@ -328,6 +376,51 @@ module host_dispatch #(
                                 response_code <= RESULT_OK;
                             end else response_code <= RESULT_REJECTED;
                         end
+                        OP_BEGIN_BATCH: if (request[319:288] == 0 && !control_held &&
+                            request[159:128] > 0 && request[159:128] <= BATCH_PATCHES &&
+                            request[191:160] > 0 && request[191:160] <= 32 &&
+                            request[159:128] <= request[191:160]*16 && request[223:193] == 0) begin
+                            batch_open <= 1;
+                            batch_count <= 0;
+                            batch_limit <= request[137:128];
+                            batch_revision <= request[63:0];
+                            batch_frame <= request[127:64];
+                            batch_deadline_valid <= request[192];
+                            batch_deadline <= request[287:224];
+                            response_code <= RESULT_OK;
+                        end
+                        OP_STAGE_PATCH: begin
+                            if (batch_open && !control_held && batch_count < batch_limit &&
+                                request[319:288] == 0 && request[31:17] == 0 &&
+                                32'(request[15:0]) < STATE_DEPTH*16 &&
+                                (batch_count == 0 || request[15:0] > batch_last_address) &&
+                                (!request[16] || (request[3:0] == 10 || request[3:0] == 13))) begin
+                                batch_count <= batch_count+1;
+                                batch_last_address <= request[15:0];
+                                response_code <= RESULT_OK;
+                            end else batch_open <= 0;
+                        end
+                        OP_COMMIT_BATCH: if (request[319:0] == 0) begin
+                            batch_open <= 0;
+                            response_data[127:0] <= {active_revision,sync_frame};
+                            response_code <= RESULT_REJECTED;
+                            if (batch_open && !control_held && batch_count == batch_limit) begin
+                                if (batch_revision != active_revision) response_data[159:128] <= 2;
+                                else if (batch_frame > sync_frame ||
+                                    (batch_deadline_valid && sync_frame > batch_deadline)) response_data[159:128] <= 1;
+                                else begin
+                                    control_held <= 1;
+                                    control_cycles <= 0;
+                                    batch_index <= 0;
+                                    batch_writing <= 0;
+                                    phase <= BATCH_LOAD;
+                                end
+                            end
+                        end
+                        OP_DISCARD_BATCH: if (request[319:0] == 0) begin
+                            batch_open <= 0;
+                            response_code <= RESULT_OK;
+                        end
                         OP_DRAIN_STOP: if (request[319:0] == 0 && !control_held) begin
                             audio_enable <= 0;
                             draining <= 1;
@@ -341,6 +434,54 @@ module host_dispatch #(
                     paced <= 1;
                     cycles <= 0;
                     phase <= RUN_REQUEST;
+                end
+                BATCH_LOAD: phase <= BATCH_SELECT;
+                BATCH_SELECT: begin
+                    if (!batch_writing) phase <= BATCH_READ_REQUEST;
+                    else if (batch_mask != 0) phase <= BATCH_WRITE_REQUEST;
+                    else if (batch_last) begin
+                        control_held <= 0;
+                        response_code <= RESULT_OK;
+                        response_data[191:160] <= control_cycles;
+                        phase <= RESPOND;
+                    end else begin
+                        batch_index <= batch_index+1;
+                        phase <= BATCH_LOAD;
+                    end
+                end
+                BATCH_READ_REQUEST: if (cfg_ready) phase <= BATCH_READ_WAIT;
+                BATCH_READ_WAIT: if (cfg_response_valid) begin
+                    if (cfg_response_error || ((cfg_read_data[63:0] ^ batch_expected) & batch_guard) != 0 ||
+                        (batch_rebase && (batch_next < batch_frame || batch_rebased[64]))) begin
+                        control_held <= 0;
+                        response_code <= RESULT_REJECTED;
+                        response_data[159:128] <= 3;
+                        phase <= RESPOND;
+                    end else begin
+                        if (batch_last) begin
+                            batch_index <= 0;
+                            batch_writing <= 1;
+                        end else batch_index <= batch_index+1;
+                        phase <= BATCH_LOAD;
+                    end
+                end
+                BATCH_WRITE_REQUEST: if (cfg_ready) phase <= BATCH_WRITE_WAIT;
+                BATCH_WRITE_WAIT: if (cfg_response_valid) begin
+                    if (cfg_response_error) begin
+                        fault <= 1;
+                        audio_enable <= 0;
+                        control_held <= 0;
+                        response_code <= RESULT_FAULT;
+                        phase <= RESPOND;
+                    end else if (batch_last) begin
+                        control_held <= 0;
+                        response_code <= RESULT_OK;
+                        response_data[191:160] <= control_cycles;
+                        phase <= RESPOND;
+                    end else begin
+                        batch_index <= batch_index+1;
+                        phase <= BATCH_LOAD;
+                    end
                 end
                 CFG_REQUEST: if (cfg_ready) phase <= CFG_WAIT;
                 CFG_WAIT: if (cfg_response_valid) begin
