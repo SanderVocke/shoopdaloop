@@ -2,12 +2,11 @@
 
 ## Status and execution contract
 
-**Investigation authorized through the Stage 2 decision checkpoint; production
-implementation remains blocked.** Stages 0 and 1 are complete; work has stopped
-at the Stage 2 user decision. See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
+**Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–2 are
+complete; Stage 3 is in progress. See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
 Branch: `investigate/fpga-command-fifo`, production base `ff6c09551e9dee2cd3a12d37ccad19fa844b09aa`.
-No board testing is authorized by this investigation.
+Physical testing still requires the separate authorization and protections in Stage 6.
 
 - Keep this plan updated as work progresses and check off completed items.
 - Commit each completed stage or meaningful milestone.
@@ -156,13 +155,31 @@ but must not replace the production path, remove its features or load the board.
 - [x] Present the investigation report, measured costs versus estimates, remaining
   integration risks, reduced composite capabilities and proposed numeric ceilings.
 - [x] Request the user's go/no-go on the report's proposed scope, policy and ceilings.
-- [ ] Record the user's decision, report/source SHA, approved resource/timing
+- [x] Record the user's decision, report/source SHA, approved resource/timing
   ceilings, capacity/service policy and capability scope. No approval is inferred.
 - [x] **Stop here until an explicit go is received.** On no-go, leave production
   behavior untouched, retain the evidence and list alternatives without proceeding.
   If a redesign is requested, repeat the relevant investigation before another gate.
 
-Decision: **PENDING — production implementation blocked.**
+Decision: **GO — explicitly supplied by the user:** “the plan in FPGA_CMD_FIFO.md
+is fully executed. I give the GO for all stages herein.” Confirmed goal:
+`mwwpv7oy-mi4ch5`.
+
+Approval binds to investigation commit `da2df1eeef556682adf1acb1a2c64fcd50da9996`
+and `results.json` SHA256 `a04445254a6c013d2e248300cbf83313f4ceb17753d17da57ac5d1b22e4dca6b`.
+Approved scope: the report's reduced FPGA composite profile, retained static
+composites/primitive switching, four complete banks of up to 32 commands,
+one complete group per quantum from a fixed publication cutoff, reserved replies
+and independently nonblocking snapshots. Native/browser support remains unchanged.
+
+Approved ceilings (report §6): kernel 2,500 LUT/2,500 FF/no DSP; replacement
+frontend 6,000 LUT/7,000 FF excluding existing execution/storage; whole design
+32,000 LUT/24,000 FF/100 RAMB36-equivalents/at most the existing four DSPs;
+command phase 4,096 cycles, snapshot phase 8,192 cycles for at most 128 rows,
+total admitted quantum 60,000 cycles at 100 MHz, Q=32/48 kHz; nonnegative routed
+setup/hold slack. Any breach returns to the user rather than weakening limits.
+This GO does not waive Stage 6's separate physical-test authorization or Stage 7's
+no-autonomous-merge rule.
 
 Verification: an explicit recorded user decision. All subsequent stages depend on
 that go; any later ceiling breach requires returning to the user, not silently
