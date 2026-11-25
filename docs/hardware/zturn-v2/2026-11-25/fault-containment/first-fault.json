@@ -1,0 +1,16 @@
+{
+  "epoch": 4,
+  "cause": 8,
+  "cause_names": [
+    "control_timeout"
+  ],
+  "tag": 55027,
+  "operation": 1,
+  "operation_name": "OP_CORE_CONFIG",
+  "cycles": 2,
+  "control_cycles": 16665,
+  "detail": 512,
+  "revision": 10,
+  "frame": 618144,
+  "original_abi13_crash_decoded": false
+}

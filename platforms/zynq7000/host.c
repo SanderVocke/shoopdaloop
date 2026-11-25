@@ -76,7 +76,7 @@ int shoop_deployment_ready(void) {
 #ifdef SHOOP_DEPLOYMENT
     return shoop_deploy_confirm();
 #else
-    return 1;
+    return shoop_watchdog_ready();
 #endif
 }
 int shoop_deployment_info(struct shoop_deployment_info *output) {

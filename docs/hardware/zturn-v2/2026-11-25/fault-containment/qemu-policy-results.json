@@ -1,0 +1,122 @@
+{
+  "version": "10.0.13",
+  "action": "poweroff",
+  "physical_board_evidence": false,
+  "cases": [
+    {
+      "kind": "control",
+      "result": "pass",
+      "watchdog_event": true,
+      "one_entry_no_replay": true,
+      "emulated_global_timer_hz": 100000000,
+      "firmware_global_timer_hz": 333333333,
+      "events": [
+        {
+          "timestamp": {
+            "seconds": 1795617740,
+            "microseconds": 304670
+          },
+          "event": "WATCHDOG",
+          "data": {
+            "action": "poweroff"
+          }
+        }
+      ],
+      "firmware_sha256": "883814016af0798020e501cb8346fe89f1964326bd760055545b356df9b11747",
+      "test_after_ready_ms": 35000
+    },
+    {
+      "kind": "broker",
+      "result": "pass",
+      "watchdog_event": true,
+      "one_entry_no_replay": true,
+      "emulated_global_timer_hz": 100000000,
+      "firmware_global_timer_hz": 333333333,
+      "events": [
+        {
+          "timestamp": {
+            "seconds": 1795617740,
+            "microseconds": 357945
+          },
+          "event": "WATCHDOG",
+          "data": {
+            "action": "poweroff"
+          }
+        }
+      ],
+      "firmware_sha256": "b329014fec289118a8f9c90f4015663592ca049ed59ac453544b850e5de727b4",
+      "test_after_ready_ms": 35000
+    },
+    {
+      "kind": "render",
+      "result": "pass",
+      "watchdog_event": true,
+      "one_entry_no_replay": true,
+      "emulated_global_timer_hz": 100000000,
+      "firmware_global_timer_hz": 333333333,
+      "events": [
+        {
+          "timestamp": {
+            "seconds": 1795617740,
+            "microseconds": 448639
+          },
+          "event": "WATCHDOG",
+          "data": {
+            "action": "poweroff"
+          }
+        }
+      ],
+      "firmware_sha256": "7abcc0ddc75d69fb65010dfd7ef71fe2bec34a47fce32b628ea8cb2be0cba9a1",
+      "test_after_ready_ms": 35000
+    },
+    {
+      "kind": "freeze",
+      "result": "pass",
+      "watchdog_event": true,
+      "one_entry_no_replay": true,
+      "emulated_global_timer_hz": 100000000,
+      "firmware_global_timer_hz": 333333333,
+      "events": [
+        {
+          "timestamp": {
+            "seconds": 1795617729,
+            "microseconds": 999046
+          },
+          "event": "WATCHDOG",
+          "data": {
+            "action": "poweroff"
+          }
+        }
+      ],
+      "firmware_sha256": "9c49eaf21bcd36df75d76197a18cd649143a86c7f9ba5a5e54538ef211157808",
+      "test_after_ready_ms": 32000
+    },
+    {
+      "kind": "undefined",
+      "result": "pass",
+      "watchdog_event": true,
+      "one_entry_no_replay": true,
+      "emulated_global_timer_hz": 100000000,
+      "firmware_global_timer_hz": 333333333,
+      "events": [
+        {
+          "timestamp": {
+            "seconds": 1795617729,
+            "microseconds": 947083
+          },
+          "event": "WATCHDOG",
+          "data": {
+            "action": "poweroff"
+          }
+        }
+      ],
+      "firmware_sha256": "83bf417fec3546a91d7e4f13e97b65d0296eb8feebf33c224d667f7a365970fc",
+      "test_after_ready_ms": 32000
+    }
+  ],
+  "earlier_harness_failures": [
+    "Initial bound expired before fault because modeled global timer runs at 100 MHz, not firmware-assumed 333333333 Hz",
+    "Long run-directory Unix QMP socket path exceeded 107 bytes before VM startup",
+    "QEMU watchdog action shutdown requests guest powerdown; bare-metal firmware does not implement it. Final cases explicitly used poweroff."
+  ]
+}

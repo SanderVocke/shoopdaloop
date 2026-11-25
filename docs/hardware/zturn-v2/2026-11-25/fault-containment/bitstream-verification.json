@@ -1,0 +1,22 @@
+{
+  "bitstream_sha256": "ade84b2d72d445a54d362587ef006ac8c8622589a146ff85dbea6ba0bb7c9291",
+  "bitstream_bytes": 4045674,
+  "xsa_contains_identical_bitstream": true,
+  "ctl0_writes": [
+    {
+      "offset": 262,
+      "mask": "0x1401",
+      "value": "0x1501",
+      "overtemp_bit_12": true
+    },
+    {
+      "offset": 4044042,
+      "mask": "0x1501",
+      "value": "0x1501",
+      "overtemp_bit_12": true
+    }
+  ],
+  "thermal_report_verified": true,
+  "board_programmed": false,
+  "thermal_trip_physically_tested": false
+}

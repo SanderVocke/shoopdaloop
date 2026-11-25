@@ -1,5 +1,10 @@
 # Z-turn V2 backend restart: partial physical qualification
 
+This directory preserves the historical **ABI-13** attempt and its checkpoint.
+A later protected ABI-14/watchdog pair passed failed-owner recovery; see the
+[separate follow-up evidence](../fault-containment/README.md) for its results and
+latest board/recovery state. Nothing below upgrades this ABI-13 attempt to a pass.
+
 **Overall result: not a complete pass.** Three healthy, recording-active backend
 restarts passed. The subsequent 16-loop bulk-arming test lost ARM/management
 responsiveness, preventing submission of the failed-owner restart. A safety device

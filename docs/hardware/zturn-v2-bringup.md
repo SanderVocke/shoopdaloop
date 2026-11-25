@@ -514,6 +514,35 @@ first cause remains undecoded. Do not conflate this whole-ARM unresponsiveness
 with the earlier owner-only failure.
 
 [Results, routed reports, source provenance and the MMIO-race reproducer](zturn-v2/2026-11-25/backend-restart/README.md).
-The staged-batch timing fix remains pending. Fault-safe MMIO and retained FPGA/
-ARM exception diagnostics are implemented in the subsequent ABI-14 source, but
-have not been built into a new bitstream or physically qualified; see `BUG_MAILBOX.md`.
+At that checkpoint, the ABI-14 source follow-up had not been built/programmed.
+The staged-batch timing fix remains pending; see `BUG_MAILBOX.md`.
+
+## Protected ABI-14 and watchdog follow-up — 2026-11-25
+
+Commit `1a71e1e45` records reboot/restart and fault diagnostics. Its pre-commit
+Linux suite passed 3583 tests, with 11 skipped; warning-denying build and WASM
+builds passed. Subsequent uncommitted direct-load watchdog work passed C
+regressions and native/FPGA Cortex-A9 builds.
+
+Physical native watchdog runs passed healthy operation, CPU freeze and undefined
+instruction: fresh factory U-Boot after 10.724/10.806 seconds from the fault marker.
+A CRC-valid undefined UART/RAM journal survived; PC resolved to the exact injected
+`udf`. This does not qualify physical data abort, permanent bus stall or FIQ isolation.
+
+The newly routed protected ABI-14 pair passed three healthy and one faulted-owner
+backend restart, Ready in 300/302/308/301 ms, with no ARM reboot. Bulk arming still
+faulted: retained first cause was control timeout at cycle 16665, while management
+remained alive. Final authenticated reboot reached factory Linux; factory hashes
+matched. Pinned QEMU 10.0.13 passed five modeled watchdog actor/fatal cases.
+
+A subsequent direct-MMIO check passed faulted/stale PUSH and stale ABORT/recovery
+rejections. Its harness then disabled the watchdog prematurely and booted factory
+Linux directly under the custom PL; boot stalled at the factory video driver.
+Serial emergency reset did not respond. The user's subsequent physical RESET
+restored factory Linux. The rearmed watcher captured the countdown/kernel/login,
+not the earlier U-Boot banner. Factory VTC reported `6.010`; boot-file hashes
+matched, and a fresh die-temperature check read 48.478°C. No test firmware was
+loaded or workload replayed. This separate recovery does not upgrade the failed
+MMIO-workflow return path to a pass.
+
+[Evidence, exact artifact digests and latest recovery state](zturn-v2/2026-11-25/fault-containment/README.md).

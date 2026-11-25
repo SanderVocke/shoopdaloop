@@ -1,0 +1,140 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Wed Nov 25 14:03:14 2026
+| Host         : 8110789ecb8e running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file /build/utilization.rpt
+| Design       : system_wrapper
+| Device       : 7z020clg400-2
+| Design State : Routed
+------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++------------------------------------------------------+----------------------------------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+|                       Instance                       |                             Module                             | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
++------------------------------------------------------+----------------------------------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+| system_wrapper                                       |                                                          (top) |      27103 |      26183 |     860 |   60 | 18784 |     83 |      7 |          4 |
+|   system_i                                           |                                                         system |      27103 |      26183 |     860 |   60 | 18784 |     83 |      7 |          4 |
+|     audio                                            |                                                 system_audio_0 |        626 |        626 |       0 |    0 |  1059 |      0 |      1 |          0 |
+|       inst                                           |                                           host_generated_audio |        626 |        626 |       0 |    0 |  1059 |      0 |      1 |          0 |
+|         (inst)                                       |                                           host_generated_audio |         48 |         48 |       0 |    0 |    41 |      0 |      0 |          0 |
+|         io                                           |                                                       audio_io |        578 |        578 |       0 |    0 |  1018 |      0 |      1 |          0 |
+|           (io)                                       |                                                       audio_io |        561 |        561 |       0 |    0 |  1018 |      0 |      0 |          0 |
+|           rx_lanes[0].samples                        |                                                 audio_lane_ram |         18 |         18 |       0 |    0 |     0 |      0 |      1 |          0 |
+|     core                                             |                                                  system_core_0 |      26083 |      25223 |     860 |    0 | 17232 |     83 |      6 |          4 |
+|       inst                                           |                                               host_pipeline_bd |      26083 |      25223 |     860 |    0 | 17232 |     83 |      6 |          4 |
+|         bridge                                       |                                              host_pipeline_axi |      26083 |      25223 |     860 |    0 | 17232 |     83 |      6 |          4 |
+|           (bridge)                                   |                                              host_pipeline_axi |          7 |          7 |       0 |    0 |     0 |      0 |      0 |          0 |
+|           core                                       |                                       media_audio_pipeline_axi |      22145 |      22141 |       4 |    0 | 13790 |     51 |      6 |          4 |
+|             core                                     |                                           media_audio_pipeline |      20927 |      20923 |       4 |    0 | 13104 |     51 |      6 |          4 |
+|               (core)                                 |                                           media_audio_pipeline |          0 |          0 |       0 |    0 |     2 |      0 |      0 |          0 |
+|               delay                                  |                                                   memory_delay |          1 |          1 |       0 |    0 |     1 |      0 |      0 |          0 |
+|               media                                  |                                                    media_store |      10315 |      10311 |       4 |    0 |  7434 |      7 |      5 |          0 |
+|                 (media)                              |                                                    media_store |       2695 |       2695 |       0 |    0 |  2781 |      0 |      0 |          0 |
+|                 descriptors                          |                                                      media_ram |        228 |        228 |       0 |    0 |     0 |      2 |      1 |          0 |
+|                 metadata                             |                                                 media_metadata |       5292 |       5288 |       4 |    0 |  3433 |      4 |      3 |          0 |
+|                   (metadata)                         |                                                 media_metadata |       4164 |       4160 |       4 |    0 |  2563 |      0 |      0 |          0 |
+|                   banks[0].cache                     |                                                 metadata_cache |        479 |        479 |       0 |    0 |   413 |      0 |      1 |          0 |
+|                     (banks[0].cache)                 |                                                 metadata_cache |        383 |        383 |       0 |    0 |   413 |      0 |      0 |          0 |
+|                     data_ram                         |                                      media_ram__parameterized0 |         97 |         97 |       0 |    0 |     0 |      0 |      1 |          0 |
+|                   banks[1].cache                     |                                 metadata_cache__parameterized0 |        256 |        256 |       0 |    0 |   266 |      0 |      1 |          0 |
+|                     (banks[1].cache)                 |                                 metadata_cache__parameterized0 |        198 |        198 |       0 |    0 |   266 |      0 |      0 |          0 |
+|                     data_ram                         |                                      media_ram__parameterized1 |         58 |         58 |       0 |    0 |     0 |      0 |      1 |          0 |
+|                   banks[2].cache                     |                                 metadata_cache__parameterized1 |        252 |        252 |       0 |    0 |   191 |      0 |      1 |          0 |
+|                     (banks[2].cache)                 |                                 metadata_cache__parameterized1 |        194 |        194 |       0 |    0 |   191 |      0 |      0 |          0 |
+|                     data_ram                         |                                      media_ram__parameterized2 |         58 |         58 |       0 |    0 |     0 |      0 |      1 |          0 |
+|                   roots                              |                                      media_ram__parameterized3 |        146 |        146 |       0 |    0 |     0 |      4 |      0 |          0 |
+|                 reclaimer                            |                                                media_reclaimer |        627 |        627 |       0 |    0 |   366 |      0 |      0 |          0 |
+|                 resolver                             |                                        media_prefetch_resolver |        508 |        508 |       0 |    0 |   476 |      0 |      0 |          0 |
+|                 sample_memory                        |                                                   chunk_memory |        974 |        974 |       0 |    0 |   378 |      1 |      1 |          0 |
+|                   (sample_memory)                    |                                                   chunk_memory |        884 |        884 |       0 |    0 |   378 |      0 |      0 |          0 |
+|                   read_ram                           |                                                      chunk_ram |          8 |          8 |       0 |    0 |     0 |      0 |      1 |          0 |
+|                   write_ram                          |                                                    chunk_ram_4 |         87 |         87 |       0 |    0 |     0 |      1 |      0 |          0 |
+|               pipeline                               |                                                 audio_pipeline |      10647 |      10647 |       0 |    0 |  5667 |     44 |      1 |          4 |
+|                 (pipeline)                           |                                                 audio_pipeline |        223 |        223 |       0 |    0 |   614 |      0 |      0 |          0 |
+|                 read_intents                         |                                                    sp_job_fifo |        160 |        160 |       0 |    0 |    18 |      4 |      0 |          0 |
+|                   (read_intents)                     |                                                    sp_job_fifo |         14 |         14 |       0 |    0 |    18 |      0 |      0 |          0 |
+|                   storage                            |                                                         sp_ram |        148 |        148 |       0 |    0 |     0 |      4 |      0 |          0 |
+|                 sample_engine                        |                                                  job_processor |       5119 |       5119 |       0 |    0 |  2758 |     18 |      0 |          4 |
+|                   (sample_engine)                    |                                                  job_processor |       4456 |       4456 |       0 |    0 |  2589 |      0 |      0 |          4 |
+|                   divide                             |                                                     jp_divider |        335 |        335 |       0 |    0 |   169 |      0 |      0 |          0 |
+|                   scratch_memory                     |                                                  jp_sample_ram |        168 |        168 |       0 |    0 |     0 |     16 |      0 |          0 |
+|                   smoothing_memory                   |                                         sp_ram__parameterized3 |        163 |        163 |       0 |    0 |     0 |      2 |      0 |          0 |
+|                 state_engine                         |                                                state_processor |       5150 |       5150 |       0 |    0 |  2277 |     22 |      1 |          0 |
+|                   (state_engine)                     |                                                state_processor |          1 |          1 |       0 |    0 |     7 |      0 |      0 |          0 |
+|                   buffered_jobs.jobs                 |                                    sp_job_fifo__parameterized0 |         38 |         38 |       0 |    0 |    30 |      4 |      0 |          0 |
+|                     (buffered_jobs.jobs)             |                                    sp_job_fifo__parameterized0 |         34 |         34 |       0 |    0 |    30 |      0 |      0 |          0 |
+|                     storage                          |                                         sp_ram__parameterized0 |          4 |          4 |       0 |    0 |     0 |      4 |      0 |          0 |
+|                   ddr_program.prefetch               |                                            sp_program_prefetch |        718 |        718 |       0 |    0 |   287 |      0 |      1 |          0 |
+|                   engine                             |                                                      sp_engine |       4334 |       4334 |       0 |    0 |  1953 |      0 |      0 |          0 |
+|                   loop_memory                        |                                         sp_ram__parameterized2 |          4 |          4 |       0 |    0 |     0 |     16 |      0 |          0 |
+|                   state_memory                       |                                         sp_ram__parameterized1 |        128 |        128 |       0 |    0 |     0 |      2 |      0 |          0 |
+|             ddr_program.program_bus                  |                                                program_axi_mux |          5 |          5 |       0 |    0 |     3 |      0 |      0 |          0 |
+|             memory_endpoint                          |                                                     shared_axi |       1223 |       1223 |       0 |    0 |   683 |      0 |      0 |          0 |
+|               (memory_endpoint)                      |                                                     shared_axi |         12 |         12 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               scheduler                              |                                                  axi_burst_mux |        118 |        118 |       0 |    0 |    61 |      0 |      0 |          0 |
+|                 (scheduler)                          |                                                  axi_burst_mux |          0 |          0 |       0 |    0 |     3 |      0 |      0 |          0 |
+|                 endpoint                             |                                                     axi_master |        118 |        118 |       0 |    0 |    58 |      0 |      0 |          0 |
+|               stream_0.transfer                      |                                                      chunk_dma |        517 |        517 |       0 |    0 |   287 |      0 |      0 |          0 |
+|               stream_1.transfer                      |                                      chunk_dma__parameterized0 |        576 |        576 |       0 |    0 |   335 |      0 |      0 |          0 |
+|           dispatcher                                 |                                                  host_dispatch |       1260 |       1260 |       0 |    0 |  1445 |     32 |      0 |          0 |
+|           mmio                                       |                                                   host_mailbox |       2563 |       1707 |     856 |    0 |  1896 |      0 |      0 |          0 |
+|           recovery                                   |                                                  host_recovery |        180 |        180 |       0 |    0 |   101 |      0 |      0 |          0 |
+|     gp0                                              |                                                   system_gp0_0 |        382 |        323 |       0 |   59 |   467 |      0 |      0 |          0 |
+|       s00_couplers                                   |                                       s00_couplers_imp_1B6WWTK |        382 |        323 |       0 |   59 |   467 |      0 |      0 |          0 |
+|         auto_pc                                      |                                               system_auto_pc_0 |        382 |        323 |       0 |   59 |   467 |      0 |      0 |          0 |
+|           inst                                       |          axi_protocol_converter_v2_1_24_axi_protocol_converter |        382 |        323 |       0 |   59 |   467 |      0 |      0 |          0 |
+|             gen_axilite.gen_b2s_conv.axilite_b2s     |                             axi_protocol_converter_v2_1_24_b2s |        382 |        323 |       0 |   59 |   467 |      0 |      0 |          0 |
+|               (gen_axilite.gen_b2s_conv.axilite_b2s) |                             axi_protocol_converter_v2_1_24_b2s |          1 |          1 |       0 |    0 |     1 |      0 |      0 |          0 |
+|               RD.ar_channel_0                        |                  axi_protocol_converter_v2_1_24_b2s_ar_channel |         65 |         65 |       0 |    0 |    83 |      0 |      0 |          0 |
+|                 (RD.ar_channel_0)                    |                  axi_protocol_converter_v2_1_24_b2s_ar_channel |          0 |          0 |       0 |    0 |    12 |      0 |      0 |          0 |
+|                 ar_cmd_fsm_0                         |                  axi_protocol_converter_v2_1_24_b2s_rd_cmd_fsm |         23 |         23 |       0 |    0 |     2 |      0 |      0 |          0 |
+|                 cmd_translator_0                     |            axi_protocol_converter_v2_1_24_b2s_cmd_translator_1 |         42 |         42 |       0 |    0 |    69 |      0 |      0 |          0 |
+|                   (cmd_translator_0)                 |            axi_protocol_converter_v2_1_24_b2s_cmd_translator_1 |          1 |          1 |       0 |    0 |     3 |      0 |      0 |          0 |
+|                   incr_cmd_0                         |                  axi_protocol_converter_v2_1_24_b2s_incr_cmd_2 |         26 |         26 |       0 |    0 |    23 |      0 |      0 |          0 |
+|                   wrap_cmd_0                         |                  axi_protocol_converter_v2_1_24_b2s_wrap_cmd_3 |         15 |         15 |       0 |    0 |    43 |      0 |      0 |          0 |
+|               RD.r_channel_0                         |                   axi_protocol_converter_v2_1_24_b2s_r_channel |         60 |         14 |       0 |   46 |    24 |      0 |      0 |          0 |
+|                 (RD.r_channel_0)                     |                   axi_protocol_converter_v2_1_24_b2s_r_channel |          0 |          0 |       0 |    0 |    14 |      0 |      0 |          0 |
+|                 rd_data_fifo_0                       | axi_protocol_converter_v2_1_24_b2s_simple_fifo__parameterized1 |         42 |          9 |       0 |   33 |     5 |      0 |      0 |          0 |
+|                 transaction_fifo_0                   | axi_protocol_converter_v2_1_24_b2s_simple_fifo__parameterized2 |         18 |          5 |       0 |   13 |     5 |      0 |      0 |          0 |
+|               SI_REG                                 |                  axi_register_slice_v2_1_24_axi_register_slice |        165 |        165 |       0 |    0 |   256 |      0 |      0 |          0 |
+|                 ar.ar_pipe                           |                 axi_register_slice_v2_1_24_axic_register_slice |         63 |         63 |       0 |    0 |    67 |      0 |      0 |          0 |
+|                 aw.aw_pipe                           |               axi_register_slice_v2_1_24_axic_register_slice_0 |         65 |         65 |       0 |    0 |    66 |      0 |      0 |          0 |
+|                 b.b_pipe                             | axi_register_slice_v2_1_24_axic_register_slice__parameterized1 |         10 |         10 |       0 |    0 |    28 |      0 |      0 |          0 |
+|                 r.r_pipe                             | axi_register_slice_v2_1_24_axic_register_slice__parameterized2 |         27 |         27 |       0 |    0 |    95 |      0 |      0 |          0 |
+|               WR.aw_channel_0                        |                  axi_protocol_converter_v2_1_24_b2s_aw_channel |         63 |         63 |       0 |    0 |    87 |      0 |      0 |          0 |
+|                 (WR.aw_channel_0)                    |                  axi_protocol_converter_v2_1_24_b2s_aw_channel |          0 |          0 |       0 |    0 |    16 |      0 |      0 |          0 |
+|                 aw_cmd_fsm_0                         |                  axi_protocol_converter_v2_1_24_b2s_wr_cmd_fsm |         11 |         11 |       0 |    0 |     2 |      0 |      0 |          0 |
+|                 cmd_translator_0                     |              axi_protocol_converter_v2_1_24_b2s_cmd_translator |         52 |         52 |       0 |    0 |    69 |      0 |      0 |          0 |
+|                   (cmd_translator_0)                 |              axi_protocol_converter_v2_1_24_b2s_cmd_translator |          0 |          0 |       0 |    0 |     3 |      0 |      0 |          0 |
+|                   incr_cmd_0                         |                    axi_protocol_converter_v2_1_24_b2s_incr_cmd |         26 |         26 |       0 |    0 |    23 |      0 |      0 |          0 |
+|                   wrap_cmd_0                         |                    axi_protocol_converter_v2_1_24_b2s_wrap_cmd |         27 |         27 |       0 |    0 |    43 |      0 |      0 |          0 |
+|               WR.b_channel_0                         |                   axi_protocol_converter_v2_1_24_b2s_b_channel |         31 |         18 |       0 |   13 |    16 |      0 |      0 |          0 |
+|                 (WR.b_channel_0)                     |                   axi_protocol_converter_v2_1_24_b2s_b_channel |          6 |          6 |       0 |    0 |    12 |      0 |      0 |          0 |
+|                 bid_fifo_0                           |                 axi_protocol_converter_v2_1_24_b2s_simple_fifo |         19 |          7 |       0 |   12 |     2 |      0 |      0 |          0 |
+|                 bresp_fifo_0                         | axi_protocol_converter_v2_1_24_b2s_simple_fifo__parameterized0 |          6 |          5 |       0 |    1 |     2 |      0 |      0 |          0 |
+|     ps                                               |                                                    system_ps_0 |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
+|       inst                                           |                     processing_system7_v5_5_processing_system7 |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
+|     reset                                            |                                                 system_reset_0 |         14 |         13 |       0 |    1 |    26 |      0 |      0 |          0 |
+|       U0                                             |                                                 proc_sys_reset |         14 |         13 |       0 |    1 |    26 |      0 |      0 |          0 |
+|         (U0)                                         |                                                 proc_sys_reset |          0 |          0 |       0 |    0 |     2 |      0 |      0 |          0 |
+|         EXT_LPF                                      |                                                            lpf |          4 |          3 |       0 |    1 |     9 |      0 |      0 |          0 |
+|           (EXT_LPF)                                  |                                                            lpf |          2 |          1 |       0 |    1 |     5 |      0 |      0 |          0 |
+|           ACTIVE_LOW_EXT.ACT_LO_EXT                  |                                                       cdc_sync |          2 |          2 |       0 |    0 |     4 |      0 |      0 |          0 |
+|         SEQ                                          |                                                   sequence_psr |         10 |         10 |       0 |    0 |    15 |      0 |      0 |          0 |
+|           (SEQ)                                      |                                                   sequence_psr |          5 |          5 |       0 |    0 |     9 |      0 |      0 |          0 |
+|           SEQ_COUNTER                                |                                                        upcnt_n |          5 |          5 |       0 |    0 |     6 |      0 |      0 |          0 |
+|     thermal                                          |                                               system_thermal_0 |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
+|       inst                                           |                                             zynq_thermal_guard |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
++------------------------------------------------------+----------------------------------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

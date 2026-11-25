@@ -10,6 +10,7 @@
 #include "xil_io.h"
 #include "temperature.h"
 #include "crash.h"
+#include "watchdog.h"
 #include "netif/xtopology.h"
 #include <sys/stat.h>
 #include <errno.h>
@@ -123,6 +124,7 @@ static void bsp_assert(const char *file, s32 line) { vApplicationAssert(file, (u
 void shoop_platform_init(void) {
     XUartPs_WriteReg(STDOUT_BASEADDRESS, XUARTPS_CR_OFFSET, XUARTPS_CR_TX_EN | XUARTPS_CR_RX_EN);
     Xil_AssertSetCallback(bsp_assert);
+    shoop_watchdog_start();
     shoop_exceptions_init();
 }
 

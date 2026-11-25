@@ -17,6 +17,6 @@ with tempfile.TemporaryDirectory() as temporary:
         "void xTaskNotifyGive(TaskHandle_t);\n")
     output = directory / "fpga-task"
     subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
-                    "-I" + str(directory), str(PLATFORM / "tests/fpga_task.c"),
+                    "-I" + str(directory), "-I" + str(PLATFORM / "include"), str(PLATFORM / "tests/fpga_task.c"),
                     "-o", str(output)], check=True)
     subprocess.run([output], check=True)

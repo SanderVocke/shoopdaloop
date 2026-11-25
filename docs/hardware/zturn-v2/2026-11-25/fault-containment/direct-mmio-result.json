@@ -1,0 +1,42 @@
+{
+  "result": "failed",
+  "mailbox_abi": 14,
+  "firmware_running": false,
+  "initial_factory_temperature_c": 53.891857909992005,
+  "thermal_protection": {
+    "41": 0,
+    "42": 2048,
+    "53": 45267,
+    "57": 43972
+  },
+  "pretest_temperature_c": 53.03108520507817,
+  "faulted_push": {
+    "receipt": 3,
+    "status": 4,
+    "first_fault_unchanged": true,
+    "no_response_pending": true,
+    "no_cpu_abort": true
+  },
+  "stale_epoch": {
+    "receipt": 2,
+    "status": 1,
+    "epoch": 2,
+    "stale_abort_ignored": true,
+    "stale_recovery_ignored": true,
+    "no_response_pending": true,
+    "no_cpu_abort": true
+  },
+  "watchdog_disabled_after_success": true,
+  "error": "Factory Linux did not become reachable; a physical reset may be needed",
+  "note": "No workload replay. Watchdog may still reset CPU; inspect UART before any action.",
+  "recovery": {
+    "result": "pass",
+    "method": "physical RESET, factory chain only",
+    "factory_temperature_c": 48.478063964696005,
+    "final_state": "Factory Linux, no Shoop workload",
+    "workload_replayed": false,
+    "uboot_banner_captured": false,
+    "factory_linux_login_captured": true,
+    "factory_vtc_version": "6.010"
+  }
+}

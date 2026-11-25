@@ -1,0 +1,15 @@
+{
+  "kind": 1,
+  "pc": "0x118dcc",
+  "cpsr": "0x800f019b",
+  "spsr": "0x600f001f",
+  "dfsr": "0x0",
+  "dfar": "0x0",
+  "crc_valid": true,
+  "ram_matches_uart": true,
+  "exact_elf_sha256": "83bf417fec3546a91d7e4f13e97b65d0296eb8feebf33c224d667f7a365970fc",
+  "resolved_function": "shoop_watchdog_inject",
+  "resolved_source": "platforms/zynq7000/watchdog_fault.S:9",
+  "instruction": "e7f000f0 udf #0",
+  "fiq_mask_effective": false
+}

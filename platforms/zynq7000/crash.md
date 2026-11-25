@@ -5,22 +5,25 @@ handlers after platform initialization. They record diagnostics and halt; they d
 not resume the faulting instruction, free uncertain resources or claim that
 management remains available after a CPU exception. No new authentication is used.
 
-This is **source/offline-tested, not deployed or physically qualified**. Fatal
-recovery still needs a separately qualified hardware watchdog; the direct-load
-qualification image does not yet arm one. Failures before handler installation,
+A controlled undefined instruction on Z-turn V2 produced a CRC-valid UART record
+and an identical retained RAM journal after watchdog reset through factory U-Boot.
+The captured PC resolved to the injected `udf` in the exact private ELF. This is
+not data-abort, prefetch-abort, all-reset-mode or stuck-bus qualification. See
+[direct-load watchdog testing](watchdog.md). Failures before handler installation,
 corrupted exception stacks and a non-returning hardware/cache access can still
 prevent recording. The journal does not make those accesses time-bounded.
 
 ## Capture path
 
-1. Mask IRQ, FIQ and asynchronous aborts with CPU instructions, not an RTOS lock.
+1. Request masking of IRQ, FIQ and asynchronous aborts with CPU instructions,
+   not an RTOS lock. Security controls can restrict the effective mask.
 2. Guard against recursive handler entry.
 3. Collect the BSP-saved exception PC, CPSR/SPSR, DFSR/DFAR, IFSR/IFAR, current
    task handle and a 32-bit FNV-1a tag of the build label, when available.
 4. Invalidate the record seal, write the body and CRC32, flush caches, then publish
    and flush the seal. No heap, locks, task-name dereference or PL MMIO is used.
 5. Attempt polled PS-UART output with a shared **1,000,000-poll** budget, then halt
-   with CPU interrupts masked. The handler does not call formatted output or wait
+   after requesting CPU interrupt masks. The handler does not call formatted output or wait
    indefinitely for UART FIFO space. A stalled hardware access remains outside
    that software guarantee.
 
@@ -71,8 +74,9 @@ need not identify the exact instruction/address. Resolve the saved PC using the
 
 The older ABI-13 qualification image had no journal. Its BSP saved three PCs at
 `0x0050000c` (undefined), `0x00500010` (prefetch), and `0x00500014` (data abort).
-The already-armed inspection reads only those words after physical RESET. They
-have no seal/checksum and may be overwritten by the factory boot chain.
+The completed physical-RESET inspection read zero for all three; the old vector
+sample also no longer matched its ELF. Those unsealed RAM values cannot establish
+whether that failure was an abort.
 
 ## Offline checks
 
@@ -86,5 +90,8 @@ The actual C handlers are exercised with mocked CPU registers, cache operations,
 UART and halt. All three kinds cover normal output, a permanently full FIFO,
 recursive entry and interrupted publication. Tests flip every record bit, check
 small/zero UART budgets and independently verify CRC32 with Python. The assembly
-register capture/masking/halt is compiled for Cortex-A9; this is not an induced
-physical CPU-abort or warm-reset-retention qualification.
+register capture/masking/halt is compiled for Cortex-A9. The controlled physical
+undefined test additionally qualified that capture path and one watchdog/U-Boot
+retention path. Its captured CPSR was `0x800f019b`: IRQ and asynchronous-abort mask
+bits were set, but the FIQ mask bit was not, despite `cpsid ifa`. No security
+controls were changed; this must not be claimed as FIQ isolation.

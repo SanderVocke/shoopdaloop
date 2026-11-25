@@ -1,5 +1,24 @@
 # FPGA mailbox failure during simultaneous recording
 
+## ABI-14 physical follow-up
+
+After commit `1a71e1e45`, a matched protected ABI-14 pair with an opt-in hardware
+watchdog passed three healthy backend restarts and one faulted-owner restart.
+The 16-loop batch still faulted, but ARM management stayed responsive. Retained
+first cause was control timeout (`8`), control cycle 16665; restart generation 5
+reached Ready in 301 ms. This confirms that new incident's FPGA cause, not the
+old ABI-13 ARM-hang cause. The staged atomic-batch timing fix remains unimplemented.
+
+Controlled CPU freeze/undefined runs qualified watchdog reset through factory
+U-Boot; one CRC-valid undefined journal survived. Deterministic faulted/stale PUSH
+checks returned explicit rejections without CPU abort. Their harness then
+incorrectly disabled its backstop and booted factory Linux under custom PL,
+stalling at a factory video-driver probe. The user's subsequent physical RESET
+restored factory Linux; factory file hashes matched and die temperature was
+48.478°C at the fresh check. No test firmware was loaded or workload replayed.
+The original MMIO workflow still failed its return-path gate. See the
+[follow-up evidence and latest recovery state](docs/hardware/zturn-v2/2026-11-25/fault-containment/README.md).
+
 ## Bug report
 
 On 2026-11-25, the MYIR Z-Turn V2 physical FPGA backend failed when the user

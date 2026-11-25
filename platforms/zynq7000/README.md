@@ -313,8 +313,8 @@ uncertain allocations; it does not silently issue a device reboot. Health sampli
 continues in the control task, but the health data stream needs the new attachment.
 
 A matching protected ABI-13/protocol-53 pair passed **three healthy, recording-active
-restarts** on the Z-turn V2. The subsequent 16-loop bulk-arming phase lost ARM/
-management responsiveness, so **failed-owner recovery remains unqualified**; a
+restarts** on the Z-turn V2. Its subsequent 16-loop bulk-arming phase lost ARM/
+management responsiveness, so that ABI-13 run did **not qualify failed-owner recovery**; a
 safety device reboot could not be confirmed and physical RESET was requested.
 The old ABI-12/protocol-52 pair is incompatible and is not automatically updated.
 See [physical results](../../docs/hardware/zturn-v2/2026-11-25/backend-restart/README.md)
@@ -328,14 +328,25 @@ when a command is rejected by fault/epoch/queue state. Explicit submission resul
 and post-acknowledgement epoch checks replace CPU-trapping semantic rejections.
 The FPGA retains first-fault cause, accepted mailbox command context and timing
 through datapath recovery; the owner logs it before ABORT. A matching new protected
-bitstream is required; the existing physical ABI-13 image is unchanged.
+bitstream is required. A subsequent matched protected ABI-14/watchdog pair passed
+three healthy restarts and one faulted-owner restart without an ARM reboot. Its
+first-fault record identified control-window timeout at cycle 16665. This qualifies
+containment/recovery for that run, not successful bulk arming or the old ARM hang.
+See [physical follow-up](../../docs/hardware/zturn-v2/2026-11-25/fault-containment/README.md)
+for exact artifacts, limits and the later test-harness factory-return failure.
 
 Firmware also installs fatal exception handlers with a cache-flushed, CRC-protected
 RAM journal and bounded PS-UART output. These halt safely rather than resuming an
 uncertain instruction. See [ARM exception journal](crash.md) for layout, reset
-retention caveats and read-only U-Boot inspection. No new watchdog is armed by
-this follow-up; hardware-watchdog qualification and the staged batch timing fix
-remain subsequent work. Compilation/mock tests are not physical qualification.
+retention caveats and read-only U-Boot inspection. Direct-loaded Z-turn V2 hosts
+can explicitly opt into [the hardware watchdog](watchdog.md) using `--watchdog`.
+Controlled CPU freeze and undefined-instruction runs returned through factory
+U-Boot; one undefined journal survived and matched UART. The staged batch timing
+fix remains pending. Compilation/mock tests alone are not physical qualification.
+
+Do not directly boot factory Linux while a custom PL image remains loaded: its
+device tree probes factory-only peripherals. Retain a watchdog backstop through a
+full device reset/restoration of the factory chain before entering factory Linux.
 
 ## In-app host health
 

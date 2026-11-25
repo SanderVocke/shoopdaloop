@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-25",
+  "source_commit": "1a71e1e45",
+  "watchdog_followup_uncommitted": true,
+  "protocol_version": 53,
+  "mailbox_abi": 14,
+  "watchdog_native_tests": {
+    "native": {
+      "firmware_sha256": "c651c00cd14922e630f124bfea774ed79ab7955cd2ed285c27ce428572f8b934",
+      "prestart_temperature_c": 52.78500366210943,
+      "health_samples": 30,
+      "temperature_min_c": 52.047,
+      "temperature_max_c": 52.539,
+      "healthy_no_spurious_reset": true,
+      "management_reboot": {
+        "reboot_acknowledged": true,
+        "fresh_factory_uboot_observed": true,
+        "uart_reset_marker_observed": false,
+        "captured_uboot_after_request_ms": 2942,
+        "post_reset_boot_mode": 5,
+        "post_reset_reboot_status": 6815744
+      }
+    },
+    "freeze": {
+      "firmware_sha256": "9c49eaf21bcd36df75d76197a18cd649143a86c7f9ba5a5e54538ef211157808",
+      "prestart_temperature_c": 52.2928405761719,
+      "health_samples": 30,
+      "temperature_min_c": 51.801,
+      "temperature_max_c": 52.293,
+      "fresh_factory_boot": true,
+      "marker_to_uboot_banner_ms": 10724,
+      "last_health_age_at_fault_ms": 2778,
+      "reboot_status": 6881280,
+      "boot_mode": 5,
+      "journal_valid_after_factory_boot": false
+    },
+    "undefined": {
+      "firmware_sha256": "83bf417fec3546a91d7e4f13e97b65d0296eb8feebf33c224d667f7a365970fc",
+      "prestart_temperature_c": 51.55459594726568,
+      "health_samples": 30,
+      "temperature_min_c": 51.555,
+      "temperature_max_c": 52.047,
+      "fresh_factory_boot": true,
+      "marker_to_uboot_banner_ms": 10806,
+      "last_health_age_at_fault_ms": 2816,
+      "reboot_status": 6881280,
+      "boot_mode": 5,
+      "journal_valid_after_factory_boot": true
+    }
+  },
+  "undefined_exception": {
+    "kind": 1,
+    "pc": "0x118dcc",
+    "cpsr": "0x800f019b",
+    "spsr": "0x600f001f",
+    "dfsr": "0x0",
+    "dfar": "0x0",
+    "crc_valid": true,
+    "ram_matches_uart": true,
+    "exact_elf_sha256": "83bf417fec3546a91d7e4f13e97b65d0296eb8feebf33c224d667f7a365970fc",
+    "resolved_function": "shoop_watchdog_inject",
+    "resolved_source": "platforms/zynq7000/watchdog_fault.S:9",
+    "instruction": "e7f000f0 udf #0",
+    "fiq_mask_effective": false
+  },
+  "fpga_backend_restart": {
+    "protocol_version": 53,
+    "mailbox_abi": 14,
+    "factory_boot_files_replaced": false,
+    "bitstream_sha256": "ade84b2d72d445a54d362587ef006ac8c8622589a146ff85dbea6ba0bb7c9291",
+    "firmware_sha256": "cdbd20b83ee77c2d25b6f6f0bbc86e970b9826765afed364ff8b1c7c79adc8d5",
+    "thermal_cutoff_c": 65,
+    "factory_start_temperature_c": 53.891857909992005,
+    "healthy_restarts": 3,
+    "failed_owner_restarts": 1,
+    "generations": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "temperature_min_c": 52.17,
+    "temperature_max_c": 52.908,
+    "peak_temperatures_millicelsius": [
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015,
+      54015
+    ],
+    "health_samples": 65,
+    "restart_results": [
+      {
+        "event": "restart_pass",
+        "generation": 2,
+        "initial_recovery_ms": 308,
+        "old_lease_fenced": true,
+        "old_transport_retired_ms": 2021,
+        "ready_ms": 300,
+        "session_discarded": true
+      },
+      {
+        "event": "restart_pass",
+        "generation": 3,
+        "initial_recovery_ms": 310,
+        "old_lease_fenced": true,
+        "old_transport_retired_ms": 2019,
+        "ready_ms": 302,
+        "session_discarded": true
+      },
+      {
+        "event": "restart_pass",
+        "generation": 4,
+        "initial_recovery_ms": 318,
+        "old_lease_fenced": true,
+        "old_transport_retired_ms": 2019,
+        "ready_ms": 308,
+        "session_discarded": true
+      },
+      {
+        "event": "restart_pass",
+        "generation": 5,
+        "initial_recovery_ms": 312,
+        "old_lease_fenced": true,
+        "old_transport_retired_ms": 2017,
+        "ready_ms": 301,
+        "session_discarded": true
+      }
+    ],
+    "whole_device_boot_during_soft_restarts": false,
+    "owner_failure_uart_count": 1,
+    "service_replacement_count": 4,
+    "final_factory_temperature_c": 54.014898681476,
+    "result": "pass",
+    "final_state": "Factory Linux, no Shoop audio workload",
+    "physical_reset_button_required": false
+  },
+  "direct_mmio_workflow": {
+    "result": "failed",
+    "mailbox_abi": 14,
+    "firmware_running": false,
+    "initial_factory_temperature_c": 53.891857909992005,
+    "thermal_protection": {
+      "41": 0,
+      "42": 2048,
+      "53": 45267,
+      "57": 43972
+    },
+    "pretest_temperature_c": 53.03108520507817,
+    "faulted_push": {
+      "receipt": 3,
+      "status": 4,
+      "first_fault_unchanged": true,
+      "no_response_pending": true,
+      "no_cpu_abort": true
+    },
+    "stale_epoch": {
+      "receipt": 2,
+      "status": 1,
+      "epoch": 2,
+      "stale_abort_ignored": true,
+      "stale_recovery_ignored": true,
+      "no_response_pending": true,
+      "no_cpu_abort": true
+    },
+    "watchdog_disabled_after_success": true,
+    "error": "Factory Linux did not become reachable; a physical reset may be needed",
+    "note": "No workload replay. Watchdog may still reset CPU; inspect UART before any action."
+  },
+  "direct_mmio_recovery": {
+    "result": "pass",
+    "method": "physical RESET, factory chain only",
+    "factory_temperature_c": 48.478063964696005,
+    "final_state": "Factory Linux, no Shoop workload",
+    "workload_replayed": false,
+    "uboot_banner_captured": false,
+    "factory_linux_login_captured": true,
+    "factory_vtc_version": "6.010"
+  },
+  "latest_board_phase": "factory_recovered_after_physical_reset",
+  "latest_board_phase_time": "2026-11-25T18:12:53.929426+01:00",
+  "current_temperature_available": true,
+  "qemu": {
+    "version": "10.0.13",
+    "action": "poweroff",
+    "physical_board_evidence": false,
+    "cases": [
+      {
+        "kind": "control",
+        "result": "pass",
+        "watchdog_event": true,
+        "one_entry_no_replay": true,
+        "emulated_global_timer_hz": 100000000,
+        "firmware_global_timer_hz": 333333333,
+        "events": [
+          {
+            "timestamp": {
+              "seconds": 1795617740,
+              "microseconds": 304670
+            },
+            "event": "WATCHDOG",
+            "data": {
+              "action": "poweroff"
+            }
+          }
+        ],
+        "firmware_sha256": "883814016af0798020e501cb8346fe89f1964326bd760055545b356df9b11747",
+        "test_after_ready_ms": 35000
+      },
+      {
+        "kind": "broker",
+        "result": "pass",
+        "watchdog_event": true,
+        "one_entry_no_replay": true,
+        "emulated_global_timer_hz": 100000000,
+        "firmware_global_timer_hz": 333333333,
+        "events": [
+          {
+            "timestamp": {
+              "seconds": 1795617740,
+              "microseconds": 357945
+            },
+            "event": "WATCHDOG",
+            "data": {
+              "action": "poweroff"
+            }
+          }
+        ],
+        "firmware_sha256": "b329014fec289118a8f9c90f4015663592ca049ed59ac453544b850e5de727b4",
+        "test_after_ready_ms": 35000
+      },
+      {
+        "kind": "render",
+        "result": "pass",
+        "watchdog_event": true,
+        "one_entry_no_replay": true,
+        "emulated_global_timer_hz": 100000000,
+        "firmware_global_timer_hz": 333333333,
+        "events": [
+          {
+            "timestamp": {
+              "seconds": 1795617740,
+              "microseconds": 448639
+            },
+            "event": "WATCHDOG",
+            "data": {
+              "action": "poweroff"
+            }
+          }
+        ],
+        "firmware_sha256": "7abcc0ddc75d69fb65010dfd7ef71fe2bec34a47fce32b628ea8cb2be0cba9a1",
+        "test_after_ready_ms": 35000
+      },
+      {
+        "kind": "freeze",
+        "result": "pass",
+        "watchdog_event": true,
+        "one_entry_no_replay": true,
+        "emulated_global_timer_hz": 100000000,
+        "firmware_global_timer_hz": 333333333,
+        "events": [
+          {
+            "timestamp": {
+              "seconds": 1795617729,
+              "microseconds": 999046
+            },
+            "event": "WATCHDOG",
+            "data": {
+              "action": "poweroff"
+            }
+          }
+        ],
+        "firmware_sha256": "9c49eaf21bcd36df75d76197a18cd649143a86c7f9ba5a5e54538ef211157808",
+        "test_after_ready_ms": 32000
+      },
+      {
+        "kind": "undefined",
+        "result": "pass",
+        "watchdog_event": true,
+        "one_entry_no_replay": true,
+        "emulated_global_timer_hz": 100000000,
+        "firmware_global_timer_hz": 333333333,
+        "events": [
+          {
+            "timestamp": {
+              "seconds": 1795617729,
+              "microseconds": 947083
+            },
+            "event": "WATCHDOG",
+            "data": {
+              "action": "poweroff"
+            }
+          }
+        ],
+        "firmware_sha256": "83bf417fec3546a91d7e4f13e97b65d0296eb8feebf33c224d667f7a365970fc",
+        "test_after_ready_ms": 32000
+      }
+    ],
+    "earlier_harness_failures": [
+      "Initial bound expired before fault because modeled global timer runs at 100 MHz, not firmware-assumed 333333333 Hz",
+      "Long run-directory Unix QMP socket path exceeded 107 bytes before VM startup",
+      "QEMU watchdog action shutdown requests guest powerdown; bare-metal firmware does not implement it. Final cases explicitly used poweroff."
+    ]
+  },
+  "not_qualified": [
+    "Bulk-arming success or atomic-batch timing fix",
+    "Physical data/prefetch abort capture",
+    "Permanent external-MMIO stall",
+    "Physical lost-ACK recovery",
+    "Exhaustive repeated fault/lifetime testing",
+    "Thermal trip, sustained no-heatsink operation, physical audio or signed deployment"
+  ]
+}

@@ -42,6 +42,8 @@ def build():
     fpga.add_argument("--native-i2s", action="store_true", help="Render on ARM at Q32 with the Z-turn V2 I2S adapter")
     parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
     parser.add_argument("--deployment", action="store_true")
+    parser.add_argument("--watchdog", action="store_true", help="Arm the system watchdog for direct-loaded Z-turn V2 hosts")
+    parser.add_argument("--watchdog-test-fault", choices=["control", "broker", "render", "freeze", "undefined"])
     parser.add_argument("--build-id", default="direct-dev")
     parser.add_argument("--engine-config", type=Path, help="JSON engine pool and input-history policy")
     parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker", "handoff-version", "cleanup"])
@@ -61,6 +63,10 @@ def build():
         parser.error("Deployment is only supported by the host app")
     if args.deployment_test_fault and not args.deployment:
         parser.error("Deployment test faults require --deployment")
+    if args.watchdog and (args.app != "host" or board.name != "zturn-v2" or args.deployment or args.fpga_probe):
+        parser.error("Direct-load watchdog requires a Z-turn V2 host without deployment or FPGA probe")
+    if args.watchdog_test_fault and not args.watchdog:
+        parser.error("Watchdog test faults require --watchdog")
     if args.usb and args.app != "host":
         parser.error("USB MIDI requires the host app")
     if args.fpga_probe and (args.app != "host" or not board.pl_bytes or args.deployment or args.usb or args.credential_file):
@@ -114,6 +120,10 @@ def build():
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
     sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / "temperature.c", PLATFORM / "reset.c", PLATFORM / "crash.c",
                 PLATFORM / "exceptions.c", PLATFORM / "exception_registers.S", PLATFORM / (args.app + ".c")]
+    if args.watchdog:
+        sources.append(PLATFORM / "watchdog.c")
+    if args.watchdog_test_fault:
+        sources.append(PLATFORM / "watchdog_fault.S")
     if args.fpga:
         sources.append(PLATFORM / "fpga_task.c")
     if board.bsp.get("phy") == "yt8531":
@@ -217,6 +227,9 @@ def build():
         flags += ["-DSHOOP_NATIVE_I2S"]
     if args.usb:
         flags += ["-DSHOOP_USB_MIDI"]
+    if args.watchdog:
+        fault = [None, "control", "broker", "render", "freeze", "undefined"].index(args.watchdog_test_fault)
+        flags += ["-DSHOOP_HOST_WATCHDOG", "-DSHOOP_WATCHDOG_FAULT=" + str(fault)]
     if args.deployment:
         fault = [None, "before-ready", "render", "control", "broker", "handoff-version", "cleanup"].index(args.deployment_test_fault)
         flags += ["-DSHOOP_DEPLOYMENT", "-DSHOOP_DEPLOY_FAULT=" + str(fault)]
@@ -239,7 +252,8 @@ def build():
     objects = [obj for obj, _ in results]
     elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
                    ("-fpga-probe" if args.fpga_probe else "-fpga" if args.fpga else "-native-i2s" if args.native_i2s else "") +
-                   ("-test" if args.deployment_test_fault else "") + ".elf")
+                   ("-watchdog" if args.watchdog else "") +
+                   ("-test-" + args.watchdog_test_fault if args.watchdog_test_fault else "-test" if args.deployment_test_fault else "") + ".elf")
     # Rust's compiler_builtins defines weak, generic memory routines. Pull newlib's optimized
     # strong ones from libc before the Rust library so they win for both C and Rust callers.
     newlib_memory = ["-Wl,--undefined=" + name for name in (
@@ -268,6 +282,10 @@ def build():
         raise SystemExit("Generic firmware contains a compiled credential")
     if not args.deployment_test_fault and b"SHOOP_DEPLOY_TEST_" in image:
         raise SystemExit("Deployment fault hooks leaked into production firmware")
+    if (b"SHOOP_WATCHDOG_ARMED" in image) != args.watchdog:
+        raise SystemExit("Direct-load watchdog does not match the selected variant")
+    if (b"SHOOP_WATCHDOG_TEST_" in image) != bool(args.watchdog_test_fault):
+        raise SystemExit("Watchdog fault hooks do not match the selected variant")
     if image[:6] != b"\x7fELF\x01\x01":
         raise SystemExit("Expected little-endian ELF32")
     phoff = struct.unpack_from("<I", image, 28)[0]
@@ -310,6 +328,9 @@ def build():
         "fpga_contract": fpga_pair.contract(board, fpga_pair.NATIVE_AUDIO_ABI if args.native_i2s else fpga_pair.RTL_ABI)
         if args.fpga_probe or args.fpga or args.native_i2s else None,
         "deployment_test_fault": args.deployment_test_fault,
+        "watchdog": {"enabled": args.watchdog, "startup_seconds": 30, "ready_seconds": 10,
+                     "render_start_grace_ms": 25000, "test_fault": args.watchdog_test_fault,
+                     "test_after_ready_ms": 32000 if args.watchdog_test_fault else None},
         "ram_bytes": board.ram, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     if args.usb:
         elf.with_suffix('.licenses.txt').write_text('TinyUSB ' + PINS['tinyusb'] + '\n\n' + (TINYUSB / 'LICENSE').read_text())

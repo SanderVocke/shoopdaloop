@@ -27,12 +27,13 @@ int shoop_deploy_info(struct shoop_deployment_info *);
 int shoop_deploy_request(const uint8_t *, uint64_t);
 void shoop_deploy_reset(void);
 #else
-static inline void shoop_deploy_tick(void) {}
-static inline void shoop_deploy_render(void) {}
-static inline void shoop_deploy_broker(void) {}
-static inline void shoop_deploy_control(void) {}
-static inline void shoop_deploy_render_stopped(void) {}
-static inline void shoop_deploy_render_started(void) {}
-static inline void shoop_deploy_stopped(void) {}
+#include "watchdog.h"
+static inline void shoop_deploy_tick(void) { shoop_watchdog_tick(); }
+static inline void shoop_deploy_render(void) { shoop_watchdog_render(); }
+static inline void shoop_deploy_broker(void) { shoop_watchdog_broker(); }
+static inline void shoop_deploy_control(void) { shoop_watchdog_control(); }
+static inline void shoop_deploy_render_stopped(void) { shoop_watchdog_render_stopped(); }
+static inline void shoop_deploy_render_started(void) { shoop_watchdog_render_started(); }
+static inline void shoop_deploy_stopped(void) { shoop_watchdog_stopped(); }
 #endif
 #endif

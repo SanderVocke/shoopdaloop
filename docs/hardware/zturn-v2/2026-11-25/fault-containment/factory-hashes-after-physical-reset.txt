@@ -1,0 +1,2 @@
+8fd8db988f60898b894987da1c4a837a282301ad963fa95d8f0a5ab2fb26bc6d  /run/media/mmcblk0p1/BOOT.BIN
+86e08ef3c057d0a9c6e474ff4b5a19269babb2fd784c32fdfaf72f0eacc6473b  /run/media/mmcblk0p1/image.ub

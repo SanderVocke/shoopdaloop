@@ -1,0 +1,50 @@
+{
+  "native": {
+    "elf_sha256": "c651c00cd14922e630f124bfea774ed79ab7955cd2ed285c27ce428572f8b934",
+    "source_inputs_sha256": "75fba0050ad0f97239f543fade207b8a6e50ab8ff3c212710a882180602d8f44",
+    "watchdog": {
+      "enabled": true,
+      "startup_seconds": 30,
+      "ready_seconds": 10,
+      "render_start_grace_ms": 25000,
+      "test_fault": null,
+      "test_after_ready_ms": null
+    }
+  },
+  "fpga": {
+    "elf_sha256": "cdbd20b83ee77c2d25b6f6f0bbc86e970b9826765afed364ff8b1c7c79adc8d5",
+    "source_inputs_sha256": "75fba0050ad0f97239f543fade207b8a6e50ab8ff3c212710a882180602d8f44",
+    "watchdog": {
+      "enabled": true,
+      "startup_seconds": 30,
+      "ready_seconds": 10,
+      "render_start_grace_ms": 25000,
+      "test_fault": null,
+      "test_after_ready_ms": null
+    }
+  },
+  "freeze": {
+    "elf_sha256": "9c49eaf21bcd36df75d76197a18cd649143a86c7f9ba5a5e54538ef211157808",
+    "source_inputs_sha256": "951150ae6b7d9693617ca9fddb5b5fd96bbc3d7e38647026f8df1e384bce0f6d",
+    "watchdog": {
+      "enabled": true,
+      "startup_seconds": 30,
+      "ready_seconds": 10,
+      "render_start_grace_ms": 25000,
+      "test_fault": "freeze",
+      "test_after_ready_ms": 32000
+    }
+  },
+  "undefined": {
+    "elf_sha256": "83bf417fec3546a91d7e4f13e97b65d0296eb8feebf33c224d667f7a365970fc",
+    "source_inputs_sha256": "951150ae6b7d9693617ca9fddb5b5fd96bbc3d7e38647026f8df1e384bce0f6d",
+    "watchdog": {
+      "enabled": true,
+      "startup_seconds": 30,
+      "ready_seconds": 10,
+      "render_start_grace_ms": 25000,
+      "test_fault": "undefined",
+      "test_after_ready_ms": 32000
+    }
+  }
+}
