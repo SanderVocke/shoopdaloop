@@ -402,6 +402,19 @@ Evidence: `work/cmd-fifo-investigation/stage4-source-milestone.{log,status}`;
 initial fixture failures and the absolute-plan regression remain separate logs.
 No new resource/route, full Linux/Wasm or physical result is claimed.
 
+**Internal SP RAM-port milestone:** the SP now exposes a separate internal local
+loop/state RAM port with one-cycle responses and priority over new loader requests.
+An in-flight DDR-program upload no longer owns this port. A directed test performs
+512 accesses across local/DDR-program configurations, including full-width state,
+loop words, invalid-address nonmutation, held loader requests, processing priority
+and reset. Fresh gates pass **180 affected-package plus 23 directed component tests
+(203 total)**, workspace warnings, formatting, policy/coverage and generators;
+`work/cmd-fifo-investigation/stage4-local-ram-milestone.{log,status}` records them.
+This is an internal interface, not ARM live-control access. The existing audio
+wrapper ties it off pending connection; old SP admission/program-loader gating and
+audio fence gating still require replacement. It does not prove audio progress
+under a held upload, full frontend resources or an integrated cycle envelope.
+
 Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
 local SP observations and settled snapshots are **not yet connected**. Generated
 hardware remains ABI 15. No integrated resource/total-quantum, physical, fresh

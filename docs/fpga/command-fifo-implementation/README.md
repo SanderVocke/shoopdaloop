@@ -494,3 +494,34 @@ actual audio/SP/JP and memory fence chain. Loader arbitration, independent
 snapshots/local effects, reference/firmware transport changes and all final gates
 remain open. There is no fresh resource/route, complete Linux/Wasm, physical,
 CI/review or delivery claim for this milestone.
+
+### Internal SP RAM service independent of program-loader ownership
+
+The SP now has a separate internal loop/state access port into its existing RAMs.
+Accepted reads/writes receive a one-cycle response independent of the DDR-program
+loader's busy and response signals. Internal requests take priority over new
+loader requests; an SP run request or active execution takes priority over this
+port. Range checks prevent invalid writes, writes return zero data, and reset
+invalidates pending responses without resetting RAM or introducing a shadow copy.
+This is not an ARM-accessible live-state interface. The current audio wrapper ties
+it off until the semantic consumer/capture controller is connected.
+
+`execution_ram_has_one_cycle_service_and_priority_even_with_a_stalled_program_loader`
+executes 512 accesses across local-program and DDR-program models. It checks both
+RAMs, all 129 state bits, invalid-address refusal/nonmutation, held ordinary
+configuration requests, an indefinitely unaccepted program upload, processing
+request priority and reset. It checks one-cycle response timing explicitly.
+
+Fresh `work/cmd-fifo-investigation/stage4-local-ram-milestone.{log,status}` passes
+**203 Rust tests**: the unchanged 180 affected-package matrix plus 23 directed
+component tests (the preceding 22 and the new internal-port test). Warning-denying
+workspace build, formatting, policy/coverage and AXI/host generators pass. Narrow
+`stage4-local-ram-tests` passes; earlier `-api-failure` and `-settle-failure` logs
+retain a wide-bit test setter type error and a missing combinational evaluation
+before a priority assertion. Neither is passing evidence or a resource breach.
+
+The existing SP run-admission gates still depend on loader activity, and audio
+handoff/media-store readiness still gates rendering. Those production paths have
+not yet been replaced. No consumer/SP/audio integration, held-upload audio-progress
+proof, ABI-16 deployment, new resource/route or total-quantum bound is claimed by
+this internal-port milestone. Snapshots/local effects and Stages 5–7 remain open.

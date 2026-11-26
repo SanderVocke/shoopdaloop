@@ -39,6 +39,11 @@ module state_processor #(
     output wire                                cfg_response_valid,
     output wire                                cfg_response_error,
     output wire [`SHOOP_SP_STATE_BITS-1:0]       cfg_read_data,
+    input wire local_valid, output wire local_ready,
+    input wire local_state, local_write, input wire [15:0] local_address,
+    input wire [`SHOOP_SP_STATE_BITS-1:0] local_write_data,
+    output wire local_response_valid, local_response_error,
+    output wire [`SHOOP_SP_STATE_BITS-1:0] local_read_data,
     output wire                                job_valid,
     input  wire                                job_ready,
     output wire [`SHOOP_SP_JOB_BITS-1:0]         job_data,
@@ -85,6 +90,17 @@ module state_processor #(
     reg cfg_response_write;
     reg cfg_error;
     wire cfg_accept = cfg_valid && cfg_ready;
+    wire local_accept = local_valid && local_ready;
+    wire local_in_range = local_state ? {16'b0,local_address}<32'(STATE_DEPTH)
+        : {16'b0,local_address}<32'(LOOP_DEPTH*16);
+    wire local_state_access = local_accept && local_in_range && local_state;
+    wire local_loop_access = local_accept && local_in_range && !local_state;
+    reg local_pending, local_response_state, local_response_write, local_error;
+    assign local_ready = !busy && !run_valid && !reset && !sync_fault;
+    assign local_response_valid = local_pending && !reset;
+    assign local_response_error = local_error;
+    assign local_read_data = local_response_write || local_error ? 129'd0
+        : local_response_state ? state_read_data : {65'd0,loop_ram_read_data};
     wire cfg_in_range = cfg_loop ? ({16'b0,cfg_address} < 32'(LOOP_DEPTH*16)) : cfg_state
         ? ({16'b0, cfg_address} < 32'(STATE_DEPTH))
         : ({16'b0, cfg_address} < 32'(PROGRAM_DEPTH*PROGRAM_REGIONS));
@@ -109,9 +125,9 @@ module state_processor #(
     wire [STATE_ADDR_BITS-1:0] state_write_address;
     wire [`SHOOP_SP_STATE_BITS-1:0] state_write_data;
     wire [STATE_ADDR_BITS-1:0] state_memory_read_address = busy
-        ? state_read_address : STATE_ADDR_BITS'(cfg_address);
+        ? state_read_address : STATE_ADDR_BITS'(local_accept ? local_address : cfg_address);
     wire [STATE_ADDR_BITS-1:0] state_memory_write_address = state_write_enable
-        ? state_write_address : STATE_ADDR_BITS'(cfg_address);
+        ? state_write_address : STATE_ADDR_BITS'(local_state_access ? local_address : cfg_address);
     wire engine_job_valid;
     wire engine_job_ready;
     wire [`SHOOP_SP_JOB_BITS-1:0] engine_job_data;
@@ -122,7 +138,7 @@ module state_processor #(
     assign queued_jobs = 32'(fifo_count);
     assign read_intent_valid = engine_job_valid && engine_job_ready && engine_job_data[7:0] == `SHOOP_SP_JOB_READ;
     assign read_intent_data = engine_job_data;
-    assign cfg_ready = !cfg_pending && !program_cfg_busy && !program_cfg_response
+    assign cfg_ready = !local_valid && !cfg_pending && !program_cfg_busy && !program_cfg_response
         && (!external_cfg || program_cfg_ready) && !reset && (PROGRAM_REGIONS == 1 || !run_valid) && (!busy ||
         (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write && (cfg_loop ? !loop_ram_write : cfg_state ? !state_write_enable : 1'b1)));
     assign run_ready = !busy && !cfg_pending && !program_cfg_busy && !program_cfg_response && (PROGRAM_REGIONS == 2 || !cfg_valid) && !reset && !sync_fault;
@@ -140,7 +156,15 @@ module state_processor #(
             cfg_response_state <= 0;
             cfg_response_write <= 0;
             cfg_error <= 0;
+            local_pending <= 0; local_response_state <= 0;
+            local_response_write <= 0; local_error <= 0;
         end else begin
+            local_pending <= local_accept;
+            if (local_accept) begin
+                local_response_state <= local_state;
+                local_response_write <= local_write;
+                local_error <= !local_in_range;
+            end
             if (start) program_region <= PROGRAM_REGIONS == 2 && run_program_region;
             cfg_pending <= cfg_accept && !external_cfg;
             if (cfg_accept) begin
@@ -219,12 +243,12 @@ module state_processor #(
         .WIDTH(`SHOOP_SP_STATE_BITS), .DEPTH(STATE_DEPTH), .ADDR_BITS(STATE_ADDR_BITS)
     ) state_memory (
         .clk(clk),
-        .read_enable(state_read_enable || (cfg_state_access && !cfg_write)),
+        .read_enable(state_read_enable || (local_state_access && !local_write) || (cfg_state_access && !cfg_write)),
         .read_address(state_memory_read_address),
         .read_data(state_read_data),
-        .write_enable(state_write_enable || (cfg_state_access && cfg_write)),
+        .write_enable(state_write_enable || (local_state_access && local_write) || (cfg_state_access && cfg_write)),
         .write_address(state_memory_write_address),
-        .write_data(state_write_enable ? state_write_data : cfg_write_data)
+        .write_data(state_write_enable ? state_write_data : local_state_access ? local_write_data : cfg_write_data)
     );
 
     sp_engine #(
@@ -253,12 +277,12 @@ module state_processor #(
     );
 
     sp_ram #(.WIDTH(64), .DEPTH(LOOP_DEPTH*16), .ADDR_BITS(LOOP_MEMORY_BITS)) loop_memory (
-        .clk(clk), .read_enable(loop_ram_read || (cfg_loop_access && !cfg_write)),
-        .read_address(busy ? loop_ram_read_address : LOOP_MEMORY_BITS'(cfg_address)),
+        .clk(clk), .read_enable(loop_ram_read || (local_loop_access && !local_write) || (cfg_loop_access && !cfg_write)),
+        .read_address(busy ? loop_ram_read_address : LOOP_MEMORY_BITS'(local_accept ? local_address : cfg_address)),
         .read_data(loop_ram_read_data),
-        .write_enable(loop_ram_write || (cfg_loop_access && cfg_write)),
-        .write_address(loop_ram_write ? loop_ram_write_address : LOOP_MEMORY_BITS'(cfg_address)),
-        .write_data(loop_ram_write ? loop_ram_write_data : cfg_write_data[63:0])
+        .write_enable(loop_ram_write || (local_loop_access && local_write) || (cfg_loop_access && cfg_write)),
+        .write_address(loop_ram_write ? loop_ram_write_address : LOOP_MEMORY_BITS'(local_loop_access ? local_address : cfg_address)),
+        .write_data(loop_ram_write ? loop_ram_write_data : local_loop_access ? local_write_data[63:0] : cfg_write_data[63:0])
     );
 
     generate if (EXTERNAL_JOB_FIFO != 0) begin : external_jobs
