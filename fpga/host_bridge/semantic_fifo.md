@@ -325,6 +325,16 @@ release the RAM port regardless of an unread ARM reply. Inactive uploads may wai
 across quanta but cannot prevent a due quantum from starting. An unread result,
 snapshot, trace, held bus response or pending upload never holds an execution gate.
 
+Bulk media service obeys the same ownership rule: commit a complete private upload
+chunk before acquiring the shared store, and reserve/copy the complete read chunk
+before exposing it to an ARM consumer. The current staging component uses at most
+32 words; larger preparation transfers require state-independent chunk lowering
+outside semantic groups, not a reduced public transfer capability. Route streams
+and completions by the accepted operation owner, not current processing-busy state.
+Latch fence epoch/sequence when its actual store request is accepted and return
+that stored identity after real cache/DMA completion; do not echo live pending
+identities or infer completion from selection, SP idle or snapshot revision.
+
 Enforce 4,096 command cycles/group, 8,192 snapshot cycles/128 rows and 60,000 total
 cycles at 100 MHz/Q32/48 kHz, including SP/JP and required memory service. Define
 and test the admitted graph and DDR/cache service envelope; arbitrary DDR stalls

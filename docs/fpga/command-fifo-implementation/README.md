@@ -616,3 +616,51 @@ Real media/cache/DMA fence hookup, media-store admission independence, in-flight
 fault/reset integration, observation storage/snapshots and ABI-16/reference/firmware
 integration remain open. No fresh complete resource/route, full Linux/Wasm,
 physical, push or PR evidence is claimed.
+
+### Private media-service staging and ownership prerequisites
+
+Source inspection exposed two dependencies that cannot be fixed by deleting a
+single admission condition. `media_store.sv`'s `SAMPLE_DATA` phase waits for client
+write-valid/read-ready; an ARM-stalled upload/download could therefore retain the
+shared store after SP admission. `media_audio_pipeline.sv` routes data/done by
+current pipeline-busy state, which would misroute a background operation if a new
+quantum were allowed to start during it. Neither dependency is acceptable in the
+final path. Whole-chunk staging and an explicit accepted-operation owner address
+them without changing the approved semantics or ceilings.
+
+`fifo_media_loader.sv` has one private <=32-word bidirectional chunk bank and a
+reserved response. APPEND acquires no store service until all words are buffered;
+READ copies all returned words before waiting for ARM readback/ACK. Acknowledging
+the response early cannot release unread data. Header/body remain immutable while
+committed. Invalid chunk sizes refuse before backend mutation; empty reads are
+valid; short successful transfers and memory faults latch a fault without replay.
+Safe reset invalidates cursors/results without resetting the data RAM. Large user
+transfers still require state-independent chunk lowering in the Stage 5 adapter;
+this private granularity is not a new public capability restriction.
+
+`fifo_media_arbiter.sv` prioritizes execution and a pending fence over new background
+store admission. Once accepted, the job/loader/fence owner controls data and done
+routing regardless of later processing-busy changes. It captures fence epoch and
+sequence on the actual backend request handshake, preserves them until completion
+and does not reissue while the original request stays asserted. Fence failures
+remain faults, not reliable success or automatic retry. The final wrapper must
+bind this backend to the actual sample-cache/metadata-cache/AXI fence chain.
+
+Five new Rust tests verify all private upload prefixes, stalled/full private
+readback, closing-cycle data plus completion, invalid/empty/short/fault/reset
+behavior, retained loader ownership while new processing requests arrive, later
+job service with loader results unread, and latched fence identity/no duplicate
+issue. The backend in these tests is **synthetic**: they do not prove real memory
+ownership or actual rendering while media work is stalled.
+
+`stage4-media-loader-tests` records three staging tests;
+`stage4-media-ownership-tests` passes all five. Fresh
+`stage4-private-media-milestone.{log,status}` passes **210 selected Rust tests =
+185 affected-package + 25 directed**, warning-denying workspace build, formatting,
+policy/coverage and generators. Logs are under `work/cmd-fifo-investigation/`.
+
+The units are not yet connected to the semantic media wrapper or legacy host top.
+Media admission/fence hookup and in-flight fault/reset handling remain work, as do
+observations/snapshots, ABI-16/reference/firmware and final acceptance/delivery.
+There is no fresh resource/route, complete-quantum, full Linux/Wasm or physical
+qualification claim.

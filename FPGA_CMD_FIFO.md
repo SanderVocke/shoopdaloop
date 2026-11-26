@@ -471,6 +471,40 @@ required metadata storage is not yet implemented. No new resource/route, complet
 quantum, physical, fresh Linux/Wasm or delivery qualification is claimed. Stage 4
 checklist items remain open until full production integration passes.
 
+**Private media-service prerequisites:** inspection found that removing only the
+media wrapper's admission gate would move ARM stalls into JP: `media_store`'s
+`SAMPLE_DATA` waits for its client's write-valid/read-ready, and the existing wrapper
+routes data/completions by current pipeline-busy state. That routing is safe only
+while loader and rendering remain serialized. The implementation refinement is
+whole-chunk private staging plus an accepted-operation owner, not a larger hold or
+an ARM-assisted execution path; accepted goals/ceilings remain unchanged.
+
+`fifo_media_loader.sv` buffers a complete <=32-word upload before acquiring the
+store and reserves/copies a complete read result before ARM consumption. Unread
+results retain its private bank, not store service. Large preparation transfers
+will be lowered into these immutable chunks outside semantic groups. Short
+successful transfers and actual memory errors fail closed without replay.
+`fifo_media_arbiter.sv` prioritizes execution over new background work, retains the
+accepted job/loader/fence owner for data/completion routing, and latches fence
+epoch/sequence at actual backend acceptance rather than echoing live pending
+inputs. A held fence request cannot reissue after completion; fence errors fault.
+
+Five new unit tests cover every partial 32-word upload prefix, stalled consumers,
+closing-cycle data/completion, empty/short/error/reset cases, owner preservation
+when processing starts during loader work, unread private replies, and latched
+fence identities/no reissue. They use a synthetic backend, **not the real
+media/cache/DMA/AXI path or a rendering-progress qualification**. Fresh gates pass
+**185 affected-package plus 25 directed tests (210 total)**, workspace warnings,
+formatting, policy/coverage and generators. Evidence:
+`work/cmd-fifo-investigation/stage4-private-media-milestone.{log,status}` and
+`stage4-media-{loader,ownership}-tests`.
+
+Both new units remain unconnected pending the semantic media wrapper. The existing
+host/media top, its admission gate and ABI 15 are unchanged. Real sample-cache DMA
+flush plus metadata-cache drain/AXI completion, in-flight fault/reset integration,
+local observations/snapshots and Stages 5–7 remain open. No new resource/route,
+complete quantum, full Linux/Wasm, physical or delivery claim is made.
+
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
 
