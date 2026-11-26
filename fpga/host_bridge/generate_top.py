@@ -10,6 +10,7 @@ HERE = Path(__file__).resolve().parent
 AXI = HERE.parent / "axi_memory"
 sys.path.insert(0, str(AXI))
 from generate_tops import header
+from generate_semantic import generate as semantic_audio
 
 
 def generate():
@@ -138,7 +139,7 @@ def generate():
     native_wrapper += ",\n        ".join(f".{name}({name})" for name in native_ports)
     native_wrapper += "\n    );\nendmodule\n"
     return {"host_pipeline_axi.sv": text, "host_pipeline_bd.v": wrapper,
-            "native_audio_bd.v": native_wrapper}
+            "native_audio_bd.v": native_wrapper, "fifo_audio_pipeline.sv": semantic_audio()}
 
 
 if __name__ == "__main__":

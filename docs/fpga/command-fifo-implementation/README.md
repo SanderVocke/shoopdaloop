@@ -555,3 +555,64 @@ The semantic consumer is still not connected to the new internal RAM port.
 Audio handoff/media-store readiness gates, settled snapshots/local observations,
 ABI-16 MMIO/reference/firmware integration and final acceptance remain unfinished.
 There is no fresh resource/route, full Linux/Wasm, physical or delivery claim.
+
+### Actual-RAM/audio component connection
+
+`fpga/host_bridge/generate_semantic.py` produces `rtl/fifo_audio_pipeline.sv`,
+joining the production banks/consumer/kernel to the actual audio core, SP loop/state
+RAM and JP. `generate_top.py --check` now checks it too. This wrapper always uses
+two program regions/live selection and enforces at most 128 physical loop slots;
+there is no alternate CPU semantic controller in it. The legacy host/media top
+has not switched to this module and still advertises ABI 15.
+
+The audio core exposes its internal RAM port only while the whole core is idle,
+with processing admission taking priority. Selection can use a distinct pre-run
+boundary hook without advancing processing time. Pending handoff does not gate
+ordinary core rendering. The existing live-loading differential test now renders
+three sample-accurate quanta while its completion is withheld, retaining exact
+ramps/history/absolute plans, first-frame identity and unreleased allocator state.
+The original admission assertion failure is retained in
+`stage4-audio-handoff-before-fix`; `stage4-audio-handoff-tests` passes.
+
+The semantic wrapper requires epoch/sequence-qualified fence events. Successful
+events are accepted only once the core requests its handoff; mismatched events do
+not acknowledge the core or consumer, while qualified errors remain faults.
+Selection refusals drain the core response independently of the reliable reader.
+SP events are accepted locally without an ARM-ready input and exported as strobes;
+mandatory metadata accumulation and settled snapshots are still pending.
+
+`production_consumer_edits_execution_ram_and_renders_while_results_and_handoff_wait`
+executes the new module with actual SP/JP and RAM, not the earlier array probe:
+
+- Initial selection is a semantic group, not a direct switch/config restoration.
+- A gain group changes the same quantum's exact samples and emits original f32
+  metadata. A 32-command group arms actual loop rows; all have Recording mode,
+  capture counter 32 and common SP frame stamp 64 after the quantum.
+- Four reserved results remain unread behind a withheld first fence while later
+  ordinary groups and empty opportunities render. Continuous refused host requests
+  and result reads do not prevent another complete quantum.
+- A wrong-sequence success and a stale-epoch failure cannot release or fault the
+  current handoff; rendering continues through the stale failure. Matching test
+  completion later reveals the original frame-0 result, then ordered later replies.
+- Uploads, publication, result reads and acknowledgements do not advance the frame.
+
+The graph is 32 sync visits followed by input/gain/output; it has **no media
+recording jobs, cache/DMA/DDR or snapshot work**. Its arm command phase is **2,950
+cycles** with the real local port. Six boundary-to-core-done costs are **2,138,
+2,174, 5,129, 2,180, 2,233 and 2,180 cycles**. These are a limited local-service
+workload, not the all-admitted-graph 60,000-cycle acceptance or physical audio.
+Fence completion is test-controlled, not real memory-ownership qualification.
+
+`stage4-semantic-audio-tests` records the initial connection;
+`stage4-semantic-audio-fence-identity` adds qualified/stale fence evidence and cycle
+output. Fresh `stage4-audio-integration-milestone.{log,status}` passes **205 Rust
+tests = 180 affected-package + 25 directed** (graph 8, loading 4, local RAM 2,
+semantic audio 1, smoothing 1, state 1, sync 8), plus workspace warnings, formatting,
+policy/coverage and generators. Final `stage4-audio-integration-precommit` verifies
+the normal top generator hook, workspace warnings/formatting/policy and independently
+counts results/checks local Markdown links. Logs are under `work/cmd-fifo-investigation/`.
+
+Real media/cache/DMA fence hookup, media-store admission independence, in-flight
+fault/reset integration, observation storage/snapshots and ABI-16/reference/firmware
+integration remain open. No fresh complete resource/route, full Linux/Wasm,
+physical, push or PR evidence is claimed.

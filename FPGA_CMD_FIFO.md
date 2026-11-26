@@ -431,11 +431,45 @@ Fresh gates pass **180 affected-package plus 24 directed component tests
 The before-fix failure is retained as `stage4-admission-before-fix`. Consumer/RAM
 connection, audio/media-store/fence gating and the remaining Stage 4 work stay open.
 
-Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
-local SP observations and settled snapshots are **not yet connected**. Generated
-hardware remains ABI 15. No integrated resource/total-quantum, physical, fresh
-Linux/Wasm or delivery qualification is claimed; Stage 4 checklist items remain
-open until their production integration passes.
+**Actual-RAM/audio component milestone:** generated production module
+`fifo_audio_pipeline.sv` connects the banks/consumer/kernel to the actual audio
+core's internal loop/state RAM port, selection handshake and SP/JP processing.
+Selection has a pre-run boundary hook; local RAM grants are restricted to an idle
+whole audio core and lose to processing admission. Pending handoff no longer gates
+core rendering. Its strengthened live-loading differential test renders three
+sample-accurate quanta while handoff is withheld, preserving ramps/history/plans,
+first-frame identity and retained allocator ownership. The old gate's regression
+failure remains `stage4-audio-handoff-before-fix`.
+
+The new component test selects through a semantic packet, changes gain with exact
+same-quantum samples/original-f32 strobe, arms 32 actual loop records with common
+SP stamp 64/capture counters 32, and renders with all four result reservations
+unread, a withheld handoff, continuous refused host requests and result reads.
+Stale epoch/sequence fence events neither complete nor fault the current operation.
+Only an epoch/sequence-matching test-controlled fence, after the core requests it,
+releases the selected result. This is not real cache/DMA ownership qualification.
+The graph has 32 sync visits plus input/gain/output, not media recording jobs.
+
+Actual-RAM command peak is **2,950 cycles**. Boundary-to-core-done cycles are
+**2,138 / 2,174 / 5,129 / 2,180 / 2,233 / 2,180** for that local-service test.
+There is no DDR/media/cache/snapshot work in this envelope; these figures do not
+prove the 60,000-cycle bound for all admitted graphs or protected-design timing.
+Fresh gates pass **180 affected-package plus 25 directed component tests (205
+total)**, warnings, formatting, policy/coverage and generators, including the new
+semantic generator in `generate_top.py --check`. Evidence is
+`work/cmd-fifo-investigation/stage4-audio-integration-milestone.{log,status}`;
+`stage4-semantic-audio-fence-identity` retains the cycle output. Final
+`stage4-audio-integration-precommit` checks the normal top generator hook,
+workspace warnings/formatting/policy and independently counted results/links.
+
+The new component is **not yet selected by the legacy host/media/MMIO top**; that
+path still ties off the internal ports and remains ABI 15. Real media/cache/DMA
+fence integration and media-store admission, in-flight fault/reset integration,
+local observation accumulation, settled snapshots and ABI-16/reference/firmware
+work remain. The wrapper drains SP events into an unbackpressured local strobe;
+required metadata storage is not yet implemented. No new resource/route, complete
+quantum, physical, fresh Linux/Wasm or delivery qualification is claimed. Stage 4
+checklist items remain open until full production integration passes.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.

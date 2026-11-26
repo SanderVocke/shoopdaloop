@@ -39,6 +39,7 @@ module audio_pipeline #(
     input wire [31:0] run_sync_count,
     input wire run_program_region,
     input wire switch_valid, output wire switch_ready,
+    input wire switch_boundary, output wire switch_refused,
     input wire [63:0] switch_expected, switch_revision,
     input wire switch_region,
     input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_buffers,
@@ -74,6 +75,11 @@ module audio_pipeline #(
     output wire cfg_response_valid,
     output wire cfg_response_error,
     output wire [`SHOOP_SP_STATE_BITS-1:0] cfg_read_data,
+    input wire local_valid, output wire local_ready,
+    input wire local_state, local_write, input wire [15:0] local_address,
+    input wire [`SHOOP_SP_STATE_BITS-1:0] local_write_data,
+    output wire local_response_valid, local_response_error,
+    output wire [`SHOOP_SP_STATE_BITS-1:0] local_read_data,
     input wire audio_cfg_valid,
     output wire audio_cfg_ready,
     input wire [1:0] audio_cfg_space,
@@ -130,7 +136,8 @@ module audio_pipeline #(
     endfunction
     reg [31:0] chunk_frames;
     (* fsm_encoding = "one_hot" *) phase_t phase;
-    wire state_run_ready, job_run_ready, state_cfg_ready, job_cfg_ready;
+    wire state_run_ready, job_run_ready, state_cfg_ready, job_cfg_ready, state_local_ready;
+    wire local_window = phase == IDLE && !run_valid;
     wire [7:0] state_error, job_error;
     wire job_accept;
     wire sample_busy, sample_done;
@@ -167,8 +174,9 @@ module audio_pipeline #(
     wire [31:0] selected_states = LIVE_LOADING != 0 ? {16'b0,active_states} : run_state_count;
     wire [31:0] selected_buffers = LIVE_LOADING != 0 ? {16'b0,active_buffers} : run_buffers;
     wire boundary_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
-    assign switch_ready = LIVE_LOADING != 0 && run_valid && boundary_ready
+    assign switch_ready = LIVE_LOADING != 0 && (run_valid || switch_boundary) && boundary_ready
         && !handoff_pending && !switch_response_valid;
+    assign switch_refused = bad_switch;
     assign handoff_request = LIVE_LOADING != 0 && handoff_pending && handoff_drained;
     wire read_intent_valid, late_hint_valid, late_hint_ready, hint_push_ready, hint_pop_valid;
     wire [`SHOOP_SP_JOB_BITS-1:0] read_intent_data, hint_pop_data;
@@ -210,7 +218,8 @@ module audio_pipeline #(
     end
     assign unused_pc = &{1'b0, state_pc};
     assign busy = phase != IDLE;
-    assign run_ready = boundary_ready && !(LIVE_LOADING != 0 && (handoff_pending || (switch_valid && !switch_response_valid)));
+    assign run_ready = boundary_ready && !(LIVE_LOADING != 0 && switch_valid && !switch_response_valid);
+    assign local_ready = local_window && state_local_ready;
     assign cfg_ready = state_cfg_ready && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write))
         && !(PROGRAM_REGIONS == 2 && state_admission);
     assign audio_cfg_ready = (phase == IDLE) && job_cfg_ready;
@@ -298,9 +307,9 @@ module audio_pipeline #(
         .cfg_valid(cfg_valid && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write)) && !(PROGRAM_REGIONS == 2 && state_admission)), .cfg_ready(state_cfg_ready),
         .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
         .cfg_response_valid(cfg_response_valid), .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
-        .local_valid(1'b0), .local_ready(), .local_state(1'b0), .local_write(1'b0),
-        .local_address(16'd0), .local_write_data(129'd0),
-        .local_response_valid(), .local_response_error(), .local_read_data(),
+        .local_valid(local_valid && local_window), .local_ready(state_local_ready), .local_state(local_state), .local_write(local_write),
+        .local_address(local_address), .local_write_data(local_write_data),
+        .local_response_valid(local_response_valid), .local_response_error(local_response_error), .local_read_data(local_read_data),
         .job_valid(sp_job_valid), .job_ready(sp_job_ready), .job_data(monitor_data), .queued_jobs(sp_queued_jobs),
         .read_intent_valid(read_intent_valid), .read_intent_data(read_intent_data),
         .sync_frame(sync_frame), .sync_event_valid(sync_event_valid), .sync_event_ready(sync_event_ready), .sync_event_data(sync_event_data),
