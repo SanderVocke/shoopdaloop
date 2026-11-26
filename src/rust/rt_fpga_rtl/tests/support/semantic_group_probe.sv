@@ -43,7 +43,7 @@ module semantic_group_probe #(
     output reg cfg_response_valid, output wire [128:0] cfg_read_data,
     output reg [31:0] renders, gain_updates, memory_writes,
     output reg [31:0] last_gain_bits, output reg [15:0] last_gain_slot,
-    output wire main_result_tail
+    output wire main_result_tail, final_result_selected
 );
     (* ram_style="block" *) reg [63:0] loops [0:LOOPS*16-1];
     (* ram_style="block" *) reg [128:0] states [0:STATES-1];
@@ -91,5 +91,6 @@ module semantic_group_probe #(
     assign memory_read_data=response_state ? state_read : {65'd0,loop_read};
     assign cfg_read_data=memory_read_data;
     assign main_result_tail=consumer.main_write && consumer.command_index+1'b1==consumer.command_count;
+    assign final_result_selected=consumer.finalize_selected;
     fifo_group_consumer #(.LOOPS(LOOPS), .STATES(STATES), .PROGRAM_DEPTH(PROGRAM_DEPTH), .BUFFERS(BUFFERS)) consumer (.*);
 endmodule

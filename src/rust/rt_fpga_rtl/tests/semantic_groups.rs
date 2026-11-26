@@ -694,6 +694,70 @@ fn every_partial_packet_word_and_unread_result_remain_independent_of_boundaries(
 }
 
 #[shoop_test]
+fn qualified_faults_preempt_finalizer_and_main_writes_but_stale_faults_do_not() {
+    for (epoch, sequence, fails) in [(2, 1, false), (1, 99, false), (1, 1, true)] {
+        run(|sim| {
+            store(sim, SLOT, row(0, 0));
+            publish(sim, 0, 1, 0, None, &[switch(1, 0, false)]);
+            quantum(sim, 0);
+            publish(
+                sim,
+                1,
+                2,
+                1,
+                None,
+                &[encode(Command::LoopRepeatSync(id(), true), false)],
+            );
+            start(sim, 32);
+            for _ in 0..200 {
+                if sim.model.get("main_result_tail") != 0 {
+                    break;
+                }
+                sim.idle(1);
+            }
+            assert_eq!(sim.model.get("main_result_tail"), 1);
+            sim.model.set_all(&[
+                ("handoff_valid", 1),
+                ("handoff_epoch", 1),
+                ("handoff_sequence", 1),
+                ("handoff_error", 0),
+            ]);
+            sim.idle(1);
+            assert_eq!(sim.model.get("final_result_selected"), 1);
+            assert_eq!(sim.model.get("main_result_tail"), 1);
+            assert_eq!(sim.model.get("result_ready_mask"), 0);
+            let writes = sim.model.get("memory_writes");
+            sim.model.set_all(&[
+                ("handoff_epoch", epoch),
+                ("handoff_sequence", sequence),
+                ("handoff_error", 1),
+            ]);
+            sim.idle(1);
+            sim.model
+                .set_all(&[("handoff_valid", 0), ("handoff_error", 0)]);
+            sim.idle(100);
+            assert_eq!(sim.model.get("faulted"), u64::from(fails));
+            assert_eq!(sim.model.get("memory_writes"), writes);
+            if fails {
+                assert_eq!(sim.model.get("renders"), 1);
+                assert_eq!(sim.model.get("result_ready_mask"), 0);
+                for bank in [0, 1] {
+                    sim.model.set("inspect_bank", bank);
+                    sim.idle(1);
+                    assert_eq!(sim.model.get("bank_state"), 6);
+                    assert_eq!(host(sim, 3, bank, 0, bank + 1), 3);
+                }
+            } else {
+                assert_eq!(sim.model.get("renders"), 2);
+                assert_eq!(result(sim, 0, 1)[15], 2);
+                assert_eq!(host(sim, 3, 0, 0, 1), 0);
+                assert_eq!(&result(sim, 1, 1)[16..], &[1]);
+            }
+        });
+    }
+}
+
+#[shoop_test]
 fn fence_completion_arbitrates_with_a_maximal_group_without_early_result_visibility() {
     run(|sim| {
         let mut records = Vec::new();

@@ -355,19 +355,32 @@ Evidence: `work/cmd-fifo-investigation/stage4-consumer-{tests,races,milestone}` 
 `production-{group,fence-race}-cycles.json`. An initial width-warning elaboration
 failure is retained separately, not counted as a pass.
 
-Partial frontend synthesis at source `367a2b69d` measures **4,015 packed LUTs,
-3,891 FFs, 2 RAMB36 + 1 RAMB18 (2.5 equivalents), no DSP**; kernel leaf
-**1,830 LUTs / 1,945 FFs**, within its ceilings. The remaining frontend blocks are
-absent: 1,985 LUTs / 3,109 FFs of apparent headroom is not completed-design proof.
-**Timing remains open:** the unrouted estimate is **WNS −2.074 ns**, 743 failing
-setup endpoints, on pending-group/completion/fault control (24 logic levels).
-This is not the protected routed gate and does not establish 100 MHz closure;
-address timing before proceeding with production integration. No limits change.
-[Reports/provenance](docs/fpga/command-fifo-implementation/reports/consumer-synthesis-367a2b69d/results.json)
-retain that negative result. Offline Vivado 2021.1/3247384 run
-`vivado-consumer-v2` succeeds after `v1` stopped before synthesis on an incorrect
-launcher pin from compacted notes; the corrected pin matches the frozen approved
-investigation archive. No board work or fresh routed result is claimed.
+Initial partial synthesis at source `367a2b69d` measured 4,015 packed LUTs /
+3,891 FFs and a **failing unrouted WNS −2.074 ns**, 743 setup endpoints, on a
+24-level pending-group/completion/fault path. The [original reports](docs/fpga/command-fifo-implementation/reports/consumer-synthesis-367a2b69d/results.json)
+remain unchanged. `vivado-consumer-v1` had stopped before synthesis on an incorrect
+launcher pin from compacted notes; `v2` used the approved archive's actual pin.
+
+**Result-arbitration timing milestone:** separating registered-state address/data
+selection from live-fault validity gating shortens that estimated path to 14
+levels / WNS +0.585 ns, without added registers, latency or weakened fault
+suppression. The new ninth consumer test injects qualified and stale errors while
+both the fence finalizer and ordinary result writer compete. The fresh affected
+matrix passes **180 Rust tests**; warning-denying workspace build, formatting,
+policy/coverage and generators pass (`stage4-timing-milestone`). All measured
+boundary-to-render cycle costs remain unchanged, including the **3,783** maximum.
+
+The same RTL (consumer SHA256 `2cd453c84440c35b225411d64c92390bcf0c56090ac80967450ddd535921dea7`)
+now has an [OOC route](docs/fpga/command-fifo-implementation/reports/consumer-route-2cd453c8/results.json):
+**4,016 packed LUTs / 3,891 FFs / 2 RAMB36 + 1 RAMB18 / no DSP**, kernel leaf
+**1,822 LUTs / 1,945 FFs**, **WNS +0.178 ns / WHS +0.159 ns**, no failing
+endpoints, failed/unrouted nets, critical warnings or errors. `vivado-consumer-v5`
+uses the existing verified IP catalog read-only; `v4`'s catalog-setup critical
+warning remains separately recorded. The expected OOC PS7-required DRC warning
+remains. Unanchored ports/missing `HD.CLK_SRC` and absent remaining frontend/SP/JP
+blocks mean this is **not** the protected whole-design gate, a 60,000-cycle quantum
+proof or a guarantee that the remaining frontend fits. No limits change or board
+work is implied.
 
 Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
 local SP observations and settled snapshots are **not yet connected**. Generated

@@ -331,7 +331,7 @@ production control fallback. Generated hardware remains ABI 15 with the legacy
 CPU bridge. No fresh Linux/Wasm, integrated resource/route, physical qualification,
 production semantic FIFO acceptance or delivery is claimed by this checkpoint.
 
-### Partial consumer synthesis — timing remains open
+### Initial partial consumer synthesis — negative timing retained
 
 The offline Vivado 2021.1/3247384 measurement at source `367a2b69d` targets
 `xc7z020clg400-2`, 100 MHz, 1 ns I/O delays. It includes only banks, consumer and
@@ -355,8 +355,8 @@ but absent blocks have not been counted and no net whole-design saving is claime
 743/11,084 setup endpoints failing; estimated WHS +0.246 ns. The worst path is
 pending-group to bank state/completion/fault control, 24 logic levels. This is
 unplaced/unrouted without `HD.CLK_SRC`, not protected whole-design routed closure.
-It is an open timing issue to resolve before production integration, not a pass,
-Fmax claim or reason to relax the nonnegative routed setup/hold requirement.
+This identified the control-path timing issue addressed by the next milestone;
+it was not a pass, Fmax claim or reason to relax routed setup/hold requirements.
 
 Local `vivado-consumer-v2` has status 0 and `complete.txt=passed`; this means the
 measurement completed, **not** that timing acceptance passed. `v1` stopped at the
@@ -376,3 +376,58 @@ nix develop --command python3 fpga/host_bridge/measure_semantic.py \
 `--route` optionally performs OOC implementation; no route was performed for this
 checkpoint. A component route would still not replace the matching protected
 whole-design route/total-quantum gate.
+
+### Result-arbitration timing fix and partial OOC route
+
+Address/data arbitration now depends only on the selected local finalizer, not
+live fault-validity gating. Live qualified faults still immediately suppress RAM,
+render, selection and result effects. This removes the handoff-match → indexed
+result-address decode → write-ready → completion dependency without adding a
+register, service cycle, controller or shadow row. The same constraints improve
+synthesis-estimated WNS from −2.074 to **+0.585 ns**, 24 to 14 logic levels, for
+26 additional synthesis LUTs and unchanged FFs. The original negative evidence
+above is retained rather than overwritten.
+
+The ninth consumer test exercises a matching fault and stale epoch/sequence faults
+at simultaneous finalizer/main-writer arbitration. Matching faults retain both
+banks and prevent rendering/result visibility; stale faults do not interfere with
+legitimate completion. All **180 affected-package tests** pass, including nine
+group/four bank/two 3,970-case kernel tests. Workspace warning-denying build,
+formatting, policy/coverage and generators pass. Evidence:
+`work/cmd-fifo-investigation/stage4-timing-{arbitration-tests,fault-races,milestone}`.
+All prior cycle values, including the 3,783-cycle concurrent-fence maximum, remain
+unchanged; the RAM/fence/audio scope has not expanded.
+
+[Native OOC reports and provenance](reports/consumer-route-2cd453c8/results.json)
+freeze consumer SHA256 `2cd453c84440c35b225411d64c92390bcf0c56090ac80967450ddd535921dea7`:
+
+| Partial frontend | Packed LUTs | FFs | RAMB36 | RAMB18 | DSP | WNS ns | WHS ns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Synthesis | 4,041 | 3,891 | 2 | 1 | 0 | +0.585 (estimated) | +0.246 (estimated) |
+| OOC route | 4,016 | 3,891 | 2 | 1 | 0 | +0.178 | +0.159 |
+
+The routed kernel leaf is 1,822 LUTs / 1,945 FFs / no BRAM or DSP. There are zero
+failing setup/hold endpoints (11,084 endpoints), failed/unrouted/partially routed
+nets, critical warnings or errors. Only expected OOC `ZPS7-1` PS7-required DRC
+warning remains. Missing `HD.CLK_SRC`, unanchored OOC ports and absent full-system
+loads/clock skew prevent interpreting this as board-level timing closure. No
+whole-design resource saving or 60,000-cycle total quantum bound is established.
+Remaining frontend budget is only apparent headroom: 1,984 LUTs / 3,109 FFs, with
+MMIO/snapshot/observations/arbitration still unmeasured. Stage 4 remains open.
+
+`vivado-consumer-v3` synthesized the same RTL; `v4` routed with identical numbers
+but emitted a missing-IP-catalog critical warning during DRC reporting. `v5`
+mounts the existing verified Vivado 2021.1 catalog read-only and has no such
+warning. Catalog PS7 component SHA is validated and recorded; no download or
+board access occurred. Reproduce this component route in a fresh directory:
+
+```sh
+nix develop --command python3 fpga/host_bridge/measure_semantic.py \
+  work/semantic-consumer-route-NEW --run --route \
+  --catalog work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip
+```
+
+Generated firmware/RTL still advertise ABI 15. Actual processing/audio, real
+JP/cache/DMA fences, MMIO, local observations/snapshots and remaining Stages 4–7
+are not delivered by this component milestone. No new full Linux/Wasm, protected
+whole-design route, physical qualification, push/PR or final-head CI is claimed.

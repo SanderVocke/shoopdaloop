@@ -91,18 +91,19 @@ module fifo_group_consumer #(
     wire handoff_failure=(handoff_matches && handoff_error) || (pending && fence_seen && fence_failed);
     wire kernel_memory_ready=memory_ready && !faulted && !pipeline_fault && !handoff_failure;
     wire finalize=pending && pending_finished && fence_seen;
-    wire finalize_write=finalize && !fence_failed && !faulted && !handoff_failure;
+    wire finalize_selected=finalize && !fence_failed;
+    wire finalize_write=finalize_selected && !faulted && !handoff_failure;
     wire main_write=(phase==WRITE_CODE || (phase==WRITE_HEADER && (!selected_switch || header_index!=15)))
         && !faulted && !handoff_failure;
     wire result_write_valid=finalize_write || main_write;
-    wire [1:0] result_write_bank=finalize_write ? pending_bank : attempt_bank;
-    wire [5:0] result_write_word=finalize_write ? 6'd15
+    wire [1:0] result_write_bank=finalize_selected ? pending_bank : attempt_bank;
+    wire [5:0] result_write_word=finalize_selected ? 6'd15
         : phase==WRITE_CODE ? 6'd16+command_index : {2'd0,header_index};
     reg [31:0] header_word;
-    wire [31:0] result_write_data=finalize_write ? 32'd2
+    wire [31:0] result_write_data=finalize_selected ? 32'd2
         : phase==WRITE_CODE ? {24'd0,code} : header_word;
     wire result_write_ready;
-    wire main_written=main_write && !finalize_write && result_write_ready;
+    wire main_written=main_write && !finalize_selected && result_write_ready;
     wire final_written=finalize_write && result_write_ready;
     wire finish_valid=phase==FINISH || (phase==FAILED && group_active);
     wire [1:0] finish_bank=attempt_bank;

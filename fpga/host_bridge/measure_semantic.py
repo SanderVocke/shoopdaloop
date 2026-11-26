@@ -54,7 +54,18 @@ def main():
     parser.add_argument("output", type=pathlib.Path)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--route", action="store_true")
+    parser.add_argument("--catalog", type=pathlib.Path)
     args = parser.parse_args()
+    catalog = args.catalog.resolve() if args.catalog else None
+    catalog_info = None
+    catalog_mount = []
+    if catalog:
+        component = catalog / "xilinx/processing_system7_v5_5/component.xml"
+        expected = "5c884fb6b1f01c0cdde22724d3fdf462cdd05f1f31066ea07452c1815006ad10"
+        if not component.is_file() or digest(component) != expected:
+            parser.error("catalog must contain the verified Vivado 2021.1 PS7 component")
+        catalog_info = {"path": str(catalog), "ps7_component_sha256": expected}
+        catalog_mount = ["--mount", f"type=bind,source={catalog},target=/tools/Xilinx/Vivado/2021.1/data/ip,readonly"]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     source = output / "source"
@@ -73,6 +84,7 @@ def main():
         "image": IMAGE,
         "expected_launcher_sha256": LAUNCHER,
         "runner_sha256": digest(pathlib.Path(__file__)),
+        "catalog": catalog_info,
         "part": PART,
         "clock_mhz": 100,
         "input_output_delay_ns": 1,
@@ -95,6 +107,7 @@ def main():
         "--mount", f"type=bind,source={build},target=/build",
         "--mount", f"type=bind,source={script},target=/run.tcl,readonly",
         "--mount", f"type=bind,source={home},target=/home/agent",
+        *catalog_mount,
         "--workdir", "/build", "-e", "HOME=/home/agent",
         "-e", "LD_PRELOAD=/lib/x86_64-linux-gnu/libudev.so.1",
         "--entrypoint", "/bin/bash", IMAGE, "-c",
