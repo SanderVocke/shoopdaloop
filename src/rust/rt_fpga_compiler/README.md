@@ -142,13 +142,17 @@ The UI editing capability remains separate. Authored MIDI capture,
 Replace, dry/wet modes and graphs with inter-loop timing cycles are outside
 the current FPGA profile.
 
-The existing loader stages edited tables in the inactive program region. It
-checks affected loops before switching and retains displaced allocations until
-the memory fence. Supported cuts are stopped, a compatible independent restart,
-and a future-only edit with the next unit protected. A prepared host can hold a
-single compatible switch request until the next restart. The caller can retry a
-candidate after a refused cut. Edits that change timing geometry require a
-stopped cut.
+The loader permits initial static installation and primitive-only live
+replacement. `Allocator::stage` refuses before reservation if either the current
+or candidate program contains composites, including child edits and composite
+introduction/removal. Independent execution/session guards preserve installed
+state and ownership. Stopping transport does not make such a replacement valid.
+A revised static composite requires explicit execution retirement, a real memory
+fence or safe reset, and a fresh runtime incarnation/allocator for installation.
+There is no cut search, preview, outgoing-span encoding or future-boundary retry.
+Native CPU/default-browser editing is unaffected; the optional `fpga-reference`
+worklet uses this reduced profile. See the
+[loading contract](../../../LOADING_DESIGN.md#reduced-composite-profile).
 
 ```sh
 cargo test --locked -p rt_fpga_reference --all-features

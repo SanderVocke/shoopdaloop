@@ -544,12 +544,14 @@ pub struct HostPort {
 pub struct Capabilities(pub u32);
 
 impl Capabilities {
-    /// Single-install mono graph profile; fixed virtual input and stereo Master outputs.
+    /// Prepared graph installation within the host's profile and resource limits.
     pub const PREPARED_GRAPH: Self = Self(1 << 15);
+    /// Live replacement within the host's supported graph profile.
     pub const LIVE_PROGRAMS: Self = Self(1 << 16);
     pub const EXTERNAL_PROCESSOR_EDITOR: Self = Self(1 << 17);
     pub const PROCESSOR_LOGS: Self = Self(1 << 18);
     pub const PROCESSOR_CHECKPOINTS: Self = Self(1 << 19);
+    /// Cancel unpublished preparation, not an already selected switch.
     pub const CANCEL_PREPARED_COMPOSITES: Self = Self(1 << 20);
     pub const PREPARED_AUTOMATIC_MONITORING: Self = Self(1 << 21);
     pub const INPUT_BATCH: Self = Self(1 << 12);

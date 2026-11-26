@@ -2,8 +2,8 @@
 
 ## Status and execution contract
 
-**Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–2 are
-complete; Stage 3 is in progress. See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
+**Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–3 are
+complete, including the reduced-profile/ABI contract freeze. Stage 4 is next. See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
 Branch: `investigate/fpga-command-fifo`, production base `ff6c09551e9dee2cd3a12d37ccad19fa844b09aa`.
 Physical testing still requires the separate authorization and protections in Stage 6.
@@ -191,12 +191,12 @@ increasing limits or reducing acceptance criteria.
   paired-restart/ending handoff and retry-at-future-boundary machinery across its
   actual dependencies. Preserve static-composite runtime behavior and primitive
   switching; do not indiscriminately delete similarly named SP wrap logic.
-- [ ] Add early capability/admission refusals for excluded graph replacements,
+- [x] Add early capability/admission refusals for excluded graph replacements,
   including child edits and composite introduction/removal. Preserve state and
   allocation ownership on refusal; quiesced replacement remains explicit.
 - [x] Replace obsolete live-switch acceptance tests with reduced-profile refusal
   tests while retaining native/browser and static-composite behavioral evidence.
-- [ ] Specify the versioned hardware FIFO ABI, complete publication, physical
+- [x] Specify the versioned hardware FIFO ABI, complete publication, physical
   targets, header/deadline checks, result codes, reply reservation, reset fencing,
   snapshot capture phase and bounded service policy. Update the loading and
   architecture docs to distinguish retained switching from the removed feature.
@@ -244,10 +244,47 @@ workspace build, formatting, test-policy and AXI/host generator checks pass.
 Local logs: `work/cmd-fifo-investigation/stage3-rtl-removal.log` and
 `work/cmd-fifo-investigation/rtl-milestone/stage3-{linux,wasm}.log`.
 
-Remaining: freeze the versioned FIFO ABI, capability and ownership/lifecycle
-documentation. Stage 3 is **not complete**: the old CPU control window/batch
-bridge remains until Stages 4–5 replace it; no integrated FIFO, new resource/timing
-measurement, physical qualification or final acceptance is claimed.
+**Stage 3 complete — contract freeze:** [hardware ABI 16](fpga/host_bridge/semantic_fifo.md)
+specifies complete sequential publication, four paired input/result banks,
+32-command groups, epoch/sequence-qualified acknowledgements, physical binding,
+header/per-command results, FIFO reliable-result visibility, real switch fencing
+and independent settled snapshots. Small local gain/failure/pulse observations
+preserve metadata without ARM event/result draining. The semantic target emits a
+complete sync prefix before audio; standalone component interleaving is separate.
+Capability descriptions, explicit ownership lifecycle, architecture/loading docs,
+manual/opcodes and crate usage now distinguish the reduced profile and current
+ABI-15 workaround from the pending ABI-16 implementation.
+
+The documented source-change refinement preserves existing plan invalidation
+with an execution-owned SP operand comparison. Expanding 128 source changes into
+measured 65-cycle kernel clears would exceed both 32 commands and 4,096 cycles.
+This changes implementation ordering, not scope, group semantics or ceilings.
+Implementation/bounds still need Stages 4–6 verification.
+
+Fresh contract gates pass **166 affected-package tests plus 12 directed component
+tests**, including the 3,970-case kernel differential; warning-denying workspace
+build, formatting, test-policy, coverage, generators, local Markdown links and
+retired-name audit pass. Local evidence:
+`work/cmd-fifo-investigation/stage3-contract-verified.{log,status}`.
+
+Broader component validation reproduced six assertion/configuration failures at
+production base `ff6c09551`. Repairs distinguish executable visits from schedule
+rows, retain exact job payloads and dependencies/media-access ordering, isolate
+complete media bindings and streaming-versus-batch queue limits, and pin a
+geometry-specific DRAM test to its intended x16 fixture. Other component DRAM
+runs use the Z-turn x32 configuration. Negative tests guard the job normalization.
+The 1,200 s aggregate run is interrupted evidence, not a pass; completed targets
+and bounded follow-ups cover **73 passing / 2 failing** component cases. The two
+remaining standalone reference fault-path differences also reproduce at the
+production base in an isolated target directory. They remain explicit Stage 6
+validation work, not waived gates or regressions attributed to this removal.
+The interrupted model cache was rebuilt before the passing pipeline follow-up.
+Current runs explicitly select the current RTL root; see the milestone record
+for failed/interrupted logs and source-root provenance.
+
+The old CPU control window/batch bridge remains until Stages 4–5 replace it.
+Stage 3 completion does not claim a production FIFO, fresh integrated resources,
+timing/physical qualification, final-head CI or delivery.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
 
@@ -306,6 +343,10 @@ commands and program switching. ARM firmware and fixtures build successfully.
 - [ ] Run warning-denying workspace builds, formatting, test-policy/generator
   checks, the full Linux suite, applicable Wasm builds, and Zynq platform recovery
   regressions. Rust tests use `#[shoop_test]`; run builds/tests through Nix locally.
+- [ ] Resolve the two standalone `rt_fpga_testbench` reference fault-path
+  differentials reproduced at `ff6c09551` (preflight queue refusal versus partial
+  SP effects, and streamed jobs remaining after JP failure). Preserve meaningful
+  fault/partial-effect/fail-closed coverage; do not hide them by dropping tests.
 - [ ] Synthesize/route the matching full design and compare net resources, routed
   timing and worst-case total quantum cycles with the approved baseline/ceilings.
   Do not call kernel-only synthesis or network observation a system timing proof.

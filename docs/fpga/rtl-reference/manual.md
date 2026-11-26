@@ -237,78 +237,20 @@ recording can start. See the admission rule under
   can wait for a sync pulse. Immediate and delayed changes share the two plan
   slots in the loop record. Repeat sync can be changed while a program is
   running.
-- **Application edits.** After the initial layout is installed, the application
-  can create a composite, convert an empty stopped loop, edit its plan, and
-  clear or remove a composite. For a single composite with no parent, the
-  host can stop it as part of the clear or removal. The old schedule runs
-  for that quantum so its children stop and any take it started can finish.
-  The host compiles each proposed plan
-  into the unused program region. It reports the new version once the region
-  has taken over and the state snapshot shows that version. If a primitive
-  begins recording before conversion takes over, the handoff refuses the
-  conversion and the primitive keeps its take.
-- **Editing during playback.** The prepared hosts can apply compatible
-  future changes, such as adding another child later in the current pass.
-  A parent can keep playing while an edit changes a later part of a nested
-  composite, including which child composite plays there. For this early
-  handoff, the edited composite keeps its timing and sync source, and the
-  first change is beyond the current and next iteration. For supported edits
-  to Play or Stop spans that keep the same children, SP can check the child's
-  position after a parent seek. A seek into the changed part leaves the edit
-  pending. A seek far enough back can let it take effect on that boundary.
-  If an edit changes the opening but keeps the timing and child list, SP
-  can wait for the transport to stop the composite or return it to the
-  start. The staged image carries old spans only for affected children. If
-  the composite restarts, SP compares the old action at the preceding
-  position with the new opening. If a seek lands elsewhere, SP uses the
-  old spans and the edit waits. Clock-controlled repeats use the actual
-  pulse and playback state for that quantum.
-  An edit to a single nested composite can also wait until the child stops,
-  either by finishing its own run or when its parent releases it. Unchanged
-  parents keep playing and use the new plan the next time they start the child.
-  A repeating child can also pick up a compatible edit at its own restart
-  while its parents keep playing. The host waits when an ancestor command
-  could change the child's entry point and SP cannot use the future-edit check.
-  A compatible one-pass child can take up an edit as it finishes. A parent
-  that starts it again at that same boundary starts the replacement plan.
-  An independent repeating composite can pick up an edit at its next restart,
-  including changes to the length of an iteration or the whole pass. Both plans
-  use the same sync source. At an uninterrupted restart, SP compares what was
-  playing with what should play next. Continuing children keep their place.
-  The edit can drop a child from the schedule while leaving the loop and its
-  audio in the session. A child still playing at the end of the old pass needs
-  one extra program row so SP can stop it. When that child is a composite,
-  its schedule also releases its own children. A direct play command for
-  the removed branch can keep it running at the switch. If the row cannot fit,
-  waiting for a sync clock can give the old schedule time to release its children. The
-  clock can be a primitive, a composite, or a chain of loops that sync to
-  one another. The chain keeps the same links and schedules during the edit,
-  and its loops run free of composite parent actions. A primitive can pass
-  along a source pulse. A composite clock supplies its own repeat pulse.
-  For other edits, the host can use this unchanged clock chain to select a
-  restart. If a clock command can act at that boundary and SP cannot use
-  a guarded restart, the edit waits.
-  A compatible edit can also change the clock. SP uses the old clock to
-  find an eligible boundary and installs the schedule and source together.
-  The new clock can keep the composite waiting after the switch. The
-  compiler needs a visit order that works with both sources. While the
-  composite is playing, queued transitions tied to the old clock run
-  before that binding changes.
-  A timing change needs one free loop record while the new program is staged.
-  For a one-pass composite that keeps its sync source, an edit can take effect
-  as the old run ends. When both plans end with the same child modes, the
-  switch needs no extra rows. If the endings differ, the new schedule also
-  carries each child's old action. A dropped child may need a temporary row.
-  If the old ending records a child and the new opening plays it, the usual
-  transition finishes the take and plays it on the same boundary.
-  An independent one-pass edit also keeps pending transport commands when it
-  preserves the ending modes and the iteration and pass lengths. Other
-  one-pass edits can take effect one quantum after the old run stops.
-  Playback controls still run while an edit waits. If a scheduled stop is
-  pending, it takes effect first and the edit can apply once the loop stops.
-  Cancelling an edit that still waits leaves the active version in place. If
-  the edit reaches the handoff first, the application reports the version that
-  took over.
+- **Reduced live-edit profile.** Initial static composite installation is
+  supported. Live replacement refuses with `GraphCompositeUnsupported` whenever
+  either the active or candidate program contains composites. This includes
+  introduction/removal, child edits and unrelated structural changes while a
+  composite is installed, even when its transport is stopped. Refusal preserves
+  installed schedules, recorded media, controls and allocation ownership.
+- **Explicit replacement lifecycle.** Retire the old execution owner and obtain
+  a real JP/cache/DMA ownership fence or safe reset, then establish a fresh
+  runtime incarnation/allocator for initial installation. A stopped playhead,
+  SP idle or snapshot does not establish that ownership. There is no future-cut
+  search, conditional preview, outgoing schedule, automatic stop or retry.
+  Primitive-only replacement retains state continuity and real fencing.
+  CPU-native/default-browser composite editing remains unchanged; optional
+  worklet `fpga-reference` shares this reduced profile.
 
 ## How the render state reaches JP
 
@@ -960,39 +902,20 @@ switch. The returned first frame identifies the new program's boundary.
 The host must wait for completion before reclaiming the previous region or
 the retired state bindings.
 
-For a composite edit, the prepared host stages a versioned schedule in the
-inactive region and checks the affected loops before selecting it. Supported
-boundaries include a switch with the affected loops stopped, a compatible
-restart of an independent repeating parent, and a future-only edit that leaves
-the next unit intact. A single compatible switch request can wait while the old
-program runs to a repeat boundary or finishes its one-pass schedule.
-For an uninterrupted repeat, the loader can put each child's old ending mode
-in the new parent header. A dropped child that was still playing gets a header
-with no spans. SP uses the old mode for the wrap at the switch, then reads the
-new spans for subsequent passes. A following switch waits for that quantum to run.
-Continuing child media remains attached to its existing views through the
-handoff.
+This live handoff is primitive-only. Active/candidate composites cause an early
+refusal, before reservation or active mutation. Static composite runtime controls
+continue to use the installed schedule. Replacing that schedule requires the
+explicit quiesced/new-incarnation lifecycle described above; stopping transport
+alone is not enough. There are no old-span headers, guarded switch ports or
+preview/retry controllers.
 
-For a future edit that keeps the same children, audio work, and addresses,
-the host can submit a switch with a loop slot and a position limit. SP checks
-the loop after resolving its transport, parent actions, and sync for the
-quantum. The switch qualifies if the loop is stopped or its render position
-is below the limit. The staged program agrees with the active program on the
-audio and loop actions for that quantum, so SP can finish the block with the
-active rows. The pipeline publishes the new revision after the block succeeds.
-The switch is reported at the frame where SP made its decision, and the next
-quantum fetches from the new region. If the check fails, the host can try
-again on a later boundary with the same staged program.
-
-A guarded restart uses the staged region during the switch attempt. The
-compiler checks that the two versions use the same timing, audio work and
-state addresses. SP settles the target before its children. The children
-use the old spans if the attempt fails, or compare them with the new
-opening on an accepted restart. Completion reports the frame that used
-the new schedule. The extra spans count toward the existing program
-capacity. This path currently keeps timing, the child list and the audio
-work fixed and handles Play and Stop spans. Other edits use the existing
-handoffs or wait for a stop.
+The [ABI-16 semantic FIFO contract](../../../fpga/host_bridge/semantic_fifo.md)
+freezes complete publication, reply reservation, the one-group-per-quantum policy,
+physical target binding and coherent settled snapshots. Production integration
+is still pending: the mailbox described above remains the legacy ABI-15 bridge,
+not evidence of an autonomous semantic consumer. See
+[the plan](../../../FPGA_CMD_FIFO.md) and
+[verified milestones](../command-fifo-implementation/README.md).
 
 ## Audio device clock boundary
 
@@ -1022,7 +945,7 @@ revision, event count and the audio bank release.
 | --- | --- |
 | Did loop mode and render position settle as expected? | Marlin `sync` test and SP sync-event stream |
 | Did the compiled sequence drive the intended jobs and produce the right samples? | `state`, `audio`, `pipeline`, and mixed `midi` tests |
-| Did a composite seek, shared child, authored take or schedule switch settle correctly? | `graph_compiler` in `rt_fpga_testbench` and `shoop_rt_host_marlin`, and `transition_traces` in `rt_fpga_reference` |
+| Did a static composite seek, shared child, authored take or refused live edit settle correctly? | `graph_compiler` in `rt_fpga_testbench` and `shoop_rt_host_marlin`, and `transition_traces` in `rt_fpga_reference` |
 | Did the second read observe intervening writes? | `chunk`, `metadata`, `ownership` and `deferred` tests |
 | Did ownership survive a switch at the intended frame? | `loading` and `shoop_rt_host_marlin` mailbox tests |
 | Did snapshots and musical repairs agree, including held pedals and shared outputs? | `midi_expression` RTL suite and Rust `midi_expression` tests |

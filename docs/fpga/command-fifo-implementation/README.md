@@ -133,9 +133,108 @@ cause of the earlier timeout.
 
 ### Remaining limits
 
-Stage 3 is **not complete**: the versioned FIFO, capability and explicit
-quiescence/ownership-lifecycle contract still needs freezing and corresponding
-loading/architecture documentation. The ABI-15 CPU control-window/batch bridge is
-still present pending Stages 4–5. No production semantic FIFO, fresh integrated
-resource/timing measurement, protected route, physical qualification, push or PR
-is claimed by this milestone.
+At this RTL-removal milestone Stage 3 was **not complete**: ABI, capability and
+lifecycle documentation still needed freezing. The following milestone closes
+that work, not production integration.
+
+## Stage 3 complete: reduced profile and ABI-16 contract freeze
+
+The [ABI contract](../../../fpga/host_bridge/semantic_fifo.md) specifies four
+complete command/result bank pairs, 32-command groups, fixed-cutoff one-group
+service, actual-attempt header/deadline checks, per-command results, FIFO reliable
+completion visibility, delayed real fencing, independent coherent snapshots and
+reset/identity fencing. Local original-gain/failure/pulse observations remove the
+need for an ARM response/event reader to maintain snapshot metadata. Their
+new-lease initialization remains a loader operation, never continuing-state
+restoration. The semantic target requires a complete sync prefix before capture
+and audio work, distinct from standalone instruction interleaving.
+
+The source-change implementation rule is refined with explicit evidence: 128
+kernel clears at 65 cycles each cannot fit either the 32-command group or
+4,096-cycle phase. An execution-owned first-SP-visit source comparison preserves
+the prepared reference's existing invalidation behavior. Implementation and
+integrated ordering/bounds tests remain future work; no ceiling or acceptance
+criterion was weakened.
+
+Architecture, loading, opcode/manual and crate usage docs now describe initial
+static composites, primitive-only live replacement, early refusal when active or
+candidate contains composites, and the explicit quiesced/new-incarnation lifecycle.
+Capability comments distinguish supported-profile replacement and cancellation
+of unpublished preparation. CPU-native/default-browser behavior remains separate.
+**ABI 16 is specified, not implemented or deployed.** The generated schema and
+legacy bridge remain ABI 15 pending Stages 4–5.
+
+### Fresh gates
+
+`work/cmd-fifo-investigation/stage3-contract-verified.{log,status}` records:
+
+- **166 affected-package Rust tests**, with the same full simulation/RT-interface
+  feature matrix above, including the **3,970-case** kernel differential.
+- **12 directed component tests**: eight graph tests, two target-lowering tests
+  and two timing tests. This is **178 Rust tests** in this invocation, not 178
+  plus the generated differential cases.
+- Warning-denying workspace build, formatting, test-policy, historical coverage
+  guard and AXI/host generator checks pass. Retired-name and modified-Markdown
+  local-link audits pass separately.
+
+No fresh complete Linux/Wasm run is claimed for this documentation/test-harness
+checkpoint; the production removal code retains the preceding milestone's full
+Linux/Wasm results. No production semantic FIFO, new integrated resource/timing
+measurement, physical test, push or PR is claimed.
+
+### Broader component audit and unresolved baseline differences
+
+DRAMsim3 was built through the documented pinned builder. Component runs select
+`SHOOP_FPGA_SOURCE_ROOT` explicitly and use the Z-turn x32 DRAM configuration,
+except the native timing unit whose fixed x16 geometry/accounting now explicitly
+selects its x16 fixture rather than accidentally inheriting an environment override.
+
+Six failing cases reproduced at untouched production base `ff6c09551`:
+
+- Three graph assertions counted inline schedule rows as executable loop visits.
+  Corrected checks retain separate exact instruction-capacity accounting.
+- A graph job comparison assumed a total order for independent work. Normalized
+  comparisons retain exact payloads, producer-before-consumer/single-writer
+  checks and shared-media access order. Negative cases cover unsafe reordering,
+  duplicate writes, capture starts, histories, ports, changed payloads and loss.
+- A target-capacity fixture omitted a media binding and assumed streaming RTL
+  FIFO depth was a total-job batch limit. The repaired test isolates bindings,
+  retains the logical batch-budget refusal and tests actual streaming behavior.
+- The geometry-specific timing case expected x16 values while inheriting x32.
+
+An early comparison reused a Cargo target across worktrees and an intermediate
+run resolved the baseline's compile-time source root. It is not current-RTL
+verification. Relevant artifacts were cleaned, current libraries rebuilt and
+current runs explicitly select the current root. Later baseline comparisons use
+an isolated Cargo target directory. The pinned native DRAM library is shared only
+as a generated dependency; baseline source is not edited.
+
+The broad invocation hit the tool's **1,200 s** limit during `pipeline`, after its
+completed targets passed. No orphan remained. A subsequent pipeline attempt found
+the interrupted model cache without its shared library; preserving/rebuilding that
+specific cache produced a passing pipeline run. Bounded follow-ups completed the
+remaining targets. Across the 75 component cases, **73 pass and two fail**; this
+is not a claim of an uninterrupted or fully passing package invocation.
+
+Both remaining failures reproduce at the production base with the same inputs:
+`rust_state_matches_rtl_all_opcodes_partial_failures_and_record_inputs` differs on
+preflight queue refusal versus partial SP effects;
+`rust_jobs_match_rtl_samples_buffers_ramps_smoothing_and_failures` differs on
+streamed job tails retained after JP failure. Their strict assertions remain
+unchanged. Resolution is explicit Stage 6 work, without dropping fault coverage.
+
+Additional local evidence under `work/cmd-fifo-investigation/`:
+
+- `stage3-testbench`, `stage3-testbench-with-dramsim`, `stage3-dramsim-build`
+- `stage3-pre-removal-graph-compiler`, `stage3-component-graphs`,
+  `stage3-component-graphs-current`
+- `stage3-components-final` (interrupted), `stage3-component-pipeline` (cache
+  failure), `stage3-component-pipeline-rebuilt` (pass)
+- `stage3-component-tail` (reference failures), `stage3-component-focused-final`
+  (remaining target/timing fixture failures)
+- `stage3-pre-removal-reference`, `stage3-pre-removal-targets-timing`
+- `stage3-contract-gates`, `stage3-contract-final-gates` (intermediate fixture
+  repair failures), `stage3-contract-verified` (final directed/affected pass)
+
+Logs/statuses are retained separately; later passing cases do not erase failures,
+prove a cause for unrelated historical timeouts or satisfy the final all-green gate.

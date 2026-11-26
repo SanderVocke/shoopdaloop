@@ -108,10 +108,17 @@ names and supported structural changes work through the current endpoint. Other
 immediate controls, media reads/import/export, loop clearing and copying still
 need endpoint support. The prepared graph transport accepts
 [bounded composite audio programs](../rt_fpga_compiler/README.md#composite-audio-programs),
-including authored audio capture and guarded image switches. The application
-composite editor and iteration controls remain separate. MIDI, processors,
-dry/wet execution and automatic monitoring are compiler refusals. Track removal
-and creation can provide fresh empty loops.
+including authored audio capture and initial static installation. Static
+transport/iteration controls and automatic input monitoring remain supported.
+Live replacement involving either an active or candidate composite refuses before
+reservation, including child edits and introduction/removal, even while stopped.
+A revised static composite requires explicit execution retirement, real ownership
+fencing or safe reset, and a fresh incarnation for installation; there is no
+implicit stop/retry. Primitive-only live changes retain continuity and fencing.
+MIDI, hosted processors and dry/wet execution remain compiler refusals. This
+reduced profile also applies to optional worklet `fpga-reference`, not independent
+CPU-native/default-browser behavior. Track removal/creation can provide fresh
+empty loops only within the supported replacement profile.
 
 The application service automatically commits a complete graph edit, including
 its loops and default connections. `RtBackend` collects that desired graph on the
