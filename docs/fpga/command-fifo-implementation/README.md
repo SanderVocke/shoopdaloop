@@ -525,3 +525,33 @@ handoff/media-store readiness still gates rendering. Those production paths have
 not yet been replaced. No consumer/SP/audio integration, held-upload audio-progress
 proof, ABI-16 deployment, new resource/route or total-quantum bound is claimed by
 this internal-port milestone. Snapshots/local effects and Stages 5–7 remain open.
+
+### Dual-region SP admission independent of program-upload ownership
+
+With two program regions, SP run admission no longer waits for program-loader busy
+or its response pulse. The prefetch controller preserves an in-flight configuration
+transfer across an SP restart, retaining its payload and separately reporting its
+result. The next active-program fetch can still require actual DDR service; this
+change does not turn an indefinitely stalled memory system into bounded successful
+rendering. Single-region configurations retain their existing upload/admission
+protection. The one-cycle local-config response condition is unchanged.
+
+The new regression first fails at the original admission gate; its log/status
+remain `work/cmd-fifo-investigation/stage4-admission-before-fix`. The fixed test
+holds a DDR upload request unaccepted, explicitly runs three empty SP quanta and
+checks frames 32/64/96, then completes the upload and verifies all three payload
+words plus padding. A fourth quantum starts on the configuration-response cycle.
+The same test verifies single-region admission remains blocked through that cycle,
+then resumes normally. Upload/request/response activity alone does not advance
+frames. These are empty SP runs, not audio/sample or nonempty-fetch qualification.
+
+Fresh `stage4-admission-milestone.{log,status}` passes **204 Rust tests**: the same
+180 affected-package tests plus 24 directed components (local RAM/admission 2,
+graph compiler 8, loading 4, sync 8, state 1, smoothing 1). Workspace warnings,
+formatting, policy/coverage and AXI/host generators pass. Narrow evidence is
+`stage4-admission-tests`; all logs are under `work/cmd-fifo-investigation/`.
+
+The semantic consumer is still not connected to the new internal RAM port.
+Audio handoff/media-store readiness gates, settled snapshots/local observations,
+ABI-16 MMIO/reference/firmware integration and final acceptance remain unfinished.
+There is no fresh resource/route, full Linux/Wasm, physical or delivery claim.

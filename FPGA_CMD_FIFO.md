@@ -415,6 +415,22 @@ wrapper ties it off pending connection; old SP admission/program-loader gating a
 audio fence gating still require replacement. It does not prove audio progress
 under a held upload, full frontend resources or an integrated cycle envelope.
 
+**Dual-region SP admission milestone:** a pending program upload and its response
+pulse no longer own SP run admission when two program regions are configured.
+Single-region upload protection and bounded local-config response handling remain.
+The new regression first failed at the old `run_ready` gate, then passes: three
+explicit empty SP quanta advance frames 0→96 while the upload remains unaccepted;
+upload completion preserves every payload word and admits the next quantum on its
+response cycle. Single-region admission stays blocked until that response retires.
+Uploads/polling alone do not advance frames. This isolates SP admission only, not
+nonempty instruction fetch, audio samples or a total-quantum DDR bound.
+
+Fresh gates pass **180 affected-package plus 24 directed component tests
+(204 total)**, workspace warnings, formatting, policy/coverage and generators;
+`work/cmd-fifo-investigation/stage4-admission-milestone.{log,status}` records them.
+The before-fix failure is retained as `stage4-admission-before-fix`. Consumer/RAM
+connection, audio/media-store/fence gating and the remaining Stage 4 work stay open.
+
 Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
 local SP observations and settled snapshots are **not yet connected**. Generated
 hardware remains ABI 15. No integrated resource/total-quantum, physical, fresh

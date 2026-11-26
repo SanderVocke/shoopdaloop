@@ -26,6 +26,106 @@ fn access(sim: &mut Sim<'_>, state: bool, address: u64, value: Option<&Bits>, er
     data
 }
 
+fn empty_quantum(sim: &mut Sim<'_>, frame: u64) {
+    sim.model.set_all(&[
+        ("run_valid", 1),
+        ("run_instruction_count", 0),
+        ("run_sync_count", 0),
+        ("run_state_count", 0),
+        ("run_quantum", 32),
+        ("run_chunk_frames", 1),
+    ]);
+    sim.model.eval();
+    assert_eq!(sim.model.get("run_ready"), 1);
+    sim.idle(1);
+    sim.model.set("run_valid", 0);
+    sim.until(24, "empty SP quantum", |model| model.get("done") != 0);
+    assert_eq!(sim.model.get("error_code"), 0);
+    assert_eq!(sim.model.get("sync_frame"), frame);
+    sim.idle(1);
+}
+
+#[shoop_test]
+fn program_upload_busy_and_response_do_not_own_sp_run_admission() {
+    for regions in [1, 2] {
+        let depths = [16, 4, 16];
+        let compiled = suites::state::design(depths)
+            .parameters(&[("PROGRAM_REGIONS", regions), ("DDR_PROGRAM", 1)])
+            .build(&rt_fpga_testbench::root().join("work/marlin-suite/local-ram-admission"))
+            .unwrap();
+        let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        let mut driver = State::new(&mut sim, depths, 73);
+        sim.model.set_all(&[
+            ("local_valid", 0),
+            ("memory_program_ready", 0),
+            ("memory_program_write_ready", 0),
+            ("memory_program_read_valid", 0),
+            ("memory_program_response_valid", 0),
+            ("memory_program_response_error", 0),
+        ]);
+        driver.reset(&mut sim);
+        sim.model.set_all(&[
+            ("cfg_valid", 1),
+            ("cfg_loop", 0),
+            ("cfg_state", 0),
+            ("cfg_write", 1),
+            ("cfg_address", if regions == 2 { 16 } else { 0 }),
+        ]);
+        let words = [0x1122_3344, 0xaabb_ccdd, 0x5566_7788, 0];
+        let mut payload = Bits::zero(129);
+        for (word, value) in words.iter().take(3).enumerate() {
+            payload.set(word * 32, 32, *value);
+        }
+        sim.model.set_bits("cfg_write_data", &payload);
+        sim.idle(1);
+        sim.model.set("cfg_valid", 0);
+        assert_eq!(sim.model.get("sync_frame"), 0);
+        for frame in [32, 64, 96] {
+            assert_eq!(sim.model.get("memory_program_valid"), 1);
+            if regions == 2 {
+                empty_quantum(&mut sim, frame);
+            } else {
+                sim.model.eval();
+                assert_eq!(sim.model.get("run_ready"), 0);
+                sim.idle(12);
+                assert_eq!(sim.model.get("sync_frame"), 0);
+            }
+            assert_eq!(sim.model.get("cfg_response_valid"), 0);
+        }
+        sim.model.set("memory_program_ready", 1);
+        sim.idle(1);
+        sim.model.set_all(&[
+            ("memory_program_ready", 0),
+            ("memory_program_write_ready", 1),
+        ]);
+        for word in words {
+            assert_eq!(sim.model.get("memory_program_write_valid"), 1);
+            assert_eq!(sim.model.get("memory_program_write_data"), word);
+            sim.idle(1);
+        }
+        sim.model.set_all(&[
+            ("memory_program_write_ready", 0),
+            ("memory_program_response_valid", 1),
+        ]);
+        sim.idle(1);
+        sim.model.set("memory_program_response_valid", 0);
+        assert_eq!(sim.model.get("cfg_response_valid"), 1);
+        assert_eq!(sim.model.get("cfg_response_error"), 0);
+        assert_eq!(
+            sim.model.get("sync_frame"),
+            if regions == 2 { 96 } else { 0 }
+        );
+        if regions == 2 {
+            empty_quantum(&mut sim, 128);
+        } else {
+            sim.model.eval();
+            assert_eq!(sim.model.get("run_ready"), 0);
+            sim.idle(1);
+            empty_quantum(&mut sim, 32);
+        }
+    }
+}
+
 #[shoop_test]
 fn execution_ram_has_one_cycle_service_and_priority_even_with_a_stalled_program_loader() {
     for ddr in [0, 1] {
