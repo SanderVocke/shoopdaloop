@@ -355,6 +355,20 @@ Evidence: `work/cmd-fifo-investigation/stage4-consumer-{tests,races,milestone}` 
 `production-{group,fence-race}-cycles.json`. An initial width-warning elaboration
 failure is retained separately, not counted as a pass.
 
+Partial frontend synthesis at source `367a2b69d` measures **4,015 packed LUTs,
+3,891 FFs, 2 RAMB36 + 1 RAMB18 (2.5 equivalents), no DSP**; kernel leaf
+**1,830 LUTs / 1,945 FFs**, within its ceilings. The remaining frontend blocks are
+absent: 1,985 LUTs / 3,109 FFs of apparent headroom is not completed-design proof.
+**Timing remains open:** the unrouted estimate is **WNS −2.074 ns**, 743 failing
+setup endpoints, on pending-group/completion/fault control (24 logic levels).
+This is not the protected routed gate and does not establish 100 MHz closure;
+address timing before proceeding with production integration. No limits change.
+[Reports/provenance](docs/fpga/command-fifo-implementation/reports/consumer-synthesis-367a2b69d/results.json)
+retain that negative result. Offline Vivado 2021.1/3247384 run
+`vivado-consumer-v2` succeeds after `v1` stopped before synthesis on an incorrect
+launcher pin from compacted notes; the corrected pin matches the frozen approved
+investigation archive. No board work or fresh routed result is claimed.
+
 Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
 local SP observations and settled snapshots are **not yet connected**. Generated
 hardware remains ABI 15. No integrated resource/total-quantum, physical, fresh

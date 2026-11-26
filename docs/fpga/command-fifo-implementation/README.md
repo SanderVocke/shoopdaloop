@@ -330,3 +330,49 @@ integration remain pending. The probe's configuration access is test-only, not a
 production control fallback. Generated hardware remains ABI 15 with the legacy
 CPU bridge. No fresh Linux/Wasm, integrated resource/route, physical qualification,
 production semantic FIFO acceptance or delivery is claimed by this checkpoint.
+
+### Partial consumer synthesis — timing remains open
+
+The offline Vivado 2021.1/3247384 measurement at source `367a2b69d` targets
+`xc7z020clg400-2`, 100 MHz, 1 ns I/O delays. It includes only banks, consumer and
+kernel, not the remaining MMIO/snapshot/observation/arbitration frontend or existing
+execution/persistent storage. [Results/provenance and checksums](reports/consumer-synthesis-367a2b69d/results.json)
+freeze the source/runner/Tcl hashes and native reports.
+
+| Synthesis hierarchy | Packed LUTs | FFs | RAMB36 | RAMB18 | DSP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Partial frontend total | 4,015 | 3,891 | 2 | 1 | 0 |
+| Consumer control only | 1,176 | 1,323 | 0 | 0 | 0 |
+| Paired banks | 1,009 | 623 | 2 | 1 | 0 |
+| Kernel leaf | 1,830 | 1,945 | 0 | 0 | 0 |
+
+Use packed utilization, not the 4,929 raw LUT-primitive count. There are 1,518
+observable port bits. The kernel remains within its 2,500 LUT/FF ceilings; the
+partial total leaves 1,985 LUTs / 3,109 FFs against the *complete* frontend ceiling,
+but absent blocks have not been counted and no net whole-design saving is claimed.
+
+**The unrouted timing estimate fails:** WNS **−2.074 ns**, TNS −237.136 ns,
+743/11,084 setup endpoints failing; estimated WHS +0.246 ns. The worst path is
+pending-group to bank state/completion/fault control, 24 logic levels. This is
+unplaced/unrouted without `HD.CLK_SRC`, not protected whole-design routed closure.
+It is an open timing issue to resolve before production integration, not a pass,
+Fmax claim or reason to relax the nonnegative routed setup/hold requirement.
+
+Local `vivado-consumer-v2` has status 0 and `complete.txt=passed`; this means the
+measurement completed, **not** that timing acceptance passed. `v1` stopped at the
+launcher guard before synthesis: an incorrect pin from compacted notes was
+replaced by the approved archive's actual launcher SHA
+`2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505`.
+The failed startup remains local evidence; no historical archive was changed.
+The tool image is pinned/offline with `--pull=never` and no board access.
+
+Reproduce into a fresh directory with:
+
+```sh
+nix develop --command python3 fpga/host_bridge/measure_semantic.py \
+  work/semantic-consumer-measurement-NEW --run
+```
+
+`--route` optionally performs OOC implementation; no route was performed for this
+checkpoint. A component route would still not replace the matching protected
+whole-design route/total-quantum gate.
