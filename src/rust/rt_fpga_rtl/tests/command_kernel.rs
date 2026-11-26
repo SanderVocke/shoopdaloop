@@ -231,15 +231,31 @@ fn compare(
 
 #[shoop_test(no_wasm = "Isolated experimental RTL edit kernel differential test")]
 fn retained_command_kernel_matches_rust_and_reports_cycle_bounds() {
+    exercise_kernel(false);
+}
+
+#[shoop_test(no_wasm = "Production-source RTL edit kernel differential test")]
+fn production_command_kernel_matches_rust_and_reports_cycle_bounds() {
+    exercise_kernel(true);
+}
+
+fn exercise_kernel(production: bool) {
     let root = rt_fpga_rtl::root();
     let source = root.join("fpga/experiments/command_fifo");
-    let compiled = Design::new(
-        "fifo_edit_probe",
-        vec![source.join("edit_kernel.sv"), source.join("probe.sv")],
-    )
-    .parameters(&[("LOOPS", 128), ("STATES", 512)])
-    .build(&root.join("work/cmd-fifo-kernel"))
-    .unwrap();
+    let kernel = if production {
+        root.join("fpga/host_bridge/rtl/fifo_edit_kernel.sv")
+    } else {
+        source.join("edit_kernel.sv")
+    };
+    let work = if production {
+        "work/cmd-fifo-production-kernel"
+    } else {
+        "work/cmd-fifo-kernel"
+    };
+    let compiled = Design::new("fifo_edit_probe", vec![kernel, source.join("probe.sv")])
+        .parameters(&[("LOOPS", 128), ("STATES", 512)])
+        .build(&root.join(work))
+        .unwrap();
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
     sim.max_ps = 100_000_000_000;
     sim.model.set_all(&[("reset", 1), ("allow_memory", 1)]);
@@ -437,10 +453,21 @@ fn retained_command_kernel_matches_rust_and_reports_cycle_bounds() {
         Code::TargetUnavailable
     );
     assert_eq!(load(&mut sim, SLOT), stale);
-    let report = serde_json::json!({ "cases": count + 2, "seed": "a43fcd7219b60e85", "cycles": stats, "group_work": group_cycles, "scope": "isolated unconnected kernel; no FIFO, audio, switch or production-path claim" });
+    assert_eq!(count + 2, 3970);
+    let scope = if production {
+        "production-source kernel, not yet connected to FIFO, audio or switching"
+    } else {
+        "isolated unconnected kernel; no FIFO, audio, switch or production-path claim"
+    };
+    let report = serde_json::json!({ "cases": count + 2, "seed": "a43fcd7219b60e85", "cycles": stats, "group_work": group_cycles, "scope": scope });
     std::fs::create_dir_all(root.join("work/cmd-fifo-investigation")).unwrap();
+    let report_name = if production {
+        "production-kernel-cycles.json"
+    } else {
+        "kernel-cycles.json"
+    };
     std::fs::write(
-        root.join("work/cmd-fifo-investigation/kernel-cycles.json"),
+        root.join("work/cmd-fifo-investigation").join(report_name),
         serde_json::to_string_pretty(&report).unwrap(),
     )
     .unwrap();

@@ -238,3 +238,45 @@ Additional local evidence under `work/cmd-fifo-investigation/`:
 
 Logs/statuses are retained separately; later passing cases do not erase failures,
 prove a cause for unrelated historical timeouts or satisfy the final all-green gate.
+
+## Stage 4 in progress: standalone kernel and packet banks
+
+The production-source `fpga/host_bridge/rtl/fifo_edit_kernel.sv` starts byte-identical
+to the frozen prototype (SHA256
+`bacf1224ab4cbaaa9f3f4bc3c033dac8b4d9e7c23222a0e58421d43483ada68f`).
+The prototype remains frozen. The common harness now runs **two Rust tests**, each
+with **3,970 differential cases**, against their independently selected sources.
+It writes separate `kernel-cycles.json` and `production-kernel-cycles.json` reports
+under `work/cmd-fifo-investigation/`. The production source is not yet on the audio
+path. Work-cycle results remain 73 transition, 65 clear/repeat, 35 gain and 99
+iteration/seek, excluding packet decode/turnover. No new synthesis is claimed.
+
+`fifo_group_banks.sv` provides four paired input/result banks with BRAM packet
+storage, sequential fill/completeness checks, immutable admitted data, exact
+publication sequences, independent execution/release cursors and reserved reply
+capacity. Only the oldest complete reliable result is visible or releasable.
+A waiting synthetic fence retains its bank without blocking later ordinary
+execution. Epoch/sequence-qualified completions and ACKs prevent freeing a new
+occupant. Result production writes codes then header; incomplete completion fails
+closed. No packet RAM reset or full-record shadow banks are introduced.
+
+Four standalone bank tests cover partial publication at every word of a full
+32-command packet, partial strobes, malformed/incomplete/gapped publication,
+unread/full result banks, payload immutability, FIFO result visibility, duplicate
+and stale acknowledgements, delayed fence identity/reset ABA, same-clock
+publication/take ordering and incomplete-result failure. These are component
+signals and synthetic completions, not real DMA-fence or continuous-audio evidence.
+Sequence-exhaustion and additional hostile races remain integration-validation work.
+
+`work/cmd-fifo-investigation/stage4-component-milestone.{log,status}` records **six
+passing Rust tests** (the generated cases are inside the two kernel tests), a
+warning-denying workspace build, formatting, test-policy and generator checks.
+Earlier narrow logs are `stage4-kernel-bootstrap` and `stage4-bank-tests`.
+
+The boundary consumer, actual RAM arbitration, MMIO ABI-16 schema/bridge, settled
+snapshot collector, local event effects and firmware/reference integration are
+still pending. Kernel RAM errors must be promoted to real consumer faults,
+including read errors; an ordinary refusal result alone is not sufficient.
+Current generated hardware remains ABI 15 with the legacy CPU bridge. No full
+Linux/Wasm rerun, fresh integrated resource/timing measurement, board activity,
+production semantic FIFO acceptance or delivery is claimed by this milestone.

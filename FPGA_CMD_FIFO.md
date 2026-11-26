@@ -3,7 +3,8 @@
 ## Status and execution contract
 
 **Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–3 are
-complete, including the reduced-profile/ABI contract freeze. Stage 4 is next. See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
+complete, including the reduced-profile/ABI contract freeze. Stage 4 is in progress.
+See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
 Branch: `investigate/fpga-command-fifo`, production base `ff6c09551e9dee2cd3a12d37ccad19fa844b09aa`.
 Physical testing still requires the separate authorization and protections in Stage 6.
@@ -304,6 +305,32 @@ timing/physical qualification, final-head CI or delivery.
   writes cannot hold a processing boundary. Keep selection/fencing truthful.
 - [ ] Verify runtime reset flushes unpublished/published packets, replies and
   snapshots without reusing old identities, while always-on recovery survives.
+
+In progress — standalone component milestone: the measured kernel now has a
+production source at `fpga/host_bridge/rtl/fifo_edit_kernel.sv`; its initial bytes
+match the frozen investigation source. A shared differential harness runs both
+sources independently: **2 Rust tests, each containing 3,970 cases**, with separate
+cycle reports. Successful work remains 73/65/35/99 kernel cycles for transition,
+clear/repeat, gain and iteration; this excludes frontend/group turnover.
+
+`fifo_group_banks.sv` adds four paired input/result banks, sequential complete
+publication, immutable admitted payloads, FIFO execution/result-release cursors,
+reserved reliable capacity, qualified acknowledgements and synthetic fence/reset
+identity handling. Its **4 standalone tests pass**, including all 400 words of a
+32-command packet, partial strobes, refusals, full unread results, later execution
+while an earlier fence waits, out-of-order result access/ACK refusal, epoch/sequence
+ABA, same-edge publication eligibility and incomplete-result fail-closed behavior.
+The result producer writes command codes followed by the header; complete result
+visibility is checked separately from execution progress.
+
+The **6-test component gate**, warning-denying workspace build, formatting,
+test-policy and generators pass (`work/cmd-fifo-investigation/stage4-component-milestone`).
+These units are **not yet connected** to the boundary consumer, audio/SP/JP, MMIO
+ABI 16, local observations, snapshots or production RAM arbitration. Synthetic
+fences are not proof of the real JP/cache/DMA fence. RAM errors must become actual
+consumer faults, not ordinary kernel refusal codes. No integrated cycle/resource,
+healthy-audio-stall or physical qualification is claimed; all Stage 4 items remain
+open until their production integration passes.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
