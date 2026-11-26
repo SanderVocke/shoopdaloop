@@ -431,3 +431,66 @@ Generated firmware/RTL still advertise ABI 15. Actual processing/audio, real
 JP/cache/DMA fences, MMIO, local observations/snapshots and remaining Stages 4–7
 are not delivered by this component milestone. No new full Linux/Wasm, protected
 whole-design route, physical qualification, push/PR or final-head CI is claimed.
+
+### Execution-owned SP source-change invalidation
+
+The production SP compares each inline sync source against the source-valid,
+physical slot and generation already stored in its packed loop record. It clears
+old-source pulse-plan validity before the plan scan, then writes the new source
+identity with ordinary SP writeback. A validated external source supplies its
+current generation; self and no-source cases use the corresponding canonical
+identity. The same operand on later visits does not clear newly armed plans.
+There is no new registry, RAM, per-loop controller, SP phase or ARM patch sequence.
+Legacy non-inline instructions keep their existing source validation.
+
+Source-bound pulse plans are distinct from frame-absolute plans. The latter
+survive source changes, matching the prepared reference's `clear_mode_plan`.
+An initial implementation incorrectly used the general primitive clear rule;
+`live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads`
+caught loss of its scheduled seek and changed samples. The SP now invalidates
+only pulse plans. That failed run remains
+`stage4-source-milestone-absolute-plan-failure.{log,status}`, not a baseline issue
+or passing evidence. The production kernel/general clear operation is unchanged.
+
+Two added sync tests cover **18** combinations of source introduction/removal,
+external/self/unchanged operands, stale cached external/self generations, either
+or both frame-absolute slots, newly armed plans on the next visit, and all **128**
+slots changing no-source to self. Ready pulse plans and natural wraps check that
+invalidation precedes scheduled execution; payloads remain unchanged. The broad
+case takes **9,991 simulated SP cycles** with local loop RAM, Q32 and all 128 loops
+wrapping, no audio work and an always-ready event sink. This is an observed SP
+workload, **not** command-phase/snapshot timing or an integrated quantum bound.
+It adds no command records; real command/selection/SP ordering remains pending.
+
+Fresh `work/cmd-fifo-investigation/stage4-source-milestone.{log,status}` passes:
+
+- **180 affected-package tests**, including both independently sourced kernel
+  differentials, banks/consumer races and public static/primitive-switch tests.
+- **22 directed component tests**: graph compiler 8, loading 4, SP sync 8,
+  standalone state 1 and smoothing 1. Total **202 Rust tests** in this gate.
+- Warning-denying workspace build, formatting, test-policy, historical coverage
+  guard and AXI/host register/top generator checks.
+
+Narrow logs are `stage4-source-{tests,pre-scan,absolute-plans}`. The first fixture
+run is retained separately as `stage4-source-tests-fixtures`: it omitted the small
+model's loop depth and supplied fewer than the reference's four event slots per
+loop. Those configuration failures preceded the passing strengthened tests.
+
+Reproduce the directed portion through Nix with the current RTL root and pinned
+DRAMsim3 library built as documented in the testbench README:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  export SHOOP_DRAMSIM3_CONFIG="$PWD/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test sync --test graph_compiler --test loading --test state --test smoothing \
+    -- --nocapture --test-threads=2
+'
+```
+
+Generated hardware remains ABI 15; the consumer is still not connected to the
+actual audio/SP/JP and memory fence chain. Loader arbitration, independent
+snapshots/local effects, reference/firmware transport changes and all final gates
+remain open. There is no fresh resource/route, complete Linux/Wasm, physical,
+CI/review or delivery claim for this milestone.

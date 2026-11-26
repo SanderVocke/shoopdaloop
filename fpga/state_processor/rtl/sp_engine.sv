@@ -207,6 +207,9 @@ module sp_engine #(
     reg [31:0] source_slot;
     wire selected_source_valid = inline_sync ? arg3!=16'hffff : flags[SV];
     wire [31:0] selected_source_slot = {16'b0,inline_sync ? arg3 : flags[SS+:16]};
+    wire source_operand_changed = flags[SV]!=source_valid
+        || (source_valid && flags[SS+:16]!=source_slot[15:0])
+        || (source_valid && source_self && control[31:0]!=generation);
     wire source_tick=source_valid && !source_self && source_flags[PULSE];
     wire source_playing=source_flags[M+:2]==1;
     wire repeat_wait=flags[REP] && source_valid && !source_self && source_playing && !source_tick;
@@ -285,6 +288,12 @@ module sp_engine #(
         begin
             job_data<={run_frame,sequence_value,payload,target,8'b0,outcome,reason,kind};
             sync_event_return<=destination; phase<=SYNC_EVENT;
+        end
+    endtask
+    task automatic clear_source_plans;
+        begin
+            if (control[P0+TICKS]) control[P0+VALID]<=0;
+            if (control[P1+TICKS]) control[P1+VALID]<=0;
         end
     endtask
     task automatic sync_resolve(input index, input [7:0] outcome, input [7:0] reason, input phase_t destination);
@@ -671,6 +680,12 @@ module sp_engine #(
                     flags[`SHOOP_SP_L_COMPOSITE_SNAPSHOT]<=0; flags[`SHOOP_SP_L_COMPOSITE_RESTART]<=0;
                     flags[`SHOOP_SP_L_COMPOSITE_WRAP]<=0;
                     control[`SHOOP_SP_L_COMPOSITE_CHILD]<=composite_child;
+                    if (inline_sync) begin
+                        if (source_operand_changed) clear_source_plans();
+                        flags[SV]<=source_valid;
+                        flags[SS+:16]<=source_valid ? source_slot[15:0] : 16'd0;
+                        if (!source_valid || source_self) control[31:0]<=source_valid ? generation : 32'd0;
+                    end
                     if (flags[M+:2]!=2) control[`SHOOP_SP_L_AUTHORED_CAPTURE]<=0;
                     if (sync_flags_invalid || (flags[PV] && word_at_frame)
                         || (is_composite && flags[M+:2]==2)) sync_fail();
@@ -697,7 +712,13 @@ module sp_engine #(
                 SYNC_SOURCE_CHECK: begin
                     if (!source_flags[V] || (!inline_sync && source_flags[G+:32]!=control[31:0]) || source_flags[M+:2]==3
                         || !source_flags[PV] || !word_at_frame) sync_fail();
-                    else phase<=SYNC_SCAN_BEGIN;
+                    else begin
+                        if (inline_sync) begin
+                            if (control[31:0]!=source_flags[G+:32]) clear_source_plans();
+                            control[31:0]<=source_flags[G+:32];
+                        end
+                        phase<=SYNC_SCAN_BEGIN;
+                    end
                 end
                 SYNC_SCAN_BEGIN: begin sync_pass<=0; scan_index<=0; winner_valid<=0; phase<=SYNC_SCAN; end
                 SYNC_SCAN: begin

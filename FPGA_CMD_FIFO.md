@@ -382,6 +382,26 @@ blocks mean this is **not** the protected whole-design gate, a 60,000-cycle quan
 proof or a guarantee that the remaining frontend fits. No limits change or board
 work is implied.
 
+**SP source-change milestone:** the production SP now compares the inline source
+operand and validated source generation with the existing packed-record fields,
+invalidates old-source **pulse** plans before scanning, and stores the new identity
+through its ordinary writeback. Frame-absolute plans survive, matching the
+prepared reference's `clear_mode_plan`; no new registry, RAM, loop scheduler,
+SP phase or expanded command group is introduced. Two directed tests cover 18
+source/slot/generation/plan-kind cases, unchanged and re-armed plans, plus all 128
+slots changing from no source to self with simultaneous natural wraps. The latter
+uses **9,991 simulated SP cycles**, not command/snapshot cycles or a complete
+quantum bound. The initial broader run caught an incorrect all-plan clear that
+lost a scheduled seek during live loading; pulse-only invalidation fixes it and
+the failed run is retained, not labelled a baseline issue.
+
+Fresh gates pass **180 affected-package plus 22 directed component Rust tests
+(202 total)**, including static graphs, live loading/DDR fences, SP sync/state and
+smoothing. Workspace warnings, formatting, policy/coverage and generators pass.
+Evidence: `work/cmd-fifo-investigation/stage4-source-milestone.{log,status}`;
+initial fixture failures and the absolute-plan regression remain separate logs.
+No new resource/route, full Linux/Wasm or physical result is claimed.
+
 Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
 local SP observations and settled snapshots are **not yet connected**. Generated
 hardware remains ABI 15. No integrated resource/total-quantum, physical, fresh

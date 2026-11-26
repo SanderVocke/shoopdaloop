@@ -178,9 +178,11 @@ not success. A delayed fence does not make a second consumer execute the group.
 Only one prepared/pending program exists; no third image may reuse old resources.
 
 **Source-change rule:** the first SP visit under the new inline source operand
-invalidates old-source plans when that operand differs from the last executed
-source. Use existing record source fields as execution-owned comparison state;
-no ARM read/patch, source registry or separate scheduler is required. This retains
+invalidates old-source pulse plans when that operand differs from the last executed
+source. Frame-absolute plans are not source-bound and remain intact, matching the
+reference's `clear_mode_plan` behavior. Use existing record source fields as
+execution-owned comparison state; no ARM read/patch, source registry or separate
+scheduler is required. This retains
 the prepared reference's current `Engine::switch` behavior, which clears
 `changed_sources`, without expanding a switch into up to 128 kernel invocations.
 An explicit clear command remains supported. All commands preceding a last switch
