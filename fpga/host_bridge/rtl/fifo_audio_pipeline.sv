@@ -34,6 +34,8 @@ module fifo_audio_pipeline #(
     output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
+    output wire capture_valid,
+    output wire [63:0] capture_frame,
     output wire handoff_request,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
@@ -231,7 +233,7 @@ module fifo_audio_pipeline #(
     assign execution_media_fault = media_fault || observation_abort;
     reg configuration_pending, configuration_observations;
     wire observation_config = cfg_state && cfg_loop;
-    wire configuration_available = !configuration_pending && !run_valid && !reset && !faulted;
+    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && !reset && !faulted;
     assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
     assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
     assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);
@@ -360,7 +362,7 @@ module fifo_audio_pipeline #(
         .trace_epoch(trace_epoch),
         .trace_revision(trace_revision)
     );
-    audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2),
+    audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2), .CAPTURE_SYNC(1),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_DEPTH),
@@ -397,6 +399,9 @@ module fifo_audio_pipeline #(
         .run_ready(render_ready),
         .run_instruction_count(32'd0),
         .run_sync_count(32'd0),
+        .capture_valid(capture_valid),
+        .capture_ready(1'b1),
+        .capture_frame(capture_frame),
         .run_program_region(1'b0),
         .switch_valid(select_valid),
         .switch_ready(select_ready),

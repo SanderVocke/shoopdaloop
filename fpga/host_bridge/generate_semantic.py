@@ -21,7 +21,7 @@ def generate():
                               if n.startswith(("read_", "response_")) or n in {"cfg_valid", "cfg_ready", "cfg_response_valid", "cfg_response_error", "cfg_read_data"}})
     constants = {"run_instruction_count": "32'd0", "run_sync_count": "32'd0",
                  "run_program_region": "1'b0", "run_state_count": "32'd0", "run_buffers": "32'd0",
-                 "sync_event_ready": "1'b1",
+                 "sync_event_ready": "1'b1", "capture_ready": "1'b1",
                  "handoff_complete": "handoff_valid && handoff_pending && !handoff_error && handoff_epoch == pending_epoch && handoff_sequence == pending_sequence"}
     audio_links = {
         "run_valid": "render_valid", "run_ready": "render_ready", "busy": "execution_busy",
@@ -52,7 +52,7 @@ def generate():
     public.extend((p, observation_links.get(n, n)) for p, n in observations if n.startswith(("read_", "response_", "trace_")))
     public.extend((p, n) for p, n in fifo if n in fifo_public and n not in {n for _, n in public})
     public.extend((p, n) for p, n in ports if n in {"run_valid", "run_ready", "busy"})
-    params = re.sub(r"\s*parameter integer (?:LIVE_LOADING|PROGRAM_REGIONS) = [^,]+,", "", audio[2]).strip()
+    params = re.sub(r"\s*parameter integer (?:LIVE_LOADING|PROGRAM_REGIONS|CAPTURE_SYNC) = [^,]+,", "", audio[2]).strip()
     defaults = {"PROGRAM_DEPTH": 1024, "STATE_DEPTH": 512, "JOB_DEPTH": 1024, "LOOP_DEPTH": 128,
                 "BUFFERS": 512, "INPUT_PORTS": 1, "CHUNK_FRAMES": 32}
     for name, value in defaults.items():
@@ -74,7 +74,7 @@ def generate():
     text += "    assign execution_media_fault = media_fault || observation_abort;\n"
     text += """    reg configuration_pending, configuration_observations;
     wire observation_config = cfg_state && cfg_loop;
-    wire configuration_available = !configuration_pending && !run_valid && !reset && !faulted;
+    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && !reset && !faulted;
     assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
     assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
     assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);
@@ -96,7 +96,7 @@ def generate():
     text += ",\n".join(f"        .{n}({fifo_links.get(n, n)})" for _, n in fifo) + "\n    );\n"
     text += "    fifo_observations #(.LOOPS(LOOP_DEPTH)) observations (\n"
     text += ",\n".join(f"        .{n}({observation_links.get(n, n)})" for _, n in observations) + "\n    );\n"
-    text += "    audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2),\n"
+    text += "    audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2), .CAPTURE_SYNC(1),\n"
     text += ",\n".join(f"        .{n}({n})" for n in names) + "\n    ) execution (\n"
     text += ",\n".join(f"        .{n}({constants.get(n, audio_links.get(n, n))})" for _, n in ports) + "\n    );\nendmodule\n"
     return text

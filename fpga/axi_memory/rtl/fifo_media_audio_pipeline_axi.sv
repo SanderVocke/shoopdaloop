@@ -136,6 +136,8 @@ module fifo_media_audio_pipeline_axi #(
     output wire store_cfg_response_error,
     output wire [159:0] store_cfg_read_data,
     output wire memory_fault,
+    output wire capture_valid,
+    output wire [63:0] capture_frame,
     input wire observation_read_valid,
     output wire observation_read_ready,
     input wire [15:0] observation_read_slot,

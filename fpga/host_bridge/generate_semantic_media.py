@@ -75,7 +75,8 @@ def generate():
     pipe_params, pipe = instance(legacy, "audio_pipeline", "pipeline")
     pipe.update({"run_valid": "run_valid", "cfg_valid": "cfg_valid && !run_valid", "audio_cfg_valid": "audio_cfg_valid && !pipeline_busy && !run_valid",
                  "media_done": "job_done", "media_error": "job_error", "media_fault": "memory_fault || media_control_fault", "media_read_data": "job_read_data",
-                 "pipeline_fault": "pipeline_fault || media_control_fault || memory_fault", "sync_event_valid": "sync_event_valid", "sync_event_data": "sync_event_data"})
+                 "pipeline_fault": "pipeline_fault || media_control_fault || memory_fault", "sync_event_valid": "sync_event_valid", "sync_event_data": "sync_event_data",
+                 "capture_valid": "capture_valid", "capture_frame": "capture_frame"})
     names = set(re.findall(r"parameter integer (\w+)\s*=", core[2]))
     pipe_params = {n: v for n, v in pipe_params.items() if n in names}
     pipe_params["LOOP_DEPTH"] = "LOOP_DEPTH"

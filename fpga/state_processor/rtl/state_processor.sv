@@ -9,6 +9,7 @@ module state_processor #(
     parameter integer PROGRAM_ADDR_BITS = (PROGRAM_DEPTH > 1) ? $clog2(PROGRAM_DEPTH) : 1,
     parameter integer STATE_ADDR_BITS = (STATE_DEPTH > 1) ? $clog2(STATE_DEPTH) : 1,
     parameter integer STREAM_JOBS = 0,
+    parameter integer CAPTURE_SYNC = 0,
     parameter integer DDR_PROGRAM = 0,
     parameter integer EXTERNAL_JOB_FIFO = 0,
     parameter integer JOB_COUNT_BITS = $clog2(JOB_DEPTH + 1)
@@ -20,6 +21,7 @@ module state_processor #(
     output wire                                run_ready,
     input  wire [31:0]                         run_instruction_count,
     input wire [31:0] run_sync_count,
+    output wire capture_valid, input wire capture_ready, output wire [63:0] capture_frame,
     input wire run_program_region,
     input  wire [31:0]                         run_state_count,
     input  wire [31:0]                         run_quantum,
@@ -91,12 +93,12 @@ module state_processor #(
     reg cfg_error;
     wire cfg_accept = cfg_valid && cfg_ready;
     wire local_accept = local_valid && local_ready;
-    wire local_in_range = local_state ? {16'b0,local_address}<32'(STATE_DEPTH)
-        : {16'b0,local_address}<32'(LOOP_DEPTH*16);
+    wire local_in_range = !(busy && local_write) && (local_state ? {16'b0,local_address}<32'(STATE_DEPTH)
+        : {16'b0,local_address}<32'(LOOP_DEPTH*16));
     wire local_state_access = local_accept && local_in_range && local_state;
     wire local_loop_access = local_accept && local_in_range && !local_state;
     reg local_pending, local_response_state, local_response_write, local_error;
-    assign local_ready = !busy && !run_valid && !reset && !sync_fault;
+    assign local_ready = (!busy || capture_valid) && !run_valid && !reset && !sync_fault;
     assign local_response_valid = local_pending && !reset;
     assign local_response_error = local_error;
     assign local_read_data = local_response_write || local_error ? 129'd0
@@ -124,7 +126,7 @@ module state_processor #(
     wire state_write_enable;
     wire [STATE_ADDR_BITS-1:0] state_write_address;
     wire [`SHOOP_SP_STATE_BITS-1:0] state_write_data;
-    wire [STATE_ADDR_BITS-1:0] state_memory_read_address = busy
+    wire [STATE_ADDR_BITS-1:0] state_memory_read_address = busy && !capture_valid
         ? state_read_address : STATE_ADDR_BITS'(local_accept ? local_address : cfg_address);
     wire [STATE_ADDR_BITS-1:0] state_memory_write_address = state_write_enable
         ? state_write_address : STATE_ADDR_BITS'(local_state_access ? local_address : cfg_address);
@@ -139,7 +141,8 @@ module state_processor #(
     assign read_intent_valid = engine_job_valid && engine_job_ready && engine_job_data[7:0] == `SHOOP_SP_JOB_READ;
     assign read_intent_data = engine_job_data;
     assign cfg_ready = !local_valid && !cfg_pending && !program_cfg_busy && !program_cfg_response
-        && (!external_cfg || program_cfg_ready) && !reset && (PROGRAM_REGIONS == 1 || !run_valid) && (!busy ||
+        && (!external_cfg || program_cfg_ready) && !reset && (!capture_valid || (!cfg_loop && !cfg_state))
+        && (PROGRAM_REGIONS == 1 || !run_valid) && (!busy ||
         (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write && (cfg_loop ? !loop_ram_write : cfg_state ? !state_write_enable : 1'b1)));
     assign run_ready = !busy && !cfg_pending
         && (PROGRAM_REGIONS == 2 || (!cfg_valid && !program_cfg_busy && !program_cfg_response))
@@ -256,10 +259,11 @@ module state_processor #(
     sp_engine #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .LOOP_DEPTH(LOOP_DEPTH), .LOOP_MEMORY_BITS(LOOP_MEMORY_BITS),
         .PROGRAM_ADDR_BITS(PROGRAM_ADDR_BITS), .STATE_ADDR_BITS(STATE_ADDR_BITS),
-        .STREAM_JOBS(STREAM_JOBS)
+        .STREAM_JOBS(STREAM_JOBS), .CAPTURE_SYNC(CAPTURE_SYNC)
     ) engine (
         .clk(clk), .reset(reset), .start(start),
         .instruction_count(run_instruction_count), .sync_count(run_sync_count), .state_count(run_state_count),
+        .capture_valid(capture_valid), .capture_ready(capture_ready), .capture_frame(capture_frame),
         .quantum(run_quantum), .chunk_frames(run_chunk_frames), .capture_credits(capture_credits),
         .queued_jobs(queued_jobs), .abort_run(STREAM_JOBS != 0 && abort_run),
         .busy(busy), .done(done), .error_code(error_code), .instruction_pc(instruction_pc),
@@ -280,7 +284,7 @@ module state_processor #(
 
     sp_ram #(.WIDTH(64), .DEPTH(LOOP_DEPTH*16), .ADDR_BITS(LOOP_MEMORY_BITS)) loop_memory (
         .clk(clk), .read_enable(loop_ram_read || (local_loop_access && !local_write) || (cfg_loop_access && !cfg_write)),
-        .read_address(busy ? loop_ram_read_address : LOOP_MEMORY_BITS'(local_accept ? local_address : cfg_address)),
+        .read_address(busy && !capture_valid ? loop_ram_read_address : LOOP_MEMORY_BITS'(local_accept ? local_address : cfg_address)),
         .read_data(loop_ram_read_data),
         .write_enable(loop_ram_write || (local_loop_access && local_write) || (cfg_loop_access && cfg_write)),
         .write_address(loop_ram_write ? loop_ram_write_address : LOOP_MEMORY_BITS'(local_loop_access ? local_address : cfg_address)),

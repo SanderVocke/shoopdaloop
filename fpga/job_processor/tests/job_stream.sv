@@ -51,6 +51,7 @@ module job_stream;
         .queued_jobs(queued_jobs), .drain_ready(drain_ready),
         .loop_read_valid(loop_read_valid), .loop_read_ready(1'b1), .loop_response_valid(loop_response_valid),
         .loop_response_error(1'b0), .loop_response_data(164'd1), .sync_event_ready(1'b1),
+        .capture_valid(), .capture_ready(1'b1), .capture_frame(),
         .sample_input_data(32'd0), .sample_output_write(sample_output_write), .sample_output_data(sample_output_data),
         .media_cmd_ready(1'b0), .media_done(1'b0), .media_error(8'd0), .media_fault(1'b0),
         .media_write_ready(1'b0), .media_read_valid(1'b0), .media_read_data(32'd0), .media_hint_ready(1'b0),

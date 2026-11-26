@@ -9,13 +9,15 @@ module sp_engine #(
     parameter integer PROGRAM_ADDR_BITS = (PROGRAM_DEPTH > 1) ? $clog2(PROGRAM_DEPTH) : 1,
     parameter integer STATE_ADDR_BITS = (STATE_DEPTH > 1) ? $clog2(STATE_DEPTH) : 1,
     parameter integer PC_BITS = $clog2(PROGRAM_DEPTH + 1),
-    parameter integer STREAM_JOBS = 0
+    parameter integer STREAM_JOBS = 0,
+    parameter integer CAPTURE_SYNC = 0
 ) (
     input  wire                                clk,
     input  wire                                reset,
     input  wire                                start,
     input  wire [31:0]                         instruction_count,
     input wire [31:0] sync_count,
+    output wire capture_valid, input wire capture_ready, output wire [63:0] capture_frame,
     input  wire [31:0]                         state_count,
     input  wire [31:0]                         quantum,
     input wire [31:0] chunk_frames,
@@ -74,7 +76,7 @@ module sp_engine #(
         COMPOSITE_PARENT_PREVIOUS, COMPOSITE_PARENT_CURRENT, COMPOSITE_SPAN, COMPOSITE_APPLY,
         COMPOSITE_DIRECT_UNIT, COMPOSITE_DIRECT_CHECK, COMPOSITE_CHILD_UNIT, COMPOSITE_ALIGN, COMPOSITE_ALIGN_RESULT,
         COMPOSITE_LIMIT, COMPOSITE_REMAINDER, COMPOSITE_REMAINDER_RESULT, COMPOSITE_POSITION, COMPOSITE_OPERATION,
-        COMPOSITE_WAIT, COMPOSITE_REFUSE_CAPTURE, MONITOR_WRITE
+        COMPOSITE_WAIT, COMPOSITE_REFUSE_CAPTURE, MONITOR_WRITE, SETTLED
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING, LOOP_MEMORY
@@ -98,6 +100,9 @@ module sp_engine #(
     reg [SYNC_COUNT_BITS-1:0] sync_remaining;
     reg [63:0] run_frame;
     reg run_has_sync, last_instruction;
+    reg capture_empty, capture_next;
+    assign capture_valid=phase==SETTLED && !abort_run && !reset;
+    assign capture_frame=run_frame;
     reg begin_capture;
     reg [1:0] playback_flags;
     reg [255:0] capture_job;
@@ -313,6 +318,7 @@ module sp_engine #(
             run_state_count <= 0;
             flags<=0; control<=0; capture_frames<=0; loop_address<=0; loop_word<=0;
             sync_remaining<=0; run_frame<=0; run_has_sync<=0; last_instruction<=0;
+            capture_empty<=0; capture_next<=0;
             memory_return<=IDLE; sync_event_return<=IDLE; sync_natural_return<=IDLE; operation_return<=IDLE; sync_pass<=0;
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
             pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
@@ -389,6 +395,9 @@ module sp_engine #(
                         finish_error(`SHOOP_SP_INVALID_PROGRAM);
                     end else if (state_bad) begin
                         finish_error(`SHOOP_SP_INVALID_STATE);
+                    end else if (CAPTURE_SYNC != 0 && !run_has_sync) begin
+                        sync_frame<=arithmetic_sum[63:0];
+                        capture_empty<=empty_program; capture_next<=0; phase<=SETTLED;
                     end else if (empty_program) begin
                         sync_frame <= arithmetic_sum[63:0];
                         done <= 1; busy <= 0; phase <= IDLE;
@@ -417,7 +426,9 @@ module sp_engine #(
                 end
                 DISPATCH: begin
                     writeback <= 0; emit_return<=NEXT;
-                    if (next_pc == 32'(run_count) && sync_remaining != 0
+                    if (CAPTURE_SYNC != 0 && sync_remaining != 0 && !process_loop) begin
+                        finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                    end else if (next_pc == 32'(run_count) && sync_remaining != 0
                         && !(sync_remaining == 1 && process_loop)) begin
                         finish_error(`SHOOP_SP_INVALID_PROGRAM);
                     end else case (instruction[7:0])
@@ -1088,7 +1099,14 @@ module sp_engine #(
                     if (sync_remaining == 1) add_words(run_frame,{32'b0,run_quantum},FRAME_FINISH);
                     else phase<=NEXT;
                 end
-                FRAME_FINISH: begin sync_frame<=arithmetic_sum[63:0]; phase<=NEXT; end
+                FRAME_FINISH: begin
+                    sync_frame<=arithmetic_sum[63:0]; capture_empty<=0; capture_next<=1;
+                    phase<=CAPTURE_SYNC != 0 ? SETTLED : NEXT;
+                end
+                SETTLED: if (capture_ready) begin
+                    if (capture_empty) begin done<=1; busy<=0; phase<=IDLE; end
+                    else phase<=capture_next ? NEXT : FETCH;
+                end
                 SYNC_WRITE: phase<=memory_return;
                 SYNC_EVENT: if (sync_event_ready) phase<=sync_event_return;
                 MONITOR_WRITE: phase<=NEXT;

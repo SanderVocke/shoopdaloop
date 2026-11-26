@@ -202,6 +202,7 @@ module media_audio_pipeline #(
         .queued_jobs(queued_jobs), .drain_valid(drain_valid), .drain_ready(drain_ready),
         .sync_frame(sync_frame), .sync_event_valid(unused_sync_event),
         .sync_event_ready(EXPORT_SYNC_EVENTS == 0 || sync_event_ready), .sync_event_data(unused_sync_data),
+        .capture_valid(), .capture_ready(1'b1), .capture_frame(),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .media_cmd_valid(job_cmd_valid), .media_cmd_ready(job_cmd_ready), .media_cmd_opcode(job_opcode),

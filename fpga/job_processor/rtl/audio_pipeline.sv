@@ -3,6 +3,7 @@
 module audio_pipeline #(
     parameter integer PROGRAM_DEPTH = 32,
     parameter integer LIVE_LOADING = 0,
+    parameter integer CAPTURE_SYNC = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32,
@@ -37,6 +38,7 @@ module audio_pipeline #(
     output wire run_ready,
     input wire [31:0] run_instruction_count,
     input wire [31:0] run_sync_count,
+    output wire capture_valid, input wire capture_ready, output wire [63:0] capture_frame,
     input wire run_program_region,
     input wire switch_valid, output wire switch_ready,
     input wire switch_boundary, output wire switch_refused,
@@ -137,7 +139,7 @@ module audio_pipeline #(
     reg [31:0] chunk_frames;
     (* fsm_encoding = "one_hot" *) phase_t phase;
     wire state_run_ready, job_run_ready, state_cfg_ready, job_cfg_ready, state_local_ready;
-    wire local_window = phase == IDLE && !run_valid;
+    wire local_window = (phase == IDLE && !run_valid) || capture_valid;
     wire [7:0] state_error, job_error;
     wire job_accept;
     wire sample_busy, sample_done;
@@ -296,11 +298,12 @@ module audio_pipeline #(
     state_processor #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .PROGRAM_REGIONS(PROGRAM_REGIONS), .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_FIFO_DEPTH), .DDR_PROGRAM(DDR_PROGRAM), .STREAM_JOBS(1), .LOOP_DEPTH(LOOP_DEPTH),
-        .EXTERNAL_JOB_FIFO(32'(SPLIT_JOBS))
+        .EXTERNAL_JOB_FIFO(32'(SPLIT_JOBS)), .CAPTURE_SYNC(CAPTURE_SYNC)
     ) state_engine (
         .clk(clk), .reset(reset), .abort_run(abort_state),
         .run_valid(phase == STATE_START && !media_failed), .run_ready(state_run_ready),
         .run_instruction_count(state_instructions), .run_sync_count(state_sync_count), .run_program_region(state_region), .run_state_count(state_count),
+        .capture_valid(capture_valid), .capture_ready(capture_ready), .capture_frame(capture_frame),
         .run_quantum(quantum), .run_chunk_frames(chunk_frames),
         .capture_credits(capture_credits),
         .busy(state_busy), .done(state_done), .error_code(state_error), .instruction_pc(state_pc),

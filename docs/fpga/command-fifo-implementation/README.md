@@ -822,3 +822,45 @@ quantum, snapshot or resource/route bounds. Whole-sync settled capture and two
 snapshot banks, complete recovery/reset, ABI-16 host/firmware/reference integration,
 full platform/delivery gates and independent final audit still remain. No new full
 Linux/Wasm, physical or delivery qualification is claimed.
+
+### Whole-sync settled capture boundary
+
+A parameter-gated SP capture phase now separates the complete sync prefix from
+all audio work. The semantic component fixes it enabled; standalone/legacy defaults
+preserve their existing independent-work interleaver. In the strict profile, work
+encountered before all declared sync visits is a program fault before emitting that
+work. Composite schedule rows remain data belonging to their sync visit, not extra
+scheduler passes.
+
+The capture frame is latched render F, not the next counter already advanced to
+F+Q. Every loop has its processed stamp/render cursor settled before the gate opens.
+Zero-sync and empty programs also reach the gate, with no independent frame advance
+from reads or polling. This is a normal processing gate, not the still-pending
+explicit initial-snapshot publication.
+
+Actual execution RAM grants private one-cycle reads during this phase while SP
+stays busy. Writes through that port return an error without mutation. Loader
+loop/state writes cannot modify the view; semantic configuration admission is
+also excluded. SP resumes before generating audio jobs only after the internal
+capture service releases. At this checkpoint that service releases in one clock;
+the semantic component does not expose an ARM-controlled capture-ready input.
+
+`settled_capture.rs` has three directed tests: all 128 records over two frames,
+zero-sync/empty programs, and strict-prefix refusal versus legacy interleaving.
+They check raw render/stamp/next-cursor distinctions, recording render-length
+projection, frozen ramp state, no JP writes while held, read-only access under
+loader pressure and exact final samples. The 128-row raw read phase is 4,096 clocks;
+metadata/header/packet writes are not yet included. The original failed fixture
+counted clear-output writes as final samples; that negative log is retained and
+corrected expectations keep the strict no-JP-write capture assertion.
+
+`stage4-settled-gate-milestone.{log,status}` passes **218 selected Rust tests = 188
+affected-package + 30 directed**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. Directed evidence is
+`stage4-settled-gate-tests`; `stage4-settled-gate-tests-output-fixture` is the retained
+failure. Semantic quanta gain one hardware clock; the actual-RAM command peak stays
+2,950. No fresh resource/route, all-admitted quantum or full platform claim follows.
+
+Two snapshot packet banks, complete publication, initial capture, loss/sequence
+exhaustion, reader acknowledgements and full 8,192-cycle qualification remain to
+be implemented. Complete fault/reset/recovery and Stages 5–7 are also still open.

@@ -610,6 +610,38 @@ Stage 4 remains open for whole-sync settled capture/two snapshot banks and compl
 fault/reset/recovery. Stages 5–7 remain. The deployed host still advertises ABI 15;
 no fresh full Linux/Wasm, physical, push or PR qualification is claimed.
 
+**Whole-sync settled-gate milestone:** SP now has a hardware capture phase after
+all declared sync visits and before any audio instruction is emitted. Its frame
+is latched render F, not the already-advanced next quantum counter. Zero-sync and
+empty programs also pass this normal processing gate without manufacturing an
+extra frame. The semantic component fixes this profile on and rejects work before
+the sync prefix; default standalone/legacy interleaving remains unchanged.
+
+During capture, the actual loop/state RAMs grant one-cycle private reads while SP
+remains busy. Local writes return error without mutation; loader loop/state writes
+cannot change the held view. The semantic wrapper also excludes new configuration
+admission during this phase. No ARM-controlled ready input is exposed: until the
+snapshot engine is connected, semantic capture releases unconditionally in one
+clock. The legacy wrappers tie the unused hooks off with capture disabled.
+
+Three new tests verify all 128 rows over F=0/32, including recording render-length
+interpretation, all processed stamps/render cursors versus next cursors, frozen
+ramps/no JP writes, 4,096 raw-word read cycles, attempted writes, zero-sync/empty
+programs and strict-prefix refusal versus retained standalone interleaving. Initial
+fixtures mistakenly counted output-buffer clearing as final samples; the retained
+failed log is superseded by exact final-buffer sample checks, while capture still
+requires no JP writes at all.
+
+Fresh gates pass **188 affected-package + 30 directed = 218 selected Rust tests**,
+workspace warnings, formatting, policy/coverage, generators and Python compilation.
+Evidence: `work/cmd-fifo-investigation/stage4-settled-gate-{tests,milestone}.{log,status}`;
+`stage4-settled-gate-tests-output-fixture` retains the fixture failure. The release
+adds one hardware clock per semantic quantum; actual-RAM command peak stays 2,950.
+This is a capture boundary/RAM-service checkpoint, **not** two-bank packet storage,
+complete snapshot publication, initial snapshot, loss/sequence/ACK or full 8,192-cycle
+capture qualification. Those, complete fault/reset/recovery and Stages 5–7 remain.
+No new integrated resource/route, full Linux/Wasm, physical or delivery claim.
+
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
 
