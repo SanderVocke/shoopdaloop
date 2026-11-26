@@ -499,11 +499,45 @@ formatting, policy/coverage and generators. Evidence:
 `work/cmd-fifo-investigation/stage4-private-media-milestone.{log,status}` and
 `stage4-media-{loader,ownership}-tests`.
 
-Both new units remain unconnected pending the semantic media wrapper. The existing
-host/media top, its admission gate and ABI 15 are unchanged. Real sample-cache DMA
-flush plus metadata-cache drain/AXI completion, in-flight fault/reset integration,
-local observations/snapshots and Stages 5–7 remain open. No new resource/route,
-complete quantum, full Linux/Wasm, physical or delivery claim is made.
+At that checkpoint both units remained unconnected pending the semantic media
+wrapper; the existing host/media top and ABI 15 were unchanged.
+
+**Semantic media/AXI component milestone:** `generate_semantic_media.py` emits
+`fifo_media_audio_pipeline.sv`, joining the consumer/SP/JP to the actual media
+store, private loader and operation-owner arbiter. The AXI generator also emits
+`fifo_media_audio_pipeline_axi.sv`, with fixed two-region program storage. The
+arbiter's latched, epoch/sequence-qualified fence now completes only through the
+real sample-cache DMA flush and metadata-cache drain, including AXI responses—not
+an ARM/test-controlled handoff callback. Render admission/done no longer require
+store idle, loader-command inactivity or ARM response/data consumption. Processing
+also wins against new configuration admission. The legacy deployment top is not
+yet switched to these components.
+
+A new directed Rust test has three fixtures: word memory, 64-bit AXI/fixed memory,
+and an AXI fence-memory failure. Each healthy fixture renders 41 exact-sample
+quanta, including every partial 32-word upload prefix, pending real writeback with
+responses withheld, unread private replies/read data, simultaneous refused FIFO
+traffic/result reads, same-quantum gain, and actual JP playback/capture. It checks
+the original 32 words plus 32 JP-recorded samples in the independent backing
+memory after fencing, not merely cache readback. The fault fixture retains the
+selected-but-unfenced operation, refuses its ACK, exposes no successful result,
+blocks further processing and does not replay or advance frame 1152.
+
+This small graph's boundary-to-done costs are **289–499 cycles**, command peak
+**91**; these are not worst-case admitted-graph/snapshot/60,000-cycle or routed
+resource proofs. The existing 32-target actual-RAM case remains 2,950 command
+cycles. Fresh gates pass **185 affected-package + 26 directed tests = 211 selected
+Rust tests**, warning-denying workspace build, formatting, policy/coverage and all
+generators. Evidence: `stage4-real-media-{jp,axi,fault}-tests` and
+`work/cmd-fifo-investigation/stage4-real-media-milestone-final.{log,status}`. Initial
+fixtures passed a zero logical READ length and correctly received `InvalidView`;
+those failures remain separate from the corrected passing evidence.
+
+Stage 4 remains open: mandatory local observations, settled snapshots, complete
+in-flight fault/reset/always-on recovery integration and resource/cycle acceptance
+are not done. Host/MMIO/firmware still select the legacy ABI-15 path; ABI-16
+selection/reference/software retirement and Stages 5–7 remain pending. No fresh
+whole-design route, full Linux/Wasm, physical, push or PR claim is made.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.

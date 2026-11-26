@@ -659,8 +659,71 @@ ownership or actual rendering while media work is stalled.
 185 affected-package + 25 directed**, warning-denying workspace build, formatting,
 policy/coverage and generators. Logs are under `work/cmd-fifo-investigation/`.
 
-The units are not yet connected to the semantic media wrapper or legacy host top.
-Media admission/fence hookup and in-flight fault/reset handling remain work, as do
-observations/snapshots, ABI-16/reference/firmware and final acceptance/delivery.
-There is no fresh resource/route, complete-quantum, full Linux/Wasm or physical
-qualification claim.
+At that checkpoint the units were not connected to a semantic media wrapper or
+the legacy host top. The following milestone connects the media component; it does
+not switch the deployed host/MMIO path.
+
+### Real media/cache/AXI component connection
+
+`fpga/host_bridge/generate_semantic_media.py` derives the production
+`fifo_media_audio_pipeline.sv` wiring from the audio/media interfaces. It combines
+the actual semantic consumer/SP/JP, private loader bank, owner arbiter and media
+store. `fpga/axi_memory/generate_tops.py` adds
+`fifo_media_audio_pipeline_axi.sv`, including the fixed two-region program arena
+and existing shared AXI machinery. Normal host/AXI generator drift checks cover
+both new outputs; the old generated tops remain unchanged.
+
+The real fence path is now connected: drain prior JP/read-hint ownership, issue
+media-store FENCE, flush sample-cache DMA, drain each metadata-cache bank, and wait
+for the actual memory/AXI completion. Completion carries the tuple captured at
+backend acceptance. Core selection, SP idle, later graph revisions and ARM
+readiness cannot manufacture it. Store request/data/completion routing uses the
+latched operation owner even when a new quantum starts during loader work.
+
+Rendering's ready/busy/done no longer depend on store busy, ARM loader command
+valid, private result ACK or read consumption. New configuration accesses lose to
+processing admission; audio/store configuration waits outside the processing
+window. Inactive SP program configuration retains its independent dual-region
+service. Mandatory local event/gain/failure storage and snapshots are still absent.
+
+`real_media_fences_and_private_loader_streams_do_not_own_audio_admission` in
+`tests/semantic_audio.rs` runs one word-memory fixture and a 64-bit AXI fixture with
+fixed-latency memory/random ready-valid stalls, plus an AXI error fixture. Healthy
+fixtures each check **41 quanta**:
+
+- All 32 partial upload prefixes render without acquiring the actual store.
+- Complete uploads no longer need ARM data; unread replies retain only a private
+  bank. New processing can start during the accepted loader transaction.
+- A real dirty sample-cache writeback response is withheld across rendering and a
+  later gain group. The selected switch remains pending, reliable visibility stays
+  blocked, and continuous refused FIFO traffic/result reads do not block admission.
+- Releasing memory responses completes the real sample/metadata fence; ordered
+  reliable replies retain the original selection frame and identity.
+- Buffered READ data survives rendering and an early response ACK without holding
+  backend service or releasing unread payload.
+- Actual JP playback returns the original ramp-scaled samples; actual JP capture
+  appends 32 new samples. A subsequent primitive switch/fence persists both sets in
+  the independent backing memory (64 exact words), followed by exact suffix readback.
+
+The AXI failure fixture injects a simulated memory error after the held writeback
+response. It checks persistent memory fault, no successful fenced result, refused
+ACK, no further run admission/replay and unchanged frame **1152**. This is not yet
+first-fault MMIO/always-on recovery or in-flight reset/ABA qualification.
+
+The small graph measures **289–499 boundary-to-done cycles**, command peak **91**;
+word and AXI healthy traces match. The earlier 32-target actual-RAM test still
+measures command peak **2950**. None establishes all-admitted-graph 60,000-cycle,
+snapshot 8,192-cycle or complete frontend/whole-design resource acceptance.
+
+Fresh `stage4-real-media-milestone-final.{log,status}` passes **211 selected Rust tests =
+185 affected-package + 26 directed**, workspace `-D warnings`, formatting,
+policy/coverage and generators/Python checks. `stage4-real-media-{jp,axi,fault}-tests`
+retain the directed traces, and `stage4-real-media-tests-{initial-fault,read-length}`
+retain invalid READ-length fixture failures; zero logical length legitimately
+returns `InvalidView`. All logs remain under `work/cmd-fifo-investigation/`.
+
+The legacy host/media/MMIO deployment still uses ABI 15. New components are not
+advertised as ABI 16; software/reference/firmware integration and CPU-control
+retirement remain Stage 5 work. Local observations/settled snapshots, complete
+fault/reset/recovery integration, final cycle/resources/protected routing and
+Stages 6–7 remain open. No fresh full Linux/Wasm, physical or delivery claim is made.

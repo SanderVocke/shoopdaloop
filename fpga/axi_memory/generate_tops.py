@@ -29,7 +29,9 @@ def generate():
                  for prefix, name in word_ports if name.startswith("m_axi_")]
     result = {}
     for directory, name in (("chunk_memory", "chunk_memory"), ("media_store", "media_store"),
-                            ("media_store", "media_audio_pipeline")):
+                            ("media_store", "media_audio_pipeline"),
+                            ("host_bridge", "fifo_media_audio_pipeline")):
+        is_pipeline = name.endswith("audio_pipeline")
         match, ports = header((FPGA/directory/"rtl"/f"{name}.sv").read_text())
         params = match[2].strip().replace('BURST_MEMORY = 0', 'BURST_MEMORY = 1')
         param_names = re.findall(r"parameter\s+integer\s+(\w+)\s*=", params)
@@ -37,7 +39,7 @@ def generate():
         private = [(p, n) for p, n in ports if n.startswith("memory_") and n != "memory_fault"]
         text = '// Generated integration wrapper; do not edit by hand.\n`include "state_processor_defs.svh"\n\n'
         text += f"module {name}_axi #(\n    {params},\n    parameter integer AXI_DATA_WIDTH = 32,\n    parameter [31:0] PHYSICAL_BASE = 32'h01000000"
-        if name == 'media_audio_pipeline':
+        if is_pipeline:
             text += ",\n    parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h100000000"
         text += "\n) (\n"
         text += ",\n".join("    "+p+n for p, n in public+axi_ports)+"\n);\n"
@@ -47,7 +49,9 @@ def generate():
         text += "    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;\n"
         text += "    wire [31:0] physical_base = PHYSICAL_BASE;\n"
         core_ports = ".*"
-        if name == 'media_audio_pipeline':
+        if name == 'fifo_media_audio_pipeline':
+            text += "    localparam integer PROGRAM_REGIONS = 2;\n"
+        if is_pipeline:
             core_ports += ", " + ", ".join(
                 f".{n}(media_{n})" for p, n in private if n.startswith('memory_meta_'))
             for p, n in private:
@@ -70,7 +74,7 @@ endmodule
         else:
             text += "    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;\n"
             bytes_used = "STORAGE_WORDS*4"
-            if name == 'media_audio_pipeline':
+            if is_pipeline:
                 text += """    localparam [63:0] PROGRAM_OFFSET = ((STORAGE_WORDS*4+63)/64)*64;
     localparam [63:0] TOTAL_BYTES = DDR_PROGRAM != 0
         ? PROGRAM_OFFSET + 64'(PROGRAM_REGIONS)*64'(PROGRAM_DEPTH)*16
