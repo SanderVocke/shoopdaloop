@@ -101,7 +101,13 @@ fn quantum_samples(
     }
     assert_eq!(s.model.get("faulted"), 0);
     assert_eq!(s.model.get("done"), 1);
-    assert_eq!(s.model.get("error_code"), 0);
+    assert_eq!(
+        s.model.get("error_code"),
+        0,
+        "frame {frame}; stage {}; live quantum {}",
+        s.model.get("error_stage"),
+        s.model.get("run_quantum")
+    );
     assert_eq!(s.model.get("sync_frame"), frame + 32);
     assert_eq!(output, samples.map(Some));
     assert!(s.model.get("peak_command_cycles") <= 4096);
@@ -137,6 +143,7 @@ fn core_design(loops: u64) -> Design {
         "fifo_edit_kernel",
         "fifo_group_consumer",
         "fifo_observations",
+        "fifo_snapshots",
         "fifo_audio_pipeline",
     ] {
         sources.push(root.join(format!("fpga/host_bridge/rtl/{module}.sv")));
@@ -170,6 +177,42 @@ fn observations(s: &mut Sim<'_>, slot: u64) -> Bits {
     s.model.set("observation_read_valid", 0);
     s.idle(1);
     data
+}
+
+fn snapshot(s: &mut Sim<'_>, bank: u64, loops: usize) -> Vec<u64> {
+    let mut data = vec![];
+    for word in 0..16 + loops * 38 {
+        s.model.set_all(&[
+            ("snapshot_read_valid", 1),
+            ("snapshot_read_bank", bank),
+            ("snapshot_read_word", word as u64),
+        ]);
+        s.idle(1);
+        assert_eq!(s.model.get("snapshot_response_valid"), 1);
+        assert_eq!(s.model.get("snapshot_response_error"), 0);
+        data.push(s.model.get("snapshot_read_data"));
+    }
+    s.model.set("snapshot_read_valid", 0);
+    s.idle(1);
+    let words: Vec<_> = data.chunks_exact(2).map(|v| v[0] | (v[1] << 32)).collect();
+    assert_eq!(words[0], 0x1_0010_5346_5331);
+    assert_eq!(words[1], (32 << 32) | 1);
+    assert_eq!(words[5], (19 << 32) | loops as u64);
+    assert_eq!(words[7], 0);
+    words
+}
+fn snapshot_ack(s: &mut Sim<'_>, bank: u64, epoch: u64, sequence: u64, receipt: u64) {
+    s.model.set_all(&[
+        ("snapshot_ack_valid", 1),
+        ("snapshot_ack_bank", bank),
+        ("snapshot_ack_epoch", epoch),
+        ("snapshot_ack_sequence", sequence),
+    ]);
+    s.idle(1);
+    assert_eq!(s.model.get("snapshot_ack_response_valid"), 1);
+    assert_eq!(s.model.get("snapshot_ack_receipt"), receipt);
+    s.model.set("snapshot_ack_valid", 0);
+    s.idle(1);
 }
 
 #[shoop_test]
@@ -284,6 +327,20 @@ fn actual_sp_observations_survive_full_trace_readers_and_primitive_selection() {
         assert_eq!(row.get(64, 64), 0);
         assert_eq!(row.get(128, 1), 1, "frame-zero pulses remain valid");
     }
+    let first_snapshot = snapshot(&mut s, 0, 2);
+    assert_eq!(first_snapshot[3], 0);
+    for slot in 0..2 {
+        assert_eq!(
+            first_snapshot[8 + slot * 19 + 16],
+            (slot as u64) << 32 | u64::from(1.0f32.to_bits())
+        );
+        assert_eq!(first_snapshot[8 + slot * 19 + 17], 0);
+        assert_eq!(
+            first_snapshot[8 + slot * 19 + 18],
+            1,
+            "pulse frame zero is valid in complete packets"
+        );
+    }
     assert_eq!(s.model.get("trace_valid"), 1);
     assert!(s.model.get("trace_lost") > 0);
     let held_trace = s.model.bits("trace_data");
@@ -306,6 +363,13 @@ fn actual_sp_observations_survive_full_trace_readers_and_primitive_selection() {
         1,
         "original subnormal survives a zero Q8.24 gain"
     );
+    let second_snapshot = snapshot(&mut s, 1, 2);
+    assert_eq!(second_snapshot[3], 32);
+    assert_eq!(second_snapshot[8 + 16], 1);
+    assert_eq!(second_snapshot[8 + 19 + 16] >> 32, 1);
+    for slot in 0..2 {
+        assert_eq!(second_snapshot[8 + slot * 19 + 17], 32);
+    }
     let losses = s.model.get("trace_lost");
     for frame in (64..320).step_by(32) {
         s.model.set_all(&[
@@ -371,6 +435,14 @@ fn actual_sp_observations_survive_full_trace_readers_and_primitive_selection() {
         "held trace keeps the producing revision"
     );
     assert_eq!(s.model.get("trace_epoch"), 1);
+    assert_eq!(
+        snapshot(&mut s, 0, 2),
+        first_snapshot,
+        "selection must not relabel a held packet"
+    );
+    assert_eq!(snapshot(&mut s, 1, 2), second_snapshot);
+    assert_eq!(s.model.get("snapshot_last_sequence"), 11);
+    assert_eq!(s.model.get("snapshot_skipped"), 9);
     println!(
         "SEMANTIC_OBSERVATION_QUANTUM_CYCLES {costs:?}; loss {}; peak command {}",
         s.model.get("trace_lost"),
@@ -634,6 +706,7 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
             "fifo_edit_kernel",
             "fifo_group_consumer",
             "fifo_observations",
+            "fifo_snapshots",
             "fifo_audio_pipeline",
             "fifo_media_loader",
             "fifo_media_arbiter",
@@ -790,6 +863,7 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
         );
         assert!(memory.borrow().active().is_some_and(|active| active.write
             && active.index < (geometry.slots * geometry.chunk_frames) as usize));
+        snapshot_ack(&mut s, 0, 1, 1, 0);
         let mut gain = [0; 12];
         gain[0] = 3;
         gain[2] = 7;
@@ -817,6 +891,13 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
             u64::from(0.5f32.to_bits()),
             "real word/AXI media wrappers retain original gain"
         );
+        let gained_snapshot = snapshot(&mut s, 0, 1);
+        assert_eq!(gained_snapshot[3], frame - 32);
+        assert_eq!(
+            gained_snapshot[4], 2,
+            "selected revision is observable before its real DMA fence"
+        );
+        assert_eq!(gained_snapshot[8 + 16], u64::from(0.5f32.to_bits()));
         assert_eq!(s.model.get("handoff_pending"), 1);
         assert_eq!(s.model.get("result_ready_mask"), 0);
         assert_eq!(
@@ -1023,4 +1104,290 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
         exercise(mode, false);
     }
     exercise(Mode::Fixed, true);
+}
+
+#[shoop_test]
+fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
+    let root = rt_fpga_testbench::root();
+    let compiled = core_design(128)
+        .parameters(&[("PROGRAM_DEPTH", 256)])
+        .build(&root.join("work/marlin-suite/semantic-snapshots"))
+        .unwrap();
+    let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    s.model.set_all(&[
+        ("reset", 1),
+        ("epoch", 1),
+        ("run_quantum", 32),
+        ("run_chunk_frames", 32),
+        ("run_inputs", 1),
+        ("run_outputs", 1),
+        ("capture_credits", 65535),
+        ("job_enable", 1),
+        ("sample_input_data", 1 << 22),
+    ]);
+    s.idle(2);
+    s.model.set("reset", 0);
+    s.idle(2);
+    for slot in 0..128 {
+        initialize_observations(&mut s, slot, 1.0f32.to_bits());
+        for word in 0..16 {
+            let value = match word {
+                0 => 1 | (7 << 1) | ((if slot == 127 { 2 } else { 1 }) << 33),
+                2 => {
+                    if slot == 127 {
+                        0
+                    } else {
+                        slot
+                    }
+                }
+                3 => {
+                    if slot == 127 {
+                        0
+                    } else {
+                        1024
+                    }
+                }
+                _ => 0,
+            };
+            cfg(
+                &mut s,
+                false,
+                true,
+                slot * 16 + word,
+                Some(&Bits::from_u64(value)),
+            );
+        }
+        let mut instruction = Bits::zero(96);
+        instruction
+            .set(0, 8, 12)
+            .set(8, 16, slot)
+            .set(24, 32, 7)
+            .set(56, 16, 65535)
+            .set(72, 16, 1);
+        cfg(&mut s, false, false, slot, Some(&instruction));
+    }
+    for (i, instruction) in [
+        json!({"kind":"process_input","port":0,"destination":0}),
+        json!({"kind":"process_gain","ramp":0,"source":0,"destination":1}),
+        json!({"kind":"process_output","source":1,"port":0}),
+    ]
+    .iter()
+    .enumerate()
+    {
+        cfg(
+            &mut s,
+            false,
+            false,
+            128 + i as u64,
+            Some(&codec::instruction(instruction).unwrap()),
+        );
+    }
+    cfg(
+        &mut s,
+        true,
+        false,
+        0,
+        Some(&codec::state(&suites::audio::ramp(1 << 24, 1 << 24, 0, 0))),
+    );
+    let mut select = [0; 12];
+    select[0] = 5;
+    select[6] = 1;
+    select[8] = 131 << 16;
+    select[9] = 128 | (1 << 16);
+    select[10] = 2;
+    publish(&mut s, 0, 1, 0, &[select]);
+    assert_eq!(s.model.get("sync_frame"), 0);
+    s.model.set_all(&[
+        ("observation_read_valid", 1),
+        ("observation_read_slot", 5),
+        ("snapshot_read_valid", 1),
+        ("snapshot_read_bank", 0),
+        ("snapshot_read_word", 6),
+        ("run_valid", 1),
+    ]);
+    s.idle(1);
+    s.model.set("run_valid", 0);
+    let mut output = [None; 32];
+    let mut capture_cycles = 0;
+    let mut cycles = 1;
+    while s.model.get("done") == 0 && s.model.get("faulted") == 0 && cycles < 60_000 {
+        s.model.eval();
+        let capturing = s.model.get("capture_valid") != 0;
+        if capturing {
+            if capture_cycles == 0 {
+                assert_eq!(
+                    s.model.get("observation_response_valid"),
+                    1,
+                    "accepted pre-gate diagnostic response lost its owner"
+                );
+                assert_eq!(
+                    s.model.bits("observation_read_data").get(0, 64),
+                    u64::from(1.0f32.to_bits())
+                );
+            } else {
+                assert_eq!(
+                    s.model.get("observation_response_valid"),
+                    0,
+                    "snapshot metadata response leaked to diagnostic reader"
+                );
+            }
+            capture_cycles += 1;
+            assert!(capture_cycles <= 8192);
+            assert_eq!(s.model.get("capture_frame"), 0);
+            assert_eq!(s.model.get("sync_frame"), 32);
+            assert_eq!(s.model.get("observation_read_ready"), 0);
+            assert_eq!(s.model.get("jobs_busy"), 0);
+            assert_eq!(s.model.get("monitor_valid"), 0);
+            assert_eq!(s.model.get("sample_output_write"), 0);
+            s.model.set_all(&[
+                ("cfg_valid", 1),
+                ("cfg_state", 0),
+                ("cfg_loop", 1),
+                ("cfg_write", 1),
+                ("cfg_address", 2),
+                ("run_quantum", 7),
+            ]);
+            s.model
+                .set_bits("cfg_write_data", &Bits::from_u64(u64::MAX).resized(129));
+            s.model.eval();
+            assert_eq!(s.model.get("cfg_ready"), 0);
+        } else {
+            s.model.set("cfg_valid", 0);
+        }
+        if s.model.get("sample_output_write") != 0 {
+            let address = s.model.get("sample_output_address") as usize;
+            assert!(address < output.len());
+            output[address] = Some(s.model.get("sample_output_data"));
+        }
+        let readable = s.model.get("snapshot_ready_mask") & 1 != 0;
+        s.idle(1);
+        if !readable {
+            assert_eq!(s.model.get("snapshot_response_valid"), 1);
+            assert_eq!(s.model.get("snapshot_response_error"), 1);
+        }
+        cycles += 1;
+    }
+    assert_eq!(s.model.get("done"), 1);
+    assert_eq!(s.model.get("faulted"), 0);
+    assert_eq!(output, [Some(1 << 22); 32]);
+    assert_eq!(capture_cycles, 4619);
+    assert_eq!(s.model.get("peak_snapshot_cycles"), 4619);
+    assert_eq!(s.model.get("sync_frame"), 32);
+    assert_eq!(s.model.get("handoff_pending"), 1);
+    assert_eq!(s.model.get("result_ready_mask"), 0);
+    s.model.set_all(&[
+        ("run_quantum", 32),
+        ("cfg_valid", 0),
+        ("observation_read_valid", 0),
+        ("snapshot_read_valid", 0),
+    ]);
+    s.idle(2);
+    let first = snapshot(&mut s, 0, 128);
+    assert_eq!(
+        &first[..8],
+        &[
+            0x1_0010_5346_5331,
+            (32 << 32) | 1,
+            1,
+            0,
+            1,
+            (19 << 32) | 128,
+            0,
+            0
+        ]
+    );
+    for slot in 0..128 {
+        let row = &first[8 + slot * 19..8 + (slot + 1) * 19];
+        assert_eq!(row[9], 0, "all 128 processed stamps share the header frame");
+        if slot == 127 {
+            assert_eq!(row[4], 32);
+            assert_eq!(
+                row[4] - 32,
+                0,
+                "render capture length is not next-quantum length"
+            );
+            assert_eq!(row[8], 0);
+        } else {
+            assert_eq!(row[8], slot as u64);
+            assert_eq!(row[2], slot as u64 + 32);
+        }
+        assert_eq!(row[16], u64::from(1.0f32.to_bits()));
+        assert_eq!(row[17], 0);
+        assert_eq!(row[18], 0);
+        for (word, expected) in row[..16].iter().enumerate() {
+            assert_eq!(
+                cfg(&mut s, false, true, (slot * 16 + word) as u64, None).get(0, 64),
+                *expected
+            );
+        }
+    }
+    assert_eq!(
+        s.model.get("sync_frame"),
+        32,
+        "copied packet/diagnostic reads do not process time"
+    );
+    let mut gain = [0; 12];
+    gain[0] = 3;
+    gain[2] = 7;
+    gain[5] = 1;
+    publish(&mut s, 1, 2, 1, &[gain]);
+    let mut gains = vec![];
+    let mut costs = vec![cycles, quantum(&mut s, 32, 0, &mut gains)];
+    assert_eq!(gains, [(0, 1)]);
+    let second = snapshot(&mut s, 1, 128);
+    assert_eq!(second[2], 2);
+    assert_eq!(second[3], 32);
+    assert_eq!(
+        second[8 + 16],
+        1,
+        "snapshot retains original subnormal bits, not zero Q8.24"
+    );
+    for slot in 0..128 {
+        assert_eq!(second[8 + slot * 19 + 9], 32);
+    }
+    for frame in [64, 96, 128, 160] {
+        s.model.set_all(&[
+            ("snapshot_read_valid", 1),
+            ("snapshot_read_bank", 0),
+            ("snapshot_read_word", 6),
+        ]);
+        costs.push(quantum(&mut s, frame, 0, &mut gains));
+        assert_eq!(s.model.get("snapshot_response_error"), 0);
+        assert_eq!(
+            s.model.get("snapshot_read_data"),
+            0,
+            "held original packet must not be overwritten"
+        );
+    }
+    s.model.set("snapshot_read_valid", 0);
+    s.idle(1);
+    assert_eq!(s.model.get("snapshot_ready_mask"), 3);
+    assert_eq!(s.model.get("snapshot_last_sequence"), 6);
+    assert_eq!(s.model.get("snapshot_skipped"), 4);
+    assert_eq!(snapshot(&mut s, 0, 128), first);
+    assert_eq!(snapshot(&mut s, 1, 128), second);
+    snapshot_ack(&mut s, 0, 1, 1, 0);
+    costs.push(quantum(&mut s, 192, 0, &mut gains));
+    snapshot_ack(&mut s, 0, 1, 1, 6);
+    snapshot_ack(&mut s, 0, 2, 7, 2);
+    let latest = snapshot(&mut s, 0, 128);
+    assert_eq!(latest[2], 7);
+    assert_eq!(latest[3], 192);
+    assert_eq!(latest[6], 4);
+    for slot in 0..128 {
+        assert_eq!(latest[8 + slot * 19 + 9], 192);
+    }
+    assert_eq!(latest[8 + 16], 1);
+    assert_eq!(snapshot(&mut s, 1, 128), second);
+    assert_eq!(
+        s.model.get("handoff_pending"),
+        1,
+        "snapshot ACK is not an ownership fence"
+    );
+    assert_eq!(s.model.get("result_ready_mask"), 0);
+    assert_eq!(s.model.get("sync_frame"), 224);
+    println!(
+        "SEMANTIC_SNAPSHOT_128_QUANTUM_CYCLES {costs:?}; capture {capture_cycles}; peak {}",
+        s.model.get("peak_snapshot_cycles")
+    );
 }

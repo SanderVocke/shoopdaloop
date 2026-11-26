@@ -923,10 +923,66 @@ affected-package + 30 directed**, workspace warnings, formatting, policy/coverag
 generators and Python compilation. `stage4-snapshot-tests-final` is passing
 narrow evidence; `stage4-snapshot-tests-index-width` retains the initial failure.
 
-The module is not yet instantiated by semantic audio/media/AXI. Its normal capture
-must next own the settled gate and private loop/metadata readers without exposing
-ARM-controlled readiness; root initial-capture admission also remains pending.
-The one-cycle synthetic result does not qualify integrated 8,192/60,000-cycle or
-resource/protected-route ceilings. ABI/MMIO deployment remains 15; complete
-fault/reset/recovery and Stages 5–7 remain open. No new full Linux/Wasm, physical,
-push/PR or delivery qualification is claimed.
+At `e883a1d13` the producer was standalone. The following milestone connects
+normal capture; root initial-capture admission and complete recovery remain open.
+The synthetic result alone was not integrated 8,192/60,000-cycle or resource/
+protected-route qualification. ABI/MMIO deployment remains 15.
+
+### Actual settled-snapshot integration
+
+The semantic generator now instantiates the producer. It owns capture-ready and
+actual loop-RAM reads while the entire sync prefix is settled; the kernel owns the
+same port outside capture. The capture side is read-only. No ARM-controlled ready
+input reaches this gate. Snapshot metadata requests outrank diagnostic requests;
+a registered accepted-reader tag routes the next-cycle response by its owner,
+not the current mux selector. A diagnostic grant just before capture therefore
+still completes correctly, while internal metadata cannot leak as its response.
+Configuration admission remains excluded during capture. Snapshot packets expose
+independent read/ACK/status ports through real word-media and shared-AXI components.
+
+Quantum is latched at render admission, and header F is SP's latched render frame.
+The 128-row fixture changes live quantum to 7 during capture but still receives a
+Q32 packet and exact 32-frame output. All 128 stamps match F=0 before any JP writes;
+render/next cursors and recording render-length projection are distinct. Every raw
+word is compared with actual loop RAM. Attempted loader writes during capture
+cannot alter it. Pre-gate diagnostic response ownership is explicitly checked.
+
+The next packet retains original f32 bits 1 after a successful subnormal gain maps
+to Q8.24 zero. Two unread full packets remain immutable while subsequent quanta
+render, with per-attempt sequence gaps and skipped-publication counts. A qualified
+ACK permits a later complete F192 packet; duplicate/wrong-epoch ACKs cannot free
+it. An older packet remains exact. The first program's ownership completion is
+still withheld throughout: snapshot publication/ACK is not a handoff fence.
+
+Actual 128-row capture is **4,619 clocks**, including entry and ready handoff.
+Seven directed fixture quanta take **[12644, 12680, 7973, 7973, 7973, 7973, 12590]**
+clocks with exact samples. This qualifies this connected local-RAM capture case,
+not all-admitted 60,000-cycle, service-envelope or resource/timing acceptance.
+The separate actual-RAM 32-target command peak remains 2,950. Its six quanta now
+cost **[3301, 3337, 5131, 2182, 2235, 2182]** with capture/full-bank skips included.
+
+The existing two-loop observation test also verifies packet pulse validity at
+frame zero, cumulative scheduled failure, subnormal bits and immutable producing
+revision across primitive selection. Existing word/AXI media fixtures free one
+snapshot bank and read the new 0.5 original gain/selected revision while actual
+dirty-cache/DMA fencing and an ARM return remain stalled. Rendering, exact
+playback/capture, independently checked backing memory and real AXI fence-error
+assertions remain; healthy 41-quantum fixtures take 291–501 clocks each. Selected
+revision in a complete snapshot still does not expose reliable fenced success.
+
+Snapshot's retained fault joins immediate consumer suppression and media-enabled
+abort. This does not qualify complete non-media/in-flight abort or always-on
+recovery/AXI-drain/first-fault integration. Root initial capture is still tied off
+(normal packets are phase 1); the standalone phase-0 test is not root admission.
+
+`stage4-snapshot-hookup-milestone.{log,status}` passes **224 selected Rust tests =
+193 affected-package + 31 directed**, workspace warnings, formatting, policy/
+coverage, generators and Python compilation. `stage4-snapshot-hookup-128-tests`
+is passing narrow evidence. The initial `-packets-tests`/`-128-diagnostic` failures
+retain an F128 fixture clip overrun: extending its clip keeps the seven distinct
+cursor trajectories valid without changing production guards or assertions.
+
+Stage 4 remains open for root initial capture and complete fault/reset/recovery;
+ABI-16 MMIO/firmware/reference selection and Stages 5–7 remain. No new whole-design
+resource/protected-route, all-admitted quantum, full Linux/Wasm, physical, push/PR
+or delivery qualification is claimed. Deployed ABI is still 15.

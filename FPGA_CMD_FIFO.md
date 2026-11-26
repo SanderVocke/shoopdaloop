@@ -673,11 +673,47 @@ full-width bounds checks, not warning suppression; the failed evidence is retain
 Fresh `stage4-snapshot-milestone.{log,status}` passes **193 affected-package + 30
 directed = 223 selected Rust tests**, workspace warnings, formatting, policy/coverage,
 generators and Python compilation. Narrow evidence is `stage4-snapshot-tests-final`;
-`stage4-snapshot-tests-index-width` retains the failed initial geometry run. This
-engine remains **standalone**: semantic audio still releases its gate immediately.
-Actual RAM/metadata mux hookup, root initial capture, integrated snapshot/quantum
-and resource/route qualification, complete recovery and Stages 5–7 remain pending.
-Deployed ABI remains 15; no new full Linux/Wasm, physical or delivery claim.
+`stage4-snapshot-tests-index-width` retains the failed initial geometry run. At
+`e883a1d13` this engine was standalone; the following milestone joins normal capture
+to execution. Root initial capture, full recovery and Stages 5–7 remain pending.
+
+**Actual settled-snapshot hookup milestone:** semantic audio now lets the FPGA
+snapshot producer own the bounded capture-ready gate and the real loop RAM during
+capture. The kernel owns the same port outside capture; capture is read-only.
+Snapshot metadata requests outrank diagnostic reads. A one-bit accepted-response
+owner preserves a diagnostic read granted immediately before capture rather than
+misrouting it when the live mux changes. Quantum is latched at actual render
+admission; F comes from SP's settled gate, not the next-frame counter. Private
+snapshot read/ACK/status ports propagate through actual word-media/shared-AXI tops.
+
+A new 128-row actual-SP test checks every raw loop word, F=0 processed stamps,
+render versus next cursors, recording render length, original subnormal gain bits,
+response ownership across gate entry, and exact output. Config writes are not admitted
+while the view is held; changing live quantum to 7 does not relabel its captured
+Q32 header. Two unread packets stay immutable across continued rendering, sequence
+gaps expose full-bank skips and qualified release permits a later complete packet.
+Snapshot ACK never manufactures the still-withheld ownership fence.
+
+Actual 128-row capture is **4,619 clocks including entry/handoff**. Seven fixture
+quanta take **7,973–12,680 clocks**; these are not an all-admitted workload bound.
+The existing local 32-target command peak remains **2,950**. Actual two-loop packets
+also preserve valid frame-zero pulses/failure counts and held revision-1 identity
+while revision 2 runs. Word/AXI media tests now independently read the new gain and
+selected revision from a complete snapshot while real dirty-cache/DMA fencing is
+stalled; backing-memory, playback/capture and memory-fault assertions remain.
+
+Fresh `stage4-snapshot-hookup-milestone.{log,status}` passes **193 affected-package +
+31 directed = 224 selected Rust tests**, workspace warnings, formatting,
+policy/coverage, generators and Python compilation. Narrow evidence is
+`stage4-snapshot-hookup-128-tests`; initial `-packets-tests`/`-128-diagnostic` retain
+a new fixture's F128 clip overrun. Its longer valid clip keeps all seven cursor
+trajectories in range; no assertions or production guards were weakened.
+
+Retained snapshot faults join immediate consumer fault suppression and media-enabled
+abort. Complete non-media/in-flight fault, reset/drain/first-fault integration,
+root initial capture, ABI-16 host/firmware selection and resource/protected-route/
+all-admitted quantum gates remain open. Deployed ABI remains **15**. No fresh full
+Linux/Wasm, physical or delivery qualification is claimed.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.

@@ -133,6 +133,27 @@ module fifo_audio_pipeline #(
     output wire [63:0] trace_lost,
     output wire [31:0] trace_epoch,
     output wire [63:0] trace_revision,
+    output wire [1:0] snapshot_ready_mask,
+    output wire [1:0] snapshot_free_mask,
+    output wire [63:0] snapshot_sequence0,
+    output wire [63:0] snapshot_sequence1,
+    output wire [63:0] snapshot_last_sequence,
+    output wire [63:0] snapshot_skipped,
+    output wire snapshot_sequence_exhausted,
+    output wire [31:0] peak_snapshot_cycles,
+    input wire snapshot_read_valid,
+    input wire snapshot_read_bank,
+    input wire [12:0] snapshot_read_word,
+    output wire snapshot_response_valid,
+    output wire snapshot_response_error,
+    output wire [31:0] snapshot_read_data,
+    input wire snapshot_ack_valid,
+    output wire snapshot_ack_ready,
+    input wire snapshot_ack_bank,
+    input wire [31:0] snapshot_ack_epoch,
+    input wire [63:0] snapshot_ack_sequence,
+    output wire snapshot_ack_response_valid,
+    output wire [3:0] snapshot_ack_receipt,
     input wire [31:0] epoch,
     input wire pipeline_fault,
     input wire host_valid,
@@ -221,6 +242,14 @@ module fifo_audio_pipeline #(
     wire execution_cfg_response_valid;
     wire execution_cfg_response_error;
     wire [`SHOOP_SP_STATE_BITS-1:0] execution_cfg_read_data;
+    wire execution_local_valid;
+    wire execution_local_ready;
+    wire execution_local_state;
+    wire execution_local_write;
+    wire [15:0] execution_local_address;
+    wire execution_local_response_valid;
+    wire execution_local_response_error;
+    wire [`SHOOP_SP_STATE_BITS-1:0] execution_local_read_data;
     wire execution_media_fault;
     wire observations_fault;
     wire observation_abort;
@@ -229,8 +258,44 @@ module fifo_audio_pipeline #(
     wire observation_cfg_response_valid;
     wire observation_cfg_response_error;
     wire [128:0] observation_cfg_read_data;
-    wire execution_fault = pipeline_fault || observations_fault || error_code != 0 || execution_revision != active_revision;
-    assign execution_media_fault = media_fault || observation_abort;
+    wire private_observation_read_valid;
+    wire private_observation_read_ready;
+    wire [15:0] private_observation_read_slot;
+    wire private_observation_response_valid;
+    wire private_observation_response_error;
+    wire [128:0] private_observation_read_data;
+    wire snapshot_capture_ready;
+    wire snapshot_memory_valid;
+    wire [15:0] snapshot_memory_address;
+    wire snapshot_metadata_valid;
+    wire [15:0] snapshot_metadata_slot;
+    wire snapshots_fault;
+    wire execution_fault = pipeline_fault || observations_fault || snapshots_fault || error_code != 0 || execution_revision != active_revision;
+    assign execution_media_fault = media_fault || observation_abort || snapshots_fault;
+    reg [31:0] snapshot_quantum;
+    reg observation_response_snapshot;
+    assign execution_local_valid = capture_valid ? snapshot_memory_valid : memory_valid;
+    assign execution_local_state = !capture_valid && memory_state;
+    assign execution_local_write = !capture_valid && memory_write;
+    assign execution_local_address = capture_valid ? snapshot_memory_address : memory_address;
+    assign memory_ready = !capture_valid && execution_local_ready;
+    assign memory_response_valid = !capture_valid && execution_local_response_valid;
+    assign memory_response_error = execution_local_response_error;
+    assign memory_read_data = execution_local_read_data;
+    assign private_observation_read_valid = capture_valid ? snapshot_metadata_valid : observation_read_valid;
+    assign private_observation_read_slot = capture_valid ? snapshot_metadata_slot : observation_read_slot;
+    assign observation_read_ready = !capture_valid && private_observation_read_ready;
+    assign observation_response_valid = private_observation_response_valid && !observation_response_snapshot;
+    assign observation_response_error = private_observation_response_error;
+    assign observation_read_data = private_observation_read_data;
+    always @(posedge clk) begin
+        if (reset) begin snapshot_quantum<=0; observation_response_snapshot<=0; end
+        else begin
+            if (render_valid && render_ready) snapshot_quantum<=run_quantum;
+            if (private_observation_read_valid && private_observation_read_ready)
+                observation_response_snapshot<=capture_valid;
+        end
+    end
     reg configuration_pending, configuration_observations;
     wire observation_config = cfg_state && cfg_loop;
     wire configuration_available = !configuration_pending && !run_valid && !capture_valid && !reset && !faulted;
@@ -349,18 +414,64 @@ module fifo_audio_pipeline #(
         .cfg_response_valid(observation_cfg_response_valid),
         .cfg_response_error(observation_cfg_response_error),
         .cfg_read_data(observation_cfg_read_data),
-        .read_valid(observation_read_valid),
-        .read_ready(observation_read_ready),
-        .read_slot(observation_read_slot),
-        .response_valid(observation_response_valid),
-        .response_error(observation_response_error),
-        .read_data(observation_read_data),
+        .read_valid(private_observation_read_valid),
+        .read_ready(private_observation_read_ready),
+        .read_slot(private_observation_read_slot),
+        .response_valid(private_observation_response_valid),
+        .response_error(private_observation_response_error),
+        .read_data(private_observation_read_data),
         .trace_valid(trace_valid),
         .trace_ready(trace_ready),
         .trace_data(trace_data),
         .trace_lost(trace_lost),
         .trace_epoch(trace_epoch),
         .trace_revision(trace_revision)
+    );
+    fifo_snapshots #(.LOOPS(LOOP_DEPTH)) snapshots (
+        .clk(clk),
+        .reset(reset),
+        .epoch(epoch),
+        .fault(execution_fault),
+        .capture_valid(capture_valid),
+        .capture_ready(snapshot_capture_ready),
+        .capture_initial(1'b0),
+        .capture_frame(capture_frame),
+        .capture_revision(active_revision),
+        .capture_quantum(snapshot_quantum),
+        .memory_valid(snapshot_memory_valid),
+        .memory_ready(capture_valid && execution_local_ready),
+        .memory_address(snapshot_memory_address),
+        .memory_response_valid(capture_valid && execution_local_response_valid),
+        .memory_response_error(execution_local_response_error),
+        .memory_read_data(execution_local_read_data),
+        .metadata_valid(snapshot_metadata_valid),
+        .metadata_ready(capture_valid && private_observation_read_ready),
+        .metadata_slot(snapshot_metadata_slot),
+        .metadata_response_valid(private_observation_response_valid && observation_response_snapshot),
+        .metadata_response_error(private_observation_response_error),
+        .metadata_read_data(private_observation_read_data),
+        .ready_mask(snapshot_ready_mask),
+        .free_mask(snapshot_free_mask),
+        .sequence0(snapshot_sequence0),
+        .sequence1(snapshot_sequence1),
+        .last_sequence(snapshot_last_sequence),
+        .skipped(snapshot_skipped),
+        .sequence_exhausted(snapshot_sequence_exhausted),
+        .capture_fault(snapshots_fault),
+        .peak_cycles(peak_snapshot_cycles),
+        .read_valid(snapshot_read_valid),
+        .read_bank(snapshot_read_bank),
+        .read_word(snapshot_read_word),
+        .response_valid(snapshot_response_valid),
+        .response_error(snapshot_response_error),
+        .read_data(snapshot_read_data),
+        .ack_valid(snapshot_ack_valid),
+        .ack_ready(snapshot_ack_ready),
+        .ack_bank(snapshot_ack_bank),
+        .ack_epoch(snapshot_ack_epoch),
+        .ack_sequence(snapshot_ack_sequence),
+        .ack_response_valid(snapshot_ack_response_valid),
+        .ack_receipt(snapshot_ack_receipt)
     );
     audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2), .CAPTURE_SYNC(1),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
@@ -400,7 +511,7 @@ module fifo_audio_pipeline #(
         .run_instruction_count(32'd0),
         .run_sync_count(32'd0),
         .capture_valid(capture_valid),
-        .capture_ready(1'b1),
+        .capture_ready(snapshot_capture_ready),
         .capture_frame(capture_frame),
         .run_program_region(1'b0),
         .switch_valid(select_valid),
@@ -448,15 +559,15 @@ module fifo_audio_pipeline #(
         .cfg_response_valid(execution_cfg_response_valid),
         .cfg_response_error(execution_cfg_response_error),
         .cfg_read_data(execution_cfg_read_data),
-        .local_valid(memory_valid),
-        .local_ready(memory_ready),
-        .local_state(memory_state),
-        .local_write(memory_write),
-        .local_address(memory_address),
+        .local_valid(execution_local_valid),
+        .local_ready(execution_local_ready),
+        .local_state(execution_local_state),
+        .local_write(execution_local_write),
+        .local_address(execution_local_address),
         .local_write_data(memory_write_data),
-        .local_response_valid(memory_response_valid),
-        .local_response_error(memory_response_error),
-        .local_read_data(memory_read_data),
+        .local_response_valid(execution_local_response_valid),
+        .local_response_error(execution_local_response_error),
+        .local_read_data(execution_local_read_data),
         .audio_cfg_valid(audio_cfg_valid),
         .audio_cfg_ready(audio_cfg_ready),
         .audio_cfg_space(audio_cfg_space),
