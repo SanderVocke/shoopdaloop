@@ -766,8 +766,59 @@ tests = 188 affected-package + 26 directed**, warning-denying workspace build,
 formatting, policy/coverage and generators. Local logs are under
 `work/cmd-fifo-investigation/`.
 
-The module is not yet connected to the production consumer/SP or CORE_CONFIG
-space 3. Actual-event/gain hookup, whole-sync settled snapshot capture/publication,
-full recovery/reset qualification and final resource/cycle/delivery gates remain.
-This does not change the ABI-15 deployment or establish fresh integrated resource,
-full Linux/Wasm or physical qualification.
+At this checkpoint the module was not connected to the consumer/SP or CORE_CONFIG
+space 3. The following milestone adds that connection; it does not change the
+ABI-15 deployment or establish fresh integrated resource or physical qualification.
+
+### Connected actual SP/gain observations and new-lease configuration
+
+The generated `fifo_audio_pipeline` now connects actual SP events and successful
+consumer gain strobes to retained observations. Required accumulation has no ARM
+or trace-ready dependency. The private metadata reader, optional trace record and
+loss/identity fields propagate through the real word-memory and AXI media wrappers.
+
+Configuration space 3 (`cfg_state && cfg_loop`) routes to the three-u64 initializer.
+One outstanding configuration latches its response owner; subsequent request flags
+cannot redirect a copied metadata response into the program/state path. This small
+configuration reservation does not participate in processing admission. The real
+trusted ARM unused-lease API/schema selection still belongs to Stage 5; these
+component interfaces are not advertised as deployed ABI 16.
+
+`actual_sp_observations_survive_full_trace_readers_and_primitive_selection` uses
+real SP/JP and execution RAM, not injected event strobes. Eleven quanta verify:
+
+- Valid frame-zero and continuing self/external pulses; one failed empty scheduled
+  Play accumulates once and is not lost when the trace is full.
+- Original subnormal f32 gain bits survive a zero fixed-point encoding and affect
+  samples in the command's quantum.
+- Configuration/private-reader pressure, unread results and delayed first selection
+  fencing do not stop processing or advance its frame independently.
+- Continuing gain/failure observations survive primitive selection without
+  reinitialization. A held revision-1 trace stays labelled 1 while revision 2 runs;
+  optional losses reach 33 without an audio fault.
+- Configuration responses retain the accepted source when live request flags change.
+
+The real word/AXI fixtures also read original gain from the connected metadata
+port while actual dirty-cache/DMA fences and private ARM responses are stalled.
+Their backing-memory/playback/capture/fence-failure assertions remain intact.
+
+The first media connection exposed immediate observation fault feeding back through
+SP abort into event-valid qualification (`UNOPTFLAT`). Immediate fault still gates
+the semantic consumer; media-enabled SP abort now uses the already-retained fault
+bit. No warning suppression or new per-slot shadow was introduced. Unit tests check
+immediate versus latched status. Complete in-flight/non-media abort, recovery and
+reset/epoch integration remain open, not qualified by this wiring repair.
+
+`stage4-observation-hookup-milestone.{log,status}` passes **215 selected Rust tests
+= 188 affected-package + 27 directed**, warning-denying workspace build, formatting,
+policy/coverage, generators and Python compilation. Directed logs are
+`stage4-observation-hookup-{initial,tests,retained-abort}`; initial unused-helper and
+feedback failures remain separate. Local evidence is under
+`work/cmd-fifo-investigation/`.
+
+Small-graph boundary-to-done costs are 443–533 cycles, command peak 91; the existing
+32-target actual-RAM peak stays 2,950. These do not establish the all-admitted total
+quantum, snapshot or resource/route bounds. Whole-sync settled capture and two
+snapshot banks, complete recovery/reset, ABI-16 host/firmware/reference integration,
+full platform/delivery gates and independent final audit still remain. No new full
+Linux/Wasm, physical or delivery qualification is claimed.

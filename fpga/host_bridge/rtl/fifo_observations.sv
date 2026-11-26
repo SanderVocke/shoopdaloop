@@ -6,7 +6,7 @@ module fifo_observations #(
     input wire [31:0] epoch, input wire [63:0] revision,
     input wire gain_valid, input wire [15:0] gain_slot, input wire [31:0] gain_bits,
     input wire event_valid, input wire [255:0] event_data,
-    output wire faulted,
+    output wire faulted, fault_latched,
     input wire cfg_valid, output wire cfg_ready, input wire cfg_write,
     input wire [15:0] cfg_address, input wire [128:0] cfg_write_data,
     output reg cfg_response_valid, cfg_response_error,
@@ -31,6 +31,7 @@ module fifo_observations #(
     wire bad_event=required_event && event_slot>=32'(LOOPS);
     wire bad_gain=gain_valid && (gain_slot>=16'(LOOPS) || gain_bits[30:23]==8'hff);
     assign faulted=!reset && (retained_fault || bad_event || bad_gain);
+    assign fault_latched=!reset && retained_fault;
     wire updating=gain_valid || required_event;
     assign read_ready=!reset && !faulted && !updating;
     assign cfg_ready=read_ready && !read_valid;

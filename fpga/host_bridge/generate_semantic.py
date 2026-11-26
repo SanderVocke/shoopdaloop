@@ -13,6 +13,12 @@ from generate_tops import header
 def generate():
     audio, ports = header((HERE.parent / "job_processor/rtl/audio_pipeline.sv").read_text())
     _, fifo = header((HERE / "rtl/fifo_group_consumer.sv").read_text())
+    _, observations = header((HERE / "rtl/fifo_observations.sv").read_text())
+    observation_links = {"revision": "active_revision", "gain_valid": "gain_update_valid", "gain_slot": "gain_update_slot",
+                         "gain_bits": "gain_update_bits", "event_valid": "sync_event_valid", "event_data": "sync_event_data",
+                         "faulted": "observations_fault", "fault_latched": "observation_abort"}
+    observation_links.update({n: "observation_" + n for _, n in observations
+                              if n.startswith(("read_", "response_")) or n in {"cfg_valid", "cfg_ready", "cfg_response_valid", "cfg_response_error", "cfg_read_data"}})
     constants = {"run_instruction_count": "32'd0", "run_sync_count": "32'd0",
                  "run_program_region": "1'b0", "run_state_count": "32'd0", "run_buffers": "32'd0",
                  "sync_event_ready": "1'b1",
@@ -28,6 +34,9 @@ def generate():
         "local_write": "memory_write", "local_address": "memory_address", "local_write_data": "memory_write_data",
         "local_response_valid": "memory_response_valid", "local_response_error": "memory_response_error",
         "local_read_data": "memory_read_data",
+        "cfg_valid": "execution_cfg_valid", "cfg_ready": "execution_cfg_ready",
+        "cfg_response_valid": "execution_cfg_response_valid", "cfg_response_error": "execution_cfg_response_error",
+        "cfg_read_data": "execution_cfg_read_data", "media_fault": "execution_media_fault",
     }
     fifo_links = {
         "boundary_valid": "run_valid", "boundary_ready": "run_ready", "boundary_frame": "sync_frame",
@@ -38,7 +47,9 @@ def generate():
     fifo_public = {n for _, n in fifo if n not in private_fifo}
     private_audio = set(constants) | set(audio_links)
     private_audio.update(n for _, n in ports if n.startswith("switch_"))
-    public = [(p, n) for p, n in ports if n not in private_audio]
+    retained_audio = {"cfg_valid", "cfg_ready", "cfg_response_valid", "cfg_response_error", "cfg_read_data", "media_fault"}
+    public = [(p, n) for p, n in ports if n not in private_audio or n in retained_audio]
+    public.extend((p, observation_links.get(n, n)) for p, n in observations if n.startswith(("read_", "response_", "trace_")))
     public.extend((p, n) for p, n in fifo if n in fifo_public and n not in {n for _, n in public})
     public.extend((p, n) for p, n in ports if n in {"run_valid", "run_ready", "busy"})
     params = re.sub(r"\s*parameter integer (?:LIVE_LOADING|PROGRAM_REGIONS) = [^,]+,", "", audio[2]).strip()
@@ -52,18 +63,39 @@ def generate():
     text += ",\n".join("    " + p.replace("output reg", "output wire") + n for p, n in public) + "\n);\n"
     text += '    initial if (LOOP_DEPTH < 1 || LOOP_DEPTH > 128) $fatal(1,"semantic loop profile exceeds 128 slots");\n'
     declared = {n for _, n in public}
-    for group, links, fixed in [(fifo, {}, fifo_links), (ports, audio_links, constants)]:
+    for group, links, fixed in [(fifo, {}, fifo_links), (ports, audio_links, constants), (observations, observation_links, {})]:
         for p, n in group:
             wire = links.get(n, n)
             if n in fixed or wire in declared:
                 continue
             text += "    " + re.sub(r"(?:input|output)\s+(?:wire|reg)", "wire", p) + wire + ";\n"
             declared.add(wire)
-    text += "    wire execution_fault = pipeline_fault || error_code != 0 || execution_revision != active_revision;\n"
+    text += "    wire execution_fault = pipeline_fault || observations_fault || error_code != 0 || execution_revision != active_revision;\n"
+    text += "    assign execution_media_fault = media_fault || observation_abort;\n"
+    text += """    reg configuration_pending, configuration_observations;
+    wire observation_config = cfg_state && cfg_loop;
+    wire configuration_available = !configuration_pending && !run_valid && !reset && !faulted;
+    assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
+    assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
+    assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);
+    assign cfg_response_valid = configuration_pending
+        && (configuration_observations ? observation_cfg_response_valid : execution_cfg_response_valid);
+    assign cfg_response_error = configuration_observations ? observation_cfg_response_error : execution_cfg_response_error;
+    assign cfg_read_data = configuration_observations ? observation_cfg_read_data : execution_cfg_read_data;
+    always @(posedge clk) begin
+        if (reset) begin configuration_pending<=0; configuration_observations<=0; end
+        else begin
+            if (cfg_response_valid) configuration_pending<=0;
+            if (cfg_valid && cfg_ready) begin configuration_pending<=1; configuration_observations<=observation_config; end
+        end
+    end
+"""
     text += "    assign busy = execution_busy || command_phase || render_valid;\n"
     text += "    assign switch_response_ready = switch_response_error || handoff_pending;\n"
     text += "    fifo_group_consumer #(.LOOPS(LOOP_DEPTH), .STATES(STATE_DEPTH), .PROGRAM_DEPTH(PROGRAM_DEPTH), .BUFFERS(BUFFERS)) consumer (\n"
     text += ",\n".join(f"        .{n}({fifo_links.get(n, n)})" for _, n in fifo) + "\n    );\n"
+    text += "    fifo_observations #(.LOOPS(LOOP_DEPTH)) observations (\n"
+    text += ",\n".join(f"        .{n}({observation_links.get(n, n)})" for _, n in observations) + "\n    );\n"
     text += "    audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2),\n"
     text += ",\n".join(f"        .{n}({n})" for n in names) + "\n    ) execution (\n"
     text += ",\n".join(f"        .{n}({constants.get(n, audio_links.get(n, n))})" for _, n in ports) + "\n    );\nendmodule\n"

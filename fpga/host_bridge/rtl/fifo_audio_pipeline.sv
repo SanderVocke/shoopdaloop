@@ -119,6 +119,18 @@ module fifo_audio_pipeline #(
     input wire memory_program_response_valid,
     output wire memory_program_response_ready,
     input wire memory_program_response_error,
+    input wire observation_read_valid,
+    output wire observation_read_ready,
+    input wire [15:0] observation_read_slot,
+    output wire observation_response_valid,
+    output wire observation_response_error,
+    output wire [128:0] observation_read_data,
+    output wire trace_valid,
+    input wire trace_ready,
+    output wire [255:0] trace_data,
+    output wire [63:0] trace_lost,
+    output wire [31:0] trace_epoch,
+    output wire [63:0] trace_revision,
     input wire [31:0] epoch,
     input wire pipeline_fault,
     input wire host_valid,
@@ -202,7 +214,38 @@ module fifo_audio_pipeline #(
     wire [63:0] switch_first_frame;
     wire [63:0] execution_revision;
     wire execution_busy;
-    wire execution_fault = pipeline_fault || error_code != 0 || execution_revision != active_revision;
+    wire execution_cfg_valid;
+    wire execution_cfg_ready;
+    wire execution_cfg_response_valid;
+    wire execution_cfg_response_error;
+    wire [`SHOOP_SP_STATE_BITS-1:0] execution_cfg_read_data;
+    wire execution_media_fault;
+    wire observations_fault;
+    wire observation_abort;
+    wire observation_cfg_valid;
+    wire observation_cfg_ready;
+    wire observation_cfg_response_valid;
+    wire observation_cfg_response_error;
+    wire [128:0] observation_cfg_read_data;
+    wire execution_fault = pipeline_fault || observations_fault || error_code != 0 || execution_revision != active_revision;
+    assign execution_media_fault = media_fault || observation_abort;
+    reg configuration_pending, configuration_observations;
+    wire observation_config = cfg_state && cfg_loop;
+    wire configuration_available = !configuration_pending && !run_valid && !reset && !faulted;
+    assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
+    assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
+    assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);
+    assign cfg_response_valid = configuration_pending
+        && (configuration_observations ? observation_cfg_response_valid : execution_cfg_response_valid);
+    assign cfg_response_error = configuration_observations ? observation_cfg_response_error : execution_cfg_response_error;
+    assign cfg_read_data = configuration_observations ? observation_cfg_read_data : execution_cfg_read_data;
+    always @(posedge clk) begin
+        if (reset) begin configuration_pending<=0; configuration_observations<=0; end
+        else begin
+            if (cfg_response_valid) configuration_pending<=0;
+            if (cfg_valid && cfg_ready) begin configuration_pending<=1; configuration_observations<=observation_config; end
+        end
+    end
     assign busy = execution_busy || command_phase || render_valid;
     assign switch_response_ready = switch_response_error || handoff_pending;
     fifo_group_consumer #(.LOOPS(LOOP_DEPTH), .STATES(STATE_DEPTH), .PROGRAM_DEPTH(PROGRAM_DEPTH), .BUFFERS(BUFFERS)) consumer (
@@ -284,6 +327,39 @@ module fifo_audio_pipeline #(
         .peak_command_cycles(peak_command_cycles),
         .current_command_cycles(current_command_cycles)
     );
+    fifo_observations #(.LOOPS(LOOP_DEPTH)) observations (
+        .clk(clk),
+        .reset(reset),
+        .epoch(epoch),
+        .revision(active_revision),
+        .gain_valid(gain_update_valid),
+        .gain_slot(gain_update_slot),
+        .gain_bits(gain_update_bits),
+        .event_valid(sync_event_valid),
+        .event_data(sync_event_data),
+        .faulted(observations_fault),
+        .fault_latched(observation_abort),
+        .cfg_valid(observation_cfg_valid),
+        .cfg_ready(observation_cfg_ready),
+        .cfg_write(cfg_write),
+        .cfg_address(cfg_address),
+        .cfg_write_data(cfg_write_data),
+        .cfg_response_valid(observation_cfg_response_valid),
+        .cfg_response_error(observation_cfg_response_error),
+        .cfg_read_data(observation_cfg_read_data),
+        .read_valid(observation_read_valid),
+        .read_ready(observation_read_ready),
+        .read_slot(observation_read_slot),
+        .response_valid(observation_response_valid),
+        .response_error(observation_response_error),
+        .read_data(observation_read_data),
+        .trace_valid(trace_valid),
+        .trace_ready(trace_ready),
+        .trace_data(trace_data),
+        .trace_lost(trace_lost),
+        .trace_epoch(trace_epoch),
+        .trace_revision(trace_revision)
+    );
     audio_pipeline #(.LIVE_LOADING(1), .PROGRAM_REGIONS(2),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
@@ -357,16 +433,16 @@ module fifo_audio_pipeline #(
         .jobs_busy(jobs_busy),
         .jobs_done(jobs_done),
         .buffer_ready(buffer_ready),
-        .cfg_valid(cfg_valid),
-        .cfg_ready(cfg_ready),
+        .cfg_valid(execution_cfg_valid),
+        .cfg_ready(execution_cfg_ready),
         .cfg_state(cfg_state),
         .cfg_loop(cfg_loop),
         .cfg_write(cfg_write),
         .cfg_address(cfg_address),
         .cfg_write_data(cfg_write_data),
-        .cfg_response_valid(cfg_response_valid),
-        .cfg_response_error(cfg_response_error),
-        .cfg_read_data(cfg_read_data),
+        .cfg_response_valid(execution_cfg_response_valid),
+        .cfg_response_error(execution_cfg_response_error),
+        .cfg_read_data(execution_cfg_read_data),
         .local_valid(memory_valid),
         .local_ready(memory_ready),
         .local_state(memory_state),
@@ -410,7 +486,7 @@ module fifo_audio_pipeline #(
         .media_cmd_count(media_cmd_count),
         .media_done(media_done),
         .media_error(media_error),
-        .media_fault(media_fault),
+        .media_fault(execution_media_fault),
         .media_write_valid(media_write_valid),
         .media_write_ready(media_write_ready),
         .media_write_data(media_write_data),

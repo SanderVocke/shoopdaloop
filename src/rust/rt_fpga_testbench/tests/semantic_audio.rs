@@ -128,8 +128,7 @@ fn result(s: &mut Sim<'_>, bank: u64, count: usize) -> Vec<u32> {
     words
 }
 
-#[shoop_test]
-fn production_consumer_edits_execution_ram_and_renders_while_results_and_handoff_wait() {
+fn core_design(loops: u64) -> Design {
     let root = rt_fpga_testbench::root();
     let audio = suites::audio::design([64, 16, 128, 32, 4, 1, 1]);
     let mut sources = audio.sources;
@@ -137,14 +136,252 @@ fn production_consumer_edits_execution_ram_and_renders_while_results_and_handoff
         "fifo_group_banks",
         "fifo_edit_kernel",
         "fifo_group_consumer",
+        "fifo_observations",
         "fifo_audio_pipeline",
     ] {
         sources.push(root.join(format!("fpga/host_bridge/rtl/{module}.sv")));
     }
     let mut design = Design::new("fifo_audio_pipeline", sources);
     design.parameters = audio.parameters;
-    design = design.parameters(&[("LOOP_DEPTH", 32), ("EXTERNAL_IO", 1)]);
-    let compiled = design
+    design.parameters(&[("LOOP_DEPTH", loops), ("EXTERNAL_IO", 1)])
+}
+fn initialize_observations(s: &mut Sim<'_>, slot: u64, gain: u32) {
+    for word in 0..3 {
+        cfg(
+            s,
+            true,
+            true,
+            slot * 3 + word,
+            Some(&Bits::from_u64(if word == 0 { u64::from(gain) } else { 0 })),
+        );
+    }
+}
+fn observations(s: &mut Sim<'_>, slot: u64) -> Bits {
+    s.model.set_all(&[
+        ("observation_read_valid", 1),
+        ("observation_read_slot", slot),
+    ]);
+    s.model.eval();
+    assert_eq!(s.model.get("observation_read_ready"), 1);
+    s.idle(1);
+    assert_eq!(s.model.get("observation_response_valid"), 1);
+    assert_eq!(s.model.get("observation_response_error"), 0);
+    let data = s.model.bits("observation_read_data");
+    s.model.set("observation_read_valid", 0);
+    s.idle(1);
+    data
+}
+
+#[shoop_test]
+fn actual_sp_observations_survive_full_trace_readers_and_primitive_selection() {
+    let root = rt_fpga_testbench::root();
+    let compiled = core_design(2)
+        .build(&root.join("work/marlin-suite/semantic-observations"))
+        .unwrap();
+    let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    s.model.set_all(&[
+        ("reset", 1),
+        ("epoch", 1),
+        ("run_quantum", 32),
+        ("run_chunk_frames", 32),
+        ("run_inputs", 1),
+        ("run_outputs", 1),
+        ("capture_credits", 65535),
+        ("job_enable", 1),
+        ("sample_input_data", 1 << 22),
+    ]);
+    s.idle(2);
+    s.model.set("reset", 0);
+    s.idle(2);
+    let mut program = vec![];
+    for slot in 0..2 {
+        initialize_observations(&mut s, slot, 1.0f32.to_bits());
+        for word in 0..16 {
+            let value = match word {
+                0 => 1 | (7 << 1) | (1 << 36) | if slot == 0 { (1 << 33) | (1 << 35) } else { 0 },
+                1 => 7 | if slot == 1 { 7 << 32 } else { 0 },
+                2 | 3 => {
+                    if slot == 0 {
+                        32
+                    } else {
+                        0
+                    }
+                }
+                _ => 0,
+            };
+            cfg(
+                &mut s,
+                false,
+                true,
+                slot * 16 + word,
+                Some(&Bits::from_u64(value)),
+            );
+        }
+        let mut instruction = Bits::zero(96);
+        instruction
+            .set(0, 8, 12)
+            .set(8, 16, slot)
+            .set(24, 32, 7)
+            .set(56, 16, 0)
+            .set(72, 16, 1);
+        program.push(instruction);
+    }
+    for instruction in [
+        json!({"kind":"process_input","port":0,"destination":0}),
+        json!({"kind":"process_gain","ramp":0,"source":0,"destination":1}),
+        json!({"kind":"process_output","source":1,"port":0}),
+    ] {
+        program.push(codec::instruction(&instruction).unwrap());
+    }
+    s.model.set_all(&[
+        ("cfg_valid", 1),
+        ("cfg_state", 1),
+        ("cfg_loop", 1),
+        ("cfg_write", 0),
+        ("cfg_address", 0),
+    ]);
+    s.model.eval();
+    assert_eq!(s.model.get("cfg_ready"), 1);
+    s.idle(1);
+    assert_eq!(s.model.get("cfg_response_valid"), 1);
+    s.model.set_all(&[("cfg_state", 0), ("cfg_loop", 0)]);
+    s.model.eval();
+    assert_eq!(
+        s.model.get("cfg_ready"),
+        0,
+        "one copied response keeps its accepted owner"
+    );
+    assert_eq!(
+        s.model.bits("cfg_read_data").get(0, 64),
+        u64::from(1.0f32.to_bits())
+    );
+    s.idle(1);
+    s.model.set("cfg_valid", 0);
+    s.idle(1);
+    for (pc, instruction) in program.iter().enumerate() {
+        cfg(&mut s, false, false, pc as u64, Some(instruction));
+    }
+    cfg(
+        &mut s,
+        true,
+        false,
+        0,
+        Some(&codec::state(&suites::audio::ramp(1 << 24, 1 << 24, 0, 0))),
+    );
+    let mut select = [0; 12];
+    select[0] = 5;
+    select[6] = 1;
+    select[8] = 5 << 16;
+    select[9] = 2 | (1 << 16);
+    select[10] = 2;
+    publish(&mut s, 0, 1, 0, &[select]);
+    let mut gains = vec![];
+    let mut costs = vec![quantum(&mut s, 0, 1 << 22, &mut gains)];
+    for slot in 0..2 {
+        let row = observations(&mut s, slot);
+        assert_eq!(row.get(0, 32), u64::from(1.0f32.to_bits()));
+        assert_eq!(row.get(32, 32), slot, "only the empty scheduled Play fails");
+        assert_eq!(row.get(64, 64), 0);
+        assert_eq!(row.get(128, 1), 1, "frame-zero pulses remain valid");
+    }
+    assert_eq!(s.model.get("trace_valid"), 1);
+    assert!(s.model.get("trace_lost") > 0);
+    let held_trace = s.model.bits("trace_data");
+    assert_eq!(s.model.get("trace_epoch"), 1);
+    assert_eq!(s.model.get("trace_revision"), 1);
+    assert_eq!(
+        s.model.get("result_ready_mask"),
+        0,
+        "metadata does not manufacture ownership completion"
+    );
+    let mut gain = [0; 12];
+    gain[0] = 3;
+    gain[2] = 7;
+    gain[5] = 1;
+    publish(&mut s, 1, 2, 1, &[gain]);
+    costs.push(quantum(&mut s, 32, 0, &mut gains));
+    assert_eq!(gains, vec![(0, 1)]);
+    assert_eq!(
+        observations(&mut s, 0).get(0, 32),
+        1,
+        "original subnormal survives a zero Q8.24 gain"
+    );
+    let losses = s.model.get("trace_lost");
+    for frame in (64..320).step_by(32) {
+        s.model.set_all(&[
+            ("cfg_valid", 1),
+            ("cfg_state", 1),
+            ("cfg_loop", 1),
+            ("cfg_write", 0),
+            ("cfg_address", 0),
+            ("observation_read_valid", 1),
+            ("observation_read_slot", 1),
+        ]);
+        costs.push(quantum(&mut s, frame, 0, &mut gains));
+        s.model
+            .set_all(&[("cfg_valid", 0), ("observation_read_valid", 0)]);
+        s.idle(2);
+        for slot in 0..2 {
+            let row = observations(&mut s, slot);
+            assert_eq!(row.get(32, 32), slot);
+            assert_eq!(row.get(64, 64), frame);
+            assert_eq!(row.get(128, 1), 1);
+        }
+        assert_eq!(
+            s.model.get("sync_frame"),
+            frame + 32,
+            "readers do not pace processing"
+        );
+        assert_eq!(s.model.bits("trace_data"), held_trace);
+    }
+    assert!(s.model.get("trace_lost") > losses);
+    assert_eq!(s.model.get("faulted"), 0);
+    s.model.set_all(&[
+        ("handoff_valid", 1),
+        ("handoff_epoch", 1),
+        ("handoff_sequence", 1),
+    ]);
+    s.until(100, "first qualified fence", |m| {
+        m.get("handoff_pending") == 0
+    });
+    s.model.set("handoff_valid", 0);
+    s.idle(4);
+    assert_eq!(result(&mut s, 0, 1)[15], 2);
+    for (pc, instruction) in program.iter().enumerate() {
+        cfg(&mut s, false, false, 64 + pc as u64, Some(instruction));
+    }
+    assert_eq!(s.model.get("sync_frame"), 320);
+    select[6] = 2;
+    select[8] |= 1;
+    publish(&mut s, 2, 3, 1, &[select]);
+    costs.push(quantum(&mut s, 320, 0, &mut gains));
+    assert_eq!(s.model.get("active_revision"), 2);
+    assert_eq!(s.model.get("handoff_pending"), 1);
+    assert_eq!(observations(&mut s, 0).get(0, 32), 1);
+    assert_eq!(
+        observations(&mut s, 1).get(32, 32),
+        1,
+        "continuing leases are not reinitialized"
+    );
+    assert_eq!(observations(&mut s, 1).get(64, 64), 320);
+    assert_eq!(s.model.bits("trace_data"), held_trace);
+    assert_eq!(
+        s.model.get("trace_revision"),
+        1,
+        "held trace keeps the producing revision"
+    );
+    assert_eq!(s.model.get("trace_epoch"), 1);
+    println!(
+        "SEMANTIC_OBSERVATION_QUANTUM_CYCLES {costs:?}; loss {}; peak command {}",
+        s.model.get("trace_lost"),
+        s.model.get("peak_command_cycles")
+    );
+}
+
+#[shoop_test]
+fn production_consumer_edits_execution_ram_and_renders_while_results_and_handoff_wait() {
+    let root = rt_fpga_testbench::root();
+    let compiled = core_design(32)
         .build(&root.join("work/marlin-suite/semantic-audio"))
         .unwrap();
     let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
@@ -174,6 +411,7 @@ fn production_consumer_edits_execution_ram_and_renders_while_results_and_handoff
     s.model.set("reset", 0);
     s.idle(2);
     for slot in 0..32 {
+        initialize_observations(&mut s, slot, 1.0f32.to_bits());
         for word in 0..16 {
             let value = match word {
                 0 => 1 | (7 << 1),
@@ -395,6 +633,7 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
             "fifo_group_banks",
             "fifo_edit_kernel",
             "fifo_group_consumer",
+            "fifo_observations",
             "fifo_audio_pipeline",
             "fifo_media_loader",
             "fifo_media_arbiter",
@@ -447,6 +686,7 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
         s.idle(2);
         s.model.set("reset", 0);
         s.idle(2);
+        initialize_observations(&mut s, 0, 1.0f32.to_bits());
         for word in 0..16 {
             let value = match word {
                 0 => 1 | (7 << 1),
@@ -572,6 +812,11 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
         s.model
             .set_all(&[("host_valid", 0), ("result_read_valid", 0)]);
         assert_eq!(gains, [(0, u64::from(0.5f32.to_bits()))]);
+        assert_eq!(
+            observations(&mut s, 0).get(0, 32),
+            u64::from(0.5f32.to_bits()),
+            "real word/AXI media wrappers retain original gain"
+        );
         assert_eq!(s.model.get("handoff_pending"), 1);
         assert_eq!(s.model.get("result_ready_mask"), 0);
         assert_eq!(

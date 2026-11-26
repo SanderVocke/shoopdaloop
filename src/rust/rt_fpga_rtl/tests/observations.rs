@@ -227,7 +227,9 @@ fn new_lease_validation_bounds_reset_and_required_source_faults_never_alias_othe
         event(s, 2, 0, 128, 0);
         s.model.eval();
         assert_eq!(s.model.get("faulted"), 1);
+        assert_eq!(s.model.get("fault_latched"), 0);
         s.idle(1);
+        assert_eq!(s.model.get("fault_latched"), 1);
         s.model.set("event_valid", 0);
         s.idle(1);
         assert_eq!(s.model.get("faulted"), 1);

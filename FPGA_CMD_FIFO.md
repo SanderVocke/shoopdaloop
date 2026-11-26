@@ -567,11 +567,48 @@ remains separate from the corrected passing evidence.
 Fresh gates pass **188 affected-package + 26 directed = 214 selected Rust tests**,
 workspace warnings, formatting, policy/coverage and generators. Evidence:
 `work/cmd-fifo-investigation/stage4-observation-milestone-final.{log,status}` and
-`stage4-observation-tests{,-probe-alias}`. This component is **not yet connected**
-to actual SP events/gain strobes or `CORE_CONFIG` space 3. That hookup, whole-sync
-settled capture/two snapshot banks, complete fault/reset/recovery and Stages 5–7
-remain open. The legacy host path still advertises ABI 15; no new integrated
-resource/cycle, full Linux/Wasm, physical or delivery qualification is claimed.
+`stage4-observation-tests{,-probe-alias}`. At this checkpoint the component was
+**not yet connected** to actual SP events/gain strobes or `CORE_CONFIG` space 3;
+that hookup and the remaining snapshot/recovery/integration gates were still open.
+
+**Actual-observation integration milestone:** the generated semantic audio core
+now connects successful gain updates and unbackpressured SP events to retained
+observations, exposing a private one-cycle metadata reader and independent optional
+trace. Both the real word-memory media wrapper and shared-AXI wrapper carry these
+interfaces. The existing configuration port routes space 3 to new-lease metadata;
+a single outstanding configuration retains its accepted source until the copied
+response, rather than routing by subsequently changed request flags. Configuration
+ownership does not gate rendering. Initialization remains trusted unused-lease
+work, not continuing-state restoration; the ARM/schema adapter is still Stage 5.
+
+An actual two-loop SP/JP fixture renders eleven exact-sample quanta with valid
+frame-zero pulses, one failed empty scheduled Play, blocked configuration/private
+readers, a full undrained trace and unread reliable results. An original subnormal
+f32 gain survives its zero Q8.24 encoding and remains intact, along with the
+failure count, across a primitive selection. The held trace keeps revision 1
+while revision 2 runs; loss reaches 33 without a fault or reader service. Extended
+real word/AXI media fixtures independently read retained original gain while real
+cache/DMA fences and ARM returns remain stalled.
+
+Connecting immediate observation fault back into SP abort exposed an elaborated
+combinational feedback loop. The consumer still sees immediate fault suppression;
+the media-enabled execution abort uses the existing retained observation-fault
+bit instead. No warning was disabled and no extra per-slot state was added. Unit
+checks distinguish immediate and latched status. Complete in-flight faults,
+non-media abort/recovery/reset and epoch flushing remain separate open work.
+The initial unused-helper warning and feedback-loop failure are retained evidence.
+
+Fresh gates pass **188 affected-package + 27 directed = 215 selected Rust tests**,
+workspace warnings, formatting, policy/coverage, generators and Python compilation.
+Evidence: `work/cmd-fifo-investigation/stage4-observation-hookup-milestone.{log,status}`;
+directed logs use `stage4-observation-hookup-{initial,tests,retained-abort}`. Small
+fixture boundary-to-done costs are **443–533 cycles**, command peak **91**; the
+existing actual-RAM 32-target peak remains **2,950**. These are not all-admitted
+60,000-cycle, 8,192-cycle snapshot or integrated resource/route qualification.
+
+Stage 4 remains open for whole-sync settled capture/two snapshot banks and complete
+fault/reset/recovery. Stages 5–7 remain. The deployed host still advertises ABI 15;
+no fresh full Linux/Wasm, physical, push or PR qualification is claimed.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
