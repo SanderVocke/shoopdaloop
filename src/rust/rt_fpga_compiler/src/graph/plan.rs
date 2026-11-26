@@ -653,12 +653,7 @@ pub(super) fn lower(
             }
             parents.entry(id).or_default().push(l.id);
             spans.sort_by_key(|span| span.start);
-            schedule.children.push(CompositeChild {
-                id,
-                spans,
-                previous_span_at_wrap: None,
-                previous_spans: Vec::new(),
-            });
+            schedule.children.push(CompositeChild { id, spans });
         }
         composites.push(schedule);
     }

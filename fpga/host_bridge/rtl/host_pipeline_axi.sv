@@ -204,7 +204,6 @@ module host_pipeline_axi #(
     wire [15:0] switch_sync_count;
     wire [15:0] switch_states;
     wire [15:0] switch_buffers;
-    wire [43:0] switch_future;
     wire switch_response_valid;
     wire switch_response_ready;
     wire switch_response_error;

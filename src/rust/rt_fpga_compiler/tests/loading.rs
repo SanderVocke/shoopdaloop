@@ -236,6 +236,26 @@ fn composite_context() -> CompileContext {
     }
 }
 
+#[shoop_test]
+fn empty_child_schedules_cannot_encode_retirement_rows() {
+    let context = composite_context();
+    let mut program = compile_composites(&composite::arbitration_graph(), context, 16).unwrap();
+    program.composites[0].children[0].spans.clear();
+    assert_eq!(
+        program.validate_logical(context.limits),
+        Err(CompileError::InvalidProgram)
+    );
+    let mut allocator = Allocator::new(context.limits);
+    assert!(matches!(
+        allocator.stage(&program),
+        Err(LoadError::Compile(CompileError::InvalidProgram))
+    ));
+    assert!(allocator.current().is_none());
+    assert!(allocator.pending().is_none());
+    let valid = compile_composites(&composite::arbitration_graph(), context, 16).unwrap();
+    assert_eq!(allocator.stage(&valid).unwrap().revision, 1);
+}
+
 fn assert_composite_refusal(allocator: &mut Allocator, program: &LogicalStateProgram) {
     let current = format!("{:?}", allocator.current());
     let revision = allocator.revision();

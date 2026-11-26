@@ -14,10 +14,6 @@ module sp_engine #(
     input  wire                                clk,
     input  wire                                reset,
     input  wire                                start,
-    input  wire                                program_changed,
-    input wire future_switch_valid,
-    input wire [43:0] future_switch,
-    output reg future_switch_ready,
     input  wire [31:0]                         instruction_count,
     input wire [31:0] sync_count,
     input  wire [31:0]                         state_count,
@@ -101,7 +97,7 @@ module sp_engine #(
     localparam integer SYNC_COUNT_BITS = $clog2(LOOP_DEPTH + 1);
     reg [SYNC_COUNT_BITS-1:0] sync_remaining;
     reg [63:0] run_frame;
-    reg run_has_sync, last_instruction, run_program_changed;
+    reg run_has_sync, last_instruction;
     reg begin_capture;
     reg [1:0] playback_flags;
     reg [255:0] capture_job;
@@ -109,19 +105,14 @@ module sp_engine #(
     wire [95:0] instruction={instruction_reserved,arg4,arg3,arg2,arg1,arg0,opcode};
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
     wire composite_rows = opcode == `SHOOP_SP_PROCESS_COMPOSITE_CHILD;
-    wire composite_child = composite_rows && !instruction_reserved[0];
+    wire composite_child = composite_rows;
     wire process_loop = opcode == `SHOOP_SP_PROCESS_LOOP || composite_rows;
     wire [31:0] next_pc = 32'(pc) + 1'b1 + (composite_rows ? {16'b0,arg4} : 32'b0);
     reg [PC_BITS-1:0] span_pc;
-    reg [PC_BITS-1:0] parent_end_pc, span_split_pc;
-    reg compare_handoff_spans;
-    wire restart_preview = future_switch_valid && future_switch[43:28] == `SHOOP_SP_RESTART_SWITCH_TAG;
-    wire reading_old_spans = span_pc >= span_split_pc;
-    wire [PC_BITS-1:0] scan_end_pc = compare_handoff_spans ? parent_end_pc : span_split_pc;
+    reg [PC_BITS-1:0] parent_end_pc;
     reg [15:0] parent_slot;
     reg [31:0] parent_generation;
     reg parent_snapshot, parent_restart, parent_wrap, parent_playing;
-    reg [2:0] parent_previous_span;
     reg [31:0] parent_position, parent_previous, desired_start;
     reg [1:0] previous_mode, desired_mode;
     reg [15:0] run_capture_credits;
@@ -133,13 +124,10 @@ module sp_engine #(
     wire [31:0] span_start = program_read_data[31:0];
     wire [31:0] span_end = program_read_data[63:32];
     wire [1:0] span_mode = program_read_data[65:64];
-    wire previous_match = (!compare_handoff_spans || reading_old_spans)
-        && parent_previous >= span_start && parent_previous < span_end;
-    wire desired_match = (!compare_handoff_spans || reading_old_spans != future_switch_ready)
-        && parent_position >= span_start && parent_position < span_end;
+    wire previous_match = parent_previous >= span_start && parent_previous < span_end;
+    wire desired_match = parent_position >= span_start && parent_position < span_end;
     wire [15:0] parent_span_count = {program_read_data[79:70], program_read_data[53:48]};
-    wire [31:0] next_span_split = 32'(span_pc) + 1'b1 + {16'b0,parent_span_count};
-    wire [31:0] next_parent_pc = next_span_split + {19'b0,program_read_data[95:83]};
+    wire [31:0] next_parent_pc = 32'(span_pc) + 1'b1 + {16'b0,parent_span_count};
     reg [15:0] operand_address;
     reg midi_restart;
     phase_t emit_return;
@@ -217,18 +205,11 @@ module sp_engine #(
     reg inline_sync, source_valid, source_self;
     reg sync_flags_invalid, sync_control_matches;
     reg [31:0] source_slot;
-    wire paired_source_edit = restart_preview && future_switch[27:12] != `SHOOP_SP_RESTART_KEEP_SOURCE
-        && target == {20'b0,future_switch[11:0]};
-    wire selected_source_valid = paired_source_edit ? future_switch[27:12] != `SHOOP_SP_RESTART_NO_SOURCE
-        : (inline_sync ? arg3!=16'hffff : flags[SV]);
-    wire [31:0] selected_source_slot = {16'b0, paired_source_edit ? future_switch[27:12]
-        : (inline_sync ? arg3 : flags[SS+:16])};
+    wire selected_source_valid = inline_sync ? arg3!=16'hffff : flags[SV];
+    wire [31:0] selected_source_slot = {16'b0,inline_sync ? arg3 : flags[SS+:16]};
     wire source_tick=source_valid && !source_self && source_flags[PULSE];
     wire source_playing=source_flags[M+:2]==1;
     wire repeat_wait=flags[REP] && source_valid && !source_self && source_playing && !source_tick;
-    wire [4:0] plan0_flags=control[P0+:5], plan1_flags=control[P1+:5];
-    wire clock_plan0 = plan0_flags[VALID] && plan0_flags[TICKS];
-    wire clock_plan1 = plan1_flags[VALID] && plan1_flags[TICKS];
     wire [4:0] scan_flags=scan_index ? control[P1+:5] : control[P0+:5];
     wire [4:0] winner_flags=winner ? control[P1+:5] : control[P0+:5];
     wire [4:0] cancel_flags=cancel_index ? control[P1+:5] : control[P0+:5];
@@ -327,7 +308,7 @@ module sp_engine #(
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
             pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
             changed<=0; applied_pulse<=0; sync_fault<=0; sync_frame<=0; midi_restart<=0; emit_return<=NEXT;
-            run_quantum <= 0; run_program_changed<=0; future_switch_ready<=0;
+            run_quantum <= 0;
             begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
             opcode <= 0;
             arg0 <= 0;
@@ -335,10 +316,10 @@ module sp_engine #(
             arg2 <= 0;
             arg3 <= 0;
             arg4 <= 0;
-            span_pc<=0; parent_end_pc<=0; span_split_pc<=0; compare_handoff_spans<=0;
+            span_pc<=0; parent_end_pc<=0;
             parent_slot<=0; parent_generation<=0;
             parent_position<=0; parent_previous<=0; desired_start<=0;
-            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0; parent_previous_span<=0;
+            parent_snapshot<=0; parent_restart<=0; parent_wrap<=0; parent_playing<=0;
             previous_mode<=0; desired_mode<=0; inherited<=0; composite_position_checked<=0;
             run_capture_credits<=0; capture_permitted<=0;
             dividend<=0; divisor<=0; remainder<=0; division_bits<=0; division_return<=IDLE;
@@ -367,8 +348,6 @@ module sp_engine #(
             end else case (phase)
                 IDLE: if (start) begin
                     busy <= 1;
-                    run_program_changed <= program_changed;
-                    future_switch_ready <= 0;
                     pc <= 0; chunk_shift <= shift_for(chunk_frames);
                     error_code <= `SHOOP_SP_OK;
                     shape_bad <= chunk_frames == 0 || (chunk_frames & (chunk_frames-1)) != 0
@@ -438,8 +417,8 @@ module sp_engine #(
                             else phase<=SYNC_BEGIN;
                         end
                         `SHOOP_SP_PROCESS_COMPOSITE_CHILD: begin
-                            if (sync_remaining == 0 || instruction_reserved[7:1]!=0 || arg4==0
-                                || (arg4==1 && !instruction_reserved[0]) || next_pc>32'(run_count)) begin
+                            if (sync_remaining == 0 || instruction_reserved!=0 || arg4<2
+                                || next_pc>32'(run_count)) begin
                                 finish_error(`SHOOP_SP_INVALID_PROGRAM);
                             end else begin
                                 last_instruction<=next_pc==32'(run_count);
@@ -704,9 +683,6 @@ module sp_engine #(
                 end
                 COMPOSITE_PREVIOUS: begin
                     capture_frames<=word_value;
-                    // A composite's previous frame fits in 32 bits.
-                    if (run_program_changed && position==length && length!=0 && !control[`SHOOP_SP_L_COMPOSITE_WAIT])
-                        capture_frames[32]<=1;
                     phase<=SYNC_SOURCE_BEGIN;
                 end
                 SYNC_SOURCE_BEGIN: begin
@@ -721,7 +697,7 @@ module sp_engine #(
                 SYNC_SOURCE_CHECK: begin
                     if (!source_flags[V] || (!inline_sync && source_flags[G+:32]!=control[31:0]) || source_flags[M+:2]==3
                         || !source_flags[PV] || !word_at_frame) sync_fail();
-                    else phase<=paired_source_edit && future_switch_ready ? SYNC_NATURAL : SYNC_SCAN_BEGIN;
+                    else phase<=SYNC_SCAN_BEGIN;
                 end
                 SYNC_SCAN_BEGIN: begin sync_pass<=0; scan_index<=0; winner_valid<=0; phase<=SYNC_SCAN; end
                 SYNC_SCAN: begin
@@ -848,7 +824,7 @@ module sp_engine #(
                 end
                 SYNC_GROUP_DONE: begin
                     sync_natural_return<=sync_pass==0 ? SYNC_SOURCE : sync_pass==1 ? SYNC_DELIVER : SYNC_RENDER;
-                    if (sync_pass==0 && (composite_child || (composite_rows && run_program_changed)) && !inherited
+                    if (sync_pass==0 && composite_child && !inherited
                         && (!protected_valid || control[`SHOOP_SP_L_AUTHORED_CAPTURE])) begin
                         span_pc<=pc+1'b1; parent_end_pc<=pc+1'b1; phase<=COMPOSITE_TABLE_READ;
                     end else phase<=SYNC_NATURAL;
@@ -857,24 +833,13 @@ module sp_engine #(
                     finish_error(`SHOOP_SP_PROGRAM_MEMORY_ERROR);
                 end else if (program_available) phase<=span_pc==parent_end_pc ? COMPOSITE_TABLE : COMPOSITE_SPAN;
                 COMPOSITE_TABLE: begin
-                    if (program_read_data[82:80]==3'd1
-                        || program_read_data[82:80]>3'd5
-                        || (parent_span_count==0 && (program_read_data[82:80]<3'd3 || program_read_data[95:83]!=0))
-                        || (parent_span_count!=0 && instruction_reserved[0])
+                    if (program_read_data[95:80]!=0 || parent_span_count==0
                         || next_parent_pc>next_pc || {16'b0,program_read_data[15:0]}>=32'(LOOP_DEPTH)) sync_fail();
-                    else if (parent_span_count==0 && !run_program_changed) begin
-                        parent_end_pc<=PC_BITS'(next_parent_pc);
-                        previous_mode<=0; desired_mode<=0;
-                        phase<=COMPOSITE_APPLY;
-                    end else begin
+                    else begin
                         parent_slot<=program_read_data[15:0];
                         parent_generation<=program_read_data[47:16];
-                        parent_previous_span<=program_read_data[82:80];
                         capture_permitted<=program_read_data[69:54]!=0 && program_read_data[69:54]<=run_capture_credits;
                         parent_end_pc<=PC_BITS'(next_parent_pc);
-                        span_split_pc<=PC_BITS'(next_span_split);
-                        compare_handoff_spans<=restart_preview && program_read_data[95:83]!=0
-                            && program_read_data[15:0]=={4'b0,future_switch[11:0]};
                         span_pc<=span_pc+1'b1;
                         loop_read({16'b0,program_read_data[15:0]},FLAGS,COMPOSITE_PARENT_FLAGS);
                     end
@@ -901,13 +866,7 @@ module sp_engine #(
                 COMPOSITE_PARENT_PREVIOUS: begin
                     parent_previous<=word_value[31:0];
                     previous_mode<=0; desired_mode<=0; desired_start<=0;
-                    if (word_value[33:32]==2'b01 && parent_previous_span!=0 && !compare_handoff_spans) begin
-                        parent_previous<=32'hffffffff;
-                        previous_mode<=parent_previous_span[1:0]-2'd2;
-                    end
-                    if (compare_handoff_spans && !future_switch_ready) span_pc<=span_split_pc;
-                    if (span_pc==parent_end_pc) phase<=COMPOSITE_APPLY;
-                    else if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);
+                    if (parent_playing) loop_read({16'b0,parent_slot},RP,COMPOSITE_PARENT_CURRENT);
                     else begin
                         parent_position<=32'hffffffff;
                         phase<=COMPOSITE_TABLE_READ;
@@ -924,9 +883,8 @@ module sp_engine #(
                         if (desired_match) begin
                             desired_mode<=span_mode; desired_start<=span_start;
                         end
-                        if (span_pc+1'b1==scan_end_pc
-                            || ((!compare_handoff_spans || !future_switch_ready)
-                                && span_start>parent_previous && span_start>parent_position)
+                        if (span_pc+1'b1==parent_end_pc
+                            || (span_start>parent_previous && span_start>parent_position)
                             || ((previous_mode!=0 || previous_match) && (desired_mode!=0 || desired_match)))
                             phase<=COMPOSITE_APPLY;
                         else begin
@@ -1013,22 +971,7 @@ module sp_engine #(
                     phase<=division_bits==1 ? division_return : COMPOSITE_REMAINDER;
                 end
                 SYNC_NATURAL: begin
-                    if (paired_source_edit && !future_switch_ready && sync_pass==0
-                        && (flags[M+:2]==0 || (flags[M+:2]==1 && !clock_plan0 && !clock_plan1
-                            && ((position==0 && flags[`SHOOP_SP_L_COMPOSITE_SNAPSHOT])
-                                || (position==length && length!=0
-                                    && (flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT] || !repeat_wait)))))) begin
-                        future_switch_ready<=1;
-                        if (clock_plan0) control[P0+VALID]<=0;
-                        if (clock_plan1) control[P1+VALID]<=0;
-                        source_valid<=arg3!=16'hffff;
-                        source_slot<={16'b0,arg3};
-                        source_self<=arg3==16'hffff || {16'b0,arg3}==target;
-                        if (arg3!=16'hffff && {16'b0,arg3}!=target) begin
-                            if ({16'b0,arg3}>=32'(LOOP_DEPTH)) sync_fail();
-                            else loop_read({16'b0,arg3},FLAGS,SYNC_SOURCE_FLAGS);
-                        end
-                    end else if (is_composite && (sync_pass==2 || (sync_pass==0 && source_tick)))
+                    if (is_composite && (sync_pass==2 || (sync_pass==0 && source_tick)))
                         phase<=sync_natural_return;
                     else if (flags[M+:2]==1 && length!=0 && position==length) begin
                         if (flags[`SHOOP_SP_L_COMPOSITE_EXPLICIT]) loop_read(target,CYC,SYNC_WRAP);
@@ -1087,11 +1030,6 @@ module sp_engine #(
                 end
                 SYNC_RENDER: begin
                     position_in_range <= position < length;
-                    if (future_switch_valid && !paired_source_edit && target[11:0] == future_switch[11:0]
-                        && (flags[M+:2]==0 || (flags[M+:2]==1 && (restart_preview
-                            ? position==0 && (flags[`SHOOP_SP_L_COMPOSITE_SNAPSHOT] || flags[`SHOOP_SP_L_COMPOSITE_WRAP])
-                            : position < {32'b0,future_switch[43:12]}))))
-                        future_switch_ready <= 1;
                     flags[BC]<=flags[M+:2]==2 && capture_frames==0; flags[PV]<=1;
                     loop_write(RP,position,SYNC_STAMP);
                 end

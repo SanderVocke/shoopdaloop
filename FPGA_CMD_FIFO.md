@@ -187,7 +187,7 @@ increasing limits or reducing acceptance criteria.
 
 ### Stage 3 — Remove composite live switching and freeze the contract
 
-- [ ] Delete FPGA-oriented composite cut/ancestor readiness, conditional preview,
+- [x] Delete FPGA-oriented composite cut/ancestor readiness, conditional preview,
   paired-restart/ending handoff and retry-at-future-boundary machinery across its
   actual dependencies. Preserve static-composite runtime behavior and primitive
   switching; do not indiscriminately delete similarly named SP wrap logic.
@@ -228,8 +228,23 @@ run remains interrupted evidence, not a pass or proof of the timeout's cause.
 See [the milestone record](docs/fpga/command-fifo-implementation/README.md).
 Local logs: `work/cmd-fifo-investigation/stage3-{rust-milestone,linux,wasm}.log`.
 
-Remaining: remove RTL preview/handoff ports/controller logic and obsolete packed
-metadata, then freeze the versioned FIFO ABI, capability and ownership/lifecycle
+RTL-removal milestone: SP/pipeline preview, paired-source, ending-handoff and
+future-switch controllers and their wrapper ports are now removed, along with
+outgoing-span types, counts and packed metadata. Ordinary static wrap/pulse,
+iteration/seek and scheduling remain. Former switch-guard fields now refuse as
+reserved payload bits rather than silently selecting an immediate switch; 63
+single-bit cases exercise that behavior. Empty child schedules cannot encode
+retirement rows, and obsolete SP header flags are invalid. Scoped source audit
+finds no remaining retired implementation names in production RTL/Rust/adapters.
+
+Fresh verification: **166 affected-package tests** (including the 3,970-case
+kernel differential), full Linux **3,584 passed / 11 skipped**, both default Wasm
+builds and the optional worklet `fpga-reference` Wasm build pass. Warning-denying
+workspace build, formatting, test-policy and AXI/host generator checks pass.
+Local logs: `work/cmd-fifo-investigation/stage3-rtl-removal.log` and
+`work/cmd-fifo-investigation/rtl-milestone/stage3-{linux,wasm}.log`.
+
+Remaining: freeze the versioned FIFO ABI, capability and ownership/lifecycle
 documentation. Stage 3 is **not complete**: the old CPU control window/batch
 bridge remains until Stages 4–5 replace it; no integrated FIFO, new resource/timing
 measurement, physical qualification or final acceptance is claimed.

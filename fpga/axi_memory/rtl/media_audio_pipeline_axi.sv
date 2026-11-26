@@ -69,7 +69,6 @@ module media_audio_pipeline_axi #(
     input wire [15:0] switch_sync_count,
     input wire [15:0] switch_states,
     input wire [15:0] switch_buffers,
-    input wire [43:0] switch_future,
     output wire switch_response_valid,
     input wire switch_response_ready,
     output wire switch_response_error,

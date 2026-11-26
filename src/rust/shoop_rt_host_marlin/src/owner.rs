@@ -501,7 +501,6 @@ impl Owner<'_> {
                         ("switch_sync_count", u64::from(d.sync_count)),
                         ("switch_states", u64::from(d.states)),
                         ("switch_buffers", u64::from(d.buffers)),
-                        ("switch_future", 0),
                     ]);
                     switching = true;
                     Code::Applied

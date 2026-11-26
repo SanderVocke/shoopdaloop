@@ -4,7 +4,7 @@ The authoritative scope, approval and acceptance criteria are in
 [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md). The isolated kernel measurements
 remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
 
-## Stage 3: Rust/profile removal and regression milestone
+## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
 
 **This is not completion of Stage 3 or implementation of the production FIFO.**
 The commit introducing this record removes compiler/reference/ARM/Marlin
@@ -75,8 +75,67 @@ The interrupted log is retained as `stage3-linux-timeout.log`. This does **not**
 establish that the runner version caused the hang or erase the interrupted run.
 No unrelated native implementation change was made.
 
-RTL preview/handoff controllers, ports and packed outgoing-span metadata still
-need removal. The FIFO ABI, capability/lifecycle documentation and production
-consumer/transport remain unfinished. ABI-15 CPU control-window/batch paths are
-still present pending Stages 4–5. There is no new integrated resource/timing
-measurement, protected route result, physical test, push or PR in this milestone.
+At this Rust/profile milestone, RTL preview/handoff controllers, ports and packed
+outgoing-span metadata still needed removal; the next section records that work.
+The FIFO ABI, capability/lifecycle documentation and production consumer/transport
+remained unfinished. There was no new integrated resource/timing measurement,
+protected route result, physical test, push or PR.
+
+## Stage 3: RTL/controller and packed-metadata removal milestone
+
+The SP, pipeline and all intervening media/MIDI/AXI/host wrappers no longer expose
+or implement the future-switch, conditional-preview, paired-source restart or
+outgoing-span handoff paths. The Marlin adapter's former zero tie is removed with
+the port. Ordinary static-composite wrap, pulse, iteration/seek, scheduled controls
+and primitive replacement with its real memory-completion fence remain.
+
+Compiler `PreviousSpan` and previous/outgoing-span fields, counts, validation and
+RTL-target encodings are removed. Composite children require actual current
+spans; an empty schedule cannot stand in for a retiring parent. The SP rejects
+obsolete child instruction flags and parent-header metadata instead of retaining
+a hidden interpretation for them.
+
+The old switch-guard payload fields are reserved and must be zero. Hardware-mailbox
+tests exercise **63 individual reserved bits**, including every bit of the retired
+guard, and require `RESULT_INVALID`. A normal switch then succeeds at the original
+frame/revision. This prevents a legacy guarded request from silently becoming an
+immediate replacement. Valid retained-profile encodings keep those bits zero.
+This milestone does not introduce or deploy the replacement semantic FIFO ABI.
+
+### Fresh verification
+
+All commands again ran through `nix develop --command …` on Linux.
+
+- **166 Rust tests pass** across the same five affected packages and feature
+  matrix shown above. This includes all public static/shared/nested composite,
+  primitive replacement, memory-fence, fault and ownership tests, the new empty
+  child rejection, hardware-mailbox reserved-field cases and the kernel test's
+  **3,970 differential cases**. Changed RTL models were freshly compiled.
+- Full Linux suite with pinned nextest **0.9.116**: **3,584 passed / 11 skipped**,
+  **401.681 s** reported runtime. The CI profile, isolated dummy JACK server and
+  missing-backend allowance are unchanged; this is not physical audio evidence.
+- Default application/worklet and optional `fpga-reference` Wasm builds pass;
+  these remain compile checks, not browser-runtime qualification.
+- Warning-denying workspace build, formatting, test-policy and generated AXI/host
+  wrapper/register checks pass. A scoped production RTL/Rust/adapter source audit
+  finds no remaining retired controller/type/field names.
+
+Local evidence:
+
+- `work/cmd-fifo-investigation/stage3-rtl-removal.{sh,log,status}`
+- `work/cmd-fifo-investigation/rtl-milestone/run-linux.sh`
+- `work/cmd-fifo-investigation/rtl-milestone/stage3-{linux,wasm}.{log,status}`
+- `work/cmd-fifo-investigation/rtl-milestone/stage3-jack.log`
+
+All three status files are zero. The earlier Rust/profile logs and interrupted
+run remain separate historical evidence; the new pass does not establish the
+cause of the earlier timeout.
+
+### Remaining limits
+
+Stage 3 is **not complete**: the versioned FIFO, capability and explicit
+quiescence/ownership-lifecycle contract still needs freezing and corresponding
+loading/architecture documentation. The ABI-15 CPU control-window/batch bridge is
+still present pending Stages 4–5. No production semantic FIFO, fresh integrated
+resource/timing measurement, protected route, physical qualification, push or PR
+is claimed by this milestone.

@@ -434,18 +434,14 @@ impl RtlTarget<'_> {
             let words = u16::try_from(
                 logical
                     .composite_parents(*loop_id)
-                    .map(|(_, child)| 1 + child.spans.len() + child.previous_spans.len())
+                    .map(|(_, child)| 1 + child.spans.len())
                     .sum::<usize>(),
             )
             .map_err(|_| CompileError::Capacity(Resource::Instructions))?;
             if words != 0 {
-                let handoff_only = logical
-                    .composite_parents(*loop_id)
-                    .all(|(_, child)| child.spans.is_empty());
                 bits.set(0, 8, 0x16)
                     .set(56, 16, u64::from(source))
-                    .set(72, 16, u64::from(words))
-                    .set(88, 1, u64::from(handoff_only));
+                    .set(72, 16, u64::from(words));
                 rows.push(bits);
                 for (parent, child) in logical.composite_parents(*loop_id) {
                     let span_count = child.spans.len() as u64;
@@ -455,21 +451,9 @@ impl RtlTarget<'_> {
                         .set(16, 32, u64::from(parent.id.generation))
                         .set(48, 6, span_count & 63)
                         .set(54, 16, u64::from(capture_views))
-                        .set(70, 10, span_count >> 6)
-                        .set(
-                            80,
-                            3,
-                            match child.previous_span_at_wrap {
-                                None => 0,
-                                Some(PreviousSpan::Idle) => 2,
-                                Some(PreviousSpan::Active(SpanMode::Play)) => 3,
-                                Some(PreviousSpan::Active(SpanMode::Stop)) => 4,
-                                Some(PreviousSpan::Active(SpanMode::Record)) => 5,
-                            },
-                        )
-                        .set(83, 13, child.previous_spans.len() as u64);
+                        .set(70, 10, span_count >> 6);
                     rows.push(header);
-                    for span in child.spans.iter().chain(&child.previous_spans) {
+                    for span in &child.spans {
                         let mut row = Bits::zero(96);
                         row.set(0, 32, u64::from(span.start))
                             .set(32, 32, u64::from(span.end))
@@ -494,7 +478,7 @@ impl RtlTarget<'_> {
             rows.push(bits);
             sync_instructions.push(rows);
         }
-        use rt_fpga_compiler::{MidiOperation as M, PreviousSpan, SpanMode};
+        use rt_fpga_compiler::MidiOperation as M;
         let fusion = merge_output.then(|| midi::merge_outputs(&logical.work_pass));
         let byte = |value| u8::try_from(value).map_err(|_| CompileError::InvalidProgram);
         for op in &logical.work_pass {

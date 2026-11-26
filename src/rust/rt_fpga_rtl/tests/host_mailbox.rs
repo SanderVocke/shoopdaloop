@@ -319,6 +319,13 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
             send(OP_CORE_CONFIG, &args, RESULT_OK);
         }
     }
+    for (word, bits) in [(4, 1..32), (5, 16..32), (6, 16..32)] {
+        for bit in bits {
+            let mut args = [0, 0, 1, 0, 0, 3, 0, 1, 3, 1];
+            args[word] |= 1_u32 << bit;
+            send(OP_SWITCH_PROGRAM, &args, RESULT_INVALID);
+        }
+    }
     let first = send(
         OP_SWITCH_PROGRAM,
         &[0, 0, 1, 0, 0, 3, 0, 1, 3, 1],

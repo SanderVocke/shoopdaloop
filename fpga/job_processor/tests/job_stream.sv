@@ -32,7 +32,7 @@ module job_stream;
         .run_instruction_count(instruction_count), .run_sync_count(32'd0), .run_program_region(1'b0),
         .switch_valid(1'b0), .switch_expected(64'd0), .switch_revision(64'd0), .switch_region(1'b0),
         .switch_instructions(16'd0), .switch_sync_count(16'd0), .switch_states(16'd0),
-        .switch_buffers(16'd0), .switch_future(44'd0), .switch_response_ready(1'b1), .handoff_complete(1'b0),
+        .switch_buffers(16'd0), .switch_response_ready(1'b1), .handoff_complete(1'b0),
         .run_state_count(32'd0), .run_quantum(32'd1), .run_chunk_frames(32'd1), .capture_credits(16'd0),
         .run_buffers(32'(CONSTANTS)), .run_inputs(32'd0), .run_outputs(32'd1),
         .job_enable(job_enable), .busy(busy), .done(done),
