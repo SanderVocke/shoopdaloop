@@ -303,60 +303,8 @@ impl StateProcessor {
     pub(crate) fn switch_image(
         &mut self,
         image: &mut crate::target::ProgramImage,
-        rendered_restart: bool,
     ) -> Result<(), Error> {
-        use rt_fpga_compiler::loading::CompositeCut;
-
         let loops = self.loops.as_mut().expect("prepared loop pool");
-        let mut wrap_pending = false;
-        for cut in image.layout.composite_cuts() {
-            let old = loops
-                .slot(LoopId {
-                    slot: cut.old_slot.slot,
-                    generation: cut.old_slot.generation,
-                })
-                .map_err(|_| Error::InvalidState)?;
-            if old.state.mode != crate::transitions::Mode::Playing {
-                continue;
-            }
-            wrap_pending |= !rendered_restart
-                && cut.reconciles_wrap(
-                    old.state.position,
-                    old.state.content_length,
-                    old.composite_wait,
-                );
-            let Some(destination) = cut.restart_slot else {
-                continue;
-            };
-            let slot = image
-                .new_loops
-                .iter_mut()
-                .flatten()
-                .find(|slot| {
-                    (slot.state.id.slot, slot.state.id.generation)
-                        == (destination.slot, destination.generation)
-                })
-                .ok_or(Error::InvalidState)?;
-            let length = slot.state.content_length;
-            let quantum = image.compiled.program.quantum;
-            if length < u64::from(quantum) {
-                return Err(Error::InvalidState);
-            }
-            slot.state.mode = old.state.mode;
-            slot.state.position = length;
-            slot.state.repeat_sync = old.state.repeat_sync;
-            slot.state.cycles = old.state.cycles;
-            slot.state.last_pulse = old.state.last_pulse;
-            slot.render.mode = old.render.mode;
-            slot.render.position = CompositeCut::restart_previous(
-                old.render.position,
-                old.state.content_length,
-                length,
-                quantum,
-            );
-            slot.composite_wait = old.composite_wait;
-            slot.mode_failures = old.mode_failures;
-        }
         for &(address, value) in &image.initializers {
             self.memory[address.0] = value;
         }
@@ -367,42 +315,12 @@ impl StateProcessor {
             }
         }
         core::mem::swap(&mut loops.plan, &mut image.compiled.plan);
-        loops.program_changed = wrap_pending;
         Ok(())
     }
-    pub(crate) fn composite_wrap_pending(&self) -> bool {
+    pub(crate) fn has_composites(&self) -> bool {
         self.loops
             .as_ref()
-            .is_some_and(|loops| loops.program_changed)
-    }
-    #[cfg(feature = "rt-interface")]
-    pub(crate) fn swap_restart_plan(
-        &mut self,
-        plan: &mut TransitionPlan,
-        candidate: Option<rt_fpga_compiler::loading::FutureSwitch>,
-    ) {
-        let loops = self.loops.as_mut().expect("prepared loop pool");
-        loops.restart_candidate = candidate;
-        core::mem::swap(&mut loops.plan, plan);
-    }
-
-    pub(crate) fn permits_future_switch(
-        &self,
-        cut: rt_fpga_compiler::loading::FutureSwitch,
-    ) -> bool {
-        if cut.at_restart() {
-            return self.loops.as_ref().is_some_and(|loops| loops.restart_ready);
-        }
-        self.loop_state(LoopId {
-            slot: cut.target.slot,
-            generation: cut.target.generation,
-        })
-        .is_ok_and(|slot| {
-            use crate::records::Mode;
-            slot.render.mode == Mode::Stopped
-                || (slot.render.mode == Mode::Playing
-                    && slot.render.position < u64::from(cut.before))
-        })
+            .is_some_and(|loops| loops.plan.composite_clocks.iter().any(Option::is_some))
     }
     pub fn new(memory: Vec<Value>) -> Self {
         Self {
@@ -436,56 +354,6 @@ impl StateProcessor {
             .as_ref()
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
-    }
-    pub(crate) fn composite_playback_ready(
-        &self,
-        cut: &rt_fpga_compiler::loading::CompositeCut,
-        slot: &LoopSlot,
-    ) -> bool {
-        use rt_fpga_compiler::{loading::ClockState, shoop_graph::CompositeKind};
-
-        let Some(loops) = self.loops.as_ref() else {
-            return false;
-        };
-        cut.playback_ready(
-            slot.state.position,
-            slot.state.content_length,
-            slot.state.repeat_sync,
-            |source| {
-                let id = LoopId {
-                    slot: source.slot,
-                    generation: source.generation,
-                };
-                let clock = loops.slot(id).ok().filter(|clock| {
-                    !clock.planned.iter().flatten().any(|plan| {
-                        (clock.mode_plan || plan.effective <= loops.frame)
-                            && (!plan.on_pulse || plan.remaining_ticks == 0)
-                    })
-                });
-                Ok::<_, core::convert::Infallible>(clock.map(|clock| {
-                    let kind = loops
-                        .plan
-                        .composite_clocks
-                        .get(id.slot as usize)
-                        .copied()
-                        .flatten()
-                        .map(|clock| {
-                            if clock.explicit {
-                                CompositeKind::Explicit
-                            } else {
-                                CompositeKind::Regular
-                            }
-                        });
-                    ClockState {
-                        kind,
-                        playing: clock.state.mode == crate::transitions::Mode::Playing,
-                        at_end: clock.state.at_end(),
-                        repeat_sync: clock.state.repeat_sync,
-                    }
-                }))
-            },
-        )
-        .unwrap()
     }
     pub fn composite_status(&self, id: LoopId) -> Option<CompositeStatus> {
         let loops = self.loops.as_ref()?;

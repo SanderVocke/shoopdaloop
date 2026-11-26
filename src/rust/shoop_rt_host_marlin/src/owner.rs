@@ -1,6 +1,6 @@
 use super::bridge::{Block, Shared};
 use anyhow::{ensure, Result};
-use rt_fpga_compiler::{loading::CompositeCut, Identity, ProgramLimits};
+use rt_fpga_compiler::{Identity, ProgramLimits};
 use rt_fpga_reference::{
     fixed::Fixed,
     transitions::{LoopId, Mode},
@@ -64,7 +64,6 @@ struct Pending {
     header: Header,
     records: Vec<CommandRecord>,
     frame: u64,
-    future: bool,
 }
 struct Owner<'a> {
     sim: Sim<'a>,
@@ -386,48 +385,31 @@ impl Owner<'_> {
         program_lane: bool,
     ) -> Result<bool> {
         commands.begin_callback();
-        if let Some(pending) = self
-            .pending
-            .as_ref()
-            .filter(|p| !p.future || p.program_lane == program_lane)
-        {
-            if pending.program_lane != program_lane {
-                return Ok(false);
-            }
-            let still_armed = pending.future && self.frame == pending.frame;
-            let cancelled =
-                still_armed && self.upload.as_ref().is_some_and(|upload| upload.cancelled);
-            if (still_armed && !cancelled)
-                || (!pending.future && self.sim.model.get("switch_response_valid") == 0)
+        if let Some(pending) = self.pending.as_ref() {
+            if pending.program_lane != program_lane
+                || self.sim.model.get("switch_response_valid") == 0
             {
                 return Ok(false);
             }
             let pending = self.pending.take().unwrap();
-            if cancelled {
-                self.sim.model.set("switch_valid", 0);
-            }
-            if !pending.future || self.sim.model.get("active_revision") != pending.header.graph() {
-                ensure!(
-                    self.sim.model.get("switch_response_error") == 0,
-                    "RTL ownership fence failed"
-                );
-                let group = commands
-                    .pop()
-                    .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
-                let mut i = 0;
-                group.respond(
-                    pending.header.complete(pending.frame, Code::Applied),
-                    |_| {
-                        let r = pending.records[i];
-                        i += 1;
-                        r
-                    },
-                );
-                if !pending.future {
-                    self.acknowledge_switch()?;
-                }
-                return Ok(true);
-            }
+            ensure!(
+                self.sim.model.get("switch_response_error") == 0,
+                "RTL ownership fence failed"
+            );
+            let group = commands
+                .pop()
+                .ok_or_else(|| anyhow::anyhow!("missing pending command group"))?;
+            let mut i = 0;
+            group.respond(
+                pending.header.complete(pending.frame, Code::Applied),
+                |_| {
+                    let r = pending.records[i];
+                    i += 1;
+                    r
+                },
+            );
+            self.acknowledge_switch()?;
+            return Ok(true);
         }
         let Some(group) = commands.pop() else {
             return Ok(false);
@@ -466,24 +448,10 @@ impl Owner<'_> {
             group.respond(header.complete(self.frame, code), |r| r.complete(code));
             return Ok(true);
         }
-        if let [record] = records.as_slice() {
-            if let Command::SwitchProgram(descriptor) = record.command() {
-                if self.waits_for_composite_cut(descriptor)? {
-                    group.leave_unread();
-                    return Ok(false);
-                }
-            }
-        }
         let mut complete = Vec::with_capacity(COMMANDS);
         let mut switching = false;
-        let mut future = false;
         for record in &records {
             let code = if let Command::SwitchProgram(d) = record.command() {
-                let cut = self
-                    .upload
-                    .as_ref()
-                    .filter(|_| records.len() == 1)
-                    .and_then(|upload| upload.upload.image.layout.future_switch());
                 if !self
                     .upload
                     .as_ref()
@@ -492,29 +460,37 @@ impl Owner<'_> {
                     Code::CannotApply
                 } else if self.upload.as_ref().unwrap().cancelled {
                     Code::Cancelled
-                } else if cut.is_none() && !self.prepare_composite_cuts()? {
-                    Code::CannotApply
-                } else {
-                    if cut.is_none() {
-                        let changed = self
+                } else if self.current.as_ref().is_some_and(|current| {
+                    current.layout.has_composites()
+                        || self
                             .upload
                             .as_ref()
                             .unwrap()
                             .upload
                             .image
                             .layout
-                            .changed_sources()
-                            .to_vec();
-                        for loop_id in changed {
-                            let code = self.execute(Command::ClearPlannedTransitions(
-                                loop_id.slot,
-                                shoop_rt_protocol::immediate::ClearPlanned::Both,
-                            ))?;
-                            ensure!(
-                                code == Code::Applied,
-                                "RTL could not clear the continuing loop plan"
-                            );
-                        }
+                            .has_composites()
+                }) {
+                    Code::GraphCompositeUnsupported
+                } else {
+                    let changed = self
+                        .upload
+                        .as_ref()
+                        .unwrap()
+                        .upload
+                        .image
+                        .layout
+                        .changed_sources()
+                        .to_vec();
+                    for loop_id in changed {
+                        let code = self.execute(Command::ClearPlannedTransitions(
+                            loop_id.slot,
+                            shoop_rt_protocol::immediate::ClearPlanned::Both,
+                        ))?;
+                        ensure!(
+                            code == Code::Applied,
+                            "RTL could not clear the continuing loop plan"
+                        );
                     }
                     self.sim.model.set_all(&[
                         ("switch_valid", 1),
@@ -525,15 +501,9 @@ impl Owner<'_> {
                         ("switch_sync_count", u64::from(d.sync_count)),
                         ("switch_states", u64::from(d.states)),
                         ("switch_buffers", u64::from(d.buffers)),
-                        (
-                            "switch_future",
-                            cut.map_or(0, |cut| {
-                                u64::from(cut.before) << 12 | u64::from(cut.target.slot)
-                            }),
-                        ),
+                        ("switch_future", 0),
                     ]);
                     switching = true;
-                    future = cut.is_some();
                     Code::Applied
                 }
             } else {
@@ -552,7 +522,6 @@ impl Owner<'_> {
                 header,
                 records: complete,
                 frame: self.frame,
-                future,
             });
             group.leave_unread();
         } else {
@@ -583,79 +552,6 @@ impl Owner<'_> {
         }
     }
 
-    fn waits_for_composite_cut(&mut self, switch: SwitchProgram) -> Result<bool> {
-        let Some(upload) = self.upload.as_ref() else {
-            return Ok(false);
-        };
-        if self.retired.is_some()
-            || upload.cancelled
-            || !upload.announced
-            || descriptor(&upload.upload.image) != switch
-            || upload.upload.image.layout.future_switch().is_some()
-        {
-            return Ok(false);
-        }
-        if let Some(slot) = upload.upload.image.layout.retiring_composite() {
-            let mut words = self.loop_words(slot)?;
-            let code = rt_fpga_rtl::host::control::prepare_composite_retirement(
-                slot, &mut words, self.frame,
-            );
-            if code == Code::Scheduled {
-                self.store_loop(slot, &words)?;
-            }
-            return Ok(code == Code::Scheduled);
-        }
-        let upload = self.upload.take().unwrap();
-        let result = (|| {
-            let [cut] = upload.upload.image.layout.composite_cuts() else {
-                return Ok(false);
-            };
-            if !cut.waits_for_control() {
-                return Ok(false);
-            }
-            let words = self.loop_words(cut.old_slot)?;
-            Ok(self.composite_cut_status(cut, &words)? == Code::Scheduled)
-        })();
-        self.upload = Some(upload);
-        result
-    }
-
-    fn composite_cut_status(&mut self, cut: &CompositeCut, words: &[u64; 16]) -> Result<Code> {
-        rt_fpga_rtl::host::control::composite_cut_status(cut, words, |id| {
-            let words = self.read_loop_words::<4>(id, 0)?;
-            rt_fpga_rtl::host::control::restart_clock_state(id, self.frame, words, |offset| {
-                self.read_loop_words::<2>(id, offset)
-            })
-        })
-    }
-
-    fn prepare_composite_cuts(&mut self) -> Result<bool> {
-        let upload = self.upload.take().unwrap();
-        let result = (|| {
-            for cut in upload.upload.image.layout.composite_cuts() {
-                let old = self.loop_words(cut.old_slot)?;
-                if self.composite_cut_status(cut, &old)? != Code::Applied {
-                    return Ok(false);
-                }
-                if let Some(next) = cut.restart_slot.filter(|_| (old[0] >> 33) & 3 != 0) {
-                    let mut words = self.loop_words(next)?;
-                    if rt_fpga_rtl::host::control::prepare_composite_restart(
-                        next,
-                        &old,
-                        &mut words,
-                        self.quantum,
-                    ) != Code::Applied
-                    {
-                        return Ok(false);
-                    }
-                    self.store_loop(next, &words)?;
-                }
-            }
-            Ok(true)
-        })();
-        self.upload = Some(upload);
-        result
-    }
     fn publish(&mut self, execution: &mut rt::Execution, processed: bool) -> Result<()> {
         let mut bytes = std::mem::take(&mut self.snapshot);
         let mut position = snapshot::HEADER;
@@ -819,25 +715,12 @@ impl Owner<'_> {
         ]);
         let mut accepted_at = None;
         for _ in 0..2_000_000 {
-            if let Some(pending) = self
-                .pending
-                .as_ref()
-                .filter(|_| self.sim.model.get("switch_response_valid") != 0)
-            {
+            if self.pending.is_some() && self.sim.model.get("switch_response_valid") != 0 {
                 self.sim.model.set("run_valid", 0);
-                if pending.future {
-                    ensure!(
-                        self.sim.model.get("switch_response_error") == 0,
-                        "RTL future switch admission failed"
-                    );
-                    self.sim.model.set("switch_valid", 0);
-                    self.acknowledge_switch()?;
-                } else {
-                    self.command_turn(execution)?;
-                    for _ in 0..128 {
-                        if !self.command_turn(execution)? {
-                            break;
-                        }
+                self.command_turn(execution)?;
+                for _ in 0..128 {
+                    if !self.command_turn(execution)? {
+                        break;
                     }
                 }
                 self.sim.model.set("run_valid", 1);

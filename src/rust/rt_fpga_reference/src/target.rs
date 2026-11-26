@@ -318,8 +318,6 @@ impl StateProgramTarget for RustTarget<'_> {
                     plan.composite_parents[child.id.slot as usize].push(ParentSpans {
                         parent: id(schedule.id),
                         spans: child.spans.clone(),
-                        previous_span_at_wrap: child.previous_span_at_wrap,
-                        previous_spans: child.previous_spans.clone(),
                     });
                 }
             }

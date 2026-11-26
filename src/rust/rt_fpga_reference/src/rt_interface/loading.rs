@@ -232,61 +232,11 @@ impl Processor {
     }
 }
 impl Engine {
-    pub(super) fn waits_for_composite_cut(&mut self, image: &PreparedProgram) -> bool {
-        if self.pipeline.state().composite_wrap_pending() {
-            return true;
-        }
-        if let Some(slot) = image.image.layout.retiring_composite() {
-            let id = LoopId {
-                slot: slot.slot,
-                generation: slot.generation,
-            };
-            if self.pipeline.state().loop_state(id).is_ok_and(|slot| {
-                slot.state.mode == Mode::Playing || slot.planned.iter().any(Option::is_some)
-            }) {
-                return self
-                    .pipeline
-                    .write_mode_plan(
-                        id,
-                        ModePlan {
-                            now: Some(Mode::Stopped),
-                            ..ModePlan::default()
-                        },
-                    )
-                    .is_ok();
-            }
-        }
-        let [cut] = image.image.layout.composite_cuts() else {
-            return false;
-        };
-        let state = self.pipeline.state();
-        state
-            .loop_state(LoopId {
-                slot: cut.old_slot.slot,
-                generation: cut.old_slot.generation,
-            })
-            .is_ok_and(|slot| {
-                if slot.planned.iter().any(Option::is_some)
-                    && !cut.preserves_transport_at_finish(slot.state.at_end())
-                {
-                    return cut.waits_for_control();
-                }
-                slot.state.mode == Mode::Playing
-                    && cut.waits_for_boundary(
-                        slot.state.position,
-                        slot.state.content_length,
-                        state.composite_playback_ready(cut, slot),
-                        slot.composite_wait,
-                    )
-            })
-    }
-
     pub(super) fn switch(
         &mut self,
         image: &mut PreparedProgram,
         descriptor: SwitchProgram,
         jobs: &mut JobProcessor,
-        resolved: bool,
     ) -> Code {
         if descriptor != image.descriptor || !image.ready() {
             return Code::CannotApply;
@@ -296,9 +246,14 @@ impl Engine {
         {
             return Code::StaleConfiguration;
         }
+        if self.configuration.graph != 0
+            && (self.pipeline.state().has_composites() || image.image.layout.has_composites())
+        {
+            return Code::GraphCompositeUnsupported;
+        }
         if self
             .pipeline
-            .switch_image_at_boundary(&mut image.image, resolved)
+            .switch_image_at_boundary(&mut image.image)
             .is_err()
         {
             return Code::CannotApply;

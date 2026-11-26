@@ -194,7 +194,7 @@ increasing limits or reducing acceptance criteria.
 - [ ] Add early capability/admission refusals for excluded graph replacements,
   including child edits and composite introduction/removal. Preserve state and
   allocation ownership on refusal; quiesced replacement remains explicit.
-- [ ] Replace obsolete live-switch acceptance tests with reduced-profile refusal
+- [x] Replace obsolete live-switch acceptance tests with reduced-profile refusal
   tests while retaining native/browser and static-composite behavioral evidence.
 - [ ] Specify the versioned hardware FIFO ABI, complete publication, physical
   targets, header/deadline checks, result codes, reply reservation, reset fencing,
@@ -204,6 +204,35 @@ increasing limits or reducing acceptance criteria.
 Verification: focused compiler/reference/RTL composite and loading tests pass;
 unsupported live edits are rejected through public admission and execution paths.
 No dormant composite live-switch fallback remains.
+
+Rust/profile milestone: compiler cut/ancestor/restart planning and the dependent
+reference, ARM and Marlin guarded-switch/retry paths have been removed. Admission
+refuses active/candidate-composite replacements before allocation; reference
+execution, hardware sessions and the Marlin adapter add independent guards.
+Public tests cover introduction/removal, child/program/bus edits, unchanged
+recorded playback, stopped-but-not-quiesced refusal, retained static controls,
+nested monitoring, shared one-shot re-entry and primitive-only live switching.
+Retirement provenance is recorded in the native feature-parity ledger.
+
+Verification: all five affected packages pass with simulation/RT-interface/RTL
+features enabled: **165 tests**, including the **3,970-case kernel differential**.
+The full Linux suite passes with nextest 0.9.116: **3,583 passed / 11 skipped**.
+Default application/worklet Wasm builds and the optional worklet `fpga-reference`
+build pass. Warning-denying workspace build, formatting, test-policy and host
+register/top generator checks pass. An initial broader test exposed a test
+harness dropping an early switch completion while waiting for snapshot metadata;
+the harness now retains that response and asserts both correlated completions.
+An initial Linux run using nextest 0.9.143 timed out in a legacy native dummy
+test; 20 isolated reruns and the complete documented-runner rerun pass. The first
+run remains interrupted evidence, not a pass or proof of the timeout's cause.
+See [the milestone record](docs/fpga/command-fifo-implementation/README.md).
+Local logs: `work/cmd-fifo-investigation/stage3-{rust-milestone,linux,wasm}.log`.
+
+Remaining: remove RTL preview/handoff ports/controller logic and obsolete packed
+metadata, then freeze the versioned FIFO ABI, capability and ownership/lifecycle
+documentation. Stage 3 is **not complete**: the old CPU control window/batch
+bridge remains until Stages 4–5 replace it; no integrated FIFO, new resource/timing
+measurement, physical qualification or final acceptance is claimed.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
 

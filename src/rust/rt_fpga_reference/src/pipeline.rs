@@ -69,17 +69,6 @@ impl Pipeline {
     pub fn region(&self) -> u8 {
         self.region
     }
-    #[cfg(feature = "rt-interface")]
-    pub(crate) fn swap_restart_program(
-        &mut self,
-        image: &mut crate::target::ProgramImage,
-        candidate: Option<rt_fpga_compiler::loading::FutureSwitch>,
-    ) {
-        self.state
-            .swap_restart_plan(&mut image.compiled.plan, candidate);
-        core::mem::swap(&mut self.program, &mut image.compiled.program);
-    }
-
     pub fn reserve_loading(
         &mut self,
         limits: rt_fpga_compiler::ProgramLimits,
@@ -94,19 +83,19 @@ impl Pipeline {
         &mut self,
         image: &mut crate::target::ProgramImage,
     ) -> Result<(), PipelineError> {
-        self.switch_image_at_boundary(image, false)
+        self.switch_image_at_boundary(image)
     }
 
     pub(crate) fn switch_image_at_boundary(
         &mut self,
         image: &mut crate::target::ProgramImage,
-        resolved: bool,
     ) -> Result<(), PipelineError> {
         if image.layout.expected != self.revision
             || image.layout.revision <= self.revision
             || (self.revision != 0 && image.layout.region == self.region)
             || self.fault.is_some()
-            || self.state.composite_wrap_pending()
+            || (self.revision != 0
+                && (self.state.has_composites() || image.layout.has_composites()))
             || !self.queues.is_empty()
             || image.compiled.program.quantum != self.program.quantum
             || image.compiled.program.chunk_frames != self.program.chunk_frames
@@ -119,38 +108,6 @@ impl Pipeline {
                 && !self.program.instructions.contains(i)
         }) {
             return Err(PipelineError::State(Error::InvalidState));
-        }
-        let future = image
-            .layout
-            .future_switch()
-            .filter(|cut| resolved && self.state.permits_future_switch(*cut));
-        if resolved && future.is_none() {
-            return Err(PipelineError::State(Error::InvalidState));
-        }
-        for cut in image.layout.composite_cuts().iter().filter(|_| !resolved) {
-            let slot = self
-                .state
-                .loop_state(LoopId {
-                    slot: cut.old_slot.slot,
-                    generation: cut.old_slot.generation,
-                })
-                .map_err(PipelineError::Transition)?;
-            let ready = (slot.state.mode == Mode::Stopped && !slot.render.plays())
-                || (slot.state.mode == Mode::Playing
-                    && cut.allows_playing(
-                        slot.state.position,
-                        slot.state.content_length,
-                        self.state.composite_playback_ready(cut, slot),
-                        slot.composite_wait,
-                    ));
-            let transport_before_switch = slot.planned.iter().any(Option::is_some)
-                && !cut.preserves_transport_at_finish(slot.state.at_end());
-            if !ready
-                || transport_before_switch
-                || (cut.require_empty && slot.state.content_length != 0)
-            {
-                return Err(PipelineError::State(Error::InvalidState));
-            }
         }
         for instruction in &self.program.instructions {
             if let crate::state::Instruction::ProcessMidiState { loop_id, .. } = instruction {
@@ -179,7 +136,7 @@ impl Pipeline {
             .check_job_budget()
             .map_err(PipelineError::State)?;
         self.state
-            .switch_image(image, future.is_some_and(|cut| cut.at_restart()))
+            .switch_image(image)
             .map_err(PipelineError::State)?;
         core::mem::swap(&mut self.program, &mut image.compiled.program);
         self.revision = image.layout.revision;

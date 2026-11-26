@@ -201,16 +201,16 @@ fn trace<E: Snap>(
     }
     c.observe_snapshots(true).unwrap();
     c.immediate(graph(1, None)).unwrap();
+    let mut responses = Vec::new();
     let until = Instant::now() + Duration::from_secs(10);
     loop {
         std::thread::sleep(Duration::from_millis(2));
         let mut published = false;
         while let Some(message) = c.poll() {
-            if matches!(
-                message,
-                EngineMessage::SnapshotConfiguration { graph: 2, .. }
-            ) {
-                published = true;
+            match message {
+                EngineMessage::SnapshotConfiguration { graph: 2, .. } => published = true,
+                EngineMessage::ImmediateResponse(response) => responses.push(response),
+                _ => {}
             }
         }
         if published {
@@ -234,9 +234,21 @@ fn trace<E: Snap>(
                 ..
             })
         )));
-    std::thread::sleep(Duration::from_millis(2));
-    let responses = drain(&mut c);
+    let until = Instant::now() + Duration::from_secs(10);
+    while responses.len() < 2 {
+        responses.extend(drain(&mut c));
+        assert!(Instant::now() < until, "switch/control completions stalled");
+        std::thread::sleep(Duration::from_millis(1));
+    }
     assert_eq!(responses.len(), 2);
+    assert!(responses.iter().any(|response| response
+        .records()
+        .iter()
+        .any(|record| { record.command() == Command::ActivateGraph })));
+    assert!(responses.iter().any(|response| response
+        .records()
+        .iter()
+        .any(|record| { record.command() == now(1, TransitionMode::Stopped) })));
     for response in responses {
         assert_eq!(response.header.graph(), 2);
         assert_eq!(response.header.code(), Code::Applied);
