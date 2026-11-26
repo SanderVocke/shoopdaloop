@@ -539,6 +539,40 @@ are not done. Host/MMIO/firmware still select the legacy ABI-15 path; ABI-16
 selection/reference/software retirement and Stages 5–7 remain pending. No fresh
 whole-design route, full Linux/Wasm, physical, push or PR claim is made.
 
+**Local-observation component milestone:** `fifo_observations.sv` adds indexed
+original-gain, scheduled-failure, last-pulse and pulse-valid storage for at most
+128 physical slots. These are the specified observational fields, not another
+execution record, planner or graph registry. Successful gain strobes and the
+existing SP pulse/failure event encoding update locally without a reader handshake;
+independent fields can update together. Mandatory updates win over configuration
+and metadata reads. The metadata read port responds in one cycle when granted.
+
+New-lease initialization uses the specified three-u64 layout, finite original gain
+and zero failures/pulse/validity, rejecting nonzero unused bits and out-of-range
+addresses without aliasing. The trusted loader must restrict writes to unused
+leases. Control reset invalidates responses, trace and fault state without a full
+RAM reset; fresh-incarnation members still require initialization before publication.
+An independent one-record optional trace holds captured epoch/revision/data while
+stalled. Its saturating u64 loss counter cannot fault or backpressure mandatory
+updates; scheduled failures saturate at u32 max.
+
+Three standalone Rust tests exercise all 128 slots, simultaneous gain/pulse,
+consecutive failures, 512 events with trace storage full, immutable captured trace
+identity, same-cycle dequeue/replacement, initialization/range/reset faults and
+actual-width 32/64-bit saturation. Counter-edge seeding uses existing simulation
+probes, not a production restoration API or reduced-width counter. An optimized-
+away probe alias initially prevented one fixture from elaborating; that failure
+remains separate from the corrected passing evidence.
+
+Fresh gates pass **188 affected-package + 26 directed = 214 selected Rust tests**,
+workspace warnings, formatting, policy/coverage and generators. Evidence:
+`work/cmd-fifo-investigation/stage4-observation-milestone-final.{log,status}` and
+`stage4-observation-tests{,-probe-alias}`. This component is **not yet connected**
+to actual SP events/gain strobes or `CORE_CONFIG` space 3. That hookup, whole-sync
+settled capture/two snapshot banks, complete fault/reset/recovery and Stages 5–7
+remain open. The legacy host path still advertises ABI 15; no new integrated
+resource/cycle, full Linux/Wasm, physical or delivery qualification is claimed.
+
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
 

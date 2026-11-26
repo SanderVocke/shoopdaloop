@@ -727,3 +727,47 @@ advertised as ABI 16; software/reference/firmware integration and CPU-control
 retirement remain Stage 5 work. Local observations/settled snapshots, complete
 fault/reset/recovery integration, final cycle/resources/protected routing and
 Stages 6–7 remain open. No fresh full Linux/Wasm, physical or delivery claim is made.
+
+### Standalone local observations and nonfatal optional trace
+
+`fpga/host_bridge/rtl/fifo_observations.sv` implements the specified small per-slot
+observational fields in indexed distributed RAM: original f32 gain, saturating
+u32 scheduled-failure count, u64 pulse frame and validity. It consumes the existing
+SP encoding (kind 2 pulse; kind 3/outcome 3 scheduled failure) and successful gain
+strobes without a ready handshake. Independent gain/pulse/failure fields can
+update together; this is not a duplicate execution record, source of planning or
+new generation/graph registry.
+
+Mandatory updates take priority over the one-cycle private metadata reader and
+loader configuration. Initializers match the three-u64 snapshot order and reject
+nonfinite gain, nonzero failure/pulse/validity or unused data bits and out-of-range
+addresses. Full-width checks prevent truncation aliasing. The trusted adapter—not
+a new FPGA allocator—must restrict these writes to unused leases. Reset invalidates
+stream/control state without resetting the RAM; every member of a fresh incarnation
+must be initialized before publication, not restored from observations.
+
+A separate one-record optional trace captures epoch/revision alongside the event.
+The held tuple cannot be relabelled by later revision/incarnation inputs. Full trace
+storage drops optional records with a saturating u64 loss count and never blocks
+local effects or generates an audio fault. Same-cycle consumption/replacement is
+supported. Invalid required source addresses/nonfinite gain strobes fail closed;
+legitimate trace overflow and rejected loader initializers do not.
+
+`rt_fpga_rtl/tests/observations.rs` has three tests: all 128 rows with concurrent
+updates/blocked loaders/readers and 512 undrained events; real-width u32/u64
+saturation; and invalid initialization, address aliases, reset and source faults.
+Saturation fixtures use the existing simulation probe facility for near-limit
+values, without adding production counter-restoration ports or smaller counters.
+The initial optimized-away trace-loss probe alias failure is retained in
+`stage4-observation-tests-probe-alias`; the corrected probe targets the real register.
+
+Fresh `stage4-observation-milestone-final.{log,status}` passes **214 selected Rust
+tests = 188 affected-package + 26 directed**, warning-denying workspace build,
+formatting, policy/coverage and generators. Local logs are under
+`work/cmd-fifo-investigation/`.
+
+The module is not yet connected to the production consumer/SP or CORE_CONFIG
+space 3. Actual-event/gain hookup, whole-sync settled snapshot capture/publication,
+full recovery/reset qualification and final resource/cycle/delivery gates remain.
+This does not change the ABI-15 deployment or establish fresh integrated resource,
+full Linux/Wasm or physical qualification.
