@@ -982,7 +982,63 @@ is passing narrow evidence. The initial `-packets-tests`/`-128-diagnostic` failu
 retain an F128 fixture clip overrun: extending its clip keeps the seven distinct
 cursor trajectories valid without changing production guards or assertions.
 
-Stage 4 remains open for root initial capture and complete fault/reset/recovery;
-ABI-16 MMIO/firmware/reference selection and Stages 5–7 remain. No new whole-design
-resource/protected-route, all-admitted quantum, full Linux/Wasm, physical, push/PR
-or delivery qualification is claimed. Deployed ABI is still 15.
+At `734356826` root initial capture and complete fault/reset/recovery remained
+open. The next milestone adds initial capture; ABI/MMIO deployment stays 15.
+
+### Root initial capture without processing time
+
+A once-per-reset startup owner now uses the same snapshot producer and private
+RAM/metadata service before any processing opportunity. With a known audio-owned
+quantum and a reset-latched nonzero incarnation, it publishes phase 0, F=0,
+revision 0. It never asks SP to run or consumes a semantic group to produce this
+packet. Configuration cannot mutate its held view. Startup release waits only for
+bounded hardware capture and local gate cleanup, never ARM reads or ACKs.
+
+The initial revision has no graph members. Physical rows can retain old data,
+valid-looking flags and prior observations: ARM bindings determine membership,
+not these raw fields. Ignore unused rows before interpreting observations. There
+is no blanket RAM clearing, FPGA allocator or snapshot restoration. The trusted
+loader must initialize each new lease before publishing an installation.
+
+`initial_capture_has_no_frame_or_reader_dependency_and_reset_preserves_only_raw_rows`
+uses all 128 physical rows. While audio geometry is not yet supplied, a pending
+first opportunity cannot advance frame 0. After Q32 is known, startup takes
+**4,622 clocks**; the producer reports **4,619**, including its entry and ready
+handoff. Throughout copying, frame/revision/group-attempt counters remain 0,
+no normal settled gate or JP output appears, and configuration is not admitted.
+A partial unpublished group never becomes executable. No snapshot reader or ACK
+is supplied before startup release.
+
+Three exact-silence quanta at F0/32/64 take **[4662, 45, 45] clocks** with the
+initial packet left unread. The first settled packet is independent phase 1/F0;
+subsequent full-bank opportunities advance sequence/loss without delaying audio.
+The immutable initial packet remains F0/revision 0 while processing reaches F96.
+Initial publication consumes sequence 1; normal captures start at 2. Existing
+fixture expectations advance accordingly, without resetting or reusing identity.
+
+The idle reset portion deliberately retains initialized-but-unpublished raw loop
+and gain data. Epoch 0 flushes control and blocks startup. Changing epoch to 2
+without reset cannot fabricate readiness/publication while command-bank identity
+is still unlatched. Reset then latches epoch 2; another **4,622-clock** initial
+capture copies retained raw data as nonmembers of revision 0. Old epoch-1 ACKs
+cannot release its bank even with the same sequence 1. A matching release does
+not process time; a subsequent exact F0 quantum costs 4,662 clocks. This is an
+idle local-component reset test, not qualification of in-flight media/AXI drain,
+always-on recovery, retained first faults or safe ownership reuse.
+
+`stage4-initial-capture-tests.{log,status}` passes the final directed test.
+`-tests-owner-declaration` retains the duplicate auto/manual wire declaration
+failure; `-tests-epoch-sequence` retains the epoch-only startup/bank mismatch that
+led to reset-qualified startup. Earlier `-tests-pre-epoch-guard`/`-audio-tests`
+passes predate that final guard. Final `stage4-initial-capture-milestone` passes
+**225 selected Rust tests = 193 affected-package + 32 directed**, workspace
+warnings, formatting, policy/coverage, generators and Python compilation. Existing
+normal 128-row, original metadata, full readers, exact samples, primitive/fence,
+word/AXI backing-memory and memory-fault tests still pass; their cycle costs are
+unchanged.
+
+Stage 4 remains open for complete non-media/in-flight fault, reset/drain/first-fault
+and always-on recovery integration. ABI-16 host/MMIO/firmware/reference selection
+and Stages 5–7 remain; deployed ABI is **15**. No new all-admitted 60,000-cycle,
+whole-design resource/protected-route, full Linux/Wasm, physical, push/PR or
+delivery qualification is claimed.

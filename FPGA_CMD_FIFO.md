@@ -709,11 +709,46 @@ policy/coverage, generators and Python compilation. Narrow evidence is
 a new fixture's F128 clip overrun. Its longer valid clip keeps all seven cursor
 trajectories in range; no assertions or production guards were weakened.
 
-Retained snapshot faults join immediate consumer fault suppression and media-enabled
-abort. Complete non-media/in-flight fault, reset/drain/first-fault integration,
-root initial capture, ABI-16 host/firmware selection and resource/protected-route/
-all-admitted quantum gates remain open. Deployed ABI remains **15**. No fresh full
-Linux/Wasm, physical or delivery qualification is claimed.
+At `734356826`, retained snapshot faults joined immediate consumer suppression
+and media-enabled abort; initial capture and complete recovery remained open.
+
+**Root initial-capture milestone:** the same producer now captures an explicitly
+marked phase-0 packet once after fresh runtime reset, before processing begins.
+It copies empty revision 0 at F=0 after the audio-owned quantum is known. No SP
+sync pass, command group or processing frame is manufactured. Startup owns the
+same bounded private RAM/metadata service and excludes configuration writes;
+completion releases audio without waiting for packet reads or acknowledgement.
+
+This clarifies the existing initial-capture requirement without adding a graph
+registry or initialization pass: membership remains ARM bindings, and revision 0
+has none. Unused physical rows may retain prior RAM, even valid-looking flags or
+old observations; clients must ignore them rather than restore or infer members.
+New-slot initialization is still required before publishing installation.
+
+The 128-row idle-component test observes **4,622 startup clocks**, with **4,619**
+in the producer including turnover. A pending first audio opportunity, partial
+unpublished command and configuration-write pressure cannot advance time or
+execute commands during capture. Initial packet/normal F0 packet stay unread while
+F32/F64 render with exact silence and full-bank skips. A subsequent idle reset
+flushes partial input and snapshot identities but preserves raw RAM; an old-epoch
+ACK cannot free the new phase-0 packet. Merely changing epoch without reset now
+leaves startup and publication blocked, matching command banks' reset-latched
+incarnation. This is not full in-flight, media/AXI drain or always-on recovery.
+
+Fresh `stage4-initial-capture-milestone.{log,status}` passes **193 affected-package +
+32 directed = 225 selected Rust tests**, workspace warnings, formatting,
+policy/coverage, generators and Python compilation. Narrow final evidence is
+`stage4-initial-capture-tests`; `-tests-owner-declaration` retains an initial
+duplicate-wire elaboration failure. `-tests-epoch-sequence` retains the discovered
+epoch-only startup/bank mismatch; the final test checks refusal until proper reset.
+All existing exact-sample, 128-row, full-return, primitive/fence and actual word/AXI
+media tests remain green, with normal quantum/command costs unchanged. Initial
+publication consumes sequence 1; normal packet expectations advance without reuse.
+
+Stage 4 remains open for complete non-media/in-flight fault, reset/drain/first-fault
+integration. ABI-16 host/firmware/reference selection, all-admitted quantum and
+resource/protected-route acceptance and Stages 5–7 remain pending. Deployed ABI is
+still **15**; no fresh full Linux/Wasm, physical, push/PR or delivery claim.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.

@@ -180,6 +180,9 @@ fn observations(s: &mut Sim<'_>, slot: u64) -> Bits {
 }
 
 fn snapshot(s: &mut Sim<'_>, bank: u64, loops: usize) -> Vec<u64> {
+    snapshot_phase(s, bank, loops, false)
+}
+fn snapshot_phase(s: &mut Sim<'_>, bank: u64, loops: usize, initial: bool) -> Vec<u64> {
     let mut data = vec![];
     for word in 0..16 + loops * 38 {
         s.model.set_all(&[
@@ -195,8 +198,8 @@ fn snapshot(s: &mut Sim<'_>, bank: u64, loops: usize) -> Vec<u64> {
     s.model.set("snapshot_read_valid", 0);
     s.idle(1);
     let words: Vec<_> = data.chunks_exact(2).map(|v| v[0] | (v[1] << 32)).collect();
-    assert_eq!(words[0], 0x1_0010_5346_5331);
-    assert_eq!(words[1], (32 << 32) | 1);
+    assert_eq!(words[0], 0x0010_5346_5331 | (u64::from(!initial) << 48));
+    assert_eq!(words[1], (32 << 32) | s.model.get("epoch"));
     assert_eq!(words[5], (19 << 32) | loops as u64);
     assert_eq!(words[7], 0);
     words
@@ -213,6 +216,150 @@ fn snapshot_ack(s: &mut Sim<'_>, bank: u64, epoch: u64, sequence: u64, receipt: 
     assert_eq!(s.model.get("snapshot_ack_receipt"), receipt);
     s.model.set("snapshot_ack_valid", 0);
     s.idle(1);
+}
+
+fn wait_initial(s: &mut Sim<'_>) -> u64 {
+    let mut cycles = 0;
+    s.model.eval();
+    while s.model.get("run_ready") == 0 && cycles < 8192 {
+        assert_eq!(s.model.get("faulted"), 0);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("active_revision"), 0);
+        assert_eq!(s.model.get("groups_attempted"), 0);
+        assert_eq!(s.model.get("command_phase"), 0);
+        assert_eq!(s.model.get("capture_valid"), 0);
+        assert_eq!(s.model.get("sample_output_write"), 0);
+        assert_eq!(s.model.get("done"), 0);
+        assert_eq!(s.model.get("cfg_ready"), 0);
+        s.idle(1);
+        cycles += 1;
+    }
+    assert_eq!(s.model.get("run_ready"), 1);
+    assert_eq!(s.model.get("sync_frame"), 0);
+    assert_eq!(s.model.get("snapshot_ready_mask"), 1);
+    assert_eq!(s.model.get("snapshot_last_sequence"), 1);
+    assert_eq!(s.model.get("snapshot_skipped"), 0);
+    assert!(s.model.get("peak_snapshot_cycles") <= 8192);
+    cycles
+}
+fn release_initial(s: &mut Sim<'_>, loops: usize) {
+    wait_initial(s);
+    let packet = snapshot_phase(s, 0, loops, true);
+    assert_eq!(&packet[2..5], &[1, 0, 0]);
+    let epoch = s.model.get("epoch");
+    snapshot_ack(s, 0, epoch, 1, 0);
+    assert_eq!(s.model.get("sync_frame"), 0);
+}
+
+#[shoop_test]
+fn initial_capture_has_no_frame_or_reader_dependency_and_reset_preserves_only_raw_rows() {
+    let root = rt_fpga_testbench::root();
+    let compiled = core_design(128)
+        .parameters(&[("PROGRAM_DEPTH", 256)])
+        .build(&root.join("work/marlin-suite/semantic-initial"))
+        .unwrap();
+    let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    s.model.set_all(&[
+        ("reset", 1),
+        ("epoch", 1),
+        ("run_quantum", 0),
+        ("run_valid", 1),
+        ("run_chunk_frames", 32),
+        ("run_inputs", 1),
+        ("run_outputs", 1),
+        ("capture_credits", 65535),
+        ("job_enable", 1),
+        ("cfg_valid", 1),
+        ("cfg_state", 1),
+        ("cfg_loop", 1),
+        ("cfg_write", 1),
+    ]);
+    s.model.set_bits(
+        "cfg_write_data",
+        &Bits::from_u64(u64::from(0.25f32.to_bits())),
+    );
+    s.idle(2);
+    s.model.set("reset", 0);
+    for _ in 0..20 {
+        s.idle(1);
+        assert_eq!(s.model.get("run_ready"), 0);
+        assert_eq!(s.model.get("cfg_ready"), 0);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("snapshot_last_sequence"), 0);
+        assert_eq!(s.model.get("faulted"), 0);
+    }
+    assert_eq!(host(&mut s, 0, 0, 0, 0), 0);
+    assert_eq!(host(&mut s, 1, 0, 0x53434631, 0), 0);
+    s.model.set("run_quantum", 32);
+    let startup = wait_initial(&mut s);
+    assert_eq!(s.model.get("peak_snapshot_cycles"), 4619);
+    assert_eq!(s.model.get("snapshot_read_valid"), 0);
+    assert_eq!(s.model.get("snapshot_ack_valid"), 0);
+    s.model.set("cfg_valid", 0);
+    let mut gains = vec![];
+    let costs = [
+        quantum(&mut s, 0, 0, &mut gains),
+        quantum(&mut s, 32, 0, &mut gains),
+        quantum(&mut s, 64, 0, &mut gains),
+    ];
+    assert!(gains.is_empty());
+    assert_eq!(s.model.get("groups_attempted"), 0);
+    assert_eq!(s.model.get("snapshot_last_sequence"), 4);
+    assert_eq!(s.model.get("snapshot_skipped"), 2);
+    assert_eq!(s.model.get("snapshot_ready_mask"), 3);
+    let initial = snapshot_phase(&mut s, 0, 128, true);
+    assert_eq!(&initial[2..5], &[1, 0, 0]);
+    let settled = snapshot(&mut s, 1, 128);
+    assert_eq!(&settled[2..5], &[2, 0, 0]);
+    assert_eq!(s.model.get("sync_frame"), 96);
+    assert_eq!(s.model.get("result_ready_mask"), 0);
+
+    let marker = 0xfedc_ba98_7654_3210;
+    cfg(&mut s, false, true, 0, Some(&Bits::from_u64(1 | (7 << 1))));
+    cfg(&mut s, false, true, 2, Some(&Bits::from_u64(marker)));
+    initialize_observations(&mut s, 0, 0.5f32.to_bits());
+    s.model.set_all(&[("reset", 1), ("epoch", 0)]);
+    s.idle(2);
+    s.model.set("reset", 0);
+    for _ in 0..20 {
+        s.idle(1);
+        assert_eq!(s.model.get("run_ready"), 0);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("snapshot_ready_mask"), 0);
+        assert_eq!(s.model.get("snapshot_last_sequence"), 0);
+        assert_eq!(s.model.get("faulted"), 0);
+    }
+    s.model.set("epoch", 2);
+    for _ in 0..20 {
+        s.idle(1);
+        assert_eq!(s.model.get("run_ready"), 0);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("snapshot_ready_mask"), 0);
+        assert_eq!(s.model.get("snapshot_last_sequence"), 0);
+        assert_eq!(s.model.get("free_mask"), 0);
+    }
+    s.model.set("reset", 1);
+    s.idle(2);
+    s.model.set("reset", 0);
+    let restarted = wait_initial(&mut s);
+    assert_eq!(s.model.get("free_mask"), 15);
+    snapshot_ack(&mut s, 0, 1, 1, 2);
+    assert_eq!(s.model.get("snapshot_ready_mask"), 1);
+    let fresh = snapshot_phase(&mut s, 0, 128, true);
+    assert_eq!(&fresh[2..5], &[1, 0, 0]);
+    assert_eq!(fresh[8], 1 | (7 << 1));
+    assert_eq!(fresh[8 + 2], marker);
+    assert_eq!(fresh[8 + 16], u64::from(0.5f32.to_bits()));
+    assert_eq!(s.model.get("sync_frame"), 0);
+    assert_eq!(s.model.get("active_revision"), 0);
+    snapshot_ack(&mut s, 0, 2, 1, 0);
+    assert_eq!(s.model.get("snapshot_ready_mask"), 0);
+    let next = quantum(&mut s, 0, 0, &mut gains);
+    assert_eq!(&snapshot(&mut s, 0, 128)[2..5], &[2, 0, 0]);
+    println!(
+        "SEMANTIC_INITIAL_128_CLOCKS {startup}/{restarted}; quanta {costs:?}; fresh {next}; peak {}",
+        s.model.get("peak_snapshot_cycles")
+    );
 }
 
 #[shoop_test]
@@ -236,6 +383,7 @@ fn actual_sp_observations_survive_full_trace_readers_and_primitive_selection() {
     s.idle(2);
     s.model.set("reset", 0);
     s.idle(2);
+    release_initial(&mut s, 2);
     let mut program = vec![];
     for slot in 0..2 {
         initialize_observations(&mut s, slot, 1.0f32.to_bits());
@@ -441,7 +589,7 @@ fn actual_sp_observations_survive_full_trace_readers_and_primitive_selection() {
         "selection must not relabel a held packet"
     );
     assert_eq!(snapshot(&mut s, 1, 2), second_snapshot);
-    assert_eq!(s.model.get("snapshot_last_sequence"), 11);
+    assert_eq!(s.model.get("snapshot_last_sequence"), 12);
     assert_eq!(s.model.get("snapshot_skipped"), 9);
     println!(
         "SEMANTIC_OBSERVATION_QUANTUM_CYCLES {costs:?}; loss {}; peak command {}",
@@ -482,6 +630,7 @@ fn production_consumer_edits_execution_ram_and_renders_while_results_and_handoff
     s.idle(2);
     s.model.set("reset", 0);
     s.idle(2);
+    release_initial(&mut s, 32);
     for slot in 0..32 {
         initialize_observations(&mut s, slot, 1.0f32.to_bits());
         for word in 0..16 {
@@ -759,6 +908,7 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
         s.idle(2);
         s.model.set("reset", 0);
         s.idle(2);
+        release_initial(&mut s, 1);
         initialize_observations(&mut s, 0, 1.0f32.to_bits());
         for word in 0..16 {
             let value = match word {
@@ -863,7 +1013,7 @@ fn real_media_fences_and_private_loader_streams_do_not_own_audio_admission() {
         );
         assert!(memory.borrow().active().is_some_and(|active| active.write
             && active.index < (geometry.slots * geometry.chunk_frames) as usize));
-        snapshot_ack(&mut s, 0, 1, 1, 0);
+        snapshot_ack(&mut s, 0, 1, 2, 0);
         let mut gain = [0; 12];
         gain[0] = 3;
         gain[2] = 7;
@@ -1128,6 +1278,7 @@ fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
     s.idle(2);
     s.model.set("reset", 0);
     s.idle(2);
+    release_initial(&mut s, 128);
     for slot in 0..128 {
         initialize_observations(&mut s, slot, 1.0f32.to_bits());
         for word in 0..16 {
@@ -1288,7 +1439,7 @@ fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
         &[
             0x1_0010_5346_5331,
             (32 << 32) | 1,
-            1,
+            2,
             0,
             1,
             (19 << 32) | 128,
@@ -1335,7 +1486,7 @@ fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
     let mut costs = vec![cycles, quantum(&mut s, 32, 0, &mut gains)];
     assert_eq!(gains, [(0, 1)]);
     let second = snapshot(&mut s, 1, 128);
-    assert_eq!(second[2], 2);
+    assert_eq!(second[2], 3);
     assert_eq!(second[3], 32);
     assert_eq!(
         second[8 + 16],
@@ -1362,16 +1513,16 @@ fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
     s.model.set("snapshot_read_valid", 0);
     s.idle(1);
     assert_eq!(s.model.get("snapshot_ready_mask"), 3);
-    assert_eq!(s.model.get("snapshot_last_sequence"), 6);
+    assert_eq!(s.model.get("snapshot_last_sequence"), 7);
     assert_eq!(s.model.get("snapshot_skipped"), 4);
     assert_eq!(snapshot(&mut s, 0, 128), first);
     assert_eq!(snapshot(&mut s, 1, 128), second);
-    snapshot_ack(&mut s, 0, 1, 1, 0);
+    snapshot_ack(&mut s, 0, 1, 2, 0);
     costs.push(quantum(&mut s, 192, 0, &mut gains));
-    snapshot_ack(&mut s, 0, 1, 1, 6);
-    snapshot_ack(&mut s, 0, 2, 7, 2);
+    snapshot_ack(&mut s, 0, 1, 2, 6);
+    snapshot_ack(&mut s, 0, 2, 8, 2);
     let latest = snapshot(&mut s, 0, 128);
-    assert_eq!(latest[2], 7);
+    assert_eq!(latest[2], 8);
     assert_eq!(latest[3], 192);
     assert_eq!(latest[6], 4);
     for slot in 0..128 {

@@ -251,6 +251,13 @@ Snapshot header, 16 words: magic `0x53465331`; ABI in low 16 bits and phase in h
 revision (2); physical row extent; row size in u64 words (19); cumulative skipped
 publications (2); reserved zero (2). Graph and topology both equal that revision.
 Initial capture is explicitly marked and does not manufacture a processing frame.
+After a fresh runtime reset it copies empty revision 0 at F=0, before the first
+processing opportunity, once the audio-owned quantum is known. Reset must latch
+the new nonzero incarnation for all components; changing epoch alone cannot
+release startup. Capture completion, not a reader or ACK, releases processing.
+This packet has no graph members. Physical rows can retain arbitrary prior RAM
+contents and must be ignored through ARM bindings before interpreting observations;
+valid bits in unused rows do not create graph membership or authorize restoration.
 Each row contains the 16 raw u64 loop words, then gain-f32/failure-count as low/high
 u32, last pulse u64, and pulse-valid bit 0 with all remaining bits zero. Membership
 and logical names remain ARM bindings; unused physical rows are not current graph

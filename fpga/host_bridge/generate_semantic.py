@@ -16,13 +16,14 @@ def generate():
     _, observations = header((HERE / "rtl/fifo_observations.sv").read_text())
     _, snapshots = header((HERE / "rtl/fifo_snapshots.sv").read_text())
     snapshot_links = {n: "snapshot_" + n for _, n in snapshots}
-    snapshot_links.update({"clk": "clk", "reset": "reset", "epoch": "epoch", "capture_valid": "capture_valid",
-                           "capture_frame": "capture_frame", "capture_fault": "snapshots_fault", "peak_cycles": "peak_snapshot_cycles"})
-    snapshot_fixed = {"fault": "execution_fault", "capture_initial": "1'b0", "capture_revision": "active_revision",
-                      "capture_quantum": "snapshot_quantum", "memory_ready": "capture_valid && execution_local_ready",
-                      "memory_response_valid": "capture_valid && execution_local_response_valid",
+    snapshot_links.update({"clk": "clk", "reset": "reset", "epoch": "epoch", "capture_valid": "snapshot_owner",
+                           "capture_fault": "snapshots_fault", "peak_cycles": "peak_snapshot_cycles"})
+    snapshot_fixed = {"fault": "execution_fault", "capture_initial": "initial_capture", "capture_revision": "active_revision",
+                      "capture_frame": "initial_capture ? 64'd0 : capture_frame",
+                      "capture_quantum": "initial_capture ? run_quantum : snapshot_quantum", "memory_ready": "snapshot_owner && execution_local_ready",
+                      "memory_response_valid": "snapshot_owner && execution_local_response_valid",
                       "memory_response_error": "execution_local_response_error", "memory_read_data": "execution_local_read_data",
-                      "metadata_ready": "capture_valid && private_observation_read_ready",
+                      "metadata_ready": "snapshot_owner && private_observation_read_ready",
                       "metadata_response_valid": "private_observation_response_valid && observation_response_snapshot",
                       "metadata_response_error": "private_observation_response_error", "metadata_read_data": "private_observation_read_data"}
     private_snapshots = {"clk", "reset", "epoch", "fault", "capture_fault"}
@@ -53,7 +54,7 @@ def generate():
         "cfg_read_data": "execution_cfg_read_data", "media_fault": "execution_media_fault",
     }
     fifo_links = {
-        "boundary_valid": "run_valid", "boundary_ready": "run_ready", "boundary_frame": "sync_frame",
+        "boundary_valid": "run_valid && initial_done", "boundary_ready": "semantic_boundary_ready", "boundary_frame": "sync_frame",
         "pipeline_fault": "execution_fault", "handoff_valid": "handoff_valid && (handoff_error || handoff_request)",
     }
     private_fifo = {"boundary_valid", "boundary_ready", "boundary_frame", "render_valid", "render_ready"}
@@ -87,33 +88,46 @@ def generate():
             declared.add(wire)
     text += "    wire execution_fault = pipeline_fault || observations_fault || snapshots_fault || error_code != 0 || execution_revision != active_revision;\n"
     text += "    assign execution_media_fault = media_fault || observation_abort || snapshots_fault;\n"
-    text += """    reg [31:0] snapshot_quantum;
+    text += """    reg [31:0] snapshot_quantum, initial_epoch;
+    reg [1:0] initial_phase;
     reg observation_response_snapshot;
-    assign execution_local_valid = capture_valid ? snapshot_memory_valid : memory_valid;
-    assign execution_local_state = !capture_valid && memory_state;
-    assign execution_local_write = !capture_valid && memory_write;
-    assign execution_local_address = capture_valid ? snapshot_memory_address : memory_address;
-    assign memory_ready = !capture_valid && execution_local_ready;
-    assign memory_response_valid = !capture_valid && execution_local_response_valid;
+    wire initial_capture = initial_phase==1 && initial_epoch==epoch && epoch!=0 && !reset;
+    wire initial_done = initial_phase==3 && initial_epoch==epoch;
+    assign snapshot_owner = capture_valid || initial_capture;
+    wire semantic_boundary_ready;
+    assign run_ready = initial_done && semantic_boundary_ready;
+    assign execution_local_valid = snapshot_owner ? snapshot_memory_valid : memory_valid;
+    assign execution_local_state = !snapshot_owner && memory_state;
+    assign execution_local_write = !snapshot_owner && memory_write;
+    assign execution_local_address = snapshot_owner ? snapshot_memory_address : memory_address;
+    assign memory_ready = !snapshot_owner && execution_local_ready;
+    assign memory_response_valid = !snapshot_owner && execution_local_response_valid;
     assign memory_response_error = execution_local_response_error;
     assign memory_read_data = execution_local_read_data;
-    assign private_observation_read_valid = capture_valid ? snapshot_metadata_valid : observation_read_valid;
-    assign private_observation_read_slot = capture_valid ? snapshot_metadata_slot : observation_read_slot;
-    assign observation_read_ready = !capture_valid && private_observation_read_ready;
+    assign private_observation_read_valid = snapshot_owner ? snapshot_metadata_valid : observation_read_valid;
+    assign private_observation_read_slot = snapshot_owner ? snapshot_metadata_slot : observation_read_slot;
+    assign observation_read_ready = !snapshot_owner && private_observation_read_ready;
     assign observation_response_valid = private_observation_response_valid && !observation_response_snapshot;
     assign observation_response_error = private_observation_response_error;
     assign observation_read_data = private_observation_read_data;
     always @(posedge clk) begin
+        if (reset) begin initial_epoch<=epoch; initial_phase<=0; end
+        else if (initial_epoch==epoch) case (initial_phase)
+            0: if (epoch!=0 && run_quantum!=0) initial_phase<=1;
+            1: if (snapshot_capture_ready) initial_phase<=2;
+            2: if (!snapshot_capture_ready) initial_phase<=3;
+            default: ;
+        endcase
         if (reset) begin snapshot_quantum<=0; observation_response_snapshot<=0; end
         else begin
             if (render_valid && render_ready) snapshot_quantum<=run_quantum;
             if (private_observation_read_valid && private_observation_read_ready)
-                observation_response_snapshot<=capture_valid;
+                observation_response_snapshot<=snapshot_owner;
         end
     end
     reg configuration_pending, configuration_observations;
     wire observation_config = cfg_state && cfg_loop;
-    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && !reset && !faulted;
+    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && initial_done && !reset && !faulted;
     assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
     assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
     assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);
@@ -129,7 +143,7 @@ def generate():
         end
     end
 """
-    text += "    assign busy = execution_busy || command_phase || render_valid;\n"
+    text += "    assign busy = execution_busy || command_phase || render_valid || !initial_done;\n"
     text += "    assign switch_response_ready = switch_response_error || handoff_pending;\n"
     text += "    fifo_group_consumer #(.LOOPS(LOOP_DEPTH), .STATES(STATE_DEPTH), .PROGRAM_DEPTH(PROGRAM_DEPTH), .BUFFERS(BUFFERS)) consumer (\n"
     text += ",\n".join(f"        .{n}({fifo_links.get(n, n)})" for _, n in fifo) + "\n    );\n"
