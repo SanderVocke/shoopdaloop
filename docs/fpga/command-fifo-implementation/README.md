@@ -861,6 +861,72 @@ generators and Python compilation. Directed evidence is
 failure. Semantic quanta gain one hardware clock; the actual-RAM command peak stays
 2,950. No fresh resource/route, all-admitted quantum or full platform claim follows.
 
-Two snapshot packet banks, complete publication, initial capture, loss/sequence
-exhaustion, reader acknowledgements and full 8,192-cycle qualification remain to
-be implemented. Complete fault/reset/recovery and Stages 5–7 are also still open.
+At the `58b14e85c` gate checkpoint, packet storage/publication and acknowledgements
+were still absent. The standalone producer below now supplies them; actual gate
+hookup, root initial capture, integrated qualification, complete recovery and
+Stages 5–7 remain open.
+
+### Standalone complete-snapshot producer and banks
+
+`fpga/host_bridge/rtl/fifo_snapshots.sv` has two immutable packet banks and one
+sequential producer, no scheduler or graph registry. It supports 1–128 physical
+rows: 16 raw u64 loop words followed by original gain/failure count, pulse frame
+and validity. The eight-u64 header is written last, with magic word zero last of
+all; only subsequent complete publication makes a bank readable. The maximum is
+19,520 bytes per packet / 39,040 bytes total payload storage, not a measured BRAM
+count. RAM is not reset. Header epoch/F/revision/quantum/initial-or-settled phase
+are latched before copying; changes to live inputs cannot relabel a packet.
+
+A full pair skips the complete attempt immediately. Sequence advances per enabled
+capture opportunity even when capacity causes a skip, cumulative capacity loss saturates at
+u64 max and later headers expose gaps. Sequence exhaustion disables further
+attempts/publication instead of wrapping or holding the capture gate. No reader
+service is needed to finish a capture or release back to execution.
+
+One-cycle indexed u32 reads copy the requested half-word, independently of writer
+progress or subsequent bank release/reuse. An ACK must match incarnation, bank and
+sequence; either complete bank may be released. Duplicate/old ACKs are idempotently
+refused, wrong-epoch/future/not-ready ACKs do not free storage. Capacity is sampled
+before a simultaneous ACK, so a full pair still skips that opportunity. A held
+capture request does not turn the newly freed slot into an automatic retry.
+
+Reset/epoch change invalidates both banks and prevents an already-held old capture
+from restarting in the new incarnation. In-flight RAM/metadata response errors,
+a lost capture-valid gate or deadline cannot expose a partial packet. The retained
+internal fault blocks further capture until reset. Actual pipeline fault input
+also preempts publication on the would-be commit edge. Old complete packets may
+remain readable for diagnosis; faulted ACKs do not free them. These are component
+properties, not qualification of the complete always-on recovery/AXI drain path.
+
+`snapshots.rs` has five directed Rust tests:
+
+- Every word of both full 128-row packets, continuously denied partial reads,
+  initial/settled phases, captured identity and exact original metadata bits.
+- Full-bank loss, immutable earlier headers, skipped sequence gaps, delayed and
+  out-of-order ACKs, reused-bank and wrong-authority refusals.
+- Actual u64 counter saturation/exhaustion using existing simulation force probes,
+  not reduced production widths or restoration ports.
+- Memory/metadata errors, missing request/response service, lost capture gate and
+  same-edge pipeline fault: eight failure/stall fixtures without partial success.
+- Completed and in-flight epoch invalidation, copied response across simultaneous
+  read/ACK/reuse, and conservative same-edge full-bank ACK with no held-request replay.
+
+For 128 rows and one-cycle synthetic private RAM/metadata service, entry-to-ready
+is **4,618 clocks**; peak **4,619 includes entry and the ready handoff**. The fixed
+8,192 watchdog budget reserves both turnover clocks, and stall fixtures report
+exactly 8,192 at timeout. The initial small-profile elaboration failed on oversized
+RAM array indices; sized indices retain independent full-width bounds checks.
+No warning suppression, alias acceptance or budget increase was used.
+
+`stage4-snapshot-milestone.{log,status}` passes **223 selected Rust tests = 193
+affected-package + 30 directed**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. `stage4-snapshot-tests-final` is passing
+narrow evidence; `stage4-snapshot-tests-index-width` retains the initial failure.
+
+The module is not yet instantiated by semantic audio/media/AXI. Its normal capture
+must next own the settled gate and private loop/metadata readers without exposing
+ARM-controlled readiness; root initial-capture admission also remains pending.
+The one-cycle synthetic result does not qualify integrated 8,192/60,000-cycle or
+resource/protected-route ceilings. ABI/MMIO deployment remains 15; complete
+fault/reset/recovery and Stages 5–7 remain open. No new full Linux/Wasm, physical,
+push/PR or delivery qualification is claimed.

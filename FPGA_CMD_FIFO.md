@@ -642,6 +642,43 @@ complete snapshot publication, initial snapshot, loss/sequence/ACK or full 8,192
 capture qualification. Those, complete fault/reset/recovery and Stages 5–7 remain.
 No new integrated resource/route, full Linux/Wasm, physical or delivery claim.
 
+**Standalone snapshot packet-engine milestone:** `fifo_snapshots.sv` now supplies
+both independently released packet banks and an FPGA-local sequential producer.
+It reserves a free bank at capture entry, copies 16 raw words plus all 129 metadata
+bits per row, writes the eight-u64 header last and exposes only complete packets.
+Each maximum packet is 19,520 bytes; neither packet RAM nor a bus response is held
+by ARM readiness. Full banks skip the whole attempt with a saturating u64 loss
+count; per-attempt sequence gaps remain visible. Sequence exhaustion disables new
+publication without wrapping, faulting or withholding capture release.
+
+The producer captures epoch/F/revision/quantum/phase at entry. Reads have independent
+one-cycle copied responses; matching epoch/bank/sequence ACKs release either bank.
+Old/duplicate and wrong-authority traffic cannot free a reused slot. Capacity is
+sampled conservatively before a same-edge ACK; a held capture request never retries.
+Reset/epoch changes invalidate publication without resetting RAM and discard a held
+old capture until its source drops it. Internal RAM/metadata errors, a lost capture
+gate and the watchdog cannot publish partial packets; actual pipeline faults also
+suppress same-edge publication.
+
+Five directed tests cover every word of 128-row packets, continuous partial reads,
+full banks, original metadata bits, initial/settled headers, latched identity,
+real-width saturation/exhaustion probes, out-of-order releases, simultaneous
+read/ACK/reuse, same-edge full-bank ACK, completed/in-flight epoch flush and eight
+fault/stall variants. One-cycle synthetic RAM/metadata service takes **4,618 clocks
+entry-to-ready / 4,619 including entry and ready handoff**, within 8,192. Watchdog
+accounting reserves both turnover clocks; its timeout peak is exactly 8,192.
+Small-profile index-width elaboration warnings were fixed with sized indices after
+full-width bounds checks, not warning suppression; the failed evidence is retained.
+
+Fresh `stage4-snapshot-milestone.{log,status}` passes **193 affected-package + 30
+directed = 223 selected Rust tests**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. Narrow evidence is `stage4-snapshot-tests-final`;
+`stage4-snapshot-tests-index-width` retains the failed initial geometry run. This
+engine remains **standalone**: semantic audio still releases its gate immediately.
+Actual RAM/metadata mux hookup, root initial capture, integrated snapshot/quantum
+and resource/route qualification, complete recovery and Stages 5–7 remain pending.
+Deployed ABI remains 15; no new full Linux/Wasm, physical or delivery claim.
+
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
 
