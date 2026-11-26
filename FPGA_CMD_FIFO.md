@@ -745,10 +745,46 @@ All existing exact-sample, 128-row, full-return, primitive/fence and actual word
 media tests remain green, with normal quantum/command costs unchanged. Initial
 publication consumes sequence 1; normal packet expectations advance without reuse.
 
-Stage 4 remains open for complete non-media/in-flight fault, reset/drain/first-fault
-integration. ABI-16 host/firmware/reference selection, all-admitted quantum and
-resource/protected-route acceptance and Stages 5–7 remain pending. Deployed ABI is
-still **15**; no fresh full Linux/Wasm, physical, push/PR or delivery claim.
+At `9c021b241`, initial capture was qualified locally; complete execution fault-stop
+and reset/drain/first-fault integration still remained open.
+
+**Non-media execution fault-stop milestone:** audio/JP now accept a generic latched
+abort independent of media enable. Semantic execution drives it from external
+pipeline failure, retained consumer/observation/snapshot faults and reported core
+errors. The observation input uses its retained bit, not the immediate event-valid
+feedback path. A one-cycle pulse blocks new admission, execution writes, sample
+I/O, job/hint issue and new handoff requests immediately and remains terminal until
+reset. Local loop/state, scratch/output and smoothing writes are gated; unissued
+hint control is flushed without resetting execution RAM or backend/AXI owners.
+Legacy media/job-stream wrappers tie the new input low, preserving their behavior.
+
+Seven directed non-media fault points cover state start, loop writeback, settled
+capture entry, partial packet copy, sample input, gain streaming and output write.
+Same-edge write strobes drop; complete 64/129/32/128-bit persistent RAM fingerprints
+stay unchanged, preserving earlier effects without rollback or later writes. In
+these inline/local fixtures SP/JP control retires within **two clocks**. A held new
+opportunity, configuration write, command flood and fake fence completion cannot
+resume it or expose reliable fenced success. Partial snapshots remain unreadable;
+already-complete packets remain diagnostic-readable but faulted ACKs do not release
+them. Frame/sequence/ready-mask identity stays fixed after the fault.
+
+`stage4-nonmedia-stop-milestone.{log,status}` passes **193 affected-package +
+35 directed = 228 selected Rust tests**, including existing standalone core and
+legacy media-pipeline regressions, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. `stage4-nonmedia-stop-tests` is the original
+seven-point narrow run; the final milestone also checks post-fault packet reads/
+ACKs. `stage4-nonmedia-stop-legacy` independently passes core/pipeline tests.
+Normal 128-row and initial-capture cycles, exact samples and real word/AXI cache,
+DMA fence and failure tests remain green; the 32-target command peak stays 2,950.
+
+This is **execution stop, not backend retirement or recovery**. Accepted store,
+DMA, loop-response or MIDI ownership still needs its real drain/response or safe
+isolation/reset protocol; local idle and no further DSP writes are not its fence.
+Always-on drain/reset/first-fault integration, internal SP/JP error-ordering parity
+(including the two baseline fault differences), full hostile lifecycle tests,
+ABI-16 integration and Stages 5–7 remain. Deployed ABI is still **15**. No new
+whole-design resource/protected-route, all-admitted quantum, full Linux/Wasm,
+physical, push/PR or delivery qualification is claimed.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.

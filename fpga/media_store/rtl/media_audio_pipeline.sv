@@ -174,7 +174,7 @@ module media_audio_pipeline #(
         .midi_job_done(midi_job_done), .midi_job_error(midi_job_error), .midi_error_code(midi_error_code),
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
-        .clk(clk), .reset(reset), .run_valid(run_valid && internal_ready && !store_cmd_valid && (LIVE_LOADING != 0 || !store_cfg_valid)), .run_ready(pipeline_ready),
+        .clk(clk), .reset(reset), .abort_run(1'b0), .run_valid(run_valid && internal_ready && !store_cmd_valid && (LIVE_LOADING != 0 || !store_cfg_valid)), .run_ready(pipeline_ready),
         .switch_valid(switch_valid), .switch_ready(switch_ready), .switch_boundary(1'b0), .switch_refused(),
         .switch_expected(switch_expected), .switch_revision(switch_revision),
         .switch_region(switch_region), .switch_instructions(switch_instructions), .switch_sync_count(switch_sync_count),

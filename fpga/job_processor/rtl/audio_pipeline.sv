@@ -34,6 +34,7 @@ module audio_pipeline #(
     output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
+    input wire abort_run,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
@@ -155,10 +156,16 @@ module audio_pipeline #(
     wire jobs_complete = job_finished || sample_done;
     wire state_failed = state_complete && state_error != 0;
     wire jobs_failed = jobs_complete && job_error != 0;
+    reg aborted;
+    wire halted = abort_run || aborted;
     wire media_failed = ENABLE_MEDIA != 0 && media_fault;
     wire abort_state = phase != IDLE
-        && (media_failed || (phase == JOB_WAIT && (jobs_failed || midi_lane_failed)));
-    wire stop_jobs = state_failed || media_failed || jobs_failed || midi_lane_failed;
+        && (halted || media_failed || (phase == JOB_WAIT && (jobs_failed || midi_lane_failed)));
+    wire stop_jobs = halted || state_failed || media_failed || jobs_failed || midi_lane_failed;
+    always @(posedge clk) begin
+        if (reset) aborted<=0;
+        else if (abort_run) aborted<=1;
+    end
     wire stream_done = (SPLIT_JOBS ? stop_jobs : state_failed)
         || (state_complete && audio_queued_jobs == 0);
     reg [31:0] quantum, buffers, inputs, outputs;
@@ -175,11 +182,11 @@ module audio_pipeline #(
     wire [31:0] selected_sync_count = LIVE_LOADING != 0 ? {16'b0,active_sync_count} : run_sync_count;
     wire [31:0] selected_states = LIVE_LOADING != 0 ? {16'b0,active_states} : run_state_count;
     wire [31:0] selected_buffers = LIVE_LOADING != 0 ? {16'b0,active_buffers} : run_buffers;
-    wire boundary_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
+    wire boundary_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && !halted && ((ENABLE_MEDIA == 0) || !media_fault);
     assign switch_ready = LIVE_LOADING != 0 && (run_valid || switch_boundary) && boundary_ready
         && !handoff_pending && !switch_response_valid;
     assign switch_refused = bad_switch;
-    assign handoff_request = LIVE_LOADING != 0 && handoff_pending && handoff_drained;
+    assign handoff_request = LIVE_LOADING != 0 && handoff_pending && handoff_drained && !halted;
     wire read_intent_valid, late_hint_valid, late_hint_ready, hint_push_ready, hint_pop_valid;
     wire [`SHOOP_SP_JOB_BITS-1:0] read_intent_data, hint_pop_data;
     wire [63:0] late_hint_view, late_hint_position, late_hint_length;
@@ -196,21 +203,21 @@ module audio_pipeline #(
         hint_push_data[191:128] << chunk_shift,hint_push_data[127:64],63'b0,hint_push_in_range};
     wire hint_in_range = hint_pop_data[0];
     assign late_hint_ready = phase != JOB_WAIT || (hint_stage_ready && !read_intent_valid);
-    assign media_hint_valid = ENABLE_MEDIA != 0 && hint_pop_valid && hint_in_range && !reset;
+    assign media_hint_valid = ENABLE_MEDIA != 0 && hint_pop_valid && hint_in_range && !reset && !halted;
     assign media_hint_view = hint_pop_data[127:64];
     assign media_hint_position = hint_pop_data[191:128];
     assign media_hint_length = hint_pop_data[255:192];
     assign media_hint_count = quantum;
 
     sp_job_fifo #(.DEPTH(READ_HINT_DEPTH), .COUNT_BITS($clog2(READ_HINT_DEPTH+1))) read_intents (
-        .clk(clk), .reset(reset),
+        .clk(clk), .reset(reset || halted),
         .push_valid(hint_stage_valid), .push_ready(hint_push_ready),
         .push_data(translated_hint),
         .pop_valid(hint_pop_valid), .pop_ready((media_hint_ready || !hint_in_range) && !reset),
         .pop_data(hint_pop_data), .count(hint_count)
     );
     always @(posedge clk) begin
-        if (reset) begin
+        if (reset || halted) begin
             hint_stage_valid <= 0;
             hint_push_data <= 0;
         end else if (hint_stage_ready) begin
@@ -221,11 +228,11 @@ module audio_pipeline #(
     assign unused_pc = &{1'b0, state_pc};
     assign busy = phase != IDLE;
     assign run_ready = boundary_ready && !(LIVE_LOADING != 0 && switch_valid && !switch_response_valid);
-    assign local_ready = local_window && state_local_ready;
+    assign local_ready = local_window && state_local_ready && !halted;
     assign cfg_ready = state_cfg_ready && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write))
-        && !(PROGRAM_REGIONS == 2 && state_admission);
-    assign audio_cfg_ready = (phase == IDLE) && job_cfg_ready;
-    assign monitor_valid = sp_job_valid && (!SPLIT_JOBS || sp_job_ready);
+        && !(PROGRAM_REGIONS == 2 && state_admission) && (!halted || !cfg_write);
+    assign audio_cfg_ready = (phase == IDLE) && job_cfg_ready && (!halted || !audio_cfg_write);
+    assign monitor_valid = sp_job_valid && !halted && (!SPLIT_JOBS || sp_job_ready);
     assign monitor_ready = sp_job_ready;
     assign queued_jobs = audio_queued_jobs + midi_queued_jobs;
     assign jobs_busy = sample_busy || midi_lane_busy;
@@ -281,8 +288,8 @@ module audio_pipeline #(
             end
         end
     end else begin : serial_jobs
-        assign sp_job_ready = job_accept || ((phase == IDLE) && drain_ready && !reset);
-        assign drain_valid = (phase == IDLE) && monitor_valid && !reset;
+        assign sp_job_ready = !halted && (job_accept || ((phase == IDLE) && drain_ready && !reset));
+        assign drain_valid = (phase == IDLE) && monitor_valid && !reset && !halted;
         assign audio_queued_jobs = sp_queued_jobs;
         assign midi_queued_jobs = 0;
         assign sample_job_valid = monitor_valid;
@@ -301,16 +308,16 @@ module audio_pipeline #(
         .EXTERNAL_JOB_FIFO(32'(SPLIT_JOBS)), .CAPTURE_SYNC(CAPTURE_SYNC)
     ) state_engine (
         .clk(clk), .reset(reset), .abort_run(abort_state),
-        .run_valid(phase == STATE_START && !media_failed), .run_ready(state_run_ready),
+        .run_valid(phase == STATE_START && !media_failed && !halted), .run_ready(state_run_ready),
         .run_instruction_count(state_instructions), .run_sync_count(state_sync_count), .run_program_region(state_region), .run_state_count(state_count),
         .capture_valid(capture_valid), .capture_ready(capture_ready), .capture_frame(capture_frame),
         .run_quantum(quantum), .run_chunk_frames(chunk_frames),
         .capture_credits(capture_credits),
         .busy(state_busy), .done(state_done), .error_code(state_error), .instruction_pc(state_pc),
-        .cfg_valid(cfg_valid && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write)) && !(PROGRAM_REGIONS == 2 && state_admission)), .cfg_ready(state_cfg_ready),
+        .cfg_valid(cfg_valid && (!halted || !cfg_write) && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write)) && !(PROGRAM_REGIONS == 2 && state_admission)), .cfg_ready(state_cfg_ready),
         .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
         .cfg_response_valid(cfg_response_valid), .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
-        .local_valid(local_valid && local_window), .local_ready(state_local_ready), .local_state(local_state), .local_write(local_write),
+        .local_valid(local_valid && local_window && !halted), .local_ready(state_local_ready), .local_state(local_state), .local_write(local_write),
         .local_address(local_address), .local_write_data(local_write_data),
         .local_response_valid(local_response_valid), .local_response_error(local_response_error), .local_read_data(local_read_data),
         .job_valid(sp_job_valid), .job_ready(sp_job_ready), .job_data(monitor_data), .queued_jobs(sp_queued_jobs),
@@ -341,13 +348,13 @@ module audio_pipeline #(
         .midi_job_done(!SPLIT_JOBS && midi_job_done), .midi_job_error(SPLIT_JOBS ? 4'b0 : midi_job_error), .midi_error_code(sample_midi_error),
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
-        .clk(clk), .reset(reset),
-        .run_valid(phase == JOB_START && !state_failed && !media_failed), .run_ready(job_run_ready),
+        .clk(clk), .reset(reset), .abort_run(halted),
+        .run_valid(phase == JOB_START && !state_failed && !media_failed && !halted), .run_ready(job_run_ready),
         .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs),
         .run_jobs(32'd0), .job_stream_done(stream_done),
         .busy(sample_busy), .done(sample_done), .error_code(job_error), .buffer_ready(buffer_ready),
         .job_valid(sample_job_valid), .job_ready(job_accept), .job_enable(job_enable), .job_data(sample_job_data),
-        .cfg_valid(audio_cfg_valid && (phase == IDLE)), .cfg_ready(job_cfg_ready),
+        .cfg_valid(audio_cfg_valid && (phase == IDLE) && (!halted || !audio_cfg_write)), .cfg_ready(job_cfg_ready),
         .cfg_space(audio_cfg_space), .cfg_write(audio_cfg_write), .cfg_address(audio_cfg_address),
         .cfg_write_data(audio_cfg_write_data), .cfg_response_valid(audio_cfg_response_valid),
         .cfg_response_error(audio_cfg_response_error), .cfg_read_data(audio_cfg_read_data),
@@ -401,7 +408,11 @@ module audio_pipeline #(
             done <= 0;
             if (state_done) state_finished <= 1;
             if (sample_done) job_finished <= 1;
-            if (media_failed && phase != IDLE && phase != JOB_WAIT && !state_busy) begin
+            if (halted && phase != IDLE) begin
+                if (!state_busy && !sample_busy && !midi_lane_busy) begin
+                    error_code<=8; error_stage<=3; done<=1; phase<=IDLE;
+                end
+            end else if (media_failed && phase != IDLE && phase != JOB_WAIT && !state_busy) begin
                 error_code <= 8; error_stage <= 2; done <= 1; phase <= IDLE;
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin

@@ -27,7 +27,7 @@ module job_stream;
         .PROGRAM_DEPTH(4096), .JOB_DEPTH(2048), .READ_HINT_DEPTH(256),
         .EXTERNAL_IO(1), .MAX_FRAMES(1), .BUFFERS(4096)
     ) dut (
-        .clk(clk), .reset(reset),
+        .clk(clk), .reset(reset), .abort_run(1'b0),
         .run_valid(run_valid), .run_ready(run_ready),
         .run_instruction_count(instruction_count), .run_sync_count(32'd0), .run_program_region(1'b0),
         .switch_valid(1'b0), .switch_boundary(1'b0), .switch_refused(),

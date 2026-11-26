@@ -4,7 +4,7 @@ use rt_fpga_testbench::{
     codec,
     drivers::store::Geometry,
     memory::{Memory, Mode},
-    model::Design,
+    model::{Design, Probe},
     sim::Sim,
     suites,
 };
@@ -360,6 +360,245 @@ fn initial_capture_has_no_frame_or_reader_dependency_and_reset_preserves_only_ra
         "SEMANTIC_INITIAL_128_CLOCKS {startup}/{restarted}; quanta {costs:?}; fresh {next}; peak {}",
         s.model.get("peak_snapshot_cycles")
     );
+}
+
+#[shoop_test]
+fn nonmedia_fault_stop_suppresses_same_edge_writes_and_never_rolls_back_or_resumes() {
+    fn persistent(s: &mut Sim<'_>) -> Vec<Bits> {
+        let mut words = vec![];
+        for (path, length) in [
+            ("execution.state_engine.loop_memory.memory", 16),
+            ("execution.state_engine.state_memory.memory", 16),
+            ("execution.sample_engine.scratch_memory.memory", 128),
+            ("execution.sample_engine.smoothing_memory.memory", 4),
+        ] {
+            for index in 0..length {
+                s.model.set(&format!("{path}[*]_index"), index);
+                s.model.eval();
+                words.push(s.model.bits(&format!("{path}[*]")));
+            }
+        }
+        words.push(s.model.bits("execution.sample_engine.smooth_valid"));
+        words
+    }
+    let root = rt_fpga_testbench::root();
+    let mut probes: Vec<_> = [
+        "execution.phase",
+        "execution.state_engine.loop_ram_write",
+        "execution.state_engine.state_write_enable",
+        "execution.sample_engine.stream_write",
+        "execution.sample_engine.scratch_memory.write_enable",
+        "execution.sample_engine.smooth_commit",
+        "execution.sample_engine.smooth_valid",
+        "snapshot_memory_valid",
+        "snapshot_memory_address",
+    ]
+    .into_iter()
+    .map(Probe::observe)
+    .collect();
+    probes.extend(
+        [
+            "execution.state_engine.loop_memory.memory",
+            "execution.state_engine.state_memory.memory",
+            "execution.sample_engine.scratch_memory.memory",
+            "execution.sample_engine.smoothing_memory.memory",
+        ]
+        .into_iter()
+        .map(Probe::array),
+    );
+    let compiled = core_design(1)
+        .probes(probes)
+        .build(&root.join("work/marlin-suite/semantic-fault-stop"))
+        .unwrap();
+    for point in [
+        "start",
+        "loop_write",
+        "capture",
+        "capture_mid",
+        "input",
+        "stream",
+        "output",
+    ] {
+        let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        s.model.set_all(&[
+            ("reset", 1),
+            ("epoch", 1),
+            ("run_quantum", 32),
+            ("run_chunk_frames", 32),
+            ("run_inputs", 1),
+            ("run_outputs", 1),
+            ("capture_credits", 65535),
+            ("job_enable", 1),
+            ("sample_input_data", 1 << 22),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        release_initial(&mut s, 1);
+        initialize_observations(&mut s, 0, 1.0f32.to_bits());
+        for word in 0..16 {
+            let value = match word {
+                0 => 1 | (7 << 1) | (1 << 33) | (1 << 35) | (1 << 36),
+                1 => 7,
+                2 | 3 => 32,
+                _ => 0,
+            };
+            cfg(&mut s, false, true, word, Some(&Bits::from_u64(value)));
+        }
+        let mut sync = Bits::zero(96);
+        sync.set(0, 8, 12).set(24, 32, 7).set(72, 16, 1);
+        cfg(&mut s, false, false, 0, Some(&sync));
+        for (pc, instruction) in [
+            json!({"kind":"process_input","port":0,"destination":0}),
+            json!({"kind":"process_gain","ramp":0,"source":0,"destination":1}),
+            json!({"kind":"process_output","source":1,"port":0}),
+        ]
+        .iter()
+        .enumerate()
+        {
+            cfg(
+                &mut s,
+                false,
+                false,
+                pc as u64 + 1,
+                Some(&codec::instruction(instruction).unwrap()),
+            );
+        }
+        cfg(
+            &mut s,
+            true,
+            false,
+            0,
+            Some(&codec::state(&suites::audio::ramp(1 << 24, 1 << 24, 0, 0))),
+        );
+        let mut select = [0; 12];
+        select[0] = 5;
+        select[6] = 1;
+        select[8] = 4 << 16;
+        select[9] = 1 | (1 << 16);
+        select[10] = 2;
+        publish(&mut s, 0, 1, 0, &[select]);
+        s.model.set("run_valid", 1);
+        s.idle(1);
+        s.model.set("run_valid", 0);
+        let mut reached = false;
+        for _ in 0..60_000 {
+            s.model.eval();
+            reached = match point {
+                "start" => s.model.get("execution.phase") == 1,
+                "loop_write" => s.model.get("execution.state_engine.loop_ram_write") != 0,
+                "capture" => s.model.get("capture_valid") != 0,
+                "capture_mid" => {
+                    s.model.get("snapshot_memory_valid") != 0
+                        && s.model.get("snapshot_memory_address") == 8
+                }
+                "input" => s.model.get("sample_input_read") != 0,
+                "stream" => s.model.get("execution.sample_engine.stream_write") != 0,
+                "output" => {
+                    s.model.get("sample_output_write") != 0
+                        && s.model.get("sample_output_data") == 1 << 22
+                }
+                _ => unreachable!(),
+            };
+            if reached {
+                break;
+            }
+            assert_eq!(s.model.get("faulted"), 0, "{point}");
+            assert_eq!(s.model.get("done"), 0, "did not reach {point}");
+            s.idle(1);
+        }
+        assert!(reached, "{point}");
+        let before = persistent(&mut s);
+        let frame = s.model.get("sync_frame");
+        let sequence = s.model.get("snapshot_last_sequence");
+        let ready = s.model.get("snapshot_ready_mask");
+        s.model.set("pipeline_fault", 1);
+        s.model.eval();
+        for signal in [
+            "sample_output_write",
+            "sample_input_read",
+            "monitor_valid",
+            "capture_valid",
+            "sync_event_valid",
+            "execution.state_engine.loop_ram_write",
+            "execution.state_engine.state_write_enable",
+            "execution.sample_engine.scratch_memory.write_enable",
+            "execution.sample_engine.smooth_commit",
+        ] {
+            assert_eq!(s.model.get(signal), 0, "same-edge {point}/{signal}");
+        }
+        s.idle(1);
+        s.model.set("pipeline_fault", 0);
+        s.model.set_all(&[
+            ("run_valid", 1),
+            ("handoff_valid", 1),
+            ("handoff_epoch", 1),
+            ("handoff_sequence", 1),
+            ("host_valid", 1),
+            ("host_operation", 0),
+            ("host_bank", 1),
+            ("host_epoch", 1),
+            ("host_strobe", 15),
+            ("cfg_valid", 1),
+            ("cfg_state", 0),
+            ("cfg_loop", 1),
+            ("cfg_write", 1),
+            ("cfg_address", 2),
+        ]);
+        let mut retired = None;
+        for cycle in 0..100 {
+            s.model.eval();
+            for signal in [
+                "run_ready",
+                "sample_input_read",
+                "sample_output_write",
+                "monitor_valid",
+                "capture_valid",
+                "cfg_ready",
+                "handoff_request",
+                "result_ready_mask",
+            ] {
+                assert_eq!(s.model.get(signal), 0, "retained {point}/{signal}");
+            }
+            assert_eq!(s.model.get("faulted"), 1);
+            assert_eq!(s.model.get("sync_frame"), frame);
+            assert_eq!(s.model.get("snapshot_last_sequence"), sequence);
+            assert_eq!(s.model.get("snapshot_ready_mask"), ready);
+            if s.model.get("busy") == 0 && retired.is_none() {
+                retired = Some(cycle);
+            }
+            s.idle(1);
+        }
+        assert!(retired.unwrap() <= 8, "{point}: {retired:?}");
+        assert_eq!(s.model.get("host_receipt"), 3);
+        assert_eq!(s.model.get("error_code"), 8);
+        assert_eq!(s.model.get("error_stage"), 3);
+        assert_eq!(
+            persistent(&mut s),
+            before,
+            "no rollback or post-fault writes: {point}"
+        );
+        if ready != 0 {
+            let packet = snapshot(&mut s, 0, 1);
+            assert_eq!(&packet[2..5], &[2, 0, 1]);
+            snapshot_ack(&mut s, 0, 1, 2, 3);
+            assert_eq!(s.model.get("snapshot_ready_mask"), ready);
+        } else {
+            s.model.set_all(&[
+                ("snapshot_read_valid", 1),
+                ("snapshot_read_bank", 0),
+                ("snapshot_read_word", 0),
+            ]);
+            s.idle(1);
+            assert_eq!(s.model.get("snapshot_response_valid"), 1);
+            assert_eq!(s.model.get("snapshot_response_error"), 1);
+            assert_eq!(s.model.get("snapshot_read_data"), 0);
+        }
+        assert_eq!(s.model.get("sync_frame"), frame);
+        assert_eq!(persistent(&mut s), before);
+        println!(
+            "SEMANTIC_NONMEDIA_FAULT {point}; frame {frame}; retired {retired:?}; snapshot {sequence}/{ready}"
+        );
+    }
 }
 
 #[shoop_test]

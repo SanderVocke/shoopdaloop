@@ -39,7 +39,7 @@ def generate():
                  "sync_event_ready": "1'b1", "capture_ready": "snapshot_capture_ready",
                  "handoff_complete": "handoff_valid && handoff_pending && !handoff_error && handoff_epoch == pending_epoch && handoff_sequence == pending_sequence"}
     audio_links = {
-        "run_valid": "render_valid", "run_ready": "render_ready", "busy": "execution_busy",
+        "run_valid": "render_valid", "run_ready": "render_ready", "busy": "execution_busy", "abort_run": "execution_abort",
         "active_revision": "execution_revision", "switch_boundary": "select_valid",
         "switch_valid": "select_valid", "switch_ready": "select_ready", "switch_refused": "select_error",
         "switch_expected": "active_revision", "switch_revision": "select_revision",
@@ -88,6 +88,7 @@ def generate():
             declared.add(wire)
     text += "    wire execution_fault = pipeline_fault || observations_fault || snapshots_fault || error_code != 0 || execution_revision != active_revision;\n"
     text += "    assign execution_media_fault = media_fault || observation_abort || snapshots_fault;\n"
+    text += "    assign execution_abort = pipeline_fault || faulted || observation_abort || snapshots_fault || error_code != 0;\n"
     text += """    reg [31:0] snapshot_quantum, initial_epoch;
     reg [1:0] initial_phase;
     reg observation_response_snapshot;
@@ -127,7 +128,7 @@ def generate():
     end
     reg configuration_pending, configuration_observations;
     wire observation_config = cfg_state && cfg_loop;
-    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && initial_done && !reset && !faulted;
+    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && initial_done && !reset && !faulted && !execution_fault;
     assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
     assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
     assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);

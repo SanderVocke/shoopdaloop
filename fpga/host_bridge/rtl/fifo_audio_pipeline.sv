@@ -231,6 +231,7 @@ module fifo_audio_pipeline #(
     wire memory_response_valid;
     wire memory_response_error;
     wire [128:0] memory_read_data;
+    wire execution_abort;
     wire switch_response_valid;
     wire switch_response_ready;
     wire switch_response_error;
@@ -273,6 +274,7 @@ module fifo_audio_pipeline #(
     wire snapshots_fault;
     wire execution_fault = pipeline_fault || observations_fault || snapshots_fault || error_code != 0 || execution_revision != active_revision;
     assign execution_media_fault = media_fault || observation_abort || snapshots_fault;
+    assign execution_abort = pipeline_fault || faulted || observation_abort || snapshots_fault || error_code != 0;
     reg [31:0] snapshot_quantum, initial_epoch;
     reg [1:0] initial_phase;
     reg observation_response_snapshot;
@@ -312,7 +314,7 @@ module fifo_audio_pipeline #(
     end
     reg configuration_pending, configuration_observations;
     wire observation_config = cfg_state && cfg_loop;
-    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && initial_done && !reset && !faulted;
+    wire configuration_available = !configuration_pending && !run_valid && !capture_valid && initial_done && !reset && !faulted && !execution_fault;
     assign execution_cfg_valid = cfg_valid && !observation_config && configuration_available;
     assign observation_cfg_valid = cfg_valid && observation_config && configuration_available;
     assign cfg_ready = configuration_available && (observation_config ? observation_cfg_ready : execution_cfg_ready);
@@ -520,6 +522,7 @@ module fifo_audio_pipeline #(
         .sample_output_data(sample_output_data),
         .clk(clk),
         .reset(reset),
+        .abort_run(execution_abort),
         .run_valid(render_valid),
         .run_ready(render_ready),
         .run_instruction_count(32'd0),

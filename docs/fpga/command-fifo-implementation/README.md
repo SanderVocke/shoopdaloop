@@ -1037,8 +1037,62 @@ normal 128-row, original metadata, full readers, exact samples, primitive/fence,
 word/AXI backing-memory and memory-fault tests still pass; their cycle costs are
 unchanged.
 
-Stage 4 remains open for complete non-media/in-flight fault, reset/drain/first-fault
-and always-on recovery integration. ABI-16 host/MMIO/firmware/reference selection
-and Stages 5–7 remain; deployed ABI is **15**. No new all-admitted 60,000-cycle,
-whole-design resource/protected-route, full Linux/Wasm, physical, push/PR or
-delivery qualification is claimed.
+At `9c021b241`, complete execution fault-stop and always-on recovery remained open.
+The next milestone adds generic execution stop; ABI/MMIO deployment stays 15.
+
+### Generic latched execution fault-stop
+
+Audio and JP now have a generic `abort_run` input independent of media enable.
+Each latches the stop until reset. Semantic execution drives it from pipeline
+failure, retained consumer/observation/snapshot faults and reported core errors.
+The observation source is its retained abort bit: this does not reintroduce an
+immediate-fault/event-valid combinational loop. The current legacy media and
+job-stream wrappers tie the new input low; standalone default error sequencing
+is not silently changed.
+
+On assertion, new run/switch admission, SP writes/emission, sample reads/output,
+scratch/output RAM writes, smoothing commit and new job/media/hint issue stop
+before the clock edge. The serial SP/JP path cannot consume more queued work.
+Unissued read-hint control is flushed, not the RAM holding execution or media.
+A pulse remains terminal, so dropping the fault input cannot resume work or
+accept another run. New handoff requests are suppressed; already-accepted store/
+cache/DMA operations retain their backend ownership. SP still waits for an
+accepted external loop response rather than fabricating retirement. An active
+local run reports error 8/stage 3 after SP/JP control stops; abort while idle
+blocks admission without inventing a completed processing frame.
+
+`nonmedia_fault_stop_suppresses_same_edge_writes_and_never_rolls_back_or_resumes`
+uses actual execution RAM, SP, JP and snapshots. Seven injection points are state
+start, loop writeback, settled gate entry, partial snapshot copy, input read,
+gain streaming and a nonzero output write. Observation-only probes fingerprint
+all 16 loop words, sixteen 129-bit state records, 128 scratch words, four 128-bit
+smoothing histories and validity. Fault assertion masks the same-edge writes;
+the exact pre-edge data remains after a 100-clock traffic attack, without
+rollback or post-fault mutation. No production restore or injection API is added.
+
+In these inline/local, non-media fixtures local control retires within **two
+clocks**. Already-advanced frame stays 32; earlier state/loop stops stay at 0.
+The attempt is not replayed. A held run opportunity, writes, commands and fake
+fence success cannot restart it, advance frame/sequence or publish fenced success.
+A partial packet stays unreadable even if its RAM contains an older header;
+complete F0/revision-1 packets remain immutable diagnostic reads, with ACK
+receipt 3 preserving the faulted bank. This is not a memory-fence assertion.
+
+`stage4-nonmedia-stop-tests.{log,status}` passes the original seven-point test;
+final `stage4-nonmedia-stop-milestone` also includes the post-fault packet/ACK
+assertions. `stage4-nonmedia-stop-legacy` separately passes existing core and
+legacy pipeline regressions. The final gate passes **228 selected Rust tests =
+193 affected-package + 35 directed**, workspace warnings, formatting, policy/
+coverage, generators and Python compilation. Normal 128-row, initial, exact
+samples, local 32-target commands and actual word/AXI media/fence/failure tests
+remain green with unchanged cycles (command peak 2,950, producer peak 4,619).
+
+Local SP/JP idle does **not** retire an accepted store operation, DMA, loop-read
+or external MIDI owner. Their actual response/drain or safe isolation/reset is
+still required; neither RAM nor backend/AXI controllers are reset by fault-stop.
+Full always-on drain/reset/first-fault integration, all internal error-ordering
+parity and hostile lifecycle tests remain open, including the two retained
+production-base reference fault differences. Stage 4 remains in progress;
+ABI-16 host/MMIO/firmware/reference selection and Stages 5–7 remain. Deployed ABI
+is **15**; no new whole-design resource/protected-route, all-admitted quantum,
+full Linux/Wasm, physical, push/PR or delivery qualification is claimed.

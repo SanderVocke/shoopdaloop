@@ -27,6 +27,7 @@ module job_processor #(
     output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
+    input wire abort_run,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_quantum,
@@ -92,7 +93,13 @@ module job_processor #(
         else frame_offset = 32'(value);
     endfunction
     phase_t phase;
-    assign midi_job_valid = ENABLE_MIDI != 0 && phase == MIDI_COMMAND && !reset;
+    reg aborted;
+    wire halted = abort_run || aborted;
+    always @(posedge clk) begin
+        if (reset) aborted<=0;
+        else if (abort_run) aborted<=1;
+    end
+    assign midi_job_valid = ENABLE_MIDI != 0 && phase == MIDI_COMMAND && !reset && !halted;
     assign midi_job_data = ENABLE_MIDI != 0 ? packet : 256'b0;
     wire media_active = phase == MEDIA_COMMAND || phase == MEDIA_READ || phase == MEDIA_SOURCE_REQUEST
         || phase == MEDIA_SOURCE_RESULT || phase == MEDIA_WRITE || phase == MEDIA_DONE;
@@ -128,7 +135,7 @@ module job_processor #(
     (* DONT_TOUCH = "yes" *) reg [63:0] product;
     reg product_negative;
     reg hint_pending, hinted_head, history_present;
-    assign media_hint_valid = (ENABLE_MEDIA != 0) && hint_pending && !media_fault && !reset;
+    assign media_hint_valid = (ENABLE_MEDIA != 0) && hint_pending && !media_fault && !reset && !halted;
     reg [BUFFERS-1:0] smooth_valid;
     wire [127:0] smooth_history;
     reg [BUFFER_BITS-1:0] smooth_index;
@@ -173,9 +180,9 @@ module job_processor #(
     wire [31:0] input_data, output_data, scratch_data;
     wire [31:0] local_input_data;
     assign input_data = EXTERNAL_IO != 0 ? sample_input_data : local_input_data;
-    assign sample_input_read = EXTERNAL_IO != 0 && input_read && !reset;
+    assign sample_input_read = EXTERNAL_IO != 0 && input_read && !reset && !halted;
     assign sample_input_address = 32'(port_index)*MAX_FRAMES+frame_offset(frame);
-    assign sample_output_write = EXTERNAL_IO != 0 && output_write && !reset
+    assign sample_output_write = EXTERNAL_IO != 0 && output_write && !reset && !halted
         && !((ENABLE_MEDIA != 0) && media_fault);
     assign sample_output_address = 32'(output_address);
     assign sample_output_data = phase == CLEAR_OUTPUT ? 32'b0 : result_sample;
@@ -235,15 +242,15 @@ module job_processor #(
             || (INPUT_PORTS < 1) || (OUTPUT_PORTS < 1))
             $fatal(1, "Invalid job processor capacities");
     end
-    assign cfg_ready = !busy && !cfg_pending && !run_valid && !reset;
-    assign run_ready = !busy && !cfg_pending && !reset;
+    assign cfg_ready = !busy && !cfg_pending && !run_valid && !reset && (!halted || !cfg_write);
+    assign run_ready = !busy && !cfg_pending && !reset && !halted;
     wire more_jobs = STREAM_JOBS != 0 ? !job_stream_done : jobs_pending;
-    assign job_ready = (phase == FETCH) && more_jobs && job_enable && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
+    assign job_ready = (phase == FETCH) && more_jobs && job_enable && !reset && !halted && ((ENABLE_MEDIA == 0) || !media_fault);
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_response_error = cfg_error;
     assign cfg_read_data = (cfg_error || cfg_was_write) ? 32'b0
         : (cfg_response_space == 0) ? input_data : (cfg_response_space == 1) ? output_data : scratch_data;
-    assign media_cmd_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_COMMAND) && !reset;
+    assign media_cmd_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_COMMAND) && !reset && !halted;
     assign media_cmd_opcode = (ENABLE_MEDIA == 0) ? 4'b0 : (opcode == `SHOOP_SP_JOB_BEGIN_CAPTURE) ? 4'd8 : (opcode == `SHOOP_SP_JOB_READ) ? 4'd6 : 4'd5;
     assign media_cmd_view = (ENABLE_MEDIA == 0) ? 64'b0 : packet[127:64];
     assign media_cmd_start = (ENABLE_MEDIA == 0) ? 64'b0 : packet[191:128] << CHUNK_SHIFT;
@@ -255,9 +262,9 @@ module job_processor #(
     end else begin : shifted_media
         assign media_range_overflow = (|packet[191 -: CHUNK_SHIFT]) || (|packet[255 -: CHUNK_SHIFT]);
     end endgenerate
-    assign media_write_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_WRITE) && !reset;
+    assign media_write_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_WRITE) && !reset && !halted;
     assign media_write_data = (ENABLE_MEDIA == 0) ? 32'b0 : sample_a;
-    assign media_read_ready = (ENABLE_MEDIA != 0) && (phase == MEDIA_READ) && !reset;
+    assign media_read_ready = (ENABLE_MEDIA != 0) && (phase == MEDIA_READ) && !reset && !halted;
 
     jp_divider divide (
         .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE)),
@@ -278,7 +285,7 @@ module job_processor #(
     jp_sample_ram #(.DEPTH(OUTPUT_PORTS * MAX_FRAMES), .ADDR_BITS(OUTPUT_BITS)) outputs_memory (
         .clk(clk), .read_enable(output_access && !cfg_write),
         .read_address(OUTPUT_BITS'(cfg_address)), .read_data(output_data),
-        .write_enable(!reset && (output_write || (output_access && cfg_write))),
+        .write_enable(!reset && !halted && (output_write || (output_access && cfg_write))),
         .write_address(output_ram_write_address),
         .write_data(busy ? ((phase == CLEAR_OUTPUT) ? 32'b0 : result_sample) : cfg_write_data)
     );
@@ -289,14 +296,14 @@ module job_processor #(
     jp_sample_ram #(.DEPTH(BUFFERS * MAX_FRAMES), .ADDR_BITS(SCRATCH_BITS)) scratch_memory (
         .clk(clk), .read_enable(!reset && (scratch_read || (scratch_access && !cfg_write))),
         .read_address(scratch_ram_read_address), .read_data(scratch_data),
-        .write_enable(!reset && (scratch_write || (scratch_access && cfg_write))),
+        .write_enable(!reset && !halted && (scratch_write || (scratch_access && cfg_write))),
         .write_address(scratch_ram_write_address),
         // Validity controls write_enable; data selection only needs the phase.
         .write_data(busy ? (phase == MEDIA_READ ? media_read_data : result_sample) : cfg_write_data)
     );
 
     wire smooth_commit = phase == STORE && opcode == `SHOOP_SP_JOB_SMOOTHING
-        && frame == quantum_last && !reset && !(ENABLE_MEDIA != 0 && media_fault);
+        && frame == quantum_last && !reset && !halted && !(ENABLE_MEDIA != 0 && media_fault);
     wire [31:0] smooth_next_elapsed = elapsed < duration ? elapsed + 1 : elapsed;
     sp_ram #(.WIDTH(128), .DEPTH(BUFFERS), .ADDR_BITS(BUFFER_BITS)) smoothing_memory (
         .clk(clk), .read_enable(phase == DECODE && opcode == `SHOOP_SP_JOB_SMOOTHING),
@@ -309,7 +316,7 @@ module job_processor #(
         if (reset) begin
             hint_pending <= 0; hinted_head <= 0;
             media_hint_view <= 0; media_hint_position <= 0; media_hint_length <= 0;
-        end else if (media_fault && ENABLE_MEDIA != 0) begin hint_pending <= 0; hinted_head <= 0; end
+        end else if (halted || (media_fault && ENABLE_MEDIA != 0)) begin hint_pending <= 0; hinted_head <= 0; end
         else begin
             if (!hint_pending) begin
                 media_hint_view <= job_data[127:64]; media_hint_position <= job_data[191:128]; media_hint_length <= job_data[255:192];
@@ -394,7 +401,7 @@ module job_processor #(
             done <= 0;
             gain_read_valid <= 0; gain_sample_valid <= 0; gain_operand_valid <= 0; gain_multiply_valid <= 0; gain_product_valid <= 0;
             mix_read_valid <= 0; mix_sample_valid <= 0; stream_store_valid <= 0;
-            if ((ENABLE_MEDIA != 0) && media_fault && phase != IDLE) begin
+            if ((halted || ((ENABLE_MEDIA != 0) && media_fault)) && phase != IDLE) begin
                 if (phase == ADMIT) buffer_ready <= 0;
                 error_code <= 8; done <= 1; busy <= 0; phase <= IDLE;
             end else if ((ENABLE_MEDIA != 0) && media_done && media_active) begin
