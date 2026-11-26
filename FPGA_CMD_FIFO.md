@@ -323,13 +323,42 @@ ABA, same-edge publication eligibility and incomplete-result fail-closed behavio
 The result producer writes command codes followed by the header; complete result
 visibility is checked separately from execution progress.
 
-The **6-test component gate**, warning-denying workspace build, formatting,
+The initial **6-test component gate**, warning-denying workspace build, formatting,
 test-policy and generators pass (`work/cmd-fifo-investigation/stage4-component-milestone`).
-These units are **not yet connected** to the boundary consumer, audio/SP/JP, MMIO
-ABI 16, local observations, snapshots or production RAM arbitration. Synthetic
-fences are not proof of the real JP/cache/DMA fence. RAM errors must become actual
-consumer faults, not ordinary kernel refusal codes. No integrated cycle/resource,
-healthy-audio-stall or physical qualification is claimed; all Stage 4 items remain
+That checkpoint did not connect the units to a boundary consumer or the audio path.
+
+**Standalone boundary-consumer milestone:** `fifo_group_consumer.sv` now connects
+packet banks to the shared kernel, accepts one group per explicit processing
+opportunity, latches the cutoff/actual attempt frame, preflights header switch
+placement before any edits, preserves command-local refusal and repeated-target
+ordering, and publishes reserved results without waiting for a reader. A selected
+switch's final result word waits for a qualified synthetic fence while ordinary
+groups and render handshakes continue. Gain observations retain the original
+finite f32 bits. Read/write/fence errors fail closed, including a zero-latency
+selection/fence-error race, rather than becoming ordinary semantic refusals.
+
+Eight consumer tests pass: 36 mixed repeated-target oracle scenarios, all 400
+partial packet-word positions with independently driven boundaries, cutoff and
+actual-frame deadline/header priority, full/unread results, static-composite
+switch refusal, pending-fence progress and reset identities, value-validation
+priority, gain metadata, actual RAM faults and concurrent result/fence writes.
+With one-cycle granted local RAM service, full boundary-to-render costs including
+decode/turnover are **1,494 cycles for 16-target arming**, **2,950 for 32 targets**
+(skip 0/1), **3,782 for 32 iteration/seek commands**, and **3,783** when an earlier
+fence finalizer arbitrates with that maximal group, below the approved 4,096.
+These are component render handshakes, not SP/JP/audio or DDR timing results.
+
+The fresh five-package simulation/RT-interface matrix passes **179 Rust tests**,
+including both 3,970-case kernel tests, four bank tests and eight consumer tests;
+workspace warnings, formatting, test-policy, coverage and generators also pass.
+Evidence: `work/cmd-fifo-investigation/stage4-consumer-{tests,races,milestone}` and
+`production-{group,fence-race}-cycles.json`. An initial width-warning elaboration
+failure is retained separately, not counted as a pass.
+
+Actual audio/SP/JP and JP/cache/DMA fencing, loader/RAM arbitration, MMIO ABI 16,
+local SP observations and settled snapshots are **not yet connected**. Generated
+hardware remains ABI 15. No integrated resource/total-quantum, physical, fresh
+Linux/Wasm or delivery qualification is claimed; Stage 4 checklist items remain
 open until their production integration passes.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against

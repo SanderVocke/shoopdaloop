@@ -273,10 +273,60 @@ passing Rust tests** (the generated cases are inside the two kernel tests), a
 warning-denying workspace build, formatting, test-policy and generator checks.
 Earlier narrow logs are `stage4-kernel-bootstrap` and `stage4-bank-tests`.
 
-The boundary consumer, actual RAM arbitration, MMIO ABI-16 schema/bridge, settled
-snapshot collector, local event effects and firmware/reference integration are
-still pending. Kernel RAM errors must be promoted to real consumer faults,
-including read errors; an ordinary refusal result alone is not sufficient.
-Current generated hardware remains ABI 15 with the legacy CPU bridge. No full
-Linux/Wasm rerun, fresh integrated resource/timing measurement, board activity,
-production semantic FIFO acceptance or delivery is claimed by this milestone.
+At this initial checkpoint the boundary consumer, actual RAM arbitration,
+MMIO ABI-16 schema/bridge, snapshots, local effects and firmware/reference
+integration were still pending. The next milestone below connects the standalone
+consumer, not the production audio/MMIO path.
+
+### Standalone boundary consumer
+
+`fifo_group_consumer.sv` connects the bank store and shared kernel. Its explicit
+processing-opportunity handshake latches a publication cutoff and actual attempt
+F, consumes at most one group, preflights all switch positions before executing
+anything, and releases a render handshake without ARM acknowledgement. Header
+stale/deadline/placement priority and per-command refusals remain separate; later
+commands observe preceding writes. State-independent value checks precede target
+lookup. No scheduler, graph lookup or per-command full-row shadows are introduced.
+
+Selection updates immutable run parameters together. The selected group's final
+result word is withheld until an epoch/sequence-qualified synthetic fence. Other
+groups run while it waits; the reliable result head cannot be bypassed. A small
+arbitrator lets the earlier fence finish while a later group writes its result.
+Headers capture attempt F/revisions before any later group. Gain update outputs
+retain original finite f32 bits rather than reconstructing them from fixed point.
+Local read/write and fence errors halt/fail closed and retain ownership, including
+an error delivered at selection itself; they are not safe `CannotApply` replies.
+
+Eight consumer tests cover 36 mixed repeated-target oracle scenarios; all 400
+partial-fill positions with independent processing opportunities; cutoff,
+inclusive deadline and header priority; full/unread results; profile refusals;
+delayed fence/reset identities; value-before-binding refusals; original gain bits;
+RAM/zero-latency fence faults; and concurrent fence/result writes.
+
+| Component scenario | Boundary-to-render cycles at one-cycle local RAM service |
+| --- | ---: |
+| 16-target arming, skip 0 or 1 | 1,494 |
+| 32-target arming, skip 0 or 1 | 2,950 |
+| 32 iteration/seek commands | 3,782 |
+| Same maximal group with a preceding fence finalizer competing for result RAM | 3,783 |
+
+These include packet decode, turnover and result production, not only sums of
+kernel invocations. The peak counter matches measured handshake elapsed cycles.
+Both maxima are below 4,096, but this is **not** a proof of SP/JP, DDR, continuous
+audio, real DMA fencing or the 60,000-cycle total quantum envelope.
+
+Fresh `stage4-consumer-milestone.{log,status}` passes **179 Rust tests** across the
+five affected simulation/RT-interface packages, including two kernel tests with
+3,970 cases each, four bank tests and eight consumer tests. Workspace warnings,
+formatting, test-policy, coverage and generators pass. Narrow evidence is
+`stage4-consumer-{tests,races}` and `production-{group,fence-race}-cycles.json` under
+`work/cmd-fifo-investigation/`. `stage4-consumer-tests-width-failure` retains the
+initial 4-bit/8-bit comparison warning and consequent missing-model failures;
+explicit width extension fixes it. It is not passing evidence or a timing breach.
+
+Actual audio/SP/JP, real JP/cache/DMA fencing, loader/RAM arbitration, settled
+snapshot/local SP observation storage, ABI-16 MMIO and firmware/reference
+integration remain pending. The probe's configuration access is test-only, not a
+production control fallback. Generated hardware remains ABI 15 with the legacy
+CPU bridge. No fresh Linux/Wasm, integrated resource/route, physical qualification,
+production semantic FIFO acceptance or delivery is claimed by this checkpoint.
