@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Freeze and measure the partial semantic frontend, without board integration."""
+"""Freeze and measure semantic RTL components, without board integration."""
 import argparse
 import hashlib
 import json
@@ -54,6 +54,7 @@ def main():
     parser.add_argument("output", type=pathlib.Path)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--route", action="store_true")
+    parser.add_argument("--pipeline", action="store_true", help="measure the fixed-Q32 semantic/media/recovery component")
     parser.add_argument("--catalog", type=pathlib.Path)
     args = parser.parse_args()
     catalog = args.catalog.resolve() if args.catalog else None
@@ -70,14 +71,22 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     source = output / "source"
     source.mkdir()
-    sources = []
-    for name in ["fifo_edit_kernel.sv", "fifo_group_banks.sv", "fifo_group_consumer.sv"]:
-        original = pathlib.Path(__file__).parent / "rtl" / name
-        copied = source / name
-        copied.write_bytes(original.read_bytes())
-        sources.append({"path": str(original.relative_to(ROOT)), "sha256": digest(copied)})
+    profile = {"loops": 128, "states": 512, "instructions": 1024, "buffers": 512}
+    scope = SCOPE
+    if args.pipeline:
+        from measure_semantic_pipeline import freeze, SCOPE as pipeline_scope
+        sources, tcl, profile = freeze(source, digest, SCRIPT)
+        scope = pipeline_scope
+    else:
+        sources = []
+        for name in ["fifo_edit_kernel.sv", "fifo_group_banks.sv", "fifo_group_consumer.sv"]:
+            original = pathlib.Path(__file__).parent / "rtl" / name
+            copied = source / name
+            copied.write_bytes(original.read_bytes())
+            sources.append({"path": str(original.relative_to(ROOT)), "sha256": digest(copied)})
+        tcl = SCRIPT
     script = output / "run.tcl"
-    script.write_text(SCRIPT.replace("ROUTE_ENABLED", "1" if args.route else "0"))
+    script.write_text(tcl.replace("ROUTE_ENABLED", "1" if args.route else "0"))
     provenance = {
         "base": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "working_tree_snapshot": True,
@@ -88,10 +97,11 @@ def main():
         "part": PART,
         "clock_mhz": 100,
         "input_output_delay_ns": 1,
-        "profile": {"loops": 128, "states": 512, "instructions": 1024, "buffers": 512},
+        "profile": profile,
         "sources": sources,
         "tcl_sha256": digest(script),
-        "scope": SCOPE,
+        "scope": scope,
+        "pipeline": args.pipeline,
         "route": args.route,
     }
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")

@@ -1,0 +1,6 @@
+RAM "pulse_valid_reg" dissolved into registers
+RAM "pulses_reg" dissolved into registers
+RAM "failures_reg" dissolved into registers
+RAM "gains_reg" dissolved into registers
+Synthesis finished with 0 errors, 0 critical warnings and 282 warnings.
+missing accounting boundary dut/execution/core/store

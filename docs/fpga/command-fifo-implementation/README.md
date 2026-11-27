@@ -4,6 +4,10 @@ The authoritative scope, approval and acceptance criteria are in
 [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md). The isolated kernel measurements
 remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
 
+**Current gate: Stage 4 paused after an actual resource-ceiling breach.** Stages
+0–3 are complete; Stages 4–7 are not. See the resource-stop record below. No
+production RTL redesign will proceed without user direction at this gate.
+
 ## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
 
 **This is not completion of Stage 3 or implementation of the production FIFO.**
@@ -1237,3 +1241,68 @@ or all-admitted quantum proof, fresh full Linux/Wasm, physical or delivery
 qualification. Broader lifecycle, the two production-base reference differences
 and Stages 5–7 remain. Normal exact samples, 2,950-cycle actual 32-target command
 peak, 4,619-cycle capture and 4,622-cycle initial startup remain unchanged.
+
+## Resource gate: measured breach and implementation stop
+
+The broader [Q32 component evidence](reports/pipeline-synthesis-9b8cd12c8/results.json)
+is a **failure of the approved resource gate**, not acceptance or deployment.
+`measure_semantic.py --pipeline` freezes the production semantic/media/recovery
+RTL, a generated fixed-audio profile, exact source hashes and tool configuration.
+The profile uses 128 loops, 512 state rows/buffers/views, 1,024 instructions/jobs,
+DDR program storage, 32-frame chunks, 124 MiB sample slots and the board's
+128 MiB PL arena. Vivado 2021.1 synthesized it out of context for
+`xc7z020clg400-2` at 100 MHz. It excludes public MMIO, the audio adapter, PS/DDR,
+thermal protection and protected whole-board integration.
+
+| Synthesized scope | Packed LUT | FF | RAMB36-equivalent | DSP |
+| --- | ---: | ---: | ---: | ---: |
+| Entire component before the excluded integration | 85,056 | 37,785 | 62.5 | 4 |
+| Existing SP/JP and execution RAM | 10,626 | 5,945 | 34 | 4 |
+| Existing media store | 11,388 | 8,024 | 10 | 0 |
+| Existing AXI endpoint and DDR program mux | 1,628 | 922 | 0 | 0 |
+| Remaining new frontend/glue before MMIO | **61,414** | **22,894** | 18.5 | 0 |
+| Kernel, included in frontend | 1,824 | 1,940 | 0 | 0 |
+| Local observations, included in frontend | **55,372** | **17,127** | **0** | 0 |
+
+The kernel satisfies its 2,500-LUT/2,500-FF/no-DSP ceiling. The frontend exceeds
+6,000 LUT / 7,000 FF, and this incomplete component already exceeds the protected
+whole-design 32,000-LUT / 24,000-FF ceiling. Observations' four arrays were
+explicitly dissolved into registers, not RAM. That is the dominant measured
+mapping failure, not a proven complete root-cause analysis or permission to
+change observation semantics. Even treating the entire observations block as
+zero area would leave 6,042 frontend/glue LUTs before MMIO. A RAM-oriented repair
+alone is not yet demonstrated sufficient.
+
+Native packed hierarchical utilization supplies the table; raw primitive LUT
+counts are different and are not used as packed area. Synthesis completed with
+zero errors/critical warnings. The runner then failed a mistaken expected media
+instance path and returned **1**, without a complete marker. Its raw partition
+output was therefore not used; the packed table reconciles the actual media,
+execution, AXI and program-mux hierarchy. Tooling paths were corrected afterward,
+without modifying/resynthesizing production RTL or relabeling this run successful.
+The archive preserves original Tcl, generated profile, frozen Python tooling,
+provenance, native reports, the array-mapping/synthesis outcome and checksums.
+Preparation failures in local `vivado-pipeline-9b8cd12c8-v1/v2/v3` retain native
+package-order, unresolved `BUFFERS`, and guarded SP-macro width failures; none
+produced usable synthesized area. Version 4 produced the area above.
+
+Synthesis-only timing estimates are WNS **−4.584 ns**, TNS −5,906.748 ns with
+6,166 / 100,611 failing setup endpoints, and WHS +0.183 ns. No routing was
+attempted and no routed slack, cycle-envelope, board or final-delivery claim
+follows. The latest 248-test result remains functional evidence for unchanged
+production RTL, not fit proof; no fresh full Linux/Wasm or physical test ran.
+
+`stage4-resource-stop-precommit.{log,status}` passes **three offline Python
+tooling tests**, Python compilation, register/top/AXI generator checks, all ten
+archive checksums, documentation links and whitespace checks. It verifies that
+current production RTL matches every measured RTL hash, the corrected tooling
+still emits the byte-identical measured profile, the original consumer-only Tcl
+is unchanged, and packed frontend accounting reconciles with native hierarchy.
+These are record/tooling checks, not additional Rust functional or fit tests.
+
+**Implementation is stopped pending user direction**, as required for an actual
+ceiling breach. A possible next step is a RAM-oriented observations and
+frontend-area redesign under the unchanged limits, followed by fresh functional
+and resource gates. No profile reduction, raised ceiling, CPU fallback, ABI-16
+selection, board access, push/PR or delivery is implied. The deployed interface
+remains ABI 15 and Stages 4–7 remain incomplete.

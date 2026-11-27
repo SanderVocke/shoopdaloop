@@ -1,0 +1,126 @@
+{
+  "outcome": "RESOURCE_CEILING_BREACH_IMPLEMENTATION_HALTED",
+  "source_base": "9b8cd12c85283110d51af9d5376a530c1e4c85c7",
+  "working_tree_snapshot": true,
+  "scope": "Q32 semantic/media/recovery component with current production RTL; no MMIO, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately",
+  "synthesis_completed": true,
+  "runner_status": 1,
+  "runner_postprocessing_failure": "incorrect expected instance path dut/execution/core/store; actual media instance is core/media",
+  "area_source": "Vivado hierarchical packed utilization, not raw primitive LUT counts",
+  "component": {
+    "lut": 85056,
+    "logic_lut": 84980,
+    "lutram": 76,
+    "srl": 0,
+    "ff": 37785,
+    "ramb36": 59,
+    "ramb18": 7,
+    "dsp": 4
+  },
+  "excluded_existing_execution_backend": {
+    "audio_execution": {
+      "lut": 10626,
+      "logic_lut": 10626,
+      "lutram": 0,
+      "srl": 0,
+      "ff": 5945,
+      "ramb36": 33,
+      "ramb18": 2,
+      "dsp": 4
+    },
+    "media_store": {
+      "lut": 11388,
+      "logic_lut": 11384,
+      "lutram": 4,
+      "srl": 0,
+      "ff": 8024,
+      "ramb36": 8,
+      "ramb18": 4,
+      "dsp": 0
+    },
+    "axi_backend": {
+      "lut": 1534,
+      "logic_lut": 1534,
+      "lutram": 0,
+      "srl": 0,
+      "ff": 919,
+      "ramb36": 0,
+      "ramb18": 0,
+      "dsp": 0
+    },
+    "program_backend": {
+      "lut": 94,
+      "logic_lut": 94,
+      "lutram": 0,
+      "srl": 0,
+      "ff": 3,
+      "ramb36": 0,
+      "ramb18": 0,
+      "dsp": 0
+    }
+  },
+  "excluded_paths": {
+    "audio_execution": "semantic_profile/dut/execution/core/pipeline/execution",
+    "media_store": "semantic_profile/dut/execution/core/media",
+    "axi_backend": "semantic_profile/dut/execution/memory_endpoint",
+    "program_backend": "semantic_profile/dut/execution/ddr_program.program_bus"
+  },
+  "frontend_and_glue_before_mmio": {
+    "lut": 61414,
+    "logic_lut": 61342,
+    "lutram": 72,
+    "srl": 0,
+    "ff": 22894,
+    "ramb36": 18,
+    "ramb18": 1,
+    "dsp": 0
+  },
+  "observations": {
+    "lut": 55372,
+    "logic_lut": 55372,
+    "lutram": 0,
+    "srl": 0,
+    "ff": 17127,
+    "ramb36": 0,
+    "ramb18": 0,
+    "dsp": 0
+  },
+  "kernel": {
+    "lut": 1824,
+    "logic_lut": 1824,
+    "lutram": 0,
+    "srl": 0,
+    "ff": 1940,
+    "ramb36": 0,
+    "ramb18": 0,
+    "dsp": 0
+  },
+  "ceilings": {
+    "kernel_lut": 2500,
+    "kernel_ff": 2500,
+    "frontend_lut": 6000,
+    "frontend_ff": 7000,
+    "whole_lut": 32000,
+    "whole_ff": 24000,
+    "whole_ramb36_equivalent": 100,
+    "whole_dsp": 4
+  },
+  "ramb36_equivalent": 62.5,
+  "synthesis_timing_only": {
+    "wns_ns": -4.584,
+    "tns_ns": -5906.748,
+    "setup_failing_endpoints": 6166,
+    "setup_total_endpoints": 100611,
+    "whs_ns": 0.183
+  },
+  "route_performed": false,
+  "protected_board_included": false,
+  "mmio_included": false,
+  "deployed_abi": 15,
+  "preparation_failures": {
+    "v1": "unrelated native-MMIO register package order; no synthesized area",
+    "v2": "unresolved BUFFERS in generated probe; no synthesized area",
+    "v3": "guard rejected unresolved SP width macros before launching Vivado"
+  },
+  "decision": "Stop under approved gate and ask user direction; no limit/profile/fallback changes. No production RTL changed in this measurement milestone."
+}

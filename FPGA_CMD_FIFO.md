@@ -3,7 +3,9 @@
 ## Status and execution contract
 
 **Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–3 are
-complete, including the reduced-profile/ABI contract freeze. Stage 4 is in progress.
+complete, including the reduced-profile/ABI contract freeze. **Stage 4 is paused
+at an actual resource-ceiling breach**, pending user direction; Stages 5–7 remain.
+The measured component and stop decision are recorded in the Stage 4 resource gate below.
 See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
 Branch: `investigate/fpga-command-fifo`, production base `ff6c09551e9dee2cd3a12d37ccad19fa844b09aa`.
@@ -869,6 +871,42 @@ final-delivery qualification follows from the selected tests.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
+
+**Resource gate — implementation paused after an actual breach:** the broader
+fixed-Q32 semantic/media/recovery component was synthesized with Vivado 2021.1,
+`xc7z020clg400-2`, 100 MHz, 128 loops, 512 state rows/buffers/views, DDR program
+storage and the board's 128 MiB PL arena. The
+[resource evidence](docs/fpga/command-fifo-implementation/reports/pipeline-synthesis-9b8cd12c8/results.json)
+records packed hierarchical area, not raw LUT primitive counts:
+
+| Measured scope | LUT | FF | Relevant approved ceiling |
+| --- | ---: | ---: | --- |
+| Kernel | 1,824 | 1,940 | 2,500 / 2,500 |
+| New frontend/glue, excluding SP/JP, media store and existing AXI/program backend | 61,414 | 22,894 | 6,000 / 7,000 |
+| Entire measured component, **before MMIO/audio adapter/PS/DDR/thermal board integration** | 85,056 | 37,785 | Whole design: 32,000 / 24,000 |
+
+The component uses 59 RAMB36 + 7 RAMB18 = **62.5 RAMB36-equivalents** and the
+existing four DSPs. Local observations dominate at **55,372 LUT / 17,127 FF**, with
+no RAM inferred; Vivado explicitly dissolved its four arrays into registers.
+Even excluding that entire block leaves 6,042 frontend/glue LUTs before MMIO, so
+an observations-only repair is not yet a fit proof. The kernel is not the area
+failure. Synthesis timing is only an estimate: WNS −4.584 ns / WHS +0.183 ns;
+no placement/routing or protected-board qualification was attempted.
+
+Synthesis finished with zero errors/critical warnings. The runner subsequently
+failed an incorrect hierarchy-accounting path check and returned **1**, with no
+complete marker. That failure is preserved, not relabeled a passing run; packed
+area above is reconciled from the native hierarchy report. Earlier source-order,
+probe-width and macro-guard preparation failures are also retained. Measurement
+tooling paths were corrected after the run, without changing or resynthesizing
+production RTL. The previous 248-test milestone remains historical/current-RTL
+functional evidence, not evidence that this implementation fits.
+
+The approved breach rule has been triggered: **stop implementation and return to
+the user**. User direction is required before a RAM-oriented observations and
+frontend-area redesign under the unchanged ceilings. No ceiling increase, profile
+reduction, CPU fallback, ABI-16 deployment, physical work or delivery is authorized
+by this failed resource gate. Stages 4–7 remain incomplete.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 
