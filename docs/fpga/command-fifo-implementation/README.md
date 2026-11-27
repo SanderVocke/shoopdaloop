@@ -1133,8 +1133,9 @@ the new incarnation. The legacy host/MMIO component still selects ABI 15.
 
 Recovery state 3 is **hardware reset complete**, not application/backend Ready.
 Stage 5 must still require fresh hardware startup, lease/session and first frame,
-and preserve lost-ACK status queries rather than replay. The wrapper does not yet
-provide the always-on first-fault record or deploy the ABI-16 MMIO/ARM adapter.
+and preserve lost-ACK status queries rather than replay. At `82b78edbc`, the wrapper
+still lacked the always-on first-fault record and ABI-16 MMIO/ARM adapter. The next
+milestone adds the record, not deployment.
 
 `axi_drain.rs` adds four directed tests. Across both 32- and 64-bit buses they check
 608 write prefix/AW-W order cases and 272 read-prefix cases, zero consumer readiness,
@@ -1169,8 +1170,70 @@ for actual B readiness after all payload beats, not a temporary WVALID gap.
 
 Normal exact samples and command/capture cycles remain unchanged, including the
 2,950-cycle actual 32-target command peak and 4,619-cycle 128-row producer peak.
-Stage 4 remains open for retained first-fault wiring and broader hostile lifecycle
-and internal SP/JP error parity, including the two production-base differences.
-Stages 5–7, whole-design resource/protected-route and all-admitted quantum gates,
-full Linux/Wasm, physical and delivery qualification remain. No such pass follows
-from these selected tests or the earlier partial route; deployed ABI stays **15**.
+At this AXI-drain checkpoint, retained first-fault wiring and broader hostile
+lifecycle/internal SP/JP error parity remained open. The deployed ABI stayed **15**;
+no whole-design, platform or delivery pass followed from those selected tests.
+
+## Retained first-fault diagnostics outside runtime reset
+
+`host_fault_record.sv` is the small shared recorder used by the existing mailbox
+and new semantic recovery wrapper. It atomically stores the complete 64-bit group
+sequence, revision/F and legacy cause/counter/detail fields. Same-epoch ABORT and
+later faults cannot overwrite the first record. Epoch zero/older events cannot
+replace a newer record; epoch advance without a fault does nothing. Only global
+reset clears it, not child runtime reset. The legacy mailbox zero-extends its
+32-bit tag, preserving ABI-15 register meanings and read-race checks.
+
+The consumer reports a qualified first-fault event rather than requiring a reader
+to infer its owner from current selection. A delayed fence error or blocked
+selected fence-result writer names the pending group's original frame/sequence,
+even while a later F32 command finishes. Stale epoch/sequence callbacks do not
+fault or relabel it. A header-refused group has no decoded opcode; it cannot copy
+one left in the previous command packet. No new controller, transaction tracker,
+per-loop execution copy, restoration API or ARM-ready signal was introduced.
+
+Semantic audio latches F at the actual opportunity handshake and counts active
+local clocks with u32 saturation. With no group, a fault uses active audio F, not
+SP's next-frame counter; an idle fault uses the next opportunity. Counters are
+context, not a successful-render latency bound. A fence-owned event has zero
+command counter rather than borrowing a competing group's duration. The real
+media wrapper adds its memory cause. The always-on parent captures actual faults
+or accepted recovery (`ABORT|RECOVERY`), suppressing reset/quiesce-generated aborts
+that would otherwise mislabel the new epoch. The existing first cause wins.
+
+`first_fault.rs` checks every retained field at full 32/64-bit width, including
+nonzero sequence high bits, same/older-epoch immutability, zero epochs, non-event
+epoch changes and whole-device reset. `semantic_groups.rs` extends the existing
+fault/finalizer race with owner/frame/opcode checks, stale-callback rejection, a
+pipeline fault during a selected result write and previous-opcode exclusion on
+header refusal. Both WaitingFence retention and explicit failed-fence retention
+remain unreleasable, with no successful result after a fault.
+
+`first_fault_keeps_audio_owned_frame_group_context_and_original_cause_through_reset`
+uses the actual semantic/media/shared-AXI recovery component. Command and settled
+capture faults record epoch-1 F0/cause 64 even after SP reaches 32; recovery, fresh
+initial capture, stale submissions and a fresh quantum do not erase/relabel that
+record or require a reader. A genuine epoch-2 idle fault records F32 and replaces
+it. Existing real held-AW/W/DDR-fetch and recovery failure fixtures also assert
+that drain/reset, unsolicited reset responses and late completions preserve the
+original record rather than manufacturing an epoch-2 cause.
+
+Final `stage4-first-fault-milestone.{log,status}` passes **248 selected Rust tests =
+198 affected-package + 50 directed**, warning-denying workspace build, formatting,
+test-policy/coverage, generators and Python compilation. Narrow logs are
+`stage4-first-fault-{tests,identity,header-context,finalizer-context}`. Earlier
+passing milestones before header/finalizer attribution remain separately named.
+`-milestone-header-result-order` retains the fixture's non-head result-read error;
+`-finalizer-context-bank-state` retains its incorrect assumption that a pipeline
+fault must convert an old WaitingFence bank into an explicit failed-fence state.
+Corrected checks retain FIFO release, terminal ownership and no-success assertions.
+The finalizer narrow run uses both `sim,rt-interface`; an earlier `sim`-only filter
+ran zero cases and is not independent narrow evidence.
+
+The [ABI-16 contract](../../../fpga/host_bridge/semantic_fifo.md) reserves the full
+sequence-high diagnostic register; the schema/MMIO/ARM implementation still selects
+ABI **15**. This milestone is not public deployment, a whole-design resource/route
+or all-admitted quantum proof, fresh full Linux/Wasm, physical or delivery
+qualification. Broader lifecycle, the two production-base reference differences
+and Stages 5–7 remain. Normal exact samples, 2,950-cycle actual 32-target command
+peak, 4,619-cycle capture and 4,622-cycle initial startup remain unchanged.

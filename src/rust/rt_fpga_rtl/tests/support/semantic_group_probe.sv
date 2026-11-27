@@ -37,6 +37,8 @@ module semantic_group_probe #(
     output wire faulted, command_phase,
     output wire [63:0] cutoff_sequence, groups_attempted,
     output wire [31:0] peak_command_cycles, current_command_cycles,
+    output wire fault_event, output wire [7:0] fault_reason,
+    output wire [63:0] fault_sequence, fault_frame, output wire [31:0] fault_opcode,
     input wire allow_memory, inject_read_error, inject_write_error,
     input wire cfg_valid, cfg_write, cfg_state,
     input wire [15:0] cfg_address, input wire [128:0] cfg_write_data,

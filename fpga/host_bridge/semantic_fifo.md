@@ -284,6 +284,7 @@ contract; Stage 5 removes legacy live-control/batch/CPU-capture operations.
 | 0x158, 0x15c | `GROUP_BANKS=4`, `COMMANDS_PER_GROUP=32` |
 | 0x160, 0x164 | `SNAPSHOT_LOOP_LIMIT=128`, `OBSERVATION_ROW_WORDS=19` |
 | 0x168, 0x16c, 0x170 | Command/snapshot/total cycle ceilings: 4096/8192/60000 |
+| 0x174 | `FAULT_SEQUENCE_HIGH`; `FAULT_TAG` at 0x12c is the low word |
 | 0x178–0x180 | Next publication sequence low/high; input free-bank mask |
 | 0x200, 0x204 | Selected command bank; its state |
 | 0x208, 0x20c | Begin/restart unpublished fill (write expected epoch); sequential command data |
@@ -317,6 +318,38 @@ their copied value without holding RAM or execution. Epoch-qualified ACKs are
 idempotent. ACKs for a non-head reliable result refuse without freeing it. Read live u64
 counters with high/low/high consistency plus epoch bracketing; immutable packet
 headers need no retry until the owner releases their bank.
+
+## Retained first-fault diagnostics
+
+The always-on recorder retains the first event per nonzero incarnation across
+runtime reset. Same/older-epoch events cannot replace it; advancing epoch alone
+is not an event. A genuine newer-epoch fault may replace it. Global reset clears
+the record. Read its epoch before/after the fields to reject replacement races.
+Semantic sequence is the full u64 (`FAULT_TAG` low plus `FAULT_SEQUENCE_HIGH`),
+not a truncated correlation ID. The ABI-15 mailbox retains its existing u32 tag.
+This is a planned ABI-16 MMIO extension; deployed registers/schema remain ABI 15.
+
+Operation is the current decoded semantic kind, 5 for qualified pending-fence
+context, or `0xffffffff` when no command is decoded. A header refusal cannot
+inherit a previous command's opcode. A delayed fence error or blocked selected
+fence-result writer keeps its original group/attempt F rather than borrowing a
+competing group's identity. Wrong epoch/sequence callbacks cannot create a fault.
+Revision is active execution revision at capture. Without a group, F is the
+active audio opportunity's latched F, or the next opportunity when idle, never
+SP's advanced next-frame counter while the current opportunity still runs.
+
+Existing cause bits remain: memory 1, audio 2, control timeout 8, ABORT 16,
+pipeline 64, recovery 128. These are flags, not an exclusive enumeration.
+Optional trace overflow does not set an audio fault. Accepted recovery captures
+`ABORT|RECOVERY` only if no earlier same-epoch event exists. Quiesce/reset-induced
+abort events cannot overwrite/relabel the old record as a new-incarnation fault.
+Cycle count is saturating active-opportunity clocks (zero when idle); control
+cycles are the active group count, zero for fence-owned context. Neither is a
+successful-service bound. Detail packs error code [7:0], error stage [9:8],
+command phase [10], capture [11], observation/snapshot/revision mismatch [14:12],
+and fault reasons [25:18]; other bits are zero. Reasons low-to-high are pipeline,
+bank protocol, packet response, local RAM response, kernel uncertain write,
+command watchdog, qualified fence context, and blocked result write.
 
 ## Arbitration, bounds, reset and verification
 
@@ -366,9 +399,11 @@ AXI quiescence/zero credits/two quiet clocks, then advances epoch and resets cli
 A held old-epoch request cannot replay; B/R during reset or late completion after
 timeout cannot yield Ready. Hardware reset-complete is not application/backend
 Ready. Raw RAM survives only as nonmembers under the fresh initial revision 0.
-Always-on first-fault and ABI-16 MMIO/ARM selection remain integration work; the
-legacy deployed interface is still 15. This implemented subset does not replace
-the remaining lifecycle, service-envelope or resource/timing acceptance tests.
+The shared first-fault recorder now also stays outside runtime reset and retains
+qualified semantic identity through recovery. ABI-16 MMIO/ARM selection remains
+integration work; the legacy deployed interface is still 15. This implemented
+subset does not replace remaining lifecycle, service-envelope or resource/timing
+acceptance tests.
 
 Required integrated tests include every packet-word stall, unread/full streams,
 held AXI channels and inactive uploads, FIFO cutoff/deadline order, 16/32-loop

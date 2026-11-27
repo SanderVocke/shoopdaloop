@@ -255,6 +255,15 @@ module fifo_media_audio_pipeline #(
     output wire [63:0] groups_attempted,
     output wire [31:0] peak_command_cycles,
     output wire [31:0] current_command_cycles,
+    output wire diagnostic_valid,
+    output wire [31:0] diagnostic_cause,
+    output wire [31:0] diagnostic_opcode,
+    output wire [31:0] diagnostic_cycles,
+    output wire [31:0] diagnostic_control_cycles,
+    output wire [31:0] diagnostic_detail,
+    output wire [63:0] diagnostic_sequence,
+    output wire [63:0] diagnostic_frame,
+    output wire [63:0] diagnostic_revision,
     input wire store_response_ready,
     output wire [31:0] store_result_count
 );
@@ -275,6 +284,8 @@ module fifo_media_audio_pipeline #(
     wire [63:0] hint_view, hint_position, hint_length;
     wire [31:0] hint_count;
     wire [15:0] capture_credits;
+    wire [31:0] pipeline_diagnostic_cause;
+    assign diagnostic_cause = pipeline_diagnostic_cause | (memory_fault ? 32'd1 : 0);
     wire media_control_fault;
     wire handoff_request;
     wire handoff_valid;
@@ -505,7 +516,16 @@ module fifo_media_audio_pipeline #(
         .current_command_cycles(current_command_cycles),
         .run_valid(run_valid),
         .run_ready(pipeline_ready),
-        .busy(pipeline_busy)
+        .busy(pipeline_busy),
+        .diagnostic_valid(diagnostic_valid),
+        .diagnostic_cause(pipeline_diagnostic_cause),
+        .diagnostic_opcode(diagnostic_opcode),
+        .diagnostic_cycles(diagnostic_cycles),
+        .diagnostic_control_cycles(diagnostic_control_cycles),
+        .diagnostic_detail(diagnostic_detail),
+        .diagnostic_sequence(diagnostic_sequence),
+        .diagnostic_frame(diagnostic_frame),
+        .diagnostic_revision(diagnostic_revision)
     );
     fifo_media_arbiter #(
         .MAX_WORDS(CHUNK_FRAMES)

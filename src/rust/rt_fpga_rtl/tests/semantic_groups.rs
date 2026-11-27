@@ -695,7 +695,12 @@ fn every_partial_packet_word_and_unread_result_remain_independent_of_boundaries(
 
 #[shoop_test]
 fn qualified_faults_preempt_finalizer_and_main_writes_but_stale_faults_do_not() {
-    for (epoch, sequence, fails) in [(2, 1, false), (1, 99, false), (1, 1, true)] {
+    for (epoch, sequence, fails, pipeline_fault) in [
+        (2, 1, false, false),
+        (1, 99, false, false),
+        (1, 1, true, false),
+        (1, 1, true, true),
+    ] {
         run(|sim| {
             store(sim, SLOT, row(0, 0));
             publish(sim, 0, 1, 0, None, &[switch(1, 0, false)]);
@@ -730,11 +735,26 @@ fn qualified_faults_preempt_finalizer_and_main_writes_but_stale_faults_do_not() 
             sim.model.set_all(&[
                 ("handoff_epoch", epoch),
                 ("handoff_sequence", sequence),
-                ("handoff_error", 1),
+                ("handoff_error", u64::from(!pipeline_fault)),
+                ("pipeline_fault", u64::from(pipeline_fault)),
             ]);
+            sim.model.eval();
+            assert_eq!(sim.model.get("fault_event"), u64::from(fails));
+            if fails {
+                assert_eq!(sim.model.get("fault_sequence"), 1);
+                assert_eq!(
+                    sim.model.get("fault_frame"),
+                    0,
+                    "qualified fence owns F0, not competing F32"
+                );
+                assert_eq!(sim.model.get("fault_opcode"), 5);
+            }
             sim.idle(1);
-            sim.model
-                .set_all(&[("handoff_valid", 0), ("handoff_error", 0)]);
+            sim.model.set_all(&[
+                ("handoff_valid", 0),
+                ("handoff_error", 0),
+                ("pipeline_fault", 0),
+            ]);
             sim.idle(100);
             assert_eq!(sim.model.get("faulted"), u64::from(fails));
             assert_eq!(sim.model.get("memory_writes"), writes);
@@ -744,7 +764,10 @@ fn qualified_faults_preempt_finalizer_and_main_writes_but_stale_faults_do_not() 
                 for bank in [0, 1] {
                     sim.model.set("inspect_bank", bank);
                     sim.idle(1);
-                    assert_eq!(sim.model.get("bank_state"), 6);
+                    assert_eq!(
+                        sim.model.get("bank_state"),
+                        if pipeline_fault && bank == 0 { 4 } else { 6 }
+                    );
                     assert_eq!(host(sim, 3, bank, 0, bank + 1), 3);
                 }
             } else {
@@ -755,6 +778,42 @@ fn qualified_faults_preempt_finalizer_and_main_writes_but_stale_faults_do_not() 
             }
         });
     }
+    run(|sim| {
+        store(sim, SLOT, row(0, 0));
+        publish(
+            sim,
+            0,
+            1,
+            0,
+            None,
+            &[encode(Command::LoopRepeatSync(id(), true), false)],
+        );
+        quantum(sim, 0);
+        assert_eq!(host(sim, 3, 0, 0, 1), 0);
+        publish(
+            sim,
+            1,
+            2,
+            1,
+            None,
+            &[encode(Command::LoopRepeatSync(id(), false), false)],
+        );
+        start(sim, 32);
+        for _ in 0..200 {
+            if sim.model.get("fault_sequence") == 2 {
+                assert_eq!(
+                    sim.model.get("fault_opcode"),
+                    u64::from(u32::MAX),
+                    "header refusal cannot inherit the previous packet's opcode"
+                );
+            }
+            if sim.model.get("renders") == 2 {
+                break;
+            }
+            sim.idle(1);
+        }
+        assert_eq!(result(sim, 1, 1)[12], 3);
+    });
 }
 
 #[shoop_test]

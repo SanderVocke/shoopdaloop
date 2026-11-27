@@ -1782,6 +1782,22 @@ fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
     );
 }
 
+fn first_fault(s: &Sim<'_>) -> [u64; 10] {
+    [
+        "epoch",
+        "cause",
+        "tag",
+        "op",
+        "cycles",
+        "control_cycles",
+        "detail",
+        "sequence",
+        "revision",
+        "frame",
+    ]
+    .map(|n| s.model.get(&format!("first_fault_{n}")))
+}
+
 fn recovery_design() -> Design {
     let root = rt_fpga_testbench::root();
     let geometry = Geometry::new([8, 64, 32], 2);
@@ -1800,6 +1816,7 @@ fn recovery_design() -> Design {
         "fifo_media_arbiter",
         "fifo_media_audio_pipeline",
         "host_recovery",
+        "host_fault_record",
     ] {
         design
             .sources
@@ -1945,6 +1962,11 @@ fn recovery_drains_real_aw_w_and_ddr_fetches_before_flushing_old_runtime_identit
         assert_eq!(s.model.get("run_ready"), 0);
         assert_eq!(s.model.get("sync_frame"), before);
         assert_eq!(s.model.get("result_ready_mask"), 0);
+        let retained = first_fault(&s);
+        assert_eq!(retained[0], 1);
+        assert_eq!(retained[1], 0x90);
+        assert_eq!(retained[8], u64::from(point == "ar"));
+        assert_eq!(retained[9], 0);
         assert_eq!(
             s.model.get(signal),
             1,
@@ -1974,6 +1996,11 @@ fn recovery_drains_real_aw_w_and_ddr_fetches_before_flushing_old_runtime_identit
         assert_eq!(s.model.get("result_ready_mask"), 0);
         assert_eq!(s.model.get("snapshot_ready_mask"), 1);
         assert_eq!(s.model.get("snapshot_last_sequence"), 1);
+        assert_eq!(
+            first_fault(&s),
+            retained,
+            "runtime reset cannot erase or relabel first fault"
+        );
         let mut packet = vec![];
         for word in 0..54 {
             s.model.set_all(&[
@@ -2063,6 +2090,7 @@ fn recovery_timeout_protocol_fault_and_unsolicited_reset_responses_never_report_
             s.idle(1);
             s.model.set("m_axi_bvalid", 0);
             assert_eq!(s.model.get("axi_drain_fault"), 1);
+            s.idle(2);
         }
         if point == "timeout_w" {
             s.model.set_all(&[
@@ -2109,6 +2137,12 @@ fn recovery_timeout_protocol_fault_and_unsolicited_reset_responses_never_report_
         let epoch = if point.starts_with("reset_") { 2 } else { 1 };
         assert_eq!(s.model.get("runtime_epoch"), epoch);
         assert_eq!(s.model.get("runtime_reset"), 0);
+        let retained = first_fault(&s);
+        assert_eq!(
+            retained[0], 1,
+            "even failed reset cannot relabel old cause as epoch 2"
+        );
+        assert_eq!(retained[1], if point == "idle_b" { 64 } else { 0x90 });
         if point == "timeout_w" {
             assert_eq!(s.model.get("m_axi_wvalid"), 1);
             assert_eq!(s.model.get("axi_quiescent"), 0);
@@ -2139,8 +2173,121 @@ fn recovery_timeout_protocol_fault_and_unsolicited_reset_responses_never_report_
         assert_eq!(s.model.get("run_ready"), 0);
         assert_eq!(s.model.get("sync_frame"), 0);
         assert_eq!(s.model.get("result_ready_mask"), 0);
+        assert_eq!(first_fault(&s), retained);
         println!(
             "SEMANTIC_RECOVERY_FAILED {point}: epoch {epoch} retained; no restart or fabricated ready"
+        );
+    }
+}
+
+#[shoop_test(no_wasm = "Native semantic first-fault identity and recovery simulator")]
+fn first_fault_keeps_audio_owned_frame_group_context_and_original_cause_through_reset() {
+    let root = rt_fpga_testbench::root();
+    let compiled = recovery_design()
+        .build(&root.join("work/marlin-suite/semantic-recovery"))
+        .unwrap();
+    for point in ["command", "settled"] {
+        let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        s.model.set_all(&[
+            ("reset", 1),
+            ("epoch", 1),
+            ("arena_base", 0x0100_0000),
+            ("run_quantum", 32),
+            ("run_chunk_frames", 32),
+            ("run_inputs", 1),
+            ("run_outputs", 1),
+            ("job_enable", 1),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        wait_initial(&mut s);
+        assert_eq!(first_fault(&s), [0; 10]);
+        if point == "command" {
+            let mut refused = [0; 12];
+            refused[0] = 6;
+            refused[4] = 5;
+            publish(&mut s, 0, 1, 0, &[refused]);
+        }
+        s.model.set("run_valid", 1);
+        s.idle(1);
+        s.model.set("run_valid", 0);
+        if point == "command" {
+            s.until(1000, "decoded stateless command before refusal", |m| {
+                m.get("diagnostic_opcode") == 6
+            });
+            assert_eq!(s.model.get("diagnostic_sequence"), 1);
+            assert_eq!(s.model.get("sync_frame"), 0);
+        } else {
+            s.until(1000, "settled F0 capture with advanced SP counter", |m| {
+                m.get("capture_valid") != 0 && m.get("sync_frame") == 32
+            });
+            assert_eq!(s.model.get("diagnostic_sequence"), 0);
+        }
+        s.model.set("pipeline_fault", 1);
+        s.model.eval();
+        assert_eq!(s.model.get("diagnostic_valid"), 1);
+        assert_eq!(s.model.get("diagnostic_frame"), 0);
+        s.idle(1);
+        s.model.set("pipeline_fault", 0);
+        s.idle(5);
+        let saved = first_fault(&s);
+        assert_eq!(saved[0], 1);
+        assert_eq!(saved[1], 64);
+        assert_eq!(saved[2], u64::from(point == "command"));
+        assert_eq!(
+            saved[3],
+            if point == "command" {
+                6
+            } else {
+                u64::from(u32::MAX)
+            }
+        );
+        assert!(saved[4] > 0);
+        assert_eq!(saved[7], u64::from(point == "command"));
+        assert_eq!(saved[9], 0, "SP next-frame 32 must not relabel fault F0");
+        assert_eq!(
+            saved[6] & 255,
+            0,
+            "record precedes subsequent abort error 8"
+        );
+        s.model
+            .set_all(&[("recovery_request", 1), ("recovery_epoch", 1)]);
+        s.until(10_000, "record survives safe runtime reset", |m| {
+            m.get("recovery_state") == 3
+        });
+        s.until(8192, "fresh startup without reading retained fault", |m| {
+            m.get("run_ready") != 0
+        });
+        assert_eq!(s.model.get("runtime_epoch"), 2);
+        assert_eq!(
+            first_fault(&s),
+            saved,
+            "ABORT and synthetic reset events cannot clobber original cause"
+        );
+        assert_eq!(host(&mut s, 0, 0, 0, 0), 2);
+        assert_eq!(
+            first_fault(&s),
+            saved,
+            "ordinary stale submission is not a device fault"
+        );
+        quantum(&mut s, 0, 0, &mut vec![]);
+        assert_eq!(first_fault(&s), saved);
+        s.model.set("pipeline_fault", 1);
+        s.idle(1);
+        s.model.set("pipeline_fault", 0);
+        s.idle(4);
+        let fresh = first_fault(&s);
+        assert_eq!(fresh[0], 2);
+        assert_eq!(fresh[1], 64);
+        assert_eq!(fresh[7], 0);
+        assert_eq!(
+            fresh[9], 32,
+            "idle fault uses current next opportunity, not old F0"
+        );
+        assert_eq!(fresh[4], 0);
+        assert_eq!(fresh[5], 0);
+        println!(
+            "SEMANTIC_FIRST_FAULT {point}: retained epoch-1 F0/cause64; genuine epoch-2 F32 replaces it"
         );
     }
 }

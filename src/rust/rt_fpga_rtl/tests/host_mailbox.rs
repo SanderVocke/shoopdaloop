@@ -127,7 +127,11 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     let rtl = root.join("fpga/host_bridge/rtl");
     let compiled = Design::new(
         "host_mailbox",
-        vec![rtl.join("host_registers.sv"), rtl.join("host_mailbox.sv")],
+        vec![
+            rtl.join("host_registers.sv"),
+            rtl.join("host_fault_record.sv"),
+            rtl.join("host_mailbox.sv"),
+        ],
     )
     .build(&root.join("work/host-mailbox"))
     .unwrap();

@@ -822,11 +822,50 @@ ownership targets contribute 12 tests and also pass independently in
 and `-races-write-gap` fixture failure are retained: a gap in WVALID is not WLAST/B
 retirement. Normal semantic samples/capture costs and command peak 2,950 remain.
 
-Stage 4 remains open for retained first-fault integration and broader lifecycle/
-internal SP/JP error-ordering parity, including the two baseline differences.
-ABI-16 integration and Stages 5–7 remain. Deployed ABI is still **15**; no fresh
-whole-design resource/protected-route, all-admitted quantum, full Linux/Wasm,
-physical, push/PR or delivery qualification is claimed.
+At `82b78edbc`, retained first-fault integration and broader lifecycle/error-ordering
+qualification remained open. The following milestone implements retained diagnostics.
+
+**Retained first-fault milestone:** `host_fault_record.sv` factors the existing
+mailbox recorder into a small shared leaf. It retains the complete 64-bit group
+sequence, revision, frame, cause and counters. A same-epoch fault or ABORT cannot
+clobber it; epoch zero/older epochs are ignored, and only a genuine higher-epoch
+capture replaces it. Legacy ABI-15 fields remain unchanged, with a zero-extended
+legacy tag. The semantic recovery wrapper keeps this leaf outside runtime reset.
+
+The consumer exposes its actual first fault and qualified owner: delayed fence
+failure or a blocked selected fence-result writer retains its original group/F,
+not a competing command's identity. Wrong epoch/sequence callbacks cannot create
+that event. Header refusals cannot inherit a previous packet's opcode. A small
+saturating opportunity counter/frame latch records audio-owned F during execution,
+not SP's already-advanced next counter; idle faults use the next opportunity F.
+Accepted recovery records ABORT/RECOVERY only if no earlier cause exists. Quiesce/
+reset-induced aborts cannot relabel the retained epoch-1 cause as epoch 2.
+
+The new leaf test checks every field at full width, same/older-epoch immutability,
+zero/non-event epochs and whole-device reset. Actual semantic/media/shared-AXI
+fixtures fault a decoded command and settled F0 after SP advances to 32, retain
+the original cause through recovery/fresh startup, keep rendering independent of
+record reads, and replace it only on a genuine epoch-2 F32 fault. Existing held
+AW/W/AR, failed recovery and late-completion tests now check retained records too.
+The finalizer race distinguishes retained WaitingFence ownership from an explicit
+failed-fence state; neither permits an ACK or a successful result after fault.
+
+`stage4-first-fault-milestone.{log,status}` passes **198 affected-package +
+50 directed = 248 selected Rust tests**, workspace warnings, formatting, policy/
+coverage, generators and Python compilation. Narrow evidence is
+`stage4-first-fault-{tests,identity,header-context,finalizer-context}`. The retained
+`-milestone-header-result-order` and `-finalizer-context-bank-state` failures were
+fixture assumptions: FIFO result access needs the prior head released, and a
+terminal pipeline fault retains the old WaitingFence bank without claiming its
+fence failed. The corrected checks preserve ownership/no-success assertions.
+
+Stage 4 remains open for broader hostile lifecycle and public MMIO integration;
+internal SP/JP error-ordering parity, including the two baseline differences, is
+still required in Stage 6. The ABI-16 contract reserves a read-only sequence-high
+word without truncating semantic diagnostics; schema/ARM mapping and Stages 5–7
+remain pending. Deployed ABI is still **15**. No fresh whole-design resource/
+protected-route, all-admitted quantum, full Linux/Wasm, physical, push/PR or
+final-delivery qualification follows from the selected tests.
 
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.

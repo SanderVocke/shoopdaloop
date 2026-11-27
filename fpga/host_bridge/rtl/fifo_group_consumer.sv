@@ -41,7 +41,9 @@ module fifo_group_consumer #(
     output reg [31:0] gain_update_bits,
     output reg faulted, output wire command_phase,
     output reg [63:0] cutoff_sequence, groups_attempted,
-    output reg [31:0] peak_command_cycles, output wire [31:0] current_command_cycles
+    output reg [31:0] peak_command_cycles, output wire [31:0] current_command_cycles,
+    output wire fault_event, output wire [7:0] fault_reason,
+    output wire [63:0] fault_sequence, fault_frame, output wire [31:0] fault_opcode
 );
     localparam [7:0] APPLIED=1, DEADLINE=2, STALE=3, TARGET=4, INVALID=5,
         UNSUPPORTED=6, CANNOT=7, COMPOSITE=23;
@@ -64,7 +66,7 @@ module fifo_group_consumer #(
     reg pending, pending_finished, fence_seen, fence_failed;
     reg [1:0] pending_bank;
     reg [31:0] pending_incarnation;
-    reg [63:0] pending_group;
+    reg [63:0] pending_group, pending_frame;
     wire [31:0] kind=packet[31:0];
     wire [31:0] refusal=packet[159:128];
     wire [159:0] args=packet[351:192];
@@ -128,6 +130,16 @@ module fifo_group_consumer #(
     assign render_valid=phase==RENDER && !faulted && !pipeline_fault && !handoff_failure;
     assign command_phase=phase!=IDLE && phase!=RENDER && phase!=HALTED;
     assign current_command_cycles=command_cycles;
+    wire fault_fence_context=handoff_failure || (result_write_valid && !result_write_ready && finalize_selected);
+    assign fault_reason={result_write_valid && !result_write_ready, fault_fence_context,
+        group_active && command_cycles>=4095, kernel_write_fault,
+        memory_response_valid && memory_response_error, command_response_valid && command_response_error,
+        bank_fault, pipeline_fault};
+    assign fault_event=|fault_reason && !faulted && !reset;
+    assign fault_sequence=fault_fence_context ? pending_group : group_active ? attempt_sequence : 64'd0;
+    assign fault_frame=fault_fence_context ? pending_frame : attempt_frame;
+    assign fault_opcode=fault_fence_context ? 32'd5 : group_active && header_code==APPLIED && (phase==COMMAND_CHECK || phase==KERNEL_START
+        || phase==KERNEL_WAIT || phase==SELECT || phase==WRITE_CODE) ? kind : 32'hffffffff;
     assign memory_valid=kernel_memory_valid && !faulted && !pipeline_fault && !handoff_failure;
     assign handoff_pending=pending;
     assign pending_epoch=pending_incarnation;
@@ -240,7 +252,7 @@ module fifo_group_consumer #(
             phase<=IDLE; faulted<=0; active_revision<=0; active_region<=0; active_composites<=0;
             active_instructions<=0; active_sync_count<=0; active_states<=0; active_buffers<=0;
             pending<=0; pending_finished<=0; fence_seen<=0; fence_failed<=0;
-            pending_bank<=0; pending_incarnation<=0; pending_group<=0;
+            pending_bank<=0; pending_incarnation<=0; pending_group<=0; pending_frame<=0;
             group_active<=0; command_cycles<=0; peak_command_cycles<=0; groups_attempted<=0; cutoff_sequence<=0;
             gain_update_valid<=0; gain_update_slot<=0; gain_update_bits<=0;
             attempt_bank<=0; attempt_epoch<=0; attempt_sequence<=0; attempt_frame<=0; initial_revision<=0;
@@ -256,11 +268,7 @@ module fifo_group_consumer #(
             if (final_written || (finalize && fence_failed)) begin
                 pending<=0; pending_finished<=0; fence_seen<=0;
             end
-            if (!faulted && (pipeline_fault || bank_fault || (command_response_valid && command_response_error)
-                || (memory_response_valid && memory_response_error) || kernel_write_fault
-                || (group_active && command_cycles>=4095)
-                || handoff_failure
-                || (result_write_valid && !result_write_ready))) begin
+            if (fault_event) begin
                 faulted<=1; phase<=FAILED;
             end else case (phase)
                 IDLE: if (boundary_valid && boundary_ready) begin
@@ -329,7 +337,7 @@ module fifo_group_consumer #(
                         active_instructions<=select_instructions; active_sync_count<=select_sync_count;
                         active_states<=select_states; active_buffers<=select_buffers;
                         pending<=1; pending_finished<=0; pending_bank<=attempt_bank;
-                        pending_incarnation<=attempt_epoch; pending_group<=attempt_sequence;
+                        pending_incarnation<=attempt_epoch; pending_group<=attempt_sequence; pending_frame<=attempt_frame;
                         fence_seen<=handoff_valid && handoff_epoch==attempt_epoch && handoff_sequence==attempt_sequence;
                         fence_failed<=handoff_error;
                     end

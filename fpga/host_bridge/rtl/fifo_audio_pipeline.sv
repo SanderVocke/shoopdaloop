@@ -205,7 +205,16 @@ module fifo_audio_pipeline #(
     output wire [31:0] current_command_cycles,
     input wire run_valid,
     output wire run_ready,
-    output wire busy
+    output wire busy,
+    output wire diagnostic_valid,
+    output wire [31:0] diagnostic_cause,
+    output wire [31:0] diagnostic_opcode,
+    output wire [31:0] diagnostic_cycles,
+    output wire [31:0] diagnostic_control_cycles,
+    output wire [31:0] diagnostic_detail,
+    output wire [63:0] diagnostic_sequence,
+    output wire [63:0] diagnostic_frame,
+    output wire [63:0] diagnostic_revision
 );
     initial if (LOOP_DEPTH < 1 || LOOP_DEPTH > 128) $fatal(1,"semantic loop profile exceeds 128 slots");
     wire render_valid;
@@ -231,6 +240,11 @@ module fifo_audio_pipeline #(
     wire memory_response_valid;
     wire memory_response_error;
     wire [128:0] memory_read_data;
+    wire fault_event;
+    wire [7:0] fault_reason;
+    wire [63:0] fault_sequence;
+    wire [63:0] fault_frame;
+    wire [31:0] fault_opcode;
     wire execution_abort;
     wire switch_response_valid;
     wire switch_response_ready;
@@ -275,6 +289,30 @@ module fifo_audio_pipeline #(
     wire execution_fault = pipeline_fault || observations_fault || snapshots_fault || error_code != 0 || execution_revision != active_revision;
     assign execution_media_fault = media_fault || observation_abort || snapshots_fault;
     assign execution_abort = pipeline_fault || faulted || observation_abort || snapshots_fault || error_code != 0;
+    reg opportunity_active;
+    reg [63:0] opportunity_frame;
+    reg [31:0] opportunity_cycles;
+    assign diagnostic_valid = fault_event;
+    assign diagnostic_cause = (fault_reason[5] ? 32'd8 : 0)
+        | ((fault_reason[3] || fault_reason[4]) ? 32'd1 : 0)
+        | (error_code!=0 ? 32'd2 : 0)
+        | (|{fault_reason[7:6],fault_reason[2:0]} ? 32'd64 : 0);
+    assign diagnostic_sequence = fault_sequence;
+    assign diagnostic_frame = fault_sequence!=0 ? fault_frame : opportunity_active ? opportunity_frame : sync_frame;
+    assign diagnostic_revision = active_revision;
+    assign diagnostic_opcode = fault_sequence!=0 ? fault_opcode : 32'hffffffff;
+    assign diagnostic_cycles = opportunity_active ? opportunity_cycles : 0;
+    assign diagnostic_control_cycles = fault_sequence!=0 && !fault_reason[6] ? current_command_cycles : 0;
+    assign diagnostic_detail = {6'b0,fault_reason,3'b0,execution_revision!=active_revision,
+        snapshots_fault,observations_fault,capture_valid,command_phase,error_stage,error_code};
+    always @(posedge clk) begin
+        if (reset) begin opportunity_active<=0; opportunity_frame<=0; opportunity_cycles<=0; end
+        else begin
+            if (done || fault_event || faulted) opportunity_active<=0;
+            if (opportunity_active && !(&opportunity_cycles)) opportunity_cycles<=opportunity_cycles+1'b1;
+            if (run_valid && run_ready) begin opportunity_active<=1; opportunity_frame<=sync_frame; opportunity_cycles<=0; end
+        end
+    end
     reg [31:0] snapshot_quantum, initial_epoch;
     reg [1:0] initial_phase;
     reg observation_response_snapshot;
@@ -408,7 +446,12 @@ module fifo_audio_pipeline #(
         .cutoff_sequence(cutoff_sequence),
         .groups_attempted(groups_attempted),
         .peak_command_cycles(peak_command_cycles),
-        .current_command_cycles(current_command_cycles)
+        .current_command_cycles(current_command_cycles),
+        .fault_event(fault_event),
+        .fault_reason(fault_reason),
+        .fault_sequence(fault_sequence),
+        .fault_frame(fault_frame),
+        .fault_opcode(fault_opcode)
     );
     fifo_observations #(.LOOPS(LOOP_DEPTH)) observations (
         .clk(clk),

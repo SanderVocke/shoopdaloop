@@ -100,6 +100,7 @@ pub fn build_pipeline(
     for source in [
         "host_registers.sv",
         "host_mailbox.sv",
+        "host_fault_record.sv",
         "host_dispatch.sv",
         "host_recovery.sv",
         "host_pipeline_axi.sv",

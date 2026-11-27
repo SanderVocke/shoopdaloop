@@ -17,7 +17,7 @@ set files [list [file join $host host_registers.sv]]
 foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
     lappend files {*}[lsort [glob [file join $root fpga $directory rtl *.sv]]]
 }
-foreach source {host_mailbox.sv host_dispatch.sv host_recovery.sv host_pipeline_axi.sv} {
+foreach source {host_fault_record.sv host_mailbox.sv host_dispatch.sv host_recovery.sv host_pipeline_axi.sv} {
     lappend files [file join $host $source]
 }
 set_property include_dirs [list [file join $root fpga state_processor rtl]] [current_fileset]

@@ -57,7 +57,8 @@ def generate():
         "boundary_valid": "run_valid && initial_done", "boundary_ready": "semantic_boundary_ready", "boundary_frame": "sync_frame",
         "pipeline_fault": "execution_fault", "handoff_valid": "handoff_valid && (handoff_error || handoff_request)",
     }
-    private_fifo = {"boundary_valid", "boundary_ready", "boundary_frame", "render_valid", "render_ready"}
+    private_fifo = {"boundary_valid", "boundary_ready", "boundary_frame", "render_valid", "render_ready",
+                    "fault_event", "fault_reason", "fault_sequence", "fault_frame", "fault_opcode"}
     private_fifo.update(n for _, n in fifo if n.startswith(("memory_", "select_")))
     fifo_public = {n for _, n in fifo if n not in private_fifo}
     private_audio = set(constants) | set(audio_links)
@@ -68,6 +69,9 @@ def generate():
     public.extend((p, snapshot_links[n]) for p, n in snapshots if n not in private_snapshots)
     public.extend((p, n) for p, n in fifo if n in fifo_public and n not in {n for _, n in public})
     public.extend((p, n) for p, n in ports if n in {"run_valid", "run_ready", "busy"})
+    public.extend(("output wire ", n) for n in ["diagnostic_valid"])
+    public.extend(("output wire [31:0] ", "diagnostic_" + n) for n in ["cause", "opcode", "cycles", "control_cycles", "detail"])
+    public.extend(("output wire [63:0] ", "diagnostic_" + n) for n in ["sequence", "frame", "revision"])
     params = re.sub(r"\s*parameter integer (?:LIVE_LOADING|PROGRAM_REGIONS|CAPTURE_SYNC) = [^,]+,", "", audio[2]).strip()
     defaults = {"PROGRAM_DEPTH": 1024, "STATE_DEPTH": 512, "JOB_DEPTH": 1024, "LOOP_DEPTH": 128,
                 "BUFFERS": 512, "INPUT_PORTS": 1, "CHUNK_FRAMES": 32}
@@ -89,7 +93,31 @@ def generate():
     text += "    wire execution_fault = pipeline_fault || observations_fault || snapshots_fault || error_code != 0 || execution_revision != active_revision;\n"
     text += "    assign execution_media_fault = media_fault || observation_abort || snapshots_fault;\n"
     text += "    assign execution_abort = pipeline_fault || faulted || observation_abort || snapshots_fault || error_code != 0;\n"
-    text += """    reg [31:0] snapshot_quantum, initial_epoch;
+    text += """    reg opportunity_active;
+    reg [63:0] opportunity_frame;
+    reg [31:0] opportunity_cycles;
+    assign diagnostic_valid = fault_event;
+    assign diagnostic_cause = (fault_reason[5] ? 32'd8 : 0)
+        | ((fault_reason[3] || fault_reason[4]) ? 32'd1 : 0)
+        | (error_code!=0 ? 32'd2 : 0)
+        | (|{fault_reason[7:6],fault_reason[2:0]} ? 32'd64 : 0);
+    assign diagnostic_sequence = fault_sequence;
+    assign diagnostic_frame = fault_sequence!=0 ? fault_frame : opportunity_active ? opportunity_frame : sync_frame;
+    assign diagnostic_revision = active_revision;
+    assign diagnostic_opcode = fault_sequence!=0 ? fault_opcode : 32'hffffffff;
+    assign diagnostic_cycles = opportunity_active ? opportunity_cycles : 0;
+    assign diagnostic_control_cycles = fault_sequence!=0 && !fault_reason[6] ? current_command_cycles : 0;
+    assign diagnostic_detail = {6'b0,fault_reason,3'b0,execution_revision!=active_revision,
+        snapshots_fault,observations_fault,capture_valid,command_phase,error_stage,error_code};
+    always @(posedge clk) begin
+        if (reset) begin opportunity_active<=0; opportunity_frame<=0; opportunity_cycles<=0; end
+        else begin
+            if (done || fault_event || faulted) opportunity_active<=0;
+            if (opportunity_active && !(&opportunity_cycles)) opportunity_cycles<=opportunity_cycles+1'b1;
+            if (run_valid && run_ready) begin opportunity_active<=1; opportunity_frame<=sync_frame; opportunity_cycles<=0; end
+        end
+    end
+    reg [31:0] snapshot_quantum, initial_epoch;
     reg [1:0] initial_phase;
     reg observation_response_snapshot;
     wire initial_capture = initial_phase==1 && initial_epoch==epoch && epoch!=0 && !reset;

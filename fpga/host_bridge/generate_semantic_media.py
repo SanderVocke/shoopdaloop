@@ -54,6 +54,8 @@ def generate():
     text += ",\n".join("    " + p.replace("output reg", "output wire") + n for p, n in public) + "\n);\n"
     common = legacy[legacy.index("    wire pipeline_busy"):legacy.index("    assign busy")].replace("    reg completion_pending;\n", "")
     text += common
+    text += "    wire [31:0] pipeline_diagnostic_cause;\n"
+    text += "    assign diagnostic_cause = pipeline_diagnostic_cause | (memory_fault ? 32'd1 : 0);\n"
     declared = {n for _, n in public} | set(re.findall(r"\b([a-z_]\w*)\s*[,;]", common))
     links = {"processing_due": "run_valid", "frontend_busy": "pipeline_busy", "faulted": "media_control_fault", "fence_request": "handoff_request",
              "fence_response_valid": "handoff_valid", "fence_response_error": "handoff_error", "fence_response_epoch": "handoff_epoch", "fence_response_sequence": "handoff_sequence",
@@ -76,7 +78,8 @@ def generate():
     pipe.update({"run_valid": "run_valid", "cfg_valid": "cfg_valid && !run_valid", "audio_cfg_valid": "audio_cfg_valid && !pipeline_busy && !run_valid",
                  "media_done": "job_done", "media_error": "job_error", "media_fault": "memory_fault || media_control_fault", "media_read_data": "job_read_data",
                  "pipeline_fault": "pipeline_fault || media_control_fault || memory_fault", "sync_event_valid": "sync_event_valid", "sync_event_data": "sync_event_data",
-                 "capture_valid": "capture_valid", "capture_frame": "capture_frame"})
+                 "capture_valid": "capture_valid", "capture_frame": "capture_frame",
+                 "diagnostic_cause": "pipeline_diagnostic_cause"})
     names = set(re.findall(r"parameter integer (\w+)\s*=", core[2]))
     pipe_params = {n: v for n, v in pipe_params.items() if n in names}
     pipe_params["LOOP_DEPTH"] = "LOOP_DEPTH"

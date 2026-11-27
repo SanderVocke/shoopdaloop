@@ -215,6 +215,15 @@ module fifo_recovery_pipeline_axi #(
     output wire [63:0] groups_attempted,
     output wire [31:0] peak_command_cycles,
     output wire [31:0] current_command_cycles,
+    output wire diagnostic_valid,
+    output wire [31:0] diagnostic_cause,
+    output wire [31:0] diagnostic_opcode,
+    output wire [31:0] diagnostic_cycles,
+    output wire [31:0] diagnostic_control_cycles,
+    output wire [31:0] diagnostic_detail,
+    output wire [63:0] diagnostic_sequence,
+    output wire [63:0] diagnostic_frame,
+    output wire [63:0] diagnostic_revision,
     input wire store_response_ready,
     output wire [31:0] store_result_count,
     output wire axi_quiescent,
@@ -253,12 +262,34 @@ module fifo_recovery_pipeline_axi #(
     input wire [31:0] recovery_epoch,
     output wire [2:0] recovery_state,
     output wire [31:0] runtime_epoch,
-    output wire runtime_reset
+    output wire runtime_reset,
+    output wire [31:0] first_fault_epoch,
+    output wire [31:0] first_fault_cause,
+    output wire [31:0] first_fault_tag,
+    output wire [31:0] first_fault_op,
+    output wire [31:0] first_fault_cycles,
+    output wire [31:0] first_fault_control_cycles,
+    output wire [31:0] first_fault_detail,
+    output wire [63:0] first_fault_sequence,
+    output wire [63:0] first_fault_revision,
+    output wire [63:0] first_fault_frame
 );
     wire recovery_quiesce, recovery_reset;
     assign runtime_reset = reset || recovery_reset;
     wire request = recovery_request && recovery_epoch == runtime_epoch && runtime_epoch != 0 && !runtime_reset;
     wire recovery_bus_fault = axi_drain_fault || (recovery_reset && (m_axi_bvalid || m_axi_rvalid));
+    wire accepted_recovery = request && (recovery_state==0 || recovery_state==3);
+    wire capture_fault = !runtime_reset && (accepted_recovery || (!recovery_quiesce && diagnostic_valid));
+    wire [31:0] capture_cause = (accepted_recovery ? 32'h90 : 0)
+        | (!recovery_quiesce && diagnostic_valid ? diagnostic_cause : 0);
+    assign first_fault_tag = first_fault_sequence[31:0];
+    host_fault_record retained_fault (
+        .clk(clk), .reset(reset), .capture(capture_fault), .epoch(runtime_epoch), .cause(capture_cause),
+        .operation(diagnostic_opcode), .cycles(diagnostic_cycles), .control_cycles(diagnostic_control_cycles),
+        .detail(diagnostic_detail), .sequence_value(diagnostic_sequence), .revision(diagnostic_revision), .frame(diagnostic_frame),
+        .record_epoch(first_fault_epoch), .record_cause(first_fault_cause), .record_op(first_fault_op),
+        .record_cycles(first_fault_cycles), .record_control_cycles(first_fault_control_cycles), .record_detail(first_fault_detail),
+        .record_sequence(first_fault_sequence), .record_revision(first_fault_revision), .record_frame(first_fault_frame));
     host_recovery #(.TIMEOUT_CYCLES(RECOVERY_TIMEOUT_CYCLES), .RESET_CYCLES(RECOVERY_RESET_CYCLES)) recovery (
         .clk(clk), .reset(reset), .seed_epoch(epoch), .request(request),
         .quiescent(axi_quiescent), .bus_fault(recovery_bus_fault),
