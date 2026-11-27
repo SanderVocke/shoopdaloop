@@ -1814,6 +1814,31 @@ Verification: reference/RTL/host integration exercises the real new FIFO path;
 code-path audit finds no CPU-dependent control fallback, including mixed/single
 commands and program switching. ARM firmware and fixtures build successfully.
 
+**ABI-16 wire-codec milestone (partial):** the existing Rust host module now has
+feature-gated, allocation-free packet/result codecs and borrowed snapshot decoding.
+Complete groups retain command order, full identities/revisions/deadlines and
+attempt-time checks for hardware. Gain retains original finite f32 bits alongside
+its fixed conversion; invalid values precede missing bindings. Strict result
+parsing keeps header refusals, earlier effects and fault/uncertainty distinct from
+fenced success. Snapshot parsing checks exact shape/identity/reserved fields and
+preserves raw render/next cursors, original gain/failure/pulse metadata and loss.
+Initial revision-0 rows remain raw nonmembers, not restored state or new leases.
+
+Eight golden/negative tests and two existing-producer interop cases pass. The
+consumer case uses its qualified component handoff input, not a new real-DDR fence
+or ARM MMIO transport proof. Full gates pass **301 Rust = 229 affected + 72 directed**,
+**13 Python**, warnings/format/policy/coverage/generators, Linux **3,584 passed /
+11 skipped / 405.319 s**, both Wasm profiles and an explicit codec Wasm check.
+The pinned Rust 1.99.1 ARM bare-metal library check also passes; this is not a
+matching firmware build. Failed golden-literal and Nix Cargo-shim invocations are
+retained and corrected without weakening assertions or changing the ABI.
+[Exact-source evidence](docs/fpga/command-fifo-implementation/reports/wire-codecs-411b2b75f/results.json)
+records eight Rust source hashes; production RTL/schema/driver remain unchanged.
+No MMIO pump, trusted lease/binding owner, reference cutoff alignment, first-frame
+Ready or CPU-control retirement is claimed. These are next; every Stage 5 checkbox
+remains open. Stage 4 stays partial; Stages 6–7, fit/final budgets/timing/platform/
+physical qualification and delivery remain open. ABI 15 remains selected.
+
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 
 - [ ] Run continuous-audio differential tests through the full AXI/host path for

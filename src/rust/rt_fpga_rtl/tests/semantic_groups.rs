@@ -892,3 +892,97 @@ fn fence_completion_arbitrates_with_a_maximal_group_without_early_result_visibil
         .unwrap();
     });
 }
+
+#[shoop_test]
+fn host_wire_codecs_preserve_native_effects_refusals_and_fence_visibility() {
+    use rt_fpga_rtl::host::semantic::{
+        BoundTarget, CommandRecord, GroupHeader, GroupPacket, GroupResult, SwitchOutcome,
+    };
+    use shoop_rt_protocol::immediate::SwitchProgram;
+    run(|sim| {
+        store(sim, SLOT, row(0, 1));
+        let target = Some(
+            BoundTarget::new(u32::from(SLOT), GENERATION, Some(u32::from(GAIN)), false).unwrap(),
+        );
+        let records = [
+            CommandRecord::gain(target, f32::MAX),
+            CommandRecord::repeat(target, true),
+            CommandRecord::clear(target, ClearPlanned::Both),
+            CommandRecord::gain(None, f32::NAN),
+            CommandRecord::refused_switch(Code::GraphCompositeUnsupported).unwrap(),
+        ];
+        let header = GroupHeader {
+            epoch: 1,
+            sequence: 1,
+            graph: 0,
+            topology: 0,
+            deadline: None,
+        };
+        let packet = GroupPacket::new(header, &records).unwrap();
+        fill(sim, 0, packet.words());
+        assert_eq!(host(sim, 2, 0, 0, 0), 0);
+        let frame = 0xfedc_ba98_7654_3200;
+        quantum(sim, frame);
+        let decoded =
+            GroupResult::decode(&result(sim, 0, records.len()), packet.identity()).unwrap();
+        assert_eq!(
+            decoded.codes(),
+            &[
+                Code::Applied,
+                Code::Applied,
+                Code::Applied,
+                Code::InvalidValue,
+                Code::GraphCompositeUnsupported
+            ]
+        );
+        assert_eq!(decoded.header().frame, frame);
+        assert_eq!(decoded.header().initial_revision, 0);
+        assert_eq!(decoded.header().current_revision, 0);
+        assert_eq!(decoded.header().code, Code::Applied);
+        assert_eq!(decoded.header().switch, SwitchOutcome::Refused);
+        assert_eq!(sim.model.get("gain_updates"), 1);
+        assert_eq!(
+            sim.model.get("last_gain_bits"),
+            u64::from(f32::MAX.to_bits())
+        );
+        assert_eq!(cfg(sim, true, GAIN, None).get(0, 32), i32::MAX as u64);
+        assert_ne!(load(sim, SLOT)[0] & (1 << 35), 0);
+        assert_eq!(host(sim, 3, 0, 0, 1), 0);
+
+        let descriptor = SwitchProgram {
+            revision: 1,
+            region: 0,
+            instructions: 2,
+            sync_count: 1,
+            states: 1,
+            buffers: 1,
+        };
+        let packet = GroupPacket::new(
+            GroupHeader {
+                sequence: 2,
+                ..header
+            },
+            &[CommandRecord::switch(descriptor, false)],
+        )
+        .unwrap();
+        fill(sim, 1, packet.words());
+        assert_eq!(host(sim, 2, 1, 0, 0), 0);
+        quantum(sim, frame + 32);
+        assert_eq!(sim.model.get("active_revision"), 1);
+        assert_eq!(sim.model.get("handoff_pending"), 1);
+        assert_eq!(
+            sim.model.get("result_ready_mask"),
+            0,
+            "selection is not a completed result"
+        );
+        handoff(sim, 1, 2);
+        let decoded = GroupResult::decode(&result(sim, 1, 1), packet.identity()).unwrap();
+        assert_eq!(decoded.header().switch, SwitchOutcome::Fenced);
+        assert_eq!(decoded.header().frame, frame + 32);
+        assert_eq!(decoded.header().first_frame, frame + 32);
+        assert_eq!(decoded.header().initial_revision, 0);
+        assert_eq!(decoded.header().current_revision, 1);
+        assert_eq!(decoded.codes(), &[Code::Applied]);
+        assert_eq!(host(sim, 3, 1, 0, 2), 0);
+    });
+}

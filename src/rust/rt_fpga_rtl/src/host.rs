@@ -3,6 +3,8 @@
 pub mod control;
 mod recovery;
 pub mod registers;
+#[cfg(feature = "rt-interface")]
+pub mod semantic;
 pub mod semantic_registers;
 pub use recovery::{Recovery, RecoveryState};
 mod request;

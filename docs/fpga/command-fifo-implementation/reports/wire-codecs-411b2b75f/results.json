@@ -1,0 +1,96 @@
+{
+  "outcome": "PARTIAL_ABI16_WIRE_CODECS_GATES_PASSED_NO_DEVICE_TRANSPORT_OR_PROMOTION",
+  "source_base": "411b2b75f40b6c7895405fc16cfb8b3e22f54520",
+  "source_manifest": "sources.json",
+  "scope": "Allocation-free, feature-gated wire codecs in the existing Rust host module; no bus/device attachment or runtime-owner replacement",
+  "production_rtl_schema_or_runtime_owner_changes": false,
+  "wire_codecs": {
+    "group": "Bounded400u32 array,1..32 ordered commands,full epoch/generation/u64 identities/revisions/deadline; no split/reorder/effective-frame resolution",
+    "commands": "All five ordinary kinds,switch and restricted stateless refusals; original finite f32 gain bits plus exact Fixed conversion; invalid nonfinite values precede missing binding; refused switches keep kind5",
+    "result": "Exact size/version/count/epoch/sequence and known codes; normal header refusals retain every position; fault/uncertainty preserves known prefix and diagnostic Unprocessed without fake fenced success",
+    "snapshot": "Borrowed complete packet,exact explicit geometry/identity/header and row reserved bits; max19520bytes/128physical rows; raw render and next cursors/original gain/failure/u64pulse/validity/skips preserved",
+    "initial_rows": "Revision0/F0/sequence1 header has no graph members; retained arbitrary raw validity/gain bits do not grant membership or restoration",
+    "no_mmio_or_live_state_access": true,
+    "no_allocation_or_retirement_authority": true
+  },
+  "verification": {
+    "new_golden_negative_tests": 8,
+    "new_rtl_producer_interop_tests": 2,
+    "target_tests": {
+      "codec": 8,
+      "consumer": 10,
+      "snapshot": 6,
+      "total": 24
+    },
+    "affected_rust_tests": 229,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 301,
+    "retained_audio_io_tests": 4,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3584,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 405.319,
+      "nextest": "0.9.116",
+      "audio_fixture": "owned isolated48kHz/128frame dummy JACK"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "explicit_codec_wasm_check": "passed",
+    "arm_library_check": {
+      "result": "passed",
+      "target": "armv7a-none-eabihf",
+      "rust": "1.99.1",
+      "warnings_denied": true,
+      "installed_toolchain_reused": true,
+      "matching_firmware_link_or_pair_proof": false
+    },
+    "builds_and_tests_serialized": true,
+    "interop_limits": "Existing RTL consumer and snapshot producer; delayed consumer completion uses qualified component handoff input,not actual DDR fence or new ARM MMIO transport. Existing actual-DDR/hardware-paced suites pass separately. Fault/uncertainty packet decoding includes golden fixtures,not a claim current retained-fault banks publish complete packets.",
+    "default_linux_limits": "Default Linux feature set does not replace the explicit optional-feature simulation/codec matrix",
+    "retained_failed_iterations": [
+      {
+        "gate": "stage5-codec-unit-v1",
+        "status": 101,
+        "cause": "Golden fixture typed0x53464631 instead of frozen0x53434631; encoder was already correct; corrected expected literal without weakening assertion"
+      },
+      {
+        "gate": "stage5-codec-arm-v1",
+        "status": 101,
+        "cause": "Nix exposes direct Cargo,which rejects +toolchain syntax before compilation; explicit rustup run plus installed pinned RUSTC passes"
+      }
+    ]
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "last_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stage5_complete": false,
+    "stages6_to7_complete": false,
+    "bounded_nonblocking_mmio_pump": false,
+    "trusted_lease_binding_owner": false,
+    "reference_cutoff_aligned": false,
+    "fresh_first_frame_ready_integration": false,
+    "matching_abi16_runtime_software": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false,
+    "independent_final_audit": false
+  },
+  "production_abi_selected": 15,
+  "reproduce_narrow": "nix develop --command bash -c 'export SHOOP_FPGA_SOURCE_ROOT=\"$PWD\"; RUSTFLAGS=\"-D warnings\" cargo test -p rt_fpga_rtl --features sim,rt-interface --test semantic_codec --test semantic_groups --test snapshots -- --test-threads=1'",
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage5-codec-"
+}

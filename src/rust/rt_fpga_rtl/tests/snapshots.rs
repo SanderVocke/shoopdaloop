@@ -577,3 +577,62 @@ fn same_edge_full_bank_ack_is_conservative_and_held_ack_cannot_replay_capture() 
         assert_eq!(s.model.get("ready_mask"), 3);
     });
 }
+
+#[cfg(feature = "rt-interface")]
+#[shoop_test]
+fn host_snapshot_codec_reads_real_initial_and_settled_packets_without_releasing_them() {
+    use rt_fpga_rtl::host::semantic::{Snapshot, SnapshotFormat, SnapshotPhase};
+    run(128, false, |s| {
+        let format = SnapshotFormat::new(1, 32, 128).unwrap();
+        for (bank, initial, frame, revision, base) in [
+            (0, true, 0, 0, 0xdead_beef_0000_0000),
+            (
+                1,
+                false,
+                0xfedc_ba98_7654_3200,
+                0x1234_5678_9abc_def0,
+                0x8000_0000_0000_0000,
+            ),
+        ] {
+            capture(s, 128, base, initial, frame, revision, Some(bank));
+            let words: Vec<_> = (0..format.packet_words())
+                .map(|index| read(s, bank, index as u64, false) as u32)
+                .collect();
+            let snapshot = Snapshot::decode(&words, format).unwrap();
+            let header = snapshot.header();
+            assert_eq!(
+                header.phase,
+                if initial {
+                    SnapshotPhase::Initial
+                } else {
+                    SnapshotPhase::Settled
+                }
+            );
+            assert_eq!(header.sequence, bank + 1);
+            assert_eq!(header.epoch, 1);
+            assert_eq!(header.quantum, 32);
+            assert_eq!(header.frame, frame);
+            assert_eq!(header.revision, revision);
+            assert_eq!(header.skipped, 0);
+            for slot in 0..128 {
+                let row = snapshot.physical_row(slot).unwrap();
+                assert_eq!(
+                    row.raw,
+                    core::array::from_fn(|index| base + slot as u64 * 16 + index as u64)
+                );
+                assert_eq!(row.gain_bits, 0x3f00_0001 + slot as u32);
+                assert_eq!(row.failed_plans, 0xf000_0000 + slot as u32);
+                assert_eq!(row.last_pulse, 0xfedc_ba98_7654_0000 + slot as u64);
+                assert_eq!(row.pulse_valid, slot & 1 != 0);
+            }
+        }
+        assert_eq!(
+            s.model.get("ready_mask"),
+            3,
+            "copying is not acknowledgement"
+        );
+        capture(s, 128, 0, false, 64, 1, None);
+        assert_eq!(s.model.get("skipped"), 1);
+        assert_eq!(s.model.get("ready_mask"), 3);
+    });
+}

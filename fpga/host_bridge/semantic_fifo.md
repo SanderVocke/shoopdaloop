@@ -278,6 +278,24 @@ A reader can select the latest complete packet and discard an older one. Matchin
 incarnation/sequence acknowledgement releases a bank; no reader acknowledgement is
 needed to execute commands or start another quantum. Reset invalidates both banks.
 
+### Candidate software codec checkpoint
+
+The Rust host module now has allocation-free ABI-16 group/result codecs and
+borrowed complete-snapshot decoding under its existing `rt-interface` feature.
+They preserve the layouts above, including original float bits, full identities,
+command order and distinct refusal/uncertainty/fenced fields. Decoding neither
+accesses live execution state nor grants membership, a lease or retirement.
+Golden/negative and existing consumer/snapshot-producer interop tests pass;
+[the checkpoint](../../docs/fpga/command-fifo-implementation/reports/wire-codecs-411b2b75f/results.json)
+records source hashes and native/Wasm/ARM-library gates. Its consumer fence input
+is component-qualified, not a new actual-DDR or ARM-transport proof.
+
+The nonblocking MMIO pump, trusted binding/preparation/lease owner, reference
+cutoff alignment, callback/first-frame lifecycle and CPU-control retirement remain
+Stage 5 work. These codecs do not make the legacy ABI-15 `Mailbox`/`Client` a
+matching endpoint or select ABI 16. No production RTL/schema changes, hardware
+fit, matching firmware or physical qualification are implied.
+
 ## MMIO allocation within the existing 4 KiB aperture
 
 Discovery/geometry, retained fault record, recovery and service registers through

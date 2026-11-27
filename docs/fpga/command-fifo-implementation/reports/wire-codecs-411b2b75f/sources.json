@@ -1,0 +1,10 @@
+{
+  "src/rust/rt_fpga_rtl/src/host.rs": "d0cee34db9cbc172ded5391665d5d8aa16e59cac1c4b413923c659fe09affb47",
+  "src/rust/rt_fpga_rtl/src/host/semantic.rs": "4d871808a2f01ca1378b039ab5c2a74338ce3726a8c639b9619cedebf6c8acf0",
+  "src/rust/rt_fpga_rtl/src/host/semantic/command.rs": "ecfd84280e4e28451e73c7158b0776992d86d35e33a1fc3720546e7356ddb417",
+  "src/rust/rt_fpga_rtl/src/host/semantic/result.rs": "cc601cdaf75eb32227993287add758ba5fea753f43c2d5570fc6dbdd0cee4e4e",
+  "src/rust/rt_fpga_rtl/src/host/semantic/snapshot.rs": "003130ff73573a252487310aa7b5439625d4f0ca520f0b2dcc59f551f932efbd",
+  "src/rust/rt_fpga_rtl/tests/semantic_codec.rs": "a06a961acc4e8cd0bd14f6b567e7e71ec40910e4f26c766fcb2f3935cab7f3c0",
+  "src/rust/rt_fpga_rtl/tests/semantic_groups.rs": "2cd7a766c92662b931581ee369d4022fb088252cae97b39800a77b9624dcc4cc",
+  "src/rust/rt_fpga_rtl/tests/snapshots.rs": "7a9c759dee0c7423d3bdf391a602b207ab3ccf237e5d5f516b93199f5ddd7620"
+}

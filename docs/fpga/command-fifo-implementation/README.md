@@ -4,7 +4,7 @@ The authoritative scope, approval and acceptance criteria are in
 [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md). The isolated kernel measurements
 remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
 
-**Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
+**Current gate: Stages 4–5 integration, not complete fit.** Stages 0–3 are complete;
 Stages 4–7 are not. The user's **functional-first area amendment** now treats
 kernel/frontend/whole-design LUT/FF figures as interim reference targets, not
 stop/go ceilings; final numerical budgets need explicit Stage 6 agreement.
@@ -2410,3 +2410,72 @@ Next is matched Stage 5 packet/result/snapshot transport and trusted lease/bindi
 APIs, then CPU-control retirement only after replacement/parity gates. Stage 4
 remains partial, Stages 5–7 open and ABI 15 selected; full envelope/fit/final-budget
 agreement/routed timing/platform/fault-parity/audit/delivery gates remain.
+
+## ABI-16 Rust wire codecs — first Stage 5 software subset
+
+`rt_fpga_rtl::host::semantic`, behind the existing `rt-interface` feature, now
+encodes complete groups into a bounded 400-u32 array and decodes correlated
+results/borrowed snapshots without allocation, MMIO or execution-state reads.
+The default ABI-15 mailbox and runtime owner are unchanged. These are wire codecs,
+not a device transport, allocator, lease or ownership-handoff capability.
+
+- Width-checked immutable targets and all five ordinary semantic argument layouts
+  retain full generation/iteration/gain bits. Nonfinite gain becomes an ordered
+  `InvalidValue` record before unavailable binding. Original finite f32 metadata,
+  including signed zero, subnormals and saturation cases, is not reconstructed
+  from fixed point. Refused switches retain kind 5 and their result position.
+- Groups preserve every record and independent graph/topology/deadline fields.
+  No splitting, reorder, effective-frame resolution or CPU header rollback is
+  introduced; attempt-time checks and malformed switch placement stay in hardware.
+- Results require exact version/count/length/epoch/u64 sequence and known codes.
+  Earlier effects are not rewritten after refusal or uncertainty. Faulted packets
+  cannot claim fenced success; `Unprocessed` is accepted only as fault/uncertain
+  diagnostic data, never normal success. Decoding cannot retire an allocation.
+- Snapshot headers and full packet/row reserved fields are checked before use.
+  All 128 physical rows preserve raw words, original gain/failure/pulse values,
+  sequence gaps and saturated loss. Raw word 2 is not substituted for render
+  cursor word 8. Retained revision-0 rows, even with old valid bits/nonfinite raw
+  metadata, are not graph members; the future matching binding owner must filter
+  membership. There is no restore or continuing-state initializer API.
+
+Eight golden/negative tests cover all ordinary layouts, refusal-code restrictions,
+32-command packets, every truncated result/snapshot prefix, identity aliases,
+reserved bits, false fences and full-width metadata. Two additional tests feed
+packets to the existing RTL consumer and decode actual consumer/snapshot output.
+The consumer's delayed fence uses its qualified component handoff input, **not**
+a new real-media/AXI or ARM MMIO transport proof. Existing hardware-paced/actual-DDR
+regressions pass separately; the new codecs are not yet connected to that driver.
+
+[Results/source hashes](reports/wire-codecs-411b2b75f/results.json): **301 selected
+Rust = 229 affected + 72 directed**, including both 3,970-case kernel sources and
+four audio-I/O tests; **13 Python**; warnings/format/policy/coverage/generators.
+Fresh full Linux is **3,584 passed (2 slow) / 11 skipped / 405.319 s** with pinned
+nextest 0.9.116/owned isolated dummy JACK. Default application/worklet and optional
+`fpga-reference` worklet Wasm builds pass, plus an explicit codec Wasm check.
+The installed pinned Rust 1.99.1 `armv7a-none-eabihf` library check passes with
+warnings denied. That is not a matching firmware/link/pair/physical qualification.
+All builds/tests remain serialized; the default Linux feature set does not replace
+the explicit optional-feature RTL/codec matrix.
+
+Local `stage5-codec-{target-v2,milestone,linux,wasm,arm-v2}` gates pass. The initial
+unit run caught a mistyped golden group magic (`0x53464631` rather than frozen
+`0x53434631`); the encoder already matched the ABI. Its failed log is retained.
+The first ARM invocation failed before compilation because Nix's direct Cargo is
+not the rustup shim; explicit use of the already-installed pinned toolchain passes.
+No assertion, ABI or tool pin was weakened. Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_codec --test semantic_groups --test snapshots -- --test-threads=1
+'
+```
+
+Next: the bounded nonblocking MMIO pump and exact-ABI attachment/recovery through
+existing owners, then trusted preparation/binding/lease APIs, reference service
+alignment, first-frame Ready and CPU-control retirement after replacement/parity.
+All Stage 5 checkboxes remain open; Stage 4 is partial, Stages 6–7 open and ABI 15
+selected. No hardware/schema/runtime-owner changes, new synthesis/route/current
+fit, promotion, board work, push/PR or whole-goal completion follow. Binding
+resource/cycle/timing/safety requirements and final-budget agreement still apply.
