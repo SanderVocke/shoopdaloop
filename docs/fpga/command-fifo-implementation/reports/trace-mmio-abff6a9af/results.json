@@ -1,0 +1,82 @@
+{
+  "outcome": "PARTIAL_PUBLIC_OPTIONAL_TRACE_FUNCTIONAL_GATES_PASSED_NO_RESOURCE_MEASUREMENT",
+  "source_base": "abff6a9af631d755138cb51f5c802d714ee169e5",
+  "source_manifest": "sources.json",
+  "scope": "Candidate ABI 16 optional trace reader; complete preparation/media/lifecycle and matched software remain pending; production ABI 15",
+  "interface": {
+    "status": "0x480",
+    "loss_low_high": [
+      "0x484",
+      "0x488"
+    ],
+    "receipt": "0x48c",
+    "data": "0x490-0x4b8",
+    "record_words": 11,
+    "layout": "captured epoch u32, producing revision u64, raw SP event 256 bits, little endian",
+    "existing_immutable_source_slots": 1,
+    "additional_records_dispatchers_owners_publication_counters": 0,
+    "new_local_state": "four-bit ordered-read cursor and four-bit receipt",
+    "consume": "complete ordered final AR only, matching live epoch, not system fault; independent of RREADY",
+    "header": "begin or rewind the same immutable record",
+    "reset": "discard local cursor authority; preserve accepted global AXI R/B copies",
+    "overflow": "existing saturating live u64 loss; nonfatal, no mandatory-effect backpressure",
+    "irq_dependency": false,
+    "default_standalone_enabled": false,
+    "actual_wrapper_enabled": true,
+    "trace_ready_owned_by_mmio": true,
+    "software_contract": "serialize whole records, check incarnation, cancel stale callbacks; loss read high-low-high plus epoch"
+  },
+  "verification": {
+    "codec_tests": 4,
+    "indexed_mmio_tests": 8,
+    "actual_mmio_tests": 9,
+    "affected_rust_tests": 211,
+    "directed_rust_tests": 60,
+    "selected_rust_total": 271,
+    "kernel_differential_cases_per_source": 3970,
+    "kernel_sources": 2,
+    "python_tests": 12,
+    "warning_denying_workspace_build_format_policy_coverage_generators": "passed",
+    "trace_unit": "disabled/alignment/order/rewind/full-width fields and loss; copied R across reuse; all twelve reset prefixes; repeated final reads; epoch mismatch; faulted retention",
+    "trace_actual": "actual SP/JP/media/AXI; exact audio and mandatory pulse F/validity during partial/stalled reads; rising losses; coherent replacement; copied trace R/recovery B through real safe reset",
+    "linux": {
+      "passed": 3584,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 405.651,
+      "nextest": "0.9.116",
+      "audio": "owned isolated dummy JACK 48 kHz/128 frames"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "builds_and_tests_serialized": true,
+    "profile_delta": "only additional trace-ready input declaration/binding private; all other probe bytes/geometry unchanged"
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "latest_pre_clear_view_and_trace_measurement": "../config-ready-b1c37e8fd/results.json",
+    "prechange_frontend_lut": 7943,
+    "prechange_frontend_ff": 6943,
+    "prechange_optimized_unrouted_wns_ns": -9.754,
+    "final_lut_ff_budgets_agreed": false,
+    "other_resource_profile_cycle_safety_timing_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stages5_to7_complete": false,
+    "complete_preparation_media_lifecycle": false,
+    "matching_abi16_software": false,
+    "protected_whole_design": false,
+    "all_admitted_cycle_proof": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization": false,
+    "browser_runtime_or_physical_proof": false
+  },
+  "reproduce_narrow": [
+    "nix develop --command cargo test -p rt_fpga_rtl --features sim --test semantic_mmio -- --test-threads=1",
+    "nix develop --command cargo test -p rt_fpga_testbench --features sim --test semantic_audio mmio_audio -- --test-threads=1"
+  ],
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage4-trace-"
+}

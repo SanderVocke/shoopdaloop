@@ -1,5 +1,5 @@
 module semantic_mmio_probe #(
-    parameter integer LOOPS=128
+    parameter integer LOOPS=128, TRACE_REGISTERS=0
 ) (
     input wire clk, reset, runtime_reset, input wire [31:0] epoch,
     input wire [11:0] s_axi_awaddr, input wire s_axi_awvalid, output wire s_axi_awready,
@@ -16,6 +16,9 @@ module semantic_mmio_probe #(
     output wire handoff_pending, faulted, output wire [63:0] active_revision,
     output wire [31:0] renders, input wire pipeline_fault,
     input wire [63:0] diagnostic_sequence,
+    input wire trace_valid, output wire trace_ready,
+    input wire [31:0] trace_epoch, input wire [63:0] trace_revision, trace_lost,
+    input wire [255:0] trace_data,
     input wire capture_valid, output wire capture_ready, input wire capture_initial,
     input wire [63:0] capture_frame, capture_revision, input wire [31:0] capture_quantum,
     output wire snapshot_fault, output wire [63:0] snapshot_last_sequence,
@@ -42,7 +45,7 @@ module semantic_mmio_probe #(
     wire [31:0] snapshot_ack_epoch;
     wire [63:0] snapshot_ack_sequence;
     wire [3:0] snapshot_ack_receipt;
-    fifo_mmio #(.LOOPS(LOOPS)) mmio (
+    fifo_mmio #(.LOOPS(LOOPS), .SYSTEM_REGISTERS(TRACE_REGISTERS), .TRACE_REGISTERS(TRACE_REGISTERS)) mmio (
         .fault_sequence(diagnostic_sequence), .recovery_state(3'd0),
         .recovery_request(), .recovery_epoch(), .irq(), .abort_request(),
         .service_live(), .service_valid(), .service_operation(), .service_index(), .service_read_index(), .service_word(),

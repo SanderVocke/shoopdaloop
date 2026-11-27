@@ -12,11 +12,11 @@ BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
 The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate, now with public
-CORE/AUDIO/STORE configuration and CLEAR_VIEW service subsets. The latest measured
+CORE/AUDIO/STORE configuration, CLEAR_VIEW and optional-trace subsets. The latest measured
 partial frontend is **7,943 LUT / 6,943 FF after standard optimization**, **57 LUT /
-57 FF below the previous targets**. That measurement predates CLEAR_VIEW; this
-small functional extension has no new resource/timing result or current-source fit
-claim.
+57 FF below the previous targets**. That measurement predates CLEAR_VIEW/trace;
+these small functional extensions have no new resource/timing result or current-
+source fit claim.
 That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
 **−9.754 ns**, still failing, with worse aggregate setup violations. Production
 still selects ABI 15. The original stop and repair evidence remain historical records;
@@ -2168,3 +2168,51 @@ external adapters, matched software/CPU retirement, full admitted service,
 platform/fault-parity and delivery/independent audit remain open. ABI 15 stays
 selected; Stages 4–7 remain incomplete. No physical/browser-runtime qualification,
 physical authorization, push/PR or deployment follows.
+
+## Public optional trace: complete copied reads without mandatory backpressure
+
+The existing immutable event slot now feeds a public reader in the same MMIO
+owner. Read-only status/loss/receipt occupy 0x480–0x48c; the eleven-u32 aperture at
+0x490–0x4b8 returns captured epoch, producing u64 revision and the raw 256-bit SP
+event. One four-bit cursor requires a complete ordered prefix; only its final AR
+may release the source. The existing global RDATA register owns that accepted
+word across source consume/replacement or runtime reset. No second record, owner,
+publication counter or processing gate is added. Trace-ready is private; optional
+trace adds no IRQ dependency or effect on reliable result/snapshot reservations.
+
+Header reads may rewind the held record. Empty/epoch/wrong-order reads return
+OKAY/zero plus receipts 5/2/7; malformed accesses use SLVERR. Faulted final reads
+copy data but refuse release with receipt 3. Reset clears partial-read authority,
+not copied global R/B. A repeated final read cannot consume a replacement without
+its whole prefix. Matching software serializes whole records, checks incarnation
+and cancels stale read callbacks. The existing live saturating u64 loss counter
+is read high-low-high plus epoch; it is not a captured packet field. Full readers
+cause nonfatal loss only, never mandatory-effect backpressure or audio pacing.
+These reads/consumption are not a program/cache/DMA fence or application Ready.
+
+The new standalone test covers all twelve reset-prefix positions, disabled and
+malformed accesses, ordering/rewind, full-width data/revision/loss, source reuse
+with R held, stale final reads and faulted retention. The new actual SP/JP/media/
+AXI test renders exact samples at each partial prefix and with R held; mandatory
+pulse F/validity keep updating while losses rise and the old trace stays immutable.
+It reads a replacement and retains copied trace R/public recovery B through real
+safe reset. Existing snapshot/semantic/service/fence/safety tests remain intact.
+
+[Functional results and source hashes](reports/trace-mmio-abff6a9af/results.json)
+record **271 Rust = 211 affected + 60 directed**, both 3,970-case kernel oracles,
+warning-denying build, formatting/policy/coverage/generators and **12 Python tests**.
+Eight indexed/nine actual-MMIO tests pass. Full pinned-nextest Linux passes
+**3,584 / 11 skipped**, **405.651 s**, owned isolated dummy JACK; default app/worklet
+and optional-reference Wasm builds pass. All builds/tests were serialized, not
+physical or browser-runtime qualification. Local prefix `stage4-trace-` includes
+smoke-v1, tests-v1, actual-v1, milestone, wasm and linux logs/statuses, all passed.
+The narrow reproduction above now includes both new trace cases.
+
+The default standalone interface remains disabled/unmapped; the actual wrapper
+enables it. The profile guard permits exactly the extra trace-ready input and
+binding to become private, retaining all other bytes/geometry. There is no new
+synthesis/route or measured fit; **7,943 LUT / 6,943 FF / −9.754 ns** remain older
+pre-CLEAR_VIEW/trace results. Bulk preparation/media/lifecycle, external adapters,
+matched software/CPU-control retirement, full envelope/area/route/platform/fault-
+parity and delivery/independent audit remain open. Production is still ABI 15;
+Stages 4–7 remain incomplete. No physical authorization, push/PR or deployment.

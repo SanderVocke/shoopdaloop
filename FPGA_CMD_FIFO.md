@@ -20,11 +20,12 @@ retained diagnostics/public recovery/ABORT and qualified audio/watchdog sideband
 on the actual semantic/audio/media pipeline, with the CORE/AUDIO/STORE public
 configuration subset. It is **7,943 LUT / 6,943 FF after standard optimization**,
 **57 LUT / 57 FF below the previous 8,000/7,000 targets**. Current functional source
-also joins public CLEAR_VIEW through the existing private media loader/owner;
-that small functional extension has no new resource/timing measurement. The
-figures above are pre-CLEAR_VIEW evidence, not current-source fit.
+also joins public CLEAR_VIEW through the existing private media loader/owner
+and a complete optional-trace reader through the existing immutable trace slot.
+These small functional extensions have no new resource/timing measurement. The
+figures above predate CLEAR_VIEW/trace and are not current-source fit.
 That narrow margin no longer blocks functional integration of the remaining
-media/lifecycle/trace services and adapters. The latest readiness refinement
+bulk-media/lifecycle services and adapters. The latest readiness refinement
 improves worst unrouted WNS to **−9.754 ns**, still failing; aggregate setup
 violations worsen. Production still selects ABI 15; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
@@ -1539,6 +1540,52 @@ matched software/CPU-control retirement, admitted-envelope/whole-design/route/
 platform/fault-parity gates and delivery remain open. Production stays ABI 15;
 Stages 4–7 remain incomplete. No physical authorization, push/PR/deployment or
 whole-goal completion follows from this functional subset.
+
+**Public optional-trace functional milestone:** the existing MMIO owner now
+exposes status/loss/receipt at 0x480–0x48c and an eleven-u32 record at 0x490–0x4b8:
+captured epoch, u64 producing revision and the unchanged 256-bit SP event. No
+second trace record, dispatcher, backend owner or publication counter is added.
+A four-bit read cursor requires the complete ordered prefix before the final AR
+can consume the existing immutable source slot. RDATA is copied globally before
+source reuse and never waits for ARM RREADY. Header reads can rewind the same held
+record; wrong-order/repeated final reads cannot consume a replacement.
+
+- [x] Join the optional public trace reader/loss counter to the actual immutable
+  source, retaining unbackpressured mandatory observations and nonfatal overflow.
+  This return-stream subset does not complete Stage 4 or matching software.
+
+Runtime reset/incarnation change discards only local partial-read authority,
+not accepted global R/B copies. Epoch mismatch refuses consumption; faulted final
+reads preserve diagnostic data but refuse source release. Full/stalled readers
+only increase the existing saturating u64 loss count. Trace polling/consumption
+cannot advance F, free semantic/snapshot reservations, establish a backend fence
+or become application Ready; optional trace adds no IRQ dependency. Matching
+software must serialize complete record reads and check incarnation/callback
+ownership. The actual wrapper alone enables the interface and privately owns
+trace-ready; default standalone MMIO leaves the new range unmapped.
+
+The new standalone case covers disabled/range/alignment/order/rewind, full-width
+fields/loss, copied R across replacement, all twelve reset-prefix positions,
+stale final reads, epoch mismatch and faulted diagnostic retention. The new actual
+SP/JP/media/AXI case renders exact samples at each partial prefix and with R held,
+checks continuing mandatory pulse F/validity and rising losses, reads a replacement
+coherently and preserves copied trace R/public recovery B through real safe reset.
+
+`stage4-trace-milestone` passes **211 affected + 60 directed = 271 Rust tests**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Eight indexed and nine actual-MMIO cases pass. Full Linux
+passes **3,584 / 11 skipped** in **405.651 s**, pinned nextest 0.9.116/owned isolated
+dummy JACK; default and optional-reference Wasm builds pass. Builds/tests remain
+serialized. [Functional evidence](docs/fpga/command-fifo-implementation/reports/trace-mmio-abff6a9af/results.json)
+records no new synthesis/route, current-source fit or admitted-cycle acceptance.
+The strict profile guard permits only the extra trace-ready declaration/binding
+to disappear; all remaining probe bytes/geometry are unchanged.
+
+Bulk preparation/media/lifecycle services, external adapters, matched software/
+CPU-control retirement, full admitted-envelope/whole-design/route/platform/fault-
+parity gates and delivery remain open. ABI 15 stays selected; Stages 4–7 remain
+incomplete. No physical authorization, push/PR/deployment or whole-goal completion
+follows from this functional subset.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

@@ -15,7 +15,8 @@
     "SERVICE_CORE_CONFIG": 1,
     "SERVICE_AUDIO_CONFIG": 2,
     "SERVICE_STORE_CONFIG": 3,
-    "SERVICE_CLEAR_VIEW": 4
+    "SERVICE_CLEAR_VIEW": 4,
+    "TRACE_WORDS": 11
   },
   "registers": {
     "ID": "0x000",
@@ -109,7 +110,12 @@
     "SNAPSHOT_RECEIPT": "0x320",
     "SNAPSHOT_SKIPPED_LOW": "0x324",
     "SNAPSHOT_SKIPPED_HIGH": "0x328",
-    "SNAPSHOT_STATUS": "0x32c"
+    "SNAPSHOT_STATUS": "0x32c",
+    "TRACE_STATUS": "0x480",
+    "TRACE_LOST_LOW": "0x484",
+    "TRACE_LOST_HIGH": "0x488",
+    "TRACE_RECEIPT": "0x48c",
+    "TRACE_DATA": "0x490"
   },
   "receipts": {
     "ACCEPTED": 0,

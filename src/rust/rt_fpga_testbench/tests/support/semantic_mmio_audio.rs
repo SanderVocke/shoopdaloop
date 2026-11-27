@@ -18,6 +18,8 @@ mod clear;
 mod configuration;
 #[path = "semantic_mmio_safety.rs"]
 mod safety;
+#[path = "semantic_mmio_trace.rs"]
+mod trace;
 
 const BANKS: &str = "pipeline.execution.core.pipeline.consumer.banks";
 

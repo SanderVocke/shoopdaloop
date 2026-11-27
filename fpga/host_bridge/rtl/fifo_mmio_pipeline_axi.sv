@@ -126,7 +126,6 @@ module fifo_mmio_pipeline_axi #(
     output wire observation_response_error,
     output wire [128:0] observation_read_data,
     output wire trace_valid,
-    input wire trace_ready,
     output wire [255:0] trace_data,
     output wire [63:0] trace_lost,
     output wire [31:0] trace_epoch,
@@ -277,6 +276,7 @@ module fifo_mmio_pipeline_axi #(
     wire [2:0] store_cfg_space;
     wire [31:0] store_cfg_address;
     wire [159:0] store_cfg_write_data;
+    wire trace_ready;
     wire snapshot_read_valid;
     wire snapshot_read_bank;
     wire [12:0] snapshot_read_word;
@@ -363,6 +363,7 @@ module fifo_mmio_pipeline_axi #(
         .SYSTEM_REGISTERS(1),
         .EPOCH_RESET_COUPLED(1),
         .SERVICE_REGISTERS(1),
+        .TRACE_REGISTERS(1),
         .CORE_CLOCK_HZ(CORE_CLOCK_HZ),
         .ARENA_BASE(PHYSICAL_BASE),
         .ARENA_BYTES(PHYSICAL_BYTES_LIMIT),

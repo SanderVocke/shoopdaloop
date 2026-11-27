@@ -2,7 +2,13 @@
 use rt_fpga_rtl::{host::semantic_registers::*, model::Design, sim::Sim};
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "support/semantic_trace.rs"]
+mod trace;
+
 fn run(test: impl FnOnce(&mut Sim<'_>)) {
+    run_profile(false, test);
+}
+fn run_profile(trace: bool, test: impl FnOnce(&mut Sim<'_>)) {
     let root = rt_fpga_rtl::root();
     let rtl = root.join("fpga/host_bridge/rtl");
     let support = root.join("src/rust/rt_fpga_rtl/tests/support");
@@ -19,6 +25,7 @@ fn run(test: impl FnOnce(&mut Sim<'_>)) {
             support.join("semantic_mmio_probe.sv"),
         ],
     )
+    .parameters(&[("TRACE_REGISTERS", u64::from(trace))])
     .build(&root.join("work/cmd-fifo-mmio"))
     .unwrap();
     let mut sim = Sim::new(design.session(None).unwrap(), &[("clk", 10_000, 0)]);
@@ -40,6 +47,8 @@ fn run(test: impl FnOnce(&mut Sim<'_>)) {
         ("diagnostic_sequence", 0x1122334455667788),
         ("capture_valid", 0),
         ("capture_quantum", 32),
+        ("trace_valid", 0),
+        ("trace_epoch", 1),
     ]);
     sim.idle(2);
     sim.model.set("reset", 0);

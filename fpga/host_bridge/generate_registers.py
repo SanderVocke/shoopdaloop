@@ -67,10 +67,13 @@ def semantic_definitions():
     registers = {name: int(value, 16) for name, value in spec["registers"].items()}
     constants = {name: int(value, 0) if isinstance(value, str) else value
                  for name, value in spec["constants"].items()}
-    if any(not 0 <= value <= 0xffffffff for value in constants.values()) or constants["PAYLOAD_WORDS"] != 12:
+    if (any(not 0 <= value <= 0xffffffff for value in constants.values())
+            or constants["PAYLOAD_WORDS"] != 12 or constants["TRACE_WORDS"] != 11):
         raise ValueError("Out-of-range semantic constant")
+    windows = {"REQUEST_DATA": constants["PAYLOAD_WORDS"], "RESPONSE_DATA": constants["PAYLOAD_WORDS"],
+               "TRACE_DATA": constants["TRACE_WORDS"]}
     occupied = [offset + 4 * word for name, offset in registers.items()
-                for word in range(constants["PAYLOAD_WORDS"] if name in {"REQUEST_DATA", "RESPONSE_DATA"} else 1)]
+                for word in range(windows.get(name, 1))]
     if len(occupied) != len(set(occupied)) or any(offset % 4 or not 0 <= offset < 4096 for offset in occupied):
         raise ValueError("Overlapping, unaligned or out-of-range semantic register")
     receipts = spec["receipts"]

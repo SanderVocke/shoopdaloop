@@ -8,8 +8,8 @@ integration gates. Historical ABI-15 staged patches are not this interface.
 Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
 ABORT and qualified hardware fault sidebands are implemented as a verified subset,
 joined to the actual semantic audio/media candidate. Public CORE/AUDIO/STORE
-configuration and CLEAR_VIEW subsets are now implemented. Complete preparation/media/
-lifecycle/trace service, external physical audio/watchdog hookup, ABI selection
+configuration, CLEAR_VIEW and optional-trace subsets are now implemented. Complete
+preparation/media/lifecycle service, external physical audio/watchdog hookup, ABI selection
 and matching software remain integration work.
 
 ## Ownership, profile and pacing
@@ -355,7 +355,8 @@ startup. Copied AXI R/B remain owned by global transport reset, not this refinem
 
 `semantic_registers.json` generates candidate SV/Rust definitions independently
 of the unchanged ABI-15 legacy schema/operations. `fifo_mmio.sv` implements the
-0x150–0x32c indexed range plus an optional lower subset; holes remain unmapped.
+0x150–0x32c indexed range, optional lower subset and optional trace range at
+0x480–0x4b8; holes remain unmapped.
 Generated `fifo_mmio_pipeline_axi.sv` enables that subset on the actual semantic
 audio/media/recovery pipeline. Transport uses global reset; local authority uses
 actual safe runtime reset/incarnation. Both fault-sequence words and all retained
@@ -385,8 +386,9 @@ result/snapshot availability or terminal fault, never reader readiness.
 The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
 approved profile capacity. The preparation subset below owns configuration and
-media-command inputs privately; complete preparation/media/lifecycle/optional-trace service is
-still required, not a completed public endpoint.
+media-command inputs privately. Optional trace uses the separate reader below;
+complete preparation/media/lifecycle service remains required, not a completed
+public endpoint.
 
 ### Preparation-service subset
 
@@ -452,10 +454,40 @@ operations or reuse their tags while authority is unresolved.
 Only 1/2/3/4 are implemented at this milestone. Media command/response-ready
 controls are private to the service; sample-data interfaces remain integration
 seams pending the complete public bulk service. Other legitimate preparation/media/
-lifecycle/trace operations and full private 32-word staging still belong to the
-approved final scope; temporary
-subset refusals do not retire them. Old CPU live-control/staged-patch operations
+lifecycle operations and full private 32-word staging still belong to the approved
+final scope; temporary subset refusals do not retire them. Old CPU live-control/staged-patch operations
 must not be imported to supply those missing services.
+
+### Optional trace reader
+
+The actual wrapper enables `TRACE_REGISTERS=1`; standalone MMIO defaults to 0 and
+leaves the range unmapped. The source is the existing immutable optional SP-event
+slot, not another execution record or reliable completion reservation.
+
+| Address | Read-only meaning |
+| --- | --- |
+| 0x480 TRACE_STATUS | Bit 0: complete trace with matching live incarnation available |
+| 0x484/0x488 TRACE_LOST | Live saturating u64 source overflow count, low/high |
+| 0x48c TRACE_RECEIPT | Last trace data-read receipt |
+| 0x490–0x4b8 TRACE_DATA | Eleven sequential u32 words: epoch, revision low/high, eight raw SP-event words |
+
+Serialize a whole record in software. Read its first word to begin/rewind, then
+successive addresses through the last word. The source stays immutable throughout
+the prefix. Only a complete ordered final AR consumes it; its data has already
+been copied into global RDATA, so source consume/replacement never waits for
+RREADY. No second packet/sequence counter is needed. A repeated final read without
+the replacement's complete prefix cannot release it. Mandatory observations and
+processing never wait for this reader; a full source only increases loss.
+
+Aligned empty/epoch-mismatch/wrong-order reads give OKAY/zero and receipt 5/2/7;
+success gives 0. Malformed/unaligned or disabled accesses use SLVERR. Faulted final
+reads still copy diagnostics but refuse source release with receipt 3. Runtime
+reset/incarnation change clears local cursor authority and sets receipt 2 while
+accepted global R/B remain immutable. Check incarnation around the whole copied
+record and cancel stale software callbacks; do not interleave multiple readers.
+Read live loss high-low-high plus epoch separately, not as captured packet data.
+Trace adds no IRQ dependency. Polling/consumption cannot advance F, acknowledge a
+semantic result/snapshot, establish a memory fence or qualify application Ready.
 
 ABORT requires full-strobe, complete current-epoch AW/W authority and data equal
 to that epoch. Neither half alone has effects; wrong epoch/old halves return

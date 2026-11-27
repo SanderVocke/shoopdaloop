@@ -72,7 +72,7 @@ def generate():
     result += "    assign config_core_data=cfg_read_data;\n"
     result += "    assign config_audio_data=audio_cfg_read_data;\n"
     result += "    assign config_store_data=store_cfg_read_data;\n"
-    settings = {"LOOPS": "LOOP_DEPTH", "SYSTEM_REGISTERS": "1", "EPOCH_RESET_COUPLED": "1", "SERVICE_REGISTERS": "1",
+    settings = {"LOOPS": "LOOP_DEPTH", "SYSTEM_REGISTERS": "1", "EPOCH_RESET_COUPLED": "1", "SERVICE_REGISTERS": "1", "TRACE_REGISTERS": "1",
                 "CORE_CLOCK_HZ": "CORE_CLOCK_HZ", "ARENA_BASE": "PHYSICAL_BASE", "ARENA_BYTES": "PHYSICAL_BYTES_LIMIT",
                 "PROGRAM_DEPTH": "PROGRAM_DEPTH", "STATE_DEPTH": "STATE_DEPTH",
                 "JOB_DEPTH": "JOB_DEPTH > 512 ? 512 : JOB_DEPTH", "BUFFERS": "BUFFERS", "VIEWS": "VIEWS",

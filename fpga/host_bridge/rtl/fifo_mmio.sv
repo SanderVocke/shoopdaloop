@@ -1,5 +1,5 @@
 module fifo_mmio #(
-    parameter integer LOOPS=128, SYSTEM_REGISTERS=0, EPOCH_RESET_COUPLED=0, SERVICE_REGISTERS=0,
+    parameter integer LOOPS=128, SYSTEM_REGISTERS=0, EPOCH_RESET_COUPLED=0, SERVICE_REGISTERS=0, TRACE_REGISTERS=0,
     parameter [31:0] CORE_CLOCK_HZ=100_000_000, ARENA_BASE=32'h30000000,
     parameter [63:0] ARENA_BYTES=64'h08000000,
     parameter integer PROGRAM_DEPTH=0, STATE_DEPTH=0, JOB_DEPTH=0,
@@ -16,6 +16,9 @@ module fifo_mmio #(
     input wire [3:0] service_receipt,
     input wire service_request_space, service_response_pending,
     input wire [1:0] service_response_code, input wire [31:0] service_read_data,
+    input wire trace_valid, output wire trace_ready,
+    input wire [31:0] trace_epoch, input wire [63:0] trace_revision, trace_lost,
+    input wire [255:0] trace_data,
     input wire [31:0] first_fault_epoch, first_fault_cause, first_fault_op,
     input wire [31:0] first_fault_cycles, first_fault_control_cycles, first_fault_detail,
     input wire [63:0] first_fault_revision, first_fault_frame,
@@ -74,7 +77,8 @@ module fifo_mmio #(
     reg [12:0] snapshot_cursor;
     reg [63:0] result_ack_sequence, saved_snapshot_sequence;
     reg [31:0] result_ack_epoch, saved_snapshot_epoch;
-    reg [3:0] command_receipt, result_receipt, snapshot_receipt;
+    reg [3:0] command_receipt, result_receipt, snapshot_receipt, trace_receipt;
+    reg [3:0] trace_cursor;
     wire epoch_changed=EPOCH_RESET_COUPLED==0 && epoch!=live_epoch;
     wire live=!reset && !runtime_reset && epoch!=0 && (EPOCH_RESET_COUPLED!=0 || epoch==live_epoch);
     wire write_current=live && aw_current && w_current;
@@ -89,6 +93,13 @@ module fifo_mmio #(
     assign abort_request=write_complete && write_format && write_current && abort_access && write_data==epoch;
     wire recovery_available=recovery_state==0 || recovery_state==3;
     wire system_fault=faulted || recovery_state==4;
+    wire trace_enabled=SYSTEM_REGISTERS!=0 && TRACE_REGISTERS!=0;
+    wire trace_available=trace_enabled && live && trace_valid && trace_epoch==epoch;
+    wire trace_address=s_axi_araddr>=REG_TRACE_DATA && s_axi_araddr<REG_TRACE_DATA+12'd44;
+    wire [3:0] trace_word=4'((s_axi_araddr-REG_TRACE_DATA)>>2);
+    wire [351:0] trace_packet={trace_data,trace_revision,trace_epoch};
+    assign trace_ready=read_accept && trace_available && !system_fault && trace_address
+        && s_axi_araddr[1:0]==0 && trace_word==10 && trace_cursor==10;
     wire service_enabled=SYSTEM_REGISTERS!=0 && SERVICE_REGISTERS!=0;
     wire service_access=service_enabled && ((write_address>=REG_REQUEST_EPOCH
         && write_address<REG_REQUEST_DATA+12'd48) || write_address==REG_REQUEST_PUSH || write_address==REG_RESPONSE_POP);
@@ -167,7 +178,7 @@ module fifo_mmio #(
             command_bank<=0; result_bank<=0; snapshot_bank<=0; result_cursor<=0; snapshot_cursor<=0;
             result_ack_sequence<=0; saved_snapshot_sequence<=0; result_ack_epoch<=0; saved_snapshot_epoch<=0;
             command_receipt<=RECEIPT_UNAVAILABLE; result_receipt<=RECEIPT_UNAVAILABLE;
-            snapshot_receipt<=RECEIPT_UNAVAILABLE;
+            snapshot_receipt<=RECEIPT_UNAVAILABLE; trace_receipt<=RECEIPT_UNAVAILABLE; trace_cursor<=0;
         end else begin
             live_epoch<=epoch;
             if (SYSTEM_REGISTERS!=0 && live && quantum_done) begin
@@ -201,7 +212,17 @@ module fifo_mmio #(
             end
             if (read_accept) begin
                 s_axi_rvalid<=1; s_axi_rresp<=OKAY; s_axi_rdata<=0;
-                if (SYSTEM_REGISTERS!=0 && s_axi_araddr<REG_SEMANTIC_ID) begin
+                if (trace_enabled && trace_address) begin
+                    if (s_axi_araddr[1:0]!=0) s_axi_rresp<=SLVERR;
+                    else if (!live || (trace_valid && trace_epoch!=epoch)) trace_receipt<=RECEIPT_EPOCH;
+                    else if (!trace_available) trace_receipt<=RECEIPT_UNAVAILABLE;
+                    else if (trace_word!=0 && trace_word!=trace_cursor) trace_receipt<=RECEIPT_INCOMPLETE;
+                    else begin
+                        s_axi_rdata<=trace_packet[trace_word*32+:32];
+                        trace_cursor<=trace_word==10 ? 4'd0 : trace_word+1'b1;
+                        trace_receipt<=trace_word==10 && system_fault ? RECEIPT_FAULT : RECEIPT_ACCEPTED;
+                    end
+                end else if (SYSTEM_REGISTERS!=0 && s_axi_araddr<REG_SEMANTIC_ID) begin
                     if (service_enabled && s_axi_araddr>=REG_RESPONSE_DATA
                         && s_axi_araddr<REG_RESPONSE_DATA+12'd48 && s_axi_araddr[1:0]==0)
                         s_axi_rdata<=service_read_data;
@@ -285,6 +306,10 @@ module fifo_mmio #(
                     REG_SNAPSHOT_SKIPPED_LOW: s_axi_rdata<=snapshot_skipped[31:0];
                     REG_SNAPSHOT_SKIPPED_HIGH: s_axi_rdata<=snapshot_skipped[63:32];
                     REG_SNAPSHOT_STATUS: s_axi_rdata<={31'b0,snapshot_sequence_exhausted};
+                    REG_TRACE_STATUS: if (trace_enabled) s_axi_rdata<={31'd0,trace_available}; else s_axi_rresp<=SLVERR;
+                    REG_TRACE_LOST_LOW: if (trace_enabled) s_axi_rdata<=trace_lost[31:0]; else s_axi_rresp<=SLVERR;
+                    REG_TRACE_LOST_HIGH: if (trace_enabled) s_axi_rdata<=trace_lost[63:32]; else s_axi_rresp<=SLVERR;
+                    REG_TRACE_RECEIPT: if (trace_enabled) s_axi_rdata<={28'd0,trace_receipt}; else s_axi_rresp<=SLVERR;
                     REG_RESULT_DATA, REG_SNAPSHOT_DATA: begin
                         if (result_access || snapshot_access) begin
                             s_axi_rvalid<=0; read_owner<=result_access ? READ_RESULT : READ_SNAPSHOT;
@@ -350,7 +375,9 @@ module fifo_mmio #(
                     endcase
                 end
             end
+            if (!trace_available) trace_cursor<=0;
             if (runtime_reset || epoch_changed) begin
+                trace_cursor<=0; trace_receipt<=RECEIPT_EPOCH;
                 completed_quanta<=0; peak_quantum_cycles<=0;
                 aw_current<=0; w_current<=0; read_current<=0; read_advance<=0;
                 command_bank<=0; result_bank<=0; snapshot_bank<=0; result_cursor<=0; snapshot_cursor<=0;

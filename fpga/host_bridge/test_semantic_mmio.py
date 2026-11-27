@@ -47,6 +47,7 @@ class SemanticMmioTests(unittest.TestCase):
         self.assertIn("diagnostic_cycles+32'd1", source)
         self.assertIn(".EPOCH_RESET_COUPLED(1)", source)
         self.assertIn(".SERVICE_REGISTERS(1)", source)
+        self.assertIn(".TRACE_REGISTERS(1)", source)
         self.assertIn("fifo_config_service service", source)
         self.assertIn(".live(service_live)", source)
         self.assertIn("recovery_request || faulted || diagnostic_valid", source)
