@@ -6,9 +6,11 @@ remain historical evidence in the [investigation report](../command-fifo-investi
 
 **Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
 Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
-7,000 FF**; all other limits remain unchanged. The measured partial frontend is
-6,345 LUT / 6,374 FF after standard optimization, leaving 1,655 LUT before MMIO and
-integration. The original stop and repair evidence remain historical records;
+7,000 FF**; all other limits remain unchanged. The last measured partial frontend
+is 6,345 LUT / 6,374 FF after standard optimization, leaving 1,655 LUT before MMIO
+and integration. The indexed-MMIO component now passes its functional gate, but
+is not yet joined to the actual audio/media/recovery wrapper or included in that
+measurement. The original stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
 ## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
@@ -1385,3 +1387,108 @@ timing acceptance follows. Public MMIO, full integration/quantum bounds, the two
 baseline fault-path differences, fresh full Linux/Wasm/platform gates, physical
 authorization and delivery remain open. ABI deployment remains 15. The amendment
 is documentation-only and supplies no new simulation, synthesis or route result.
+
+## Candidate indexed AXI-Lite MMIO component
+
+[`fifo_mmio.sv`](../../../fpga/host_bridge/rtl/fifo_mmio.sv) now implements the
+ABI-16 indexed range **0x150–0x32c**: discovery of semantic capabilities/limits,
+full-width live counters, retained fault sequence high, command filling/publication,
+FIFO reliable-result reads/releases and independently selected snapshot reads/ACKs.
+The matching candidate map is generated from
+[`semantic_registers.json`](../../../fpga/host_bridge/semantic_registers.json)
+to SV and Rust, separately from the unchanged deployed ABI-15 register schema.
+Stream data registers each occupy one u32 word, not a legacy 12-word window.
+Three Python tests check generated definitions, invalid maps/constants/receipts
+and the unchanged legacy version.
+
+**This is a component, not the complete public endpoint or an ABI promotion.**
+The 0x000–0x14c discovery/geometry, loader/service, recovery and retained-record
+range is not yet joined to it. The actual semantic audio/media/recovery wrapper,
+matching ARM/reference adapter and Stage 5 CPU-control retirement remain pending.
+The sequence-high input must be the qualified always-on retained recorder's full
+sequence, not the consumer's live attempted-group diagnostic. No default native,
+browser, deployed FPGA or audio pacing path selects this component yet.
+
+Transport/ownership properties:
+
+- Capture AW and W independently. Neither half alone issues a backend request;
+  accepted payload/address/strobes cannot be relabeled by later bus inputs.
+- Record per-half current-incarnation authority and invalidate it across runtime
+  reset/epoch changes. Pairing an old half with a new one completes safely with
+  epoch receipt 2 and no new-runtime mutation. Epoch change alone cannot make the
+  reset-latched command banks accept publication.
+- Keep global AXI reset separate from runtime reset. Runtime reset clears private
+  selection/cursors/ACK staging and refuses pending old callbacks, but does not
+  drop or rewrite an already copied RDATA/BRESP. It does not manufacture successful
+  execution, memory retirement or an ownership fence.
+- Use one independently outstanding read and write. Packet data copies into the
+  response register; RREADY/BREADY never hold RAM, execution or snapshot capacity.
+  ACK/reuse and rendering continue while the old response remains unread.
+- Do not advance failed/out-of-range reads, wrap a cursor, truncate invalid bank
+  selections, or let a previously accepted read advance a newly selected/rewound
+  cursor. Unavailable data returns zero/receipt 5, not a copied arbitrary RAM word.
+- Preserve OKAY plus receipts for semantic full/epoch/fault/old/unavailable/
+  incomplete refusals, including partial packet-data strobes. Malformed register
+  accesses retain SLVERR. ACK completion outranks a simultaneous read-status
+  update of the same receipt, so an epoch refusal cannot become accepted.
+
+[`semantic_mmio.rs`](../../../src/rust/rt_fpga_rtl/tests/semantic_mmio.rs) has
+**seven passing tests**, using actual paired banks/consumer/kernel/snapshot engine
+and synthetic local RAM. They check:
+
+1. All **400 packet-word prefixes**, incomplete/partial-strobe invisibility,
+   32-command execution while the publish B response is held, complete results,
+   cursor exhaustion, discovery/counters and malformed versus semantic refusals.
+2. Both AW/W reset orders; already copied R/B held across epoch change/reset;
+   private staging reset and epoch-only refusal without processing time advance.
+3. Reset between accepted packet/fill request and copied response: no dropped AXI
+   owner or new-incarnation effect; abandoned callbacks return epoch refusals.
+4. FIFO/non-head visibility behind a selected-but-unfenced switch, select/rewind
+   races, qualified synthetic fence completion, ACK/reuse and three later groups
+   rendering while old RDATA remains held. This fixture's fence is not real DMA.
+5. Faulted diagnostic reads remain available while new admission and result/
+   snapshot ACKs refuse with fault receipts and no architectural AXI error.
+6. Concurrent result and snapshot data reads cannot hide refused ACK receipts;
+   successful ACKs can free storage while the accepted read completes its copy.
+7. Both snapshot banks/full-bank skip, held initial-header read across ACK/reuse,
+   stale/wrong-epoch ACKs, all **4,880 u32 words / 128 rows** and no read-cursor alias.
+
+`stage4-semantic-mmio-milestone.{log,status}` passes **256 selected Rust tests =
+206 affected-package + 50 directed**. This includes both 3,970-case kernel oracles,
+all nine group cases and existing actual SP/JP, 128-row/initial snapshots, real
+media/AXI fences and stop/recovery/retained-fault regressions. Warning-denying
+workspace build, formatting, policy/coverage and AXI/host/register generators pass,
+as do **six offline Python tests** (three schema, three measurement). There is no
+fresh full Linux/Wasm, whole-design route or physical qualification.
+
+Retained failed evidence is explicit:
+
+- `stage4-semantic-mmio-tests-v1` has two invalid fixtures attempting another AR
+  while intentionally holding RVALID. Write-only attack helpers defer receipt
+  reads and keep both the original copied-response and backpressure assertions.
+- `stage4-semantic-mmio-tests-v2` passes the original four cases, before adding
+  further race/reset/fault tests; it is not the final seven-test gate.
+- `stage4-semantic-mmio-ack-read-race-v1` reproduces a **real receipt bug**: accepted
+  read status 0 overwrote epoch-refused ACK status 2 on the same clock. ACK-response
+  priority fixes it without extra states or cycles; the regression remains.
+- `stage4-semantic-mmio-tests-v3` passes six directed cases. The complete milestone
+  includes the seventh faulted-MMIO case and the broader 256-test matrix.
+
+Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim \
+    --test semantic_mmio -- --test-threads=1
+'
+nix develop --command python3 fpga/host_bridge/test_semantic_registers.py
+nix develop --command python3 fpga/host_bridge/generate_registers.py --check
+```
+
+**Remaining:** integrate the complete register/service endpoint with actual
+semantic/audio/media/recovery ownership; measure its frozen full-profile cost
+against **8,000 LUT / 7,000 FF** and the independent whole-design limits. The old
+6,345-LUT/6,374-FF measurement excludes this new MMIO component. No integrated
+resource or timing pass, complete Stage 4, ABI-16 deployment, firmware/reference
+replacement, push/PR or physical authorization follows from this milestone.

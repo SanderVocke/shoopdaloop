@@ -8,7 +8,9 @@ is authorized by the user's “try to fix the area problem.”** The RAM-mapping
 is repaired. The user has explicitly approved raising only the replacement-frontend
 LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
 The measured partial frontend is **6,345 LUT / 6,374 FF after standard optimization**,
-leaving **1,655 LUT** before public MMIO/integration. All other ceilings, profile
+leaving **1,655 LUT** before public MMIO/integration. The new indexed-MMIO
+component is functionally verified but not yet integrated or included in that
+measurement. All other ceilings, profile
 and semantics are unchanged; Stages 4–7 remain incomplete. This is not complete
 frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
@@ -994,6 +996,45 @@ limits, not the remaining integration/acceptance work. Whole-component figures
 exclude board integration and are not whole-design acceptance; unrouted timing
 still fails, and no route or all-admitted-quantum proof is claimed. Stages 4–7
 remain open.
+
+**Indexed-MMIO component milestone:** `fifo_mmio.sv` implements the candidate
+ABI-16 indexed register range 0x150–0x32c over AXI-Lite. A separate generated
+semantic schema supplies matching SV/Rust constants without changing the deployed
+legacy schema/version 15. This is not the complete public endpoint: discovery,
+loader/service and recovery/retained-diagnostic registers through 0x14c still need
+joining to the real semantic audio/media/recovery wrapper and matching software.
+In particular, sequence-high must receive the qualified retained recorder value,
+not the consumer's current attempted-group identity.
+
+AW/W are independently captured and cause no backend request until paired. Sticky
+per-half incarnation authority prevents a pair crossing runtime reset from
+mutating the new runtime. Runtime reset clears selection/cursors/ACK staging,
+refuses abandoned local callbacks with receipt 2, and preserves accepted AXI
+response ownership/copies; only global reset clears the transport. Packet reads
+copy into RDATA, never hold RAM for RREADY, and cannot wrap or advance a newly
+selected/rewound cursor. Unavailable reads and expected admission/ACK refusals use
+OKAY plus receipt; malformed register accesses still use SLVERR. Concurrent ACK
+completion has priority over same-channel read-status receipt updates.
+
+Seven new Rust tests use the real consumer/paired banks and 128-row snapshot
+engine with synthetic local RAM: all 400 partial publication prefixes, full
+32-command execution while B is held, all 4,880 snapshot words, R-held ACK/reuse,
+FIFO/non-head/delayed-fence visibility, select/rewind races, pending and completed
+reset responses, both AW/W reset orders, epoch-only refusal, and faulted readable
+packets with refused effects. The new ACK/read race first reproduced an incorrect
+accepted receipt overwriting an epoch refusal; receipt priority fixes it without
+added states/cycles. Earlier invalid fixtures attempted a second read while R was
+held; write-only attack helpers preserve the held response and defer receipt reads.
+Failed logs remain separate, not passes.
+
+`stage4-semantic-mmio-milestone.{log,status}` passes **206 affected-package +
+50 directed = 256 selected Rust tests**, including both 3,970-case kernel oracles,
+actual SP/JP/snapshot/media/AXI/recovery regressions, workspace warnings/formatting,
+policy/coverage and generators. Three new schema tests and three measurement-tool
+tests pass. No profile/ceiling change, complete frontend/resource/route proof,
+full Linux/Wasm or physical qualification is implied. The 6,345-LUT measurement
+predates this unintegrated MMIO component. Stage 4 remains open for complete
+public integration/broader lifecycle qualification; Stages 5–7 remain open.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

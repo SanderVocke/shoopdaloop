@@ -3,6 +3,7 @@
 pub mod control;
 mod recovery;
 pub mod registers;
+pub mod semantic_registers;
 pub use recovery::{Recovery, RecoveryState};
 mod request;
 mod upload;

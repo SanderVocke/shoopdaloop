@@ -5,6 +5,9 @@ This is the frozen implementation contract for Stages 4–5 of
 **It is not a claim that ABI 16 is implemented or deployed.** The current legacy
 mailbox remains ABI 15 until the replacement and matching software pass their
 integration gates. Historical ABI-15 staged patches are not this interface.
+The indexed AXI-Lite register component and candidate SV/Rust definitions are now
+implemented as a verified subset; the complete public audio/media/recovery and
+service endpoint, ABI selection and matching software are still integration work.
 
 ## Ownership, profile and pacing
 
@@ -306,8 +309,9 @@ means supported primitive replacement, not arbitrary composite live editing;
 future-cut switch engine. Retain initial static preparation/automatic monitoring.
 Reject an ABI/profile mismatch before attachment or enabling the backend.
 
-Bank numbers use only their required low bits; rewind/ACK doorbells require value
-one. Receipt values 0..5 retain accepted/full/epoch/fault/invalid/unavailable;
+Bank numbers must fit their required low bits; nonzero upper bits are malformed
+register accesses, not silently truncated selections. Rewind/ACK doorbells require
+value one. Receipt values 0..5 retain accepted/full/epoch/fault/invalid/unavailable;
 6 is old/duplicate sequence, 7 incomplete fill, 8 publication sequence exhausted.
 Aligned semantic refusals return AXI `OKAY` plus receipt, not an ARM abort.
 Unmapped/unaligned or malformed register-protocol accesses retain `SLVERR`;
@@ -318,6 +322,33 @@ their copied value without holding RAM or execution. Epoch-qualified ACKs are
 idempotent. ACKs for a non-head reliable result refuse without freeing it. Read live u64
 counters with high/low/high consistency plus epoch bracketing; immutable packet
 headers need no retry until the owner releases their bank.
+
+The indexed component permits one read and one write outstanding independently.
+An unavailable/out-of-range packet data read returns zero with receipt 5 and does
+not advance its cursor. A successful read records receipt 0. Read receipts after
+operation completion and before issuing another operation in that receipt family;
+an ACK completion has priority over a same-cycle packet-read status update.
+Selecting/rewinding during an accepted packet read does not relabel its copied
+word or advance the new cursor. Full-width cursor bounds prevent wrapping into a
+header or another bank.
+
+AXI AW and W are captured separately; neither half alone issues a local request.
+Runtime reset invalidates their per-half authority, so pairing an old half with a
+new half refuses with epoch receipt 2 rather than mutating the new runtime. It
+clears private selection/cursors/ACK staging, not accepted bus response ownership.
+Already copied RDATA/BRESP remain stable until consumed; abandoned pending local
+callbacks complete as epoch refusals, not successful execution/fences. Global
+reset alone clears AXI transport state. Local bank/snapshot services have their
+existing one-cycle copied-response contract and do not depend on ARM readiness.
+
+`semantic_registers.json` now generates candidate `semantic_registers` SV/Rust
+definitions independently of the unchanged ABI-15 legacy schema. `fifo_mmio.sv`
+implements only the new 0x150–0x32c indexed range (holes remain unmapped). It is
+not yet joined to the existing 0x000–0x14c discovery/service/recovery range or
+selected by production. Its sequence-high input must come from the qualified
+always-on retained recorder, never a live consumer command. No ABI-16 deployment,
+complete frontend area, real MMIO-to-audio/media integration or route acceptance
+is established by this component milestone.
 
 ## Retained first-fault diagnostics
 
