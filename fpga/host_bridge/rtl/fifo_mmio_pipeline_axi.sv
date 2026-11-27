@@ -320,7 +320,9 @@ module fifo_mmio_pipeline_axi #(
     wire [159:0] config_data;
     wire config_response_valid;
     wire config_response_error;
-    wire [159:0] config_response_data;
+    wire [128:0] config_core_data;
+    wire [31:0] config_audio_data;
+    wire [159:0] config_store_data;
     assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)
         | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);
     assign cfg_valid=config_valid && config_operation==2'd1;
@@ -345,9 +347,9 @@ module fifo_mmio_pipeline_axi #(
         : config_operation==2 ? audio_cfg_response_valid : store_cfg_response_valid;
     assign config_response_error=config_operation==1 ? cfg_response_error
         : config_operation==2 ? audio_cfg_response_error : store_cfg_response_error;
-    assign config_response_data={store_cfg_read_data[159:129],
-        (config_operation==1 ? cfg_read_data[128:32] : store_cfg_read_data[128:32]),
-        (config_operation==1 ? cfg_read_data[31:0] : config_operation==2 ? audio_cfg_read_data : store_cfg_read_data[31:0])};
+    assign config_core_data=cfg_read_data;
+    assign config_audio_data=audio_cfg_read_data;
+    assign config_store_data=store_cfg_read_data;
     fifo_mmio #(
         .LOOPS(LOOP_DEPTH),
         .SYSTEM_REGISTERS(1),

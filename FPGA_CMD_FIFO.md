@@ -10,10 +10,10 @@ LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
 The measured partial frontend now includes indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 on the actual semantic/audio/media pipeline, now with a configuration-only public
-service for CORE/AUDIO/STORE requests. It is **7,990 LUT / 6,943 FF after
-standard optimization**, leaving only **10 LUT / 57 FF** before the remaining
-media/lifecycle/trace services and board integration. Unrouted WNS has regressed to
-**−12.116 ns** and remains unclosed. Production still selects ABI 15. All other ceilings,
+service for CORE/AUDIO/STORE requests. It is **7,943 LUT / 6,943 FF after
+standard optimization**, leaving only **57 LUT / 57 FF** before the remaining
+media/lifecycle/trace services and board integration. Unrouted WNS remains
+**−12.115 ns** and remains unclosed. Production still selects ABI 15. All other ceilings,
 profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
@@ -1343,6 +1343,48 @@ trace service, external adapters, matched software/CPU-control retirement, admit
 service/whole-design/routed timing/platform qualification, baseline fault parity
 and delivery remain open. Production remains ABI 15; Stages 4–7 are incomplete.
 No physical authorization, push/PR, deployment or whole-goal completion follows.
+
+**Reply-data mux sharing — area-only refinement:** move only the existing
+CORE/AUDIO/STORE response-data selection inside the codec's existing capture/shift
+cone. Its single 160-bit working register, phase/cycle count, data widths,
+handshakes, response copying and same-edge fault masks are unchanged. Raw
+129/32/160-bit replies replace the already-multiplexed internal input; no second
+record, owner or controller is added. Standalone tests now drive distinct replies
+on all three sources, retaining exact unused/error-data masking and halt/reset
+assertions. All seven indexed and seven actual-MMIO cases still pass.
+
+[Fresh evidence](docs/fpga/command-fifo-implementation/reports/reply-mux-b21d0925a/results.json)
+contains **16 checksummed files** based on `b21d0925a`. The public probe and complete
+profile metadata are identical to the configuration checkpoint: no I/O, geometry,
+capacity, clock, delay or acceptance change. All 65 native sources match current
+measured files; the same four disjoint backend exclusions include packed LUTRAM.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,627 / 21,832 | 7,948 / 6,943 |
+| Standard `opt_design` | 31,521 / 21,804 | **7,943 / 6,943** |
+
+This saves **47 LUT / no FF**, leaving **57 LUT / 57 FF** after optimization.
+Root glue loses 127 LUT while the codec gains 80 LUT (now 395 LUT / 175 FF), so
+larger preflight saving hypotheses were not measured results. MMIO remains
+1,030 LUT / 388 FF, kernel 1,763 LUT / 1,936 FF / no DSP; storage remains 62.5
+RAMB36-equivalents/four existing DSPs. Runner 0/complete marker pass, zero errors/
+critical warnings, 217 synthesis warnings. Unrouted WNS is **−12.579 ns synthesis /
+−12.115 ns optimized**, effectively unchanged from −12.116 ns, not timing closure.
+The measured 40-level ABORT/fault/service-ready path still needs repair without
+timing exceptions or weakened same-edge suppression. No route or complete
+frontend/protected whole-design acceptance follows.
+
+`stage4-config-reply-mux-milestone` passes **209 affected + 57 directed = 266 Rust
+tests**, both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
+generators and **12 Python tests**. Full Linux passes **3,584 / 11 skipped** in
+**403.944 s**, pinned nextest 0.9.116/owned isolated dummy JACK; default/optional-
+reference Wasm builds pass. Builds/tests ran sequentially, not physical or browser-
+runtime qualification. Only configuration 1/2/3 is implemented; complete services,
+adapters, matched software/retirement, admitted-envelope/whole-design/route/
+platform acceptance, baseline fault parity and delivery remain open. Production
+remains ABI 15; Stages 4–7 remain incomplete. No physical authorization, push/PR,
+deployment or overall completion follows from this area-only refinement.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

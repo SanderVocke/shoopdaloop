@@ -9,10 +9,10 @@ Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000
 7,000 FF**; all other limits remain unchanged. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate, now with configuration-only
-CORE/AUDIO/STORE service. Its measured partial frontend is **7,990 LUT / 6,943 FF
-after standard optimization**, leaving only **10 LUT / 57 FF** before remaining
-media/lifecycle/trace service and board integration. Unrouted WNS regressed to
-**−12.116 ns**, still unclosed; production still selects ABI 15. The original
+CORE/AUDIO/STORE service. Its measured partial frontend is **7,943 LUT / 6,943 FF
+after standard optimization**, leaving only **57 LUT / 57 FF** before remaining
+media/lifecycle/trace service and board integration. Unrouted WNS remains
+**−12.115 ns**, still unclosed; production still selects ABI 15. The original
 stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
@@ -1993,3 +1993,55 @@ Measurement still uses a fresh `--pipeline --mmio` output directory and the veri
 existing image/catalog. Local prefix `stage4-config-mmio-` has `tests-v1`, `tooling-v1`,
 `lifecycle-v2`, `measure-v1`, `milestone`, `wasm`, `linux`, `export` and `precommit`;
 failed lifecycle-v1 is retained. Earlier standalone logs use `stage4-config-codec-`.
+
+## Reply-data mux sharing: 47-LUT area-only refinement
+
+Only the existing reply-data selector moves from the wrapper into the codec's
+capture/shift cone, allowing synthesis to share adjacent mux logic across the
+former hierarchy boundary. The same 160-bit working register captures raw
+129/32/160-bit CORE/AUDIO/STORE data, with unchanged states/cycles/widths,
+handshakes, error masking and copied-response ownership. No new controller,
+record, queue or soft CPU is introduced. The synthetic endpoint now drives
+three distinct replies, retaining exact source/unused/error-data and halt/reset
+assertions. Seven indexed and seven actual-MMIO cases retain all assertions.
+
+[Native reports and 16 checksummed files](reports/reply-mux-b21d0925a/results.json)
+freeze the `b21d0925a`-based source. All 65 native source hashes match measured
+files. Public probe bytes and complete profile metadata equal the preceding
+configuration checkpoint, with no I/O/capacity/clock/constraint reduction.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,627 / 21,832 | 7,948 / 6,943 |
+| Standard `opt_design` | 31,521 / 21,804 | **7,943 / 6,943** |
+
+The root loses 127 LUT and codec gains 80 LUT (now **395 LUT / 175 FF**), saving
+**47 LUT / no FF**, not the larger preflight hypothesis. Current headroom is
+**57 LUT / 57 FF** optimized (52 LUT / 57 FF synthesis). MMIO remains 1,030 LUT /
+388 FF, kernel 1,763 LUT / 1,936 FF / no DSP. Packed accounting includes LUTRAM
+and excludes only the same four disjoint existing backends. Storage remains
+62.5 RAMB36-equivalents/four existing DSPs; runner 0/complete marker pass, zero
+errors/critical warnings, 217 synthesis warnings.
+
+**Unrouted WNS −12.579 ns synthesis / −12.115 ns optimized is effectively
+unchanged**, not timing closure. The current worst estimate is a 40-level path
+from MMIO ABORT qualification through SP/observation/consumer faults, service halt
+and real SP configuration readiness into the service cursor. It must be repaired
+without false timing exceptions or weakening same-edge effect suppression.
+No route, complete frontend or protected whole-design acceptance is established.
+
+`stage4-config-reply-mux-milestone` passes **266 Rust = 209 affected + 57 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped**, **403.944 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK. Default application/worklet and optional
+reference worklet Wasm builds pass. Builds/tests remain sequential; no physical
+or browser-runtime qualification follows.
+
+This still implements only configuration 1/2/3. Remaining preparation/media/
+lifecycle/trace services, external adapters, matching software/CPU bridge retirement,
+admitted-service/whole-design/route/platform gates, both baseline fault differences
+and final delivery/independent audit remain. Production stays ABI 15; Stages 4–7
+remain incomplete. No push/PR/deployment/new physical permission is implied.
+Local prefix `stage4-config-reply-mux-` contains `tests-v1`, `measure-v1`,
+`milestone`, `wasm`, `linux`, `export`, `precommit`; the previous archive stays
+immutable. Reproduction uses the same narrow/full-profile commands above.

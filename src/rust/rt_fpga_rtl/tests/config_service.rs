@@ -60,6 +60,16 @@ fn data(s: &mut Sim<'_>) -> [u32; 12] {
         s.model.get("read_data") as u32
     })
 }
+fn response_data(s: &mut Sim<'_>, core: [u32; 5], audio: u32, store: [u32; 5]) {
+    let mut bits = Bits::zero(129);
+    for (index, word) in core[..4].iter().enumerate() {
+        bits.set(index * 32, 32, u64::from(*word));
+    }
+    bits.set(128, 1, u64::from(core[4] & 1));
+    s.model.set_bits("config_core_data", &bits);
+    s.model.set("config_audio_data", u64::from(audio));
+    s.model.set_bits("config_store_data", &Bits::from(store));
+}
 fn wait_reply(s: &mut Sim<'_>) {
     s.until(32, "complete private reply copy", |m| {
         m.get("response_pending") != 0
@@ -114,8 +124,10 @@ fn complete_private_requests_and_copied_results_release_backend_without_arm_serv
             assert_eq!(s.model.get("config_valid"), 0);
             s.idle(50);
             assert_eq!(s.model.get("response_pending"), 0);
-            let reply = [0x1234, 0x5678, 0x9abc, 0xdef0, u32::MAX];
-            s.model.set_bits("config_response_data", &Bits::from(reply));
+            let core = [0x1234, 0x5678, 0x9abc, 0xdef0, 1];
+            let audio = 0xfeed_beef;
+            let store = [0x4edc, 0xba98, 0x7654, 0x3210, u32::MAX];
+            response_data(s, core, audio, store);
             s.model.set("config_response_valid", 1);
             s.idle(1);
             s.model.set("config_response_valid", 0);
@@ -123,10 +135,11 @@ fn complete_private_requests_and_copied_results_release_backend_without_arm_serv
             wait_reply(s);
             assert_eq!(s.model.get("response_code"), 0);
             let mut expected = [0; 12];
-            let count = if op == 2 { 1 } else { 5 };
-            expected[..count].copy_from_slice(&reply[..count]);
-            if op == 1 {
-                expected[4] &= 1;
+            match op {
+                1 => expected[..5].copy_from_slice(&core),
+                2 => expected[0] = audio,
+                3 => expected[..5].copy_from_slice(&store),
+                _ => unreachable!(),
             }
             assert_eq!(data(s), expected);
             for _ in 0..20 {
@@ -237,8 +250,7 @@ fn same_edge_halt_and_runtime_reset_preserve_uncertainty_without_replay() {
             assert_eq!(access(s, 2, 0, 17), 3);
             s.model
                 .set_all(&[("halt", 0), ("config_response_valid", 1)]);
-            s.model
-                .set_bits("config_response_data", &Bits::from([9; 5]));
+            response_data(s, [9; 5], 9, [9; 5]);
             s.idle(10);
             assert_eq!(s.model.get("response_code"), 3);
             assert_eq!(data(s), [0; 12]);

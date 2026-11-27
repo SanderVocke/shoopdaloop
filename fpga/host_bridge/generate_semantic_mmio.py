@@ -62,9 +62,9 @@ def generate():
     for target, suffix in [("ready", "ready"), ("response_valid", "response_valid"), ("response_error", "response_error")]:
         result += f"    assign config_{target}=config_operation==1 ? cfg_{suffix}\n"
         result += f"        : config_operation==2 ? audio_cfg_{suffix} : store_cfg_{suffix};\n"
-    result += "    assign config_response_data={store_cfg_read_data[159:129],\n"
-    result += "        (config_operation==1 ? cfg_read_data[128:32] : store_cfg_read_data[128:32]),\n"
-    result += "        (config_operation==1 ? cfg_read_data[31:0] : config_operation==2 ? audio_cfg_read_data : store_cfg_read_data[31:0])};\n"
+    result += "    assign config_core_data=cfg_read_data;\n"
+    result += "    assign config_audio_data=audio_cfg_read_data;\n"
+    result += "    assign config_store_data=store_cfg_read_data;\n"
     settings = {"LOOPS": "LOOP_DEPTH", "SYSTEM_REGISTERS": "1", "EPOCH_RESET_COUPLED": "1", "SERVICE_REGISTERS": "1",
                 "CORE_CLOCK_HZ": "CORE_CLOCK_HZ", "ARENA_BASE": "PHYSICAL_BASE", "ARENA_BYTES": "PHYSICAL_BYTES_LIMIT",
                 "PROGRAM_DEPTH": "PROGRAM_DEPTH", "STATE_DEPTH": "STATE_DEPTH",

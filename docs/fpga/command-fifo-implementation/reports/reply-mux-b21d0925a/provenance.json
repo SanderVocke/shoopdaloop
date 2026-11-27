@@ -1,0 +1,382 @@
+{
+  "base": "b21d0925a198474dac13301e3324f6e9f6c20811",
+  "working_tree_snapshot": true,
+  "image": "docker.io/siliconbootcamp/xilinx-vivado@sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "expected_launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "runner_sha256": "419bb6e134ffb7f7111d6c6e0607e211406a47887859f5a19c6f0da437787159",
+  "catalog": {
+    "path": "/home/sander/dev/shoopdaloop/work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip",
+    "ps7_component_sha256": "5c884fb6b1f01c0cdde22724d3fdf462cdd05f1f31066ea07452c1815006ad10"
+  },
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "profile": {
+    "parameters": {
+      "EXTERNAL_IO": 1,
+      "ENABLE_MIDI": 0,
+      "DDR_PROGRAM": 1,
+      "PROGRAM_DEPTH": 1024,
+      "STATE_DEPTH": 512,
+      "JOB_DEPTH": 1024,
+      "LOOP_DEPTH": 128,
+      "BUFFERS": 512,
+      "INPUT_PORTS": 1,
+      "OUTPUT_PORTS": 2,
+      "VIEWS": 512,
+      "CHUNK_FRAMES": 32,
+      "BLOCK_CHUNKS": 32,
+      "SLOTS": 1015808,
+      "AXI_DATA_WIDTH": 64,
+      "PHYSICAL_BASE": 805306368,
+      "PHYSICAL_BYTES_LIMIT": 134217728
+    },
+    "fixed_audio_inputs": {
+      "run_quantum": 32,
+      "run_chunk_frames": 32,
+      "run_inputs": 1,
+      "run_outputs": 2
+    },
+    "fixed_fault_inputs": {},
+    "literal_port_defines": {
+      "SHOOP_SP_INSTRUCTION_BITS": "96",
+      "SHOOP_SP_STATE_BITS": "129",
+      "SHOOP_SP_JOB_BITS": "256"
+    },
+    "compiled_sources": [
+      "fpga/host_bridge/rtl/semantic_registers.sv",
+      "fpga/axi_memory/rtl/axi_burst_mux.sv",
+      "fpga/axi_memory/rtl/axi_master.sv",
+      "fpga/axi_memory/rtl/chunk_axi.sv",
+      "fpga/axi_memory/rtl/chunk_dma.sv",
+      "fpga/axi_memory/rtl/chunk_memory_axi.sv",
+      "fpga/axi_memory/rtl/fifo_media_audio_pipeline_axi.sv",
+      "fpga/axi_memory/rtl/fifo_recovery_pipeline_axi.sv",
+      "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv",
+      "fpga/axi_memory/rtl/media_store_axi.sv",
+      "fpga/axi_memory/rtl/program_axi_mux.sv",
+      "fpga/axi_memory/rtl/shared_axi.sv",
+      "fpga/axi_memory/rtl/word_axi.sv",
+      "fpga/axi_memory/rtl/word_dma.sv",
+      "fpga/chunk_memory/rtl/chunk_memory.sv",
+      "fpga/chunk_memory/rtl/chunk_priority.sv",
+      "fpga/chunk_memory/rtl/chunk_ram.sv",
+      "fpga/host_bridge/rtl/fifo_audio_pipeline.sv",
+      "fpga/host_bridge/rtl/fifo_config_service.sv",
+      "fpga/host_bridge/rtl/fifo_edit_kernel.sv",
+      "fpga/host_bridge/rtl/fifo_group_banks.sv",
+      "fpga/host_bridge/rtl/fifo_group_consumer.sv",
+      "fpga/host_bridge/rtl/fifo_media_arbiter.sv",
+      "fpga/host_bridge/rtl/fifo_media_audio_pipeline.sv",
+      "fpga/host_bridge/rtl/fifo_media_loader.sv",
+      "fpga/host_bridge/rtl/fifo_mmio.sv",
+      "fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv",
+      "fpga/host_bridge/rtl/fifo_observations.sv",
+      "fpga/host_bridge/rtl/fifo_snapshots.sv",
+      "fpga/host_bridge/rtl/host_fault_record.sv",
+      "fpga/host_bridge/rtl/host_recovery.sv",
+      "fpga/job_processor/rtl/audio_pipeline.sv",
+      "fpga/job_processor/rtl/job_processor.sv",
+      "fpga/job_processor/rtl/jp_divider.sv",
+      "fpga/job_processor/rtl/jp_sample_ram.sv",
+      "fpga/media_store/rtl/media_audio_pipeline.sv",
+      "fpga/media_store/rtl/media_metadata.sv",
+      "fpga/media_store/rtl/media_prefetch_resolver.sv",
+      "fpga/media_store/rtl/media_ram.sv",
+      "fpga/media_store/rtl/media_reclaimer.sv",
+      "fpga/media_store/rtl/media_store.sv",
+      "fpga/media_store/rtl/memory_delay.sv",
+      "fpga/media_store/rtl/metadata_cache.sv",
+      "fpga/state_processor/rtl/sp_engine.sv",
+      "fpga/state_processor/rtl/sp_job_fifo.sv",
+      "fpga/state_processor/rtl/sp_program_prefetch.sv",
+      "fpga/state_processor/rtl/sp_ram.sv",
+      "fpga/state_processor/rtl/state_processor.sv",
+      "semantic_profile.sv"
+    ],
+    "excluded_execution_boundaries": {
+      "audio_execution": "dut/pipeline/execution/core/pipeline/execution",
+      "media_store": "dut/pipeline/execution/core/media",
+      "axi_backend": "dut/pipeline/execution/memory_endpoint",
+      "program_backend": "dut/pipeline/execution/ddr_program.program_bus"
+    },
+    "remaining_primitives": "frontend_and_glue; raw counts are not packed LUT area",
+    "indexed_mmio": true,
+    "mmio_epoch_reset_coupled": true,
+    "standard_optimization": true,
+    "low_range_service_included": true,
+    "configuration_service_only": true,
+    "complete_preparation_service_included": false,
+    "low_range_discovery_recovery_included": true,
+    "abort_mmio_included": true,
+    "qualified_fault_sidebands_included": true,
+    "scope": "Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort, configuration service and qualified safety sidebands; no complete preparation/media/lifecycle/trace service, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately"
+  },
+  "sources": [
+    {
+      "path": "fpga/state_processor/rtl/sp_engine.sv",
+      "sha256": "6b134352670c902bcdf1eae4508e7a0344dcc1a76bb51f9f7a2789d800c2c2e1"
+    },
+    {
+      "path": "fpga/state_processor/rtl/sp_job_fifo.sv",
+      "sha256": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f"
+    },
+    {
+      "path": "fpga/state_processor/rtl/sp_loop_defs.svh",
+      "sha256": "17b3e36fd3a7293e255bfb7dd378ce4ebfa5a4bb55887836120e3f51008b12a2"
+    },
+    {
+      "path": "fpga/state_processor/rtl/sp_program_prefetch.sv",
+      "sha256": "21793d74163095957c36e24dee7b1ea283d318f6bc7f8abb736fd6d4e4f994ed"
+    },
+    {
+      "path": "fpga/state_processor/rtl/sp_ram.sv",
+      "sha256": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73"
+    },
+    {
+      "path": "fpga/state_processor/rtl/state_processor.sv",
+      "sha256": "bb11bf6f2bef0678fd1c1be186454f3b1194df6d9d5093d8f51a5bdee66d46a7"
+    },
+    {
+      "path": "fpga/state_processor/rtl/state_processor_defs.svh",
+      "sha256": "eb1a3bb0b55ef83b4f0dadffa90dd95172a2cd5caa81664aa35f525f785efef9"
+    },
+    {
+      "path": "fpga/job_processor/rtl/audio_pipeline.sv",
+      "sha256": "defcaf25edafb5806514e4318cfe6a9236537a115952de3ccc60a0ae1304c710"
+    },
+    {
+      "path": "fpga/job_processor/rtl/job_processor.sv",
+      "sha256": "e2bb5dd0677bc94e06c9798e25f07b4c6447c8c70920437b117b753eb6008b4d"
+    },
+    {
+      "path": "fpga/job_processor/rtl/jp_divider.sv",
+      "sha256": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1"
+    },
+    {
+      "path": "fpga/job_processor/rtl/jp_sample_ram.sv",
+      "sha256": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854"
+    },
+    {
+      "path": "fpga/chunk_memory/rtl/chunk_memory.sv",
+      "sha256": "66e8b5a5f1978cfdc89656aef59d74223a69ef0a89aa99f84d5e2bfb202f0d34"
+    },
+    {
+      "path": "fpga/chunk_memory/rtl/chunk_priority.sv",
+      "sha256": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75"
+    },
+    {
+      "path": "fpga/chunk_memory/rtl/chunk_ram.sv",
+      "sha256": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464"
+    },
+    {
+      "path": "fpga/media_store/rtl/media_audio_pipeline.sv",
+      "sha256": "f9e25b96b52ea7ccb02b5eefcea206d3e8e10aa98dc717eb4380027f6fc37f56"
+    },
+    {
+      "path": "fpga/media_store/rtl/media_metadata.sv",
+      "sha256": "823b6ad4ee796ce5c4c00cef9e9f19f387b9b6cc6d4b0b1903c4592e4dd8caa9"
+    },
+    {
+      "path": "fpga/media_store/rtl/media_prefetch_resolver.sv",
+      "sha256": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e"
+    },
+    {
+      "path": "fpga/media_store/rtl/media_ram.sv",
+      "sha256": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178"
+    },
+    {
+      "path": "fpga/media_store/rtl/media_reclaimer.sv",
+      "sha256": "f4d38e13e9d705a8afff6c10bde68483c2e02c5c71dedaa8e6def7db3d224049"
+    },
+    {
+      "path": "fpga/media_store/rtl/media_store.sv",
+      "sha256": "4057c3b250a0649be245764670a4c96746440e26afb72395af55226d1affbadd"
+    },
+    {
+      "path": "fpga/media_store/rtl/memory_delay.sv",
+      "sha256": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9"
+    },
+    {
+      "path": "fpga/media_store/rtl/metadata_cache.sv",
+      "sha256": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/axi_burst_mux.sv",
+      "sha256": "eeb46d755579449b642627ae286be7fd9654da7f1f420781604c5a005ed1b695"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/axi_master.sv",
+      "sha256": "7ebf7787544fa166685821e6a607cb36475a343e0c243b905d849598f235e3e3"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/chunk_axi.sv",
+      "sha256": "ed61fafa8f7b0fe41cdfae26f6f4a0c646e4b5eb5f20e676c6155c1ba5d22b8d"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/chunk_dma.sv",
+      "sha256": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/chunk_memory_axi.sv",
+      "sha256": "a5ab1f57d8a3d41c03973337bfa5ca5f9e29debd459a250b85fc8ea8f0cbd823"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/fifo_media_audio_pipeline_axi.sv",
+      "sha256": "725cef454b63f3367014c07258dee97e70410535ce3b43c2618ed7c3c2a376b4"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/fifo_recovery_pipeline_axi.sv",
+      "sha256": "ab0b5084c35811222157dcc76dae8172735e529369c2b02999a324f73fb3f89b"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv",
+      "sha256": "fa2c8373a230513638f23d29146d120fecec4858ea15a7b42d13583ac096c81a"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/media_store_axi.sv",
+      "sha256": "0b512fdec54e174714901215f2cfa9328ca214e377dadeeb9a522159775dc629"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/program_axi_mux.sv",
+      "sha256": "59cf336e67163e2ca93a6e224dee5197dc4389921a70636d20db5b9da8c694c1"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/shared_axi.sv",
+      "sha256": "c56c893e5245c13df576088e70d0419812deae893564478b7aafc8fe0e663286"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/word_axi.sv",
+      "sha256": "7966b0bbcf0f0ca4aeda5239e0ab98c9d31deb68999477656f80af5f375d3725"
+    },
+    {
+      "path": "fpga/axi_memory/rtl/word_dma.sv",
+      "sha256": "3df4b86b650124d3b9684fdc01b2b13a624591a6d8b50d6e00ade54d77fa4958"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_audio_pipeline.sv",
+      "sha256": "5ee1fc78b286246add310cd063d07d9f295113e0cedd70581eb6d7ca5fd9038c"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_config_service.sv",
+      "sha256": "f1aa11a84a148b01c77010aed744592a114a7cf3027682d689d46dd53f091a83"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_edit_kernel.sv",
+      "sha256": "51e18786813957d92dc0e30896ae3b8caa43bba105909f92f70b7328508d4833"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_group_banks.sv",
+      "sha256": "f042371c848035a6409ac80befdcdf7ce27fc238e283f77a3643c116a9a51556"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_group_consumer.sv",
+      "sha256": "93994a81278841988a500fcf36a5fa2ef62f714cf61c71563796c90e532e1b9a"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_media_arbiter.sv",
+      "sha256": "3313b4df34b50b1ae4c853e6c0f2d1be5752e77c95d3ce8d2ecdcc399f40b31d"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_media_audio_pipeline.sv",
+      "sha256": "2f71a93669a7485af890a922b7d4fc4e565380f4e4ed82c2d932309a15c4abc4"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_media_loader.sv",
+      "sha256": "c6e62156d596b378ef982f812e17592073f98c48324c468f19bd28c4713ace79"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_mmio.sv",
+      "sha256": "5acfd2b61024332fa968e93702993c77212859c3c3ea27ab9f82af35118ac6fc"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv",
+      "sha256": "f5a447002d969a98fe1f6bdd12cad0bdbf5c51196edb7a5924d5e516c7c4ffad"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_observations.sv",
+      "sha256": "b48efa1faf063f8c588dfd6ac750405187d88c4f5ab711e25fa09ae49d703078"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_snapshots.sv",
+      "sha256": "d51dc6c8e184dff75aa944b348aa7e69ab5a37f75936cc1c427fef91ebd84c47"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/host_dispatch.sv",
+      "sha256": "637045bff911da0d93ed9455ec3c9a323941e366d49ced9b03a2860f5e84894c"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/host_fault_record.sv",
+      "sha256": "7e316e6aebe2219ecb54f96a174b7b066f709d25c04fc3c084bd78860d37d8f3"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/host_mailbox.sv",
+      "sha256": "66d1275fd5875e1acb814accca48bd87c1cade457959823e118ce7d6280b0708"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/host_pipeline_axi.sv",
+      "sha256": "3e64909e10719586764605e7af31640169edacde5a94c722ad4c20ed2bceb874"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/host_recovery.sv",
+      "sha256": "bd7eb41573d1f1aa1c18dd1904aadc759d75352b3dc00f6812a9a1120a161236"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/host_registers.sv",
+      "sha256": "a827af401ab7bcc55f22ae7b89fd4fb72c78fe30dd16d1c053c6e119b9b98dc4"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/native_audio_mmio.sv",
+      "sha256": "acd83c2b64d19b4afa1d6b740afd071a4358b369d89115c4ff6eafe0e7ad2665"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/native_audio_registers.sv",
+      "sha256": "2dfa75007c48265679779e42ca2fb8b563c674dbd199383d24fe22d0bfc0963f"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/semantic_registers.sv",
+      "sha256": "08cd832425226ac50b6e2aef305e8b80ce1450caaa500d9fdf48c0feecc86724"
+    },
+    {
+      "path": "platforms/zynq7000/boards/zturn-v2.json",
+      "sha256": "7d48b3517ba27c859764bc62db80c3d150097b20cd3377d58cc584a447b1b287"
+    },
+    {
+      "path": "platforms/zynq7000/boards.py",
+      "sha256": "40f0cb41833dbb484a0d5f3181594b3ef1e3023199ac96e9866a13d1175047ab"
+    },
+    {
+      "path": "fpga/host_bridge/zturn_v2.tcl",
+      "sha256": "587f1462892dcce0f5ef0b8cc5c04c6c95c39c16c7a6a508033188821b379bf4"
+    },
+    {
+      "path": "fpga/host_bridge/measure_semantic.py",
+      "sha256": "419bb6e134ffb7f7111d6c6e0607e211406a47887859f5a19c6f0da437787159"
+    },
+    {
+      "path": "fpga/host_bridge/measure_semantic_pipeline.py",
+      "sha256": "008e043128bd1b2e22d4820bdf8e175541f2a7188f34817f383847673d629f4c"
+    },
+    {
+      "path": "fpga/host_bridge/generate_semantic_mmio.py",
+      "sha256": "b7aa4e5298875595126ec3dba88dc625edf9dfa3c0647e2d4848abc48e5452b1"
+    },
+    {
+      "path": "fpga/host_bridge/generate_top.py",
+      "sha256": "ad3e3d6b3c6143ad23d3cec96973038c221ccfd233f54b02f4b877665e29a59e"
+    },
+    {
+      "path": "fpga/host_bridge/semantic_registers.json",
+      "sha256": "8c6dccd38fedfddc228fbfcaaf307a95db8f8522b4518936b527179e923cb2a0"
+    },
+    {
+      "path": "generated/semantic_profile.sv",
+      "sha256": "8ef96ad607b4c622a4bf53a04b8a28a6ad0e8304f9f8c4e7625a83617dbd6c72"
+    }
+  ],
+  "tcl_sha256": "0c5a61566b1e28a3a6bb9e73e065d4e630c53fb1ce11b963bcd8bab2e070f6b3",
+  "scope": "Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort, configuration service and qualified safety sidebands; no complete preparation/media/lifecycle/trace service, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately",
+  "pipeline": true,
+  "indexed_mmio": true,
+  "route": false
+}

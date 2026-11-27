@@ -11,7 +11,9 @@ module fifo_config_service (
     output reg config_write, output wire [31:0] config_address,
     output wire [159:0] config_data,
     input wire config_response_valid, config_response_error,
-    input wire [159:0] config_response_data
+    input wire [128:0] config_core_data,
+    input wire [31:0] config_audio_data,
+    input wire [159:0] config_store_data
 );
     localparam [2:0] FILL=0, OPCODE=1, SCAN=2, ISSUE=3, WAIT=4, COPY=5, REPLY=6;
     localparam [3:0] ACCEPTED=0, FULL=1, EPOCH=2, FAULT=3, INVALID=4, UNAVAILABLE=5, OLD=6, INCOMPLETE=7;
@@ -26,6 +28,9 @@ module fifo_config_service (
     wire [31:0] value=memory[read_address];
     assign config_address=value;
     assign config_data=working;
+    wire [159:0] config_response_data={config_store_data[159:129],
+        (config_operation==1 ? config_core_data[128:32] : config_store_data[128:32]),
+        (config_operation==1 ? config_core_data[31:0] : config_operation==2 ? config_audio_data : config_store_data[31:0])};
     assign request_space=live && !halt && phase==FILL;
     assign response_pending=live && phase==REPLY;
     assign response_code=response_pending ? code : 2'd0;

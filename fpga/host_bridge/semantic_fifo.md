@@ -467,11 +467,18 @@ continuing audio/nonmutation, all three endpoints/full 160-bit metadata readback
 held R across POP/reuse, and both old service-half orders across actual DDR drain/
 reset. A write-only history-read fixture failure is preserved; readable scratch
 and explicit history-read refusal remain tested without an RTL workaround.
-[Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/config-mmio-606ce161b/results.json)
-are **7,990 LUT / 6,943 FF** after standard optimization, leaving only **10 LUT / 57 FF**.
-Synthesis is 7,995 LUT / 6,943 FF. Exactly 16 configuration inputs/32 probe lines
-move to MMIO ownership; every other probe byte/parameter remains unchanged.
-Unrouted WNS regresses from −8.997 ns to **−12.580 ns synthesis / −12.116 ns optimized**.
+The [configuration checkpoint](../../docs/fpga/command-fifo-implementation/reports/config-mmio-606ce161b/results.json)
+measured 7,990 LUT / 6,943 FF after optimization. Exactly 16 configuration inputs/
+32 probe lines moved to MMIO ownership; every other byte/parameter was unchanged.
+[Fresh reply-mux sharing evidence](../../docs/fpga/command-fifo-implementation/reports/reply-mux-b21d0925a/results.json)
+measures **7,943 LUT / 6,943 FF**, leaving **57 LUT / 57 FF** after optimization;
+synthesis is 7,948 LUT / 6,943 FF. Only response-data selection moves into the
+existing 160-bit capture/shift cone: no states/cycles/widths/handshakes or same-edge
+fault masks change. Distinct raw 129/32/160-bit replies retain exact source/masking
+assertions. Public probe bytes and complete profile metadata remain identical to
+the configuration checkpoint. The measured saving is 47 LUT / no FF, not a larger
+preflight estimate. Unrouted WNS **−12.579 ns synthesis / −12.115 ns optimized** is
+effectively unchanged from −12.116 ns, not closure of the 40-level fault/ready path.
 Complete service/matching software remain unfinished; no ABI-16 deployment,
 complete frontend/whole-design or routed-timing acceptance is established.
 Production remains ABI 15 and Stages 4–7 remain incomplete.
