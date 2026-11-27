@@ -2373,3 +2373,40 @@ acceptance. Remaining hostile lifecycle, Stage 5 software/CPU-control retirement
 full envelope/resources/final agreed budgets/routed timing/platform/fault parity,
 independent audit and delivery remain. ABI 15 stays selected; Stage 4 is partial
 and Stages 5–7 open. No board access/physical qualification/push/PR/deployment.
+
+## Hardware-paced full return streams and real-retirement recovery
+
+One new native test, `full_results_and_snapshots_never_pace_stereo_and_recovery_never_needs_their_readers`,
+uses the unchanged actual generated-audio/SP/JP/media/64-bit-AXI root. Initial switch
+plus three stateless-refusal groups fill all four reliable reservations; each bank
+is checked complete, with FIFO-head-only read visibility and both snapshot banks
+full. A fifth reservation refuses normally without consuming sequence 5. While
+its B and an old copied result R are held, the existing PCM oracle checks **128
+additional exact stereo frames**; rendering and skip counts continue without any
+result/snapshot ACK, new admission, fault or xrun.
+
+The same fixture then holds a real accepted program DDR read. Explicit ABORT/
+recovery waits for real RLAST retirement, not reader consumption or local idle.
+Copied old result R/recovery B survive epoch 1→2. All four old reservations flush;
+new initial revision-0/F0/sequence-1 capture completes with R/B still held. The full
+sixteen-word fresh header is checked after releasing the copies. There is no
+automatic replay/enable, inferred graph membership or application-Ready claim.
+This direct-input/stereo fixture is not every graph, optional-trace overflow or
+all-admitted cycle qualification; those and matched software remain separate.
+
+[Evidence](reports/paced-full-d668fc02a/results.json): **291 Rust = 219 affected +
+72 directed**, including four audio-I/O suites and both 3,970-case kernel sources;
+workspace warnings/format/policy/coverage/generators and **13 Python tests** pass.
+Only one native test file changes outside docs/evidence; no production RTL,
+runtime or schema changes. Full Linux/Wasm are **not rerun** for this test-only
+delta. The most recent runtime-qualified `d668fc02a` gates remain historical:
+3,584 passed/11 skipped/405.373 s and both Wasm profiles, not fresh-head results.
+Local `stage4-paced-full-{target-v1,milestone,precommit,final-check}` gates pass.
+Reproduce the new case with the standard Nix/simulation setup and
+`--test semantic_audio mmio_audio::paced::full_results_and_snapshots`.
+
+No new resource/timing/current-source fit or physical qualification is claimed.
+Next is matched Stage 5 packet/result/snapshot transport and trusted lease/binding
+APIs, then CPU-control retirement only after replacement/parity gates. Stage 4
+remains partial, Stages 5–7 open and ABI 15 selected; full envelope/fit/final-budget
+agreement/routed timing/platform/fault-parity/audit/delivery gates remain.

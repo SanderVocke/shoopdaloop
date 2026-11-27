@@ -406,3 +406,178 @@ fn public_enable_drives_real_i2s_audio_through_the_same_semantic_pipeline() {
     assert_eq!(finish_request(&mut s, 91), [0; 12]);
     assert_eq!(read(&mut s, REG_AUDIO_XRUNS), 0);
 }
+
+#[shoop_test(
+    no_wasm = "Native hardware pacing with all returns full and real DDR retirement/reset"
+)]
+fn full_results_and_snapshots_never_pace_stereo_and_recovery_never_needs_their_readers() {
+    let root = rt_fpga_testbench::root();
+    let compiled = paced_design(false)
+        .build(&root.join("work/marlin-suite/semantic-paced"))
+        .unwrap();
+    let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    let geometry = Geometry::new([8, 64, 32], 2);
+    let memory = Memory::attach(
+        &mut s,
+        Mode::Fixed,
+        geometry.words() + 128,
+        0x0100_0000,
+        &root.join("work/marlin-suite/semantic-paced/memory"),
+        173,
+    )
+    .unwrap();
+    memory.borrow_mut().control.stalls = true;
+    let oracle = Rc::new(RefCell::new(AudioOracle::default()));
+    s.agent(oracle.clone());
+    initialize(&mut s);
+    install(&mut s);
+    enable_hold(&mut s, 301);
+    release_write(&mut s);
+    finish_request(&mut s, 301);
+    let refused = [6, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0];
+    for bank in 1..4 {
+        publish_hold(&mut s, bank, u64::from(bank) + 1, 1, &[refused]);
+        release_write(&mut s);
+    }
+    s.until(
+        400_000,
+        "all four accepted groups finish without any result ACK",
+        |m| {
+            assert_eq!(m.get("faulted"), 0);
+            m.get("groups_attempted") == 4 && m.get("busy") == 0
+        },
+    );
+    for bank in 0..4 {
+        write(&mut s, REG_COMMAND_BANK, bank);
+        assert_eq!(
+            read(&mut s, REG_COMMAND_BANK_STATE),
+            5,
+            "complete immutable result bank {bank}"
+        );
+    }
+    assert_eq!(read(&mut s, REG_FREE_BANKS), 0);
+    assert_eq!(
+        read(&mut s, REG_RESULT_READY),
+        1,
+        "FIFO head only, not missing later completions"
+    );
+    assert_eq!(read(&mut s, REG_SNAPSHOT_READY), 3);
+    assert_eq!(read(&mut s, REG_NEXT_SEQUENCE_LOW), 5);
+    assert_eq!(read(&mut s, REG_AUDIO_XRUNS), 0);
+    write(&mut s, REG_RESULT_BANK, 0);
+    write(&mut s, REG_RESULT_REWIND, 1);
+    assert_eq!(read_hold(&mut s, REG_RESULT_DATA), 0x5346_5231);
+    write(&mut s, REG_COMMAND_BANK, 0);
+    write_hold(&mut s, REG_COMMAND_BEGIN, 1);
+    assert_eq!(s.model.get("host_receipt"), u64::from(RECEIPT_FULL));
+    let checked = oracle.borrow().checked;
+    let skipped = s.model.get("snapshot_skipped");
+    let frame = s.model.get("sync_frame");
+    s.until(
+        400_000,
+        "exact stereo while all returns and both ARM channels stay held",
+        |m| {
+            assert_eq!(m.get("faulted"), 0);
+            assert_eq!(m.get("s_axi_bvalid"), 1);
+            assert_eq!(m.get("s_axi_bresp"), 0);
+            assert_eq!(m.get("s_axi_rvalid"), 1);
+            assert_eq!(m.get("s_axi_rdata"), 0x5346_5231);
+            assert_eq!(m.get("free_mask"), 0);
+            assert_eq!(m.get("last_admitted"), 4);
+            assert_eq!(m.get("groups_attempted"), 4);
+            assert_eq!(m.get("snapshot_ready_mask"), 3);
+            oracle.borrow().checked >= checked + 128
+        },
+    );
+    assert!(s.model.get("sync_frame") > frame);
+    assert!(s.model.get("snapshot_skipped") > skipped);
+    assert_eq!(
+        s.model.get("next_sequence"),
+        5,
+        "refusal cannot admit/replay group five"
+    );
+    release_write(&mut s);
+    memory.borrow_mut().control.pause_responses = true;
+    s.until(
+        100_000,
+        "real accepted program DDR read, not a synthetic quiescence flag",
+        |m| {
+            assert_eq!(m.get("faulted"), 0);
+            m.get("m_axi_rready") != 0
+        },
+    );
+    assert!(memory.borrow().active().is_some());
+    oracle.borrow_mut().stopped = true;
+    write(&mut s, REG_ABORT, 1);
+    assert_eq!(s.model.get("audio_enable"), 0);
+    write_hold(&mut s, REG_RECOVERY_REQUEST, 1);
+    s.idle(128);
+    assert_eq!(s.model.get("runtime_epoch"), 1);
+    assert_eq!(s.model.get("runtime_reset"), 0);
+    assert_eq!(
+        s.model.get("m_axi_rready"),
+        1,
+        "abandoned upstream cannot block draining"
+    );
+    memory.borrow_mut().control.pause_responses = false;
+    s.until(
+        10_000,
+        "actual RLAST retirement then serialized safe reset",
+        |m| {
+            m.get("runtime_epoch") == 2
+                && m.get("runtime_reset") == 0
+                && m.get("recovery_state") == 3
+        },
+    );
+    s.until(
+        10_000,
+        "fresh initial capture without any old reader or ACK",
+        |m| m.get("busy") == 0,
+    );
+    assert!(memory.borrow().active().is_none());
+    assert_eq!(s.model.get("s_axi_rvalid"), 1);
+    assert_eq!(s.model.get("s_axi_rdata"), 0x5346_5231);
+    assert_eq!(s.model.get("s_axi_bvalid"), 1);
+    assert_eq!(s.model.get("s_axi_bresp"), 0);
+    assert_eq!(s.model.get("free_mask"), 15);
+    assert_eq!(s.model.get("result_ready_mask"), 0);
+    assert_eq!(s.model.get("last_admitted"), 0);
+    assert_eq!(s.model.get("groups_attempted"), 0);
+    assert_eq!(s.model.get("active_revision"), 0);
+    assert_eq!(s.model.get("snapshot_ready_mask"), 1);
+    assert_eq!(s.model.get("audio_enable"), 0);
+    assert_eq!(s.model.get("sync_frame"), 0);
+    s.idle(100_000);
+    assert_eq!(
+        s.model.get("sync_frame"),
+        0,
+        "reset complete does not replay or enable audio"
+    );
+    release_read(&mut s, 0x5346_5231);
+    release_write(&mut s);
+    assert_eq!(first_fault(&mut s)[..2], [1, 16]);
+    write(&mut s, REG_SNAPSHOT_BANK, 0);
+    write(&mut s, REG_SNAPSHOT_REWIND, 1);
+    let header: [u32; 16] = core::array::from_fn(|_| read(&mut s, REG_SNAPSHOT_DATA));
+    assert_eq!(
+        header,
+        [
+            0x5346_5331,
+            16,
+            2,
+            32,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            128,
+            19,
+            0,
+            0,
+            0,
+            0
+        ]
+    );
+}

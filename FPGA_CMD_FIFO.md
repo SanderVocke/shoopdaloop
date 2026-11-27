@@ -383,9 +383,12 @@ timing/physical qualification, final-head CI or delivery.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
 
-**Current priority:** finish remaining hostile lifecycle correctness coverage,
-then the matched Stage 5 transports and CPU-control retirement. The candidate
-preparation/lifecycle service map now includes DRAIN_STOP 12. ENABLE_AUDIO/generated/I²S/watchdog adapters are joined offline, not
+**Current priority:** integrate matched Stage 5 transports and retire CPU control
+only after their replacement passes, carrying remaining hostile lifecycle/end-to-end
+coverage through that path. The candidate hardware map and combined full-return
+pacing/retirement case now pass; production selection and cross-layer qualification
+require the matching software. Stage 4 remains partial, not waived or complete.
+The candidate preparation/lifecycle service map now includes DRAIN_STOP 12. ENABLE_AUDIO/generated/I²S/watchdog adapters are joined offline, not
 promoted or physically qualified. Do not insert
 further area-only milestones ahead of required functionality solely because the
 previous LUT/FF targets have little headroom. Keep resource evidence honest;
@@ -1755,6 +1758,41 @@ Remaining hostile lifecycle, matched ABI-16 software/CPU-control retirement,
 full envelope/whole-design/route/platform/fault-parity gates, independent audit
 and delivery remain open. Production remains ABI 15; Stages 4–7 are incomplete.
 No physical authorization/qualification, push/PR or deployment follows.
+
+**Hardware-paced full-return integration milestone:** a test-only case joins all
+four complete result banks, both full unread snapshot banks and the actual generated
+stereo driver. It checks every bank's complete state, FIFO-head-only visibility,
+next sequence 5, and refused fifth reservation. With global result R and refusal B
+held, **128 additional exact stereo PCM frames** pass; F/skip counts grow, sequence
+and four immutable reservations stay fixed, and no xrun/fault occurs.
+
+A subsequent real accepted DDR-program read is held behind its response, not a
+synthetic idle flag. ABORT/recovery cannot reset before actual RLAST retirement.
+Old copied result R/recovery B survive epoch 1→2; all old reservations disappear,
+fresh initial sequence-1/revision-0/F0 capture completes without readers/ACKs, and
+no audio or workload restarts implicitly. The complete sixteen-word new header is
+checked after releasing the old copies. These are the direct-input/stereo fixture's
+checks, not all graphs, optional-trace overflow or full admitted-cycle proof.
+
+- [x] Add combined hardware-paced full-result/full-snapshot exact-PCM and actual
+  retirement/reset coverage. This test-only subset does not close Stage 4.
+
+`stage4-paced-full-milestone` passes **219 affected + 72 directed = 291 Rust tests**,
+four retained audio-I/O suites, both 3,970-case kernel sources, workspace warnings,
+format/policy/coverage/generators and **13 Python tests**. Only the native test file
+changes outside docs/evidence: **no production RTL/runtime/schema changes**.
+Full Linux/Wasm were not rerun for this test-only delta; the last runtime milestone
+`d668fc02a` passed 3,584/11 skipped/405.373 s and both Wasm profiles, unchanged as
+historical source-qualified evidence. They are not relabeled fresh-head runs.
+[The test-only checkpoint](docs/fpga/command-fifo-implementation/reports/paced-full-d668fc02a/results.json)
+freezes one source hash, with no synthesis/route/current-source fit or qualification.
+
+Next is matched Stage 5 packet/result/snapshot transport and trusted binding/lease
+integration, not area-only optimization. Remaining cross-layer hostile lifecycle,
+CPU-control retirement, full envelope/resources/final budgets/routed timing/platform/
+fault-parity gates and independent delivery audit remain. Stages 0–3 are complete,
+Stage 4 partial and Stages 5–7 open; ABI 15 is still selected. No physical work,
+push/PR/deployment or whole-goal completion follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 
