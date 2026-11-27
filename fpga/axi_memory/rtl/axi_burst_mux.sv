@@ -1,5 +1,6 @@
 module axi_burst_mux #(parameter integer DATA_WIDTH = 32) (
     input wire clk, input wire reset,
+    input wire quiesce, output wire quiescent, output wire drain_fault,
     input wire [1:0] client_command_valid,
     output wire [1:0] client_command_ready,
     input wire [1:0] client_command_write,

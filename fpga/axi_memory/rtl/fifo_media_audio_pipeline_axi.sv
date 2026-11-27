@@ -217,6 +217,9 @@ module fifo_media_audio_pipeline_axi #(
     output wire [31:0] current_command_cycles,
     input wire store_response_ready,
     output wire [31:0] store_result_count,
+    input wire axi_quiesce,
+    output wire axi_quiescent,
+    output wire axi_drain_fault,
     output wire m_axi_awid,
     output wire [31:0] m_axi_awaddr,
     output wire [3:0] m_axi_awlen,
@@ -340,7 +343,7 @@ module fifo_media_audio_pipeline_axi #(
         .READ_BUFFERS(READ_BUFFERS),
         .WRITE_BUFFERS(WRITE_BUFFERS),
         .BURST_MEMORY(BURST_MEMORY),
-        .LOOP_DEPTH(LOOP_DEPTH)) core (.*, .memory_meta_valid(media_memory_meta_valid), .memory_meta_ready(media_memory_meta_ready), .memory_meta_write(media_memory_meta_write), .memory_meta_address(media_memory_meta_address), .memory_meta_write_data(media_memory_meta_write_data), .memory_meta_count(media_memory_meta_count), .memory_meta_write_valid(media_memory_meta_write_valid), .memory_meta_write_ready(media_memory_meta_write_ready), .memory_meta_read_valid(media_memory_meta_read_valid), .memory_meta_read_ready(media_memory_meta_read_ready), .memory_meta_response_valid(media_memory_meta_response_valid), .memory_meta_response_ready(media_memory_meta_response_ready), .memory_meta_response_error(media_memory_meta_response_error), .memory_meta_read_data(media_memory_meta_read_data));
+        .LOOP_DEPTH(LOOP_DEPTH)) core (.*, .pipeline_fault(pipeline_fault || axi_quiesce || axi_drain_fault), .memory_meta_valid(media_memory_meta_valid), .memory_meta_ready(media_memory_meta_ready), .memory_meta_write(media_memory_meta_write), .memory_meta_address(media_memory_meta_address), .memory_meta_write_data(media_memory_meta_write_data), .memory_meta_count(media_memory_meta_count), .memory_meta_write_valid(media_memory_meta_write_valid), .memory_meta_write_ready(media_memory_meta_write_ready), .memory_meta_read_valid(media_memory_meta_read_valid), .memory_meta_read_ready(media_memory_meta_read_ready), .memory_meta_response_valid(media_memory_meta_response_valid), .memory_meta_response_ready(media_memory_meta_response_ready), .memory_meta_response_error(media_memory_meta_response_error), .memory_meta_read_data(media_memory_meta_read_data));
     localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;
     localparam [63:0] PROGRAM_OFFSET = ((STORAGE_WORDS*4+63)/64)*64;
     localparam [63:0] TOTAL_BYTES = DDR_PROGRAM != 0
@@ -390,5 +393,5 @@ module fifo_media_audio_pipeline_axi #(
         wire unused_program = &{1'b0,memory_program_valid,memory_program_write,memory_program_address,memory_program_count,memory_program_write_data,memory_program_write_valid,memory_program_read_ready,memory_program_response_ready};
     end endgenerate
     initial if ({32'b0,PHYSICAL_BASE}+TOTAL_BYTES > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
-    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(TOTAL_BYTES),.sample_bytes(arena_bytes),.*);
+    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(TOTAL_BYTES),.sample_bytes(arena_bytes),.quiesce(axi_quiesce),.quiescent(axi_quiescent),.drain_fault(axi_drain_fault),.*);
 endmodule

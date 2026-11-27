@@ -45,5 +45,5 @@ module chunk_axi #(
     wire completion_ready;
     wire completion_error;
     chunk_dma #(.DATA_WIDTH(DATA_WIDTH),.MAX_WORDS(MAX_WORDS)) transfer (.*);
-    axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.*);
+    axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.quiesce(1'b0), .quiescent(), .drain_fault(), .*);
 endmodule

@@ -1090,9 +1090,87 @@ remain green with unchanged cycles (command peak 2,950, producer peak 4,619).
 Local SP/JP idle does **not** retire an accepted store operation, DMA, loop-read
 or external MIDI owner. Their actual response/drain or safe isolation/reset is
 still required; neither RAM nor backend/AXI controllers are reset by fault-stop.
-Full always-on drain/reset/first-fault integration, all internal error-ordering
-parity and hostile lifecycle tests remain open, including the two retained
-production-base reference fault differences. Stage 4 remains in progress;
-ABI-16 host/MMIO/firmware/reference selection and Stages 5–7 remain. Deployed ABI
-is **15**; no new whole-design resource/protected-route, all-admitted quantum,
-full Linux/Wasm, physical, push/PR or delivery qualification is claimed.
+At `b4b9790cb`, always-on drain/reset/first-fault integration remained open. The
+following milestone adds actual AXI isolation and epoch-qualified runtime reset,
+not a successful completion for discarded internal operations.
+
+### Actual AXI isolation, safe drain and fresh runtime epoch
+
+The shared AXI transport already has one serial burst owner. Its master now has
+terminal `quiesce`, `quiescent` and retained `drain_fault` interfaces. Quiesce cuts
+new command acceptance and cancels CHECK-stage commands with no presented header.
+It does not withdraw AW, W or AR already exposed, including independent W-before-AW.
+Once quiescing, the master stays isolated until reset even if the input drops.
+
+An active write still requires every original data beat and actual B response.
+Missing payload cannot be padded, skipped or called complete. Active reads drain
+all actual beats through RLAST even with upstream read-ready low; B likewise drains
+without upstream completion-ready. Read/completion callbacks are suppressed during
+isolation: no abandoned client receives fabricated success. DMA/cache client state
+may remain internally busy; safe reset discards it only after external AXI ownership
+is actually retired. Neither local SP idle nor an internal operation's busy flag is
+the bus-retirement proof. This is a runtime-retirement/reset protocol, **not** a
+successful primitive-program or media fence.
+
+Unexpected/early/duplicate B, unexpected R, wrong IDs and wrong RLAST retain a
+protocol/accounting fault. It blocks new commands and forbids quiescent even if
+raw inputs subsequently disappear. Legal error responses remain normal error
+responses, not unsafe bus accounting. Legacy word/chunk/media wrappers tie quiesce
+low; semantic AXI exposes it and drives execution fault-stop from quiesce/protocol
+fault. The existing AXI/media/metadata/ownership tests still pass.
+
+The new generated `fifo_recovery_pipeline_axi` wraps real semantic/media/shared
+AXI with the existing always-on recovery controller outside runtime reset. A
+trusted request must match current nonzero epoch. Quiesce stops SP/JP effects while
+AXI continues draining. Zero actual AW/B and AR/RLAST credits, master quiescence
+and two quiet clocks precede the sole epoch increment and runtime reset. Defaults
+remain 100,000,000 timeout clocks and 128 reset clocks. Reset flushes all old
+controller/client identities; raw RAM is not cleared or treated as a continuing
+lease. Unexpected B/R during reset are checked outside the reset domain and fail
+closed. Unsafe accounting or timeout stays Failed, even after late bus retirement;
+there is no automatic retry or successful fence. A held old request cannot match
+the new incarnation. The legacy host/MMIO component still selects ABI 15.
+
+Recovery state 3 is **hardware reset complete**, not application/backend Ready.
+Stage 5 must still require fresh hardware startup, lease/session and first frame,
+and preserve lost-ACK status queries rather than replay. The wrapper does not yet
+provide the always-on first-fault record or deploy the ABI-16 MMIO/ARM adapter.
+
+`axi_drain.rs` adds four directed tests. Across both 32- and 64-bit buses they check
+608 write prefix/AW-W order cases and 272 read-prefix cases, zero consumer readiness,
+terminal pulses, unpresented-header cancellation, missing payload and protocol
+errors. No alternate transaction controller, shadow payload or production injection
+API was added.
+
+`recovery_drains_real_aw_w_and_ddr_fetches_before_flushing_old_runtime_identities`
+uses actual 64-bit shared AXI, program upload/prefetch, SP/JP, execution RAM and
+packet banks. Held AW, W and DDR fetch AR each prevent reset/epoch change under
+run/command pressure. On release, actual bus completion precedes epoch 2/reset;
+old fills, queued work and selected-but-unfenced work are not replayed. A fresh
+empty revision-0/F0 packet appears without reading/ACKing the old initial packet.
+Raw marker `0xfedc_ba98_7654_3210`, valid-looking loop flags and original 0.5 gain
+persist only as nonmembers. Stale requests/ACKs cannot acquire/release epoch-2 banks.
+The first fresh quantum remains empty at revision 0, rather than executing old work.
+
+`recovery_timeout_protocol_fault_and_unsolicited_reset_responses_never_report_ready`
+checks idle unsolicited B, B/R during reset and an accepted AW with stalled W.
+The fixture uses 4,096 timeout/4 reset clocks, not enlarged production budgets.
+A late WLAST/B can make AXI quiescent after timeout, but recovery remains Failed,
+epoch unchanged, run-ready low and frame 0. A reset-edge protocol fault freezes the
+already-incremented epoch without ever reaching hardware Ready or permitting reuse.
+
+`stage4-axi-recovery-milestone.{log,status}` passes **246 selected Rust tests =
+197 affected-package + 49 directed**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. `stage4-axi-recovery-legacy` independently passes
+12 AXI/media/metadata/ownership tests. Narrow logs are `stage4-axi-drain-tests` and
+`stage4-axi-recovery-{tests,races}`. Failed `-tests-until-api` (unit-returning
+`Sim::until`) and `-races-write-gap` remain separate; the latter fixture now waits
+for actual B readiness after all payload beats, not a temporary WVALID gap.
+
+Normal exact samples and command/capture cycles remain unchanged, including the
+2,950-cycle actual 32-target command peak and 4,619-cycle 128-row producer peak.
+Stage 4 remains open for retained first-fault wiring and broader hostile lifecycle
+and internal SP/JP error parity, including the two production-base differences.
+Stages 5–7, whole-design resource/protected-route and all-admitted quantum gates,
+full Linux/Wasm, physical and delivery qualification remain. No such pass follows
+from these selected tests or the earlier partial route; deployed ABI stays **15**.

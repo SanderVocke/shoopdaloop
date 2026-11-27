@@ -103,7 +103,7 @@ def generate():
     text += "    assign host_abort = mailbox_abort || recovery_quiesce;\n"
     text += "    host_recovery recovery (.clk(clk), .reset(reset), .seed_epoch(epoch),\n"
     text += "        .request(recovery_request), .state(recovery_status), .epoch(runtime_epoch),\n"
-    text += "        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset),\n"
+    text += "        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset), .bus_fault(1'b0),\n"
     text += "        .quiescent(!busy && !state_busy && !jobs_busy && !store_busy && !reclaim_active\n"
     text += "            && queued_jobs == 0 && !m_axi_awvalid && !m_axi_arvalid && !m_axi_wvalid),\n"
     text += "        .write_start(m_axi_awvalid && m_axi_awready), .write_done(m_axi_bvalid && m_axi_bready),\n"

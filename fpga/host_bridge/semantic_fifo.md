@@ -356,6 +356,20 @@ Advance incarnation without wrap before storage reuse. Epoch-qualified publicati
 and ACKs cannot cross that boundary. Lost replies/disconnects never authorize
 replay, premature freeing, forced task deletion or restoration from snapshots.
 
+The semantic AXI component now exposes terminal master quiesce: stop new internal
+burst commands, cancel unpresented headers, preserve active AW/W/AR and drain real
+R/B without upstream consumer readiness. Suppress callbacks to the abandoned
+runtime; never pad missing write payload or report this as its successful fence.
+Unsafe response accounting permanently forbids quiescence. Generated
+`fifo_recovery_pipeline_axi` keeps recovery outside runtime reset, requires actual
+AXI quiescence/zero credits/two quiet clocks, then advances epoch and resets clients.
+A held old-epoch request cannot replay; B/R during reset or late completion after
+timeout cannot yield Ready. Hardware reset-complete is not application/backend
+Ready. Raw RAM survives only as nonmembers under the fresh initial revision 0.
+Always-on first-fault and ABI-16 MMIO/ARM selection remain integration work; the
+legacy deployed interface is still 15. This implemented subset does not replace
+the remaining lifecycle, service-envelope or resource/timing acceptance tests.
+
 Required integrated tests include every packet-word stall, unread/full streams,
 held AXI channels and inactive uploads, FIFO cutoff/deadline order, 16/32-loop
 skip-0/1 arming, mixed/repeated targets, all retained controls, source changes over

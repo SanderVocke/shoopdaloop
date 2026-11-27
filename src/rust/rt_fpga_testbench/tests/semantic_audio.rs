@@ -1781,3 +1781,366 @@ fn settled_128_row_packets_are_coherent_and_full_readers_never_own_rendering() {
         s.model.get("peak_snapshot_cycles")
     );
 }
+
+fn recovery_design() -> Design {
+    let root = rt_fpga_testbench::root();
+    let geometry = Geometry::new([8, 64, 32], 2);
+    let mut design =
+        suites::pipeline::design([16, 8, 32, 32, 4, 1, 1], &geometry, 64, Mode::Fixed, 1);
+    design.top = "fifo_recovery_pipeline_axi".into();
+    design.probes.clear();
+    for module in [
+        "fifo_group_banks",
+        "fifo_edit_kernel",
+        "fifo_group_consumer",
+        "fifo_observations",
+        "fifo_snapshots",
+        "fifo_audio_pipeline",
+        "fifo_media_loader",
+        "fifo_media_arbiter",
+        "fifo_media_audio_pipeline",
+        "host_recovery",
+    ] {
+        design
+            .sources
+            .push(root.join(format!("fpga/host_bridge/rtl/{module}.sv")));
+    }
+    for module in [
+        "fifo_media_audio_pipeline_axi",
+        "fifo_recovery_pipeline_axi",
+    ] {
+        design
+            .sources
+            .push(root.join(format!("fpga/axi_memory/rtl/{module}.sv")));
+    }
+    design.parameters(&[
+        ("LOOP_DEPTH", 1),
+        ("EXTERNAL_IO", 1),
+        ("DDR_PROGRAM", 1),
+        ("RECOVERY_TIMEOUT_CYCLES", 4096),
+        ("RECOVERY_RESET_CYCLES", 4),
+    ])
+}
+
+#[shoop_test(no_wasm = "Native semantic recovery and real AXI simulator")]
+fn recovery_drains_real_aw_w_and_ddr_fetches_before_flushing_old_runtime_identities() {
+    for point in ["aw", "w", "ar"] {
+        let root = rt_fpga_testbench::root();
+        let geometry = Geometry::new([8, 64, 32], 2);
+        let compiled = recovery_design()
+            .build(&root.join("work/marlin-suite/semantic-recovery"))
+            .unwrap();
+        let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        let memory = Memory::attach(
+            &mut s,
+            Mode::Fixed,
+            geometry.words() + 128,
+            0x0100_0000,
+            &root.join("work/marlin-suite/semantic-recovery/memory"),
+            91,
+        )
+        .unwrap();
+        memory.borrow_mut().control.stalls = true;
+        s.model.set_all(&[
+            ("reset", 1),
+            ("epoch", 1),
+            ("arena_base", 0x0100_0000),
+            ("run_quantum", 32),
+            ("run_chunk_frames", 32),
+            ("run_inputs", 1),
+            ("run_outputs", 1),
+            ("job_enable", 1),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        wait_initial(&mut s);
+        assert_eq!(s.model.get("runtime_epoch"), 1);
+        assert_eq!(s.model.get("snapshot_ready_mask"), 1);
+        initialize_observations(&mut s, 0, 0.5f32.to_bits());
+        let marker = 0xfedc_ba98_7654_3210;
+        cfg(&mut s, false, true, 0, Some(&Bits::from_u64(1 | (7 << 1))));
+        cfg(&mut s, false, true, 3, Some(&Bits::from_u64(marker)));
+        if point == "aw" {
+            memory.borrow_mut().control.hold_aw = true;
+        }
+        if point == "w" {
+            memory.borrow_mut().control.hold_w = true;
+        }
+        s.model.set_all(&[
+            ("cfg_valid", 1),
+            ("cfg_state", 0),
+            ("cfg_loop", 0),
+            ("cfg_write", 1),
+            ("cfg_address", 0),
+        ]);
+        s.model.set_bits(
+            "cfg_write_data",
+            &codec::instruction(&json!({
+                "kind":"process_input", "port":0, "destination":0,
+            }))
+            .unwrap()
+            .resized(129),
+        );
+        s.model.eval();
+        assert_eq!(s.model.get("cfg_ready"), 1);
+        s.idle(1);
+        s.model.set("cfg_valid", 0);
+        if point == "ar" {
+            s.until(10_000, "complete DDR instruction upload", |m| {
+                m.get("cfg_response_valid") != 0
+            });
+            assert_eq!(s.model.get("cfg_response_error"), 0);
+            s.idle(2);
+            let mut select = [0; 12];
+            select[0] = 5;
+            select[6] = 1;
+            select[8] = 1 << 16;
+            select[10] = 1;
+            publish(&mut s, 0, 1, 0, &[select]);
+        }
+        let mut refused = [0; 12];
+        refused[0] = 6;
+        refused[4] = 5;
+        publish(&mut s, 2, if point == "ar" { 2 } else { 1 }, 0, &[refused]);
+        assert_eq!(host(&mut s, 0, 1, 0, 0), 0);
+        assert_eq!(host(&mut s, 1, 1, 0x53434631, 0), 0);
+        if point == "ar" {
+            memory.borrow_mut().control.hold_ar = true;
+            s.model.set("run_valid", 1);
+            s.idle(1);
+            s.model.set("run_valid", 0);
+        }
+        let signal = match point {
+            "aw" => "m_axi_awvalid",
+            "w" => "m_axi_wvalid",
+            _ => "m_axi_arvalid",
+        };
+        s.until(10_000, "held real AXI address or payload", |m| {
+            m.get(signal) != 0
+        });
+        let before = s.model.get("sync_frame");
+        if point == "ar" {
+            assert_eq!(s.model.get("active_revision"), 1);
+            assert_eq!(s.model.get("handoff_pending"), 1);
+        }
+        s.model.set_all(&[
+            ("recovery_request", 1),
+            ("recovery_epoch", 1),
+            ("run_valid", 1),
+            ("host_valid", 1),
+            ("host_operation", 1),
+            ("host_bank", 1),
+            ("host_word", 0),
+            ("host_epoch", 1),
+            ("host_strobe", 15),
+        ]);
+        s.idle(1);
+        s.idle(32);
+        assert_eq!(s.model.get("recovery_state"), 1, "point {point}");
+        assert_eq!(s.model.get("runtime_reset"), 0);
+        assert_eq!(s.model.get("runtime_epoch"), 1);
+        assert_eq!(s.model.get("axi_quiescent"), 0);
+        assert_eq!(s.model.get("axi_drain_fault"), 0);
+        assert_eq!(s.model.get("faulted"), 1);
+        assert_eq!(s.model.get("run_ready"), 0);
+        assert_eq!(s.model.get("sync_frame"), before);
+        assert_eq!(s.model.get("result_ready_mask"), 0);
+        assert_eq!(
+            s.model.get(signal),
+            1,
+            "presented AXI work cannot be withdrawn"
+        );
+        s.model.set_all(&[("run_valid", 0), ("host_valid", 0)]);
+        memory.borrow_mut().control.hold_aw = false;
+        memory.borrow_mut().control.hold_w = false;
+        memory.borrow_mut().control.hold_ar = false;
+        s.until(10_000, "safe reset after actual AXI completion", |m| {
+            m.get("runtime_reset") != 0
+        });
+        assert_eq!(s.model.get("runtime_epoch"), 2);
+        assert_eq!(s.model.get("axi_drain_fault"), 0);
+        s.until(10_000, "recovery hardware reset complete", |m| {
+            m.get("recovery_state") == 3
+        });
+        s.until(8192, "fresh initial packet without ARM ACK", |m| {
+            m.get("run_ready") != 0
+        });
+        assert_eq!(s.model.get("runtime_epoch"), 2);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("active_revision"), 0);
+        assert_eq!(s.model.get("groups_attempted"), 0);
+        assert_eq!(s.model.get("handoff_pending"), 0);
+        assert_eq!(s.model.get("free_mask"), 15);
+        assert_eq!(s.model.get("result_ready_mask"), 0);
+        assert_eq!(s.model.get("snapshot_ready_mask"), 1);
+        assert_eq!(s.model.get("snapshot_last_sequence"), 1);
+        let mut packet = vec![];
+        for word in 0..54 {
+            s.model.set_all(&[
+                ("snapshot_read_valid", 1),
+                ("snapshot_read_bank", 0),
+                ("snapshot_read_word", word),
+            ]);
+            s.idle(1);
+            assert_eq!(s.model.get("snapshot_response_error"), 0);
+            packet.push(s.model.get("snapshot_read_data") as u32);
+        }
+        s.model.set("snapshot_read_valid", 0);
+        assert_eq!(packet[0], 0x53465331);
+        assert_eq!(packet[1], 16);
+        assert_eq!(packet[2], 2);
+        assert_eq!(packet[4], 1);
+        assert_eq!(&packet[6..10], &[0; 4]);
+        assert_eq!(
+            u64::from(packet[22]) | (u64::from(packet[23]) << 32),
+            marker
+        );
+        assert_eq!(
+            packet[48],
+            0.5f32.to_bits(),
+            "retained raw nonmember, not restored state"
+        );
+        assert_eq!(
+            host(&mut s, 0, 0, 0, 0),
+            2,
+            "old request cannot claim a new incarnation"
+        );
+        s.model.set_all(&[
+            ("snapshot_ack_valid", 1),
+            ("snapshot_ack_bank", 0),
+            ("snapshot_ack_sequence", 1),
+            ("snapshot_ack_epoch", 1),
+        ]);
+        s.idle(1);
+        assert_eq!(s.model.get("snapshot_ack_receipt"), 2);
+        s.model.set("snapshot_ack_valid", 0);
+        s.idle(20);
+        assert_eq!(s.model.get("snapshot_ready_mask"), 1);
+        assert_eq!(
+            s.model.get("recovery_state"),
+            3,
+            "held old recovery request cannot replay"
+        );
+        assert_eq!(s.model.get("runtime_epoch"), 2);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        quantum(&mut s, 0, 0, &mut vec![]);
+        assert_eq!(
+            s.model.get("groups_attempted"),
+            0,
+            "old queued group was discarded, not replayed"
+        );
+        assert_eq!(s.model.get("active_revision"), 0);
+        assert_eq!(s.model.get("result_ready_mask"), 0);
+        println!(
+            "SEMANTIC_RECOVERY_AXI {point}: actual drain -> epoch 2, fresh empty F0, no replay"
+        );
+    }
+}
+
+#[shoop_test(no_wasm = "Native semantic recovery failure simulator")]
+fn recovery_timeout_protocol_fault_and_unsolicited_reset_responses_never_report_ready() {
+    let root = rt_fpga_testbench::root();
+    let compiled = recovery_design()
+        .build(&root.join("work/marlin-suite/semantic-recovery"))
+        .unwrap();
+    for point in ["idle_b", "reset_b", "reset_r", "timeout_w"] {
+        let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        s.model.set_all(&[
+            ("reset", 1),
+            ("epoch", 1),
+            ("arena_base", 0x0100_0000),
+            ("run_quantum", 32),
+            ("run_chunk_frames", 32),
+            ("run_inputs", 1),
+            ("run_outputs", 1),
+            ("job_enable", 1),
+        ]);
+        s.idle(2);
+        s.model.set("reset", 0);
+        wait_initial(&mut s);
+        if point == "idle_b" {
+            s.model.set("m_axi_bvalid", 1);
+            s.idle(1);
+            s.model.set("m_axi_bvalid", 0);
+            assert_eq!(s.model.get("axi_drain_fault"), 1);
+        }
+        if point == "timeout_w" {
+            s.model.set_all(&[
+                ("cfg_valid", 1),
+                ("cfg_write", 1),
+                ("cfg_address", 0),
+                ("m_axi_awready", 1),
+            ]);
+            s.model.set_bits(
+                "cfg_write_data",
+                &codec::instruction(&json!({
+                    "kind":"process_input", "port":0, "destination":0,
+                }))
+                .unwrap()
+                .resized(129),
+            );
+            s.model.eval();
+            assert_eq!(s.model.get("cfg_ready"), 1);
+            s.idle(1);
+            s.model.set("cfg_valid", 0);
+            s.until(1000, "accepted AW but stalled real W", |m| {
+                m.get("m_axi_wvalid") != 0 && m.get("m_axi_awvalid") == 0
+            });
+        }
+        s.model
+            .set_all(&[("recovery_request", 1), ("recovery_epoch", 1)]);
+        if point.starts_with("reset_") {
+            s.until(100, "idle recovery enters reset", |m| {
+                m.get("runtime_reset") != 0
+            });
+            assert_eq!(s.model.get("runtime_epoch"), 2);
+            let signal = if point == "reset_b" {
+                "m_axi_bvalid"
+            } else {
+                "m_axi_rvalid"
+            };
+            s.model.set(signal, 1);
+            s.idle(1);
+            s.model.set(signal, 0);
+        }
+        s.until(4200, "unsafe recovery must fail closed", |m| {
+            m.get("recovery_state") == 4
+        });
+        let epoch = if point.starts_with("reset_") { 2 } else { 1 };
+        assert_eq!(s.model.get("runtime_epoch"), epoch);
+        assert_eq!(s.model.get("runtime_reset"), 0);
+        if point == "timeout_w" {
+            assert_eq!(s.model.get("m_axi_wvalid"), 1);
+            assert_eq!(s.model.get("axi_quiescent"), 0);
+            assert_eq!(
+                s.model.get("axi_drain_fault"),
+                0,
+                "DDR stalls are not protocol errors"
+            );
+            s.model.set("m_axi_wready", 1);
+            s.until(100, "late write payload accepted", |m| {
+                m.get("m_axi_bready") != 0
+            });
+            s.model.set("m_axi_bvalid", 1);
+            s.idle(1);
+            s.model.set("m_axi_bvalid", 0);
+            s.model.eval();
+            assert_eq!(s.model.get("axi_quiescent"), 1);
+        }
+        s.model
+            .set_all(&[("run_valid", 1), ("recovery_epoch", epoch)]);
+        s.idle(200);
+        assert_eq!(
+            s.model.get("recovery_state"),
+            4,
+            "point {point}; late completion cannot retry recovery"
+        );
+        assert_eq!(s.model.get("runtime_epoch"), epoch);
+        assert_eq!(s.model.get("run_ready"), 0);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("result_ready_mask"), 0);
+        println!(
+            "SEMANTIC_RECOVERY_FAILED {point}: epoch {epoch} retained; no restart or fabricated ready"
+        );
+    }
+}

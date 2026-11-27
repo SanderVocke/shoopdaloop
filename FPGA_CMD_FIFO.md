@@ -780,9 +780,51 @@ DMA fence and failure tests remain green; the 32-target command peak stays 2,950
 This is **execution stop, not backend retirement or recovery**. Accepted store,
 DMA, loop-response or MIDI ownership still needs its real drain/response or safe
 isolation/reset protocol; local idle and no further DSP writes are not its fence.
-Always-on drain/reset/first-fault integration, internal SP/JP error-ordering parity
-(including the two baseline fault differences), full hostile lifecycle tests,
-ABI-16 integration and Stages 5–7 remain. Deployed ABI is still **15**. No new
+At `b4b9790cb`, always-on drain/reset/first-fault integration still remained open.
+
+**Actual AXI isolation and epoch-reset milestone:** reuse the existing serial
+AXI master rather than add a parallel transaction tracker. A terminal, latched
+quiesce cuts command admission and cancels headers not yet presented; active
+AW/W/AR are preserved, including W-before-AW. Writes require all real payload
+beats and B, with no padding. Reads and B drain independently of upstream read/
+completion readiness, without reporting successful callbacks to the discarded
+runtime. Wrong IDs, unexpected/early/duplicate responses and mismatched RLAST
+retain a protocol fault that prevents claiming quiescence or reusing storage.
+Ordinary legal SLVERR/DECERR responses remain distinct from unsafe accounting.
+
+Generated `fifo_recovery_pipeline_axi` now keeps `host_recovery` outside runtime
+reset and connects the actual semantic/media/shared-AXI component. Recovery first
+stops SP/JP effects and isolates new AXI commands. It requires actual bus retirement,
+zero AW/B and AR/RLAST credits and two quiet clocks before incrementing incarnation
+once and resetting the entire old runtime. This safely discards internal pending
+operations; it does **not** manufacture their program/media fence. Defaults remain
+100,000,000 drain cycles and 128 reset cycles. A held old-epoch recovery request
+cannot initiate another reset. Unexpected B/R during reset or any unsafe accounting
+fails closed; a timed-out transaction completing later cannot restart recovery.
+Hardware recovery state 3 means reset complete, not management/backend Ready;
+fresh startup/lease/session/first-frame qualification still belongs to Stage 5.
+
+Four new AXI tests cover 608 write-prefix/order cases, 272 read-prefix cases,
+32/64-bit buses, unread callbacks, missing bodies, cutoff and protocol failures.
+Two actual semantic/shared-AXI tests cover held AW, W and DDR fetch AR, plus idle
+unsolicited B, B/R during reset and W timeout. No reset/epoch change occurs during
+the three held transactions. After real drain, old fills/queues/selected-but-unfenced
+work and snapshots disappear; fresh epoch 2 publishes empty F0/revision-0 without
+ARM ACK or replay. Retained physical loop/gain rows remain nonmembers, not restored
+state. Old ACKs/requests cannot free or acquire the new incarnation.
+
+`stage4-axi-recovery-milestone.{log,status}` passes **197 affected-package +
+49 directed = 246 selected Rust tests**, workspace warnings, formatting, policy/
+coverage, generators and Python compilation. The extra directed AXI/media/metadata/
+ownership targets contribute 12 tests and also pass independently in
+`stage4-axi-recovery-legacy`. Narrow evidence is `stage4-axi-drain-tests` and
+`stage4-axi-recovery-{tests,races}`. The initial `-tests-until-api` compilation error
+and `-races-write-gap` fixture failure are retained: a gap in WVALID is not WLAST/B
+retirement. Normal semantic samples/capture costs and command peak 2,950 remain.
+
+Stage 4 remains open for retained first-fault integration and broader lifecycle/
+internal SP/JP error-ordering parity, including the two baseline differences.
+ABI-16 integration and Stages 5–7 remain. Deployed ABI is still **15**; no fresh
 whole-design resource/protected-route, all-admitted quantum, full Linux/Wasm,
 physical, push/PR or delivery qualification is claimed.
 

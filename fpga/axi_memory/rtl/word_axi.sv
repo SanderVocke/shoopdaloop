@@ -45,5 +45,5 @@ module word_axi #(
     wire completion_ready;
     wire completion_error;
     word_dma #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(REGISTER_REQUEST),.RECORD_BURSTS(RECORD_BURSTS)) transfer (.*);
-    axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.*);
+    axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.quiesce(1'b0), .quiescent(), .drain_fault(), .*);
 endmodule

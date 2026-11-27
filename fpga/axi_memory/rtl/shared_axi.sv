@@ -2,6 +2,7 @@ module shared_axi #(parameter integer DATA_WIDTH = 32, parameter integer BURST_M
     parameter [31:0] MAX_SAMPLE_WORDS = 32'hffffffff,
     parameter [31:0] MAX_METADATA_WORDS = 32'hffffffff) (
     input wire clk, input wire reset,
+    input wire quiesce, output wire quiescent, output wire drain_fault,
     input wire [63:0] arena_base, input wire [63:0] arena_bytes, input wire [63:0] sample_bytes,
     input wire [31:0] physical_base,
     input wire memory_valid, output wire memory_ready, input wire memory_write,

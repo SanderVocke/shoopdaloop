@@ -279,7 +279,7 @@ module host_pipeline_axi #(
     assign host_abort = mailbox_abort || recovery_quiesce;
     host_recovery recovery (.clk(clk), .reset(reset), .seed_epoch(epoch),
         .request(recovery_request), .state(recovery_status), .epoch(runtime_epoch),
-        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset),
+        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset), .bus_fault(1'b0),
         .quiescent(!busy && !state_busy && !jobs_busy && !store_busy && !reclaim_active
             && queued_jobs == 0 && !m_axi_awvalid && !m_axi_arvalid && !m_axi_wvalid),
         .write_start(m_axi_awvalid && m_axi_awready), .write_done(m_axi_bvalid && m_axi_bready),

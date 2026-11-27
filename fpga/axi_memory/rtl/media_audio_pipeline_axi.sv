@@ -331,5 +331,5 @@ module media_audio_pipeline_axi #(
         wire unused_program = &{1'b0,memory_program_valid,memory_program_write,memory_program_address,memory_program_count,memory_program_write_data,memory_program_write_valid,memory_program_read_ready,memory_program_response_ready};
     end endgenerate
     initial if ({32'b0,PHYSICAL_BASE}+TOTAL_BYTES > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
-    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(TOTAL_BYTES),.sample_bytes(arena_bytes),.*);
+    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(TOTAL_BYTES),.sample_bytes(arena_bytes),.quiesce(1'b0),.quiescent(),.drain_fault(),.*);
 endmodule
