@@ -19,12 +19,12 @@ class SemanticMmioTests(unittest.TestCase):
         public = {name for _, name in ports}
         _, mmio = header((HERE / "rtl/fifo_mmio.sv").read_text())
         for declaration, name in mmio:
-            if name.startswith("s_axi_"):
+            if name.startswith("s_axi_") or name == "irq":
                 self.assertIn(name, public)
             elif declaration.startswith("output"):
                 self.assertNotIn(name, public)
         for name in ["clk", "reset", "epoch", "runtime_reset", "runtime_epoch", "cfg_valid",
-                     "store_cmd_valid", "recovery_request", "first_fault_sequence"]:
+                     "store_cmd_valid", "audio_xruns", "first_fault_sequence"]:
             self.assertIn(name, public)
 
     def test_critical_reset_epoch_retention_and_geometry_connections_are_explicit(self):
@@ -35,7 +35,11 @@ class SemanticMmioTests(unittest.TestCase):
         self.assertIn(".fault_sequence(first_fault_sequence)", source)
         self.assertNotIn(".fault_sequence(diagnostic_sequence)", source)
         self.assertNotIn(".reset(runtime_reset)", source)
-        self.assertIn("fifo_mmio #(.LOOPS(LOOP_DEPTH))", source)
+        self.assertIn(".LOOPS(LOOP_DEPTH)", source)
+        self.assertIn(".SYSTEM_REGISTERS(1)", source)
+        self.assertNotIn("input wire recovery_request", source)
+        self.assertIn(".quantum_done(done && !faulted && error_code==0)", source)
+        self.assertIn("diagnostic_cycles+32'd1", source)
         core, _ = header((AXI / "rtl/fifo_recovery_pipeline_axi.sv").read_text())
         parameters = re.findall(r"parameter\s+(?:integer|\[[^\]]+\])\s+(\w+)\s*=", core[2])
         for parameter in parameters:

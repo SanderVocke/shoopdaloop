@@ -404,8 +404,8 @@ fn indexed_mmio_uses_safe_runtime_reset_and_the_retained_full_width_fault_sequen
     assert_eq!(saved[1], 64);
     assert_eq!(saved[7], sequence);
     assert_eq!(read_hold(&mut s, REG_FAULT_SEQUENCE_HIGH), 0x12345678);
-    s.model
-        .set_all(&[("recovery_request", 1), ("recovery_epoch", 1)]);
+    release_write(&mut s);
+    write_hold(&mut s, REG_RECOVERY_REQUEST, 1);
     s.idle(64);
     assert_eq!(s.model.get("recovery_state"), 1);
     assert_eq!(s.model.get("runtime_epoch"), 1);
@@ -428,6 +428,27 @@ fn indexed_mmio_uses_safe_runtime_reset_and_the_retained_full_width_fault_sequen
     assert_eq!(s.model.get("diagnostic_sequence"), 0);
     release_read(&mut s, 0x12345678);
     release_write(&mut s);
+    for (register, value) in [
+        (REG_SUBMISSION_RESULT, 0),
+        (REG_FAULT_EPOCH, saved[0]),
+        (REG_FAULT_CAUSE, saved[1]),
+        (REG_FAULT_OP, saved[3]),
+        (REG_FAULT_CYCLES, saved[4]),
+        (REG_FAULT_CONTROL_CYCLES, saved[5]),
+        (REG_FAULT_DETAIL, saved[6]),
+        (REG_FAULT_REVISION_LOW, saved[8] & 0xffffffff),
+        (REG_FAULT_REVISION_HIGH, saved[8] >> 32),
+        (REG_FAULT_TAG, saved[7] & 0xffffffff),
+        (REG_FAULT_SEQUENCE_HIGH, saved[7] >> 32),
+        (REG_FAULT_FRAME_LOW, saved[9] & 0xffffffff),
+        (REG_FAULT_FRAME_HIGH, saved[9] >> 32),
+    ] {
+        assert_eq!(
+            u64::from(read(&mut s, register)),
+            value,
+            "register {register:#x}"
+        );
+    }
     assert_eq!(read(&mut s, REG_FAULT_SEQUENCE_HIGH), 0x12345678);
     assert_eq!(read(&mut s, REG_NEXT_SEQUENCE_LOW), 1);
     assert_eq!(read(&mut s, REG_LAST_ADMITTED_LOW), 0);
@@ -447,4 +468,174 @@ fn indexed_mmio_uses_safe_runtime_reset_and_the_retained_full_width_fault_sequen
     assert_eq!(s.model.get("first_fault_epoch"), 2);
     assert_eq!(s.model.get("first_fault_sequence"), 0);
     assert_eq!(read(&mut s, REG_FAULT_SEQUENCE_HIGH), 0);
+}
+
+#[shoop_test(no_wasm = "Native public discovery and recovery against actual AXI ownership")]
+fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_recovery_halves() {
+    let root = rt_fpga_testbench::root();
+    let profile = design();
+    let geometry_registers = [
+        (REG_PROGRAM_DEPTH, "PROGRAM_DEPTH"),
+        (REG_STATE_DEPTH, "STATE_DEPTH"),
+        (REG_JOB_DEPTH, "JOB_DEPTH"),
+        (REG_BUFFERS, "BUFFERS"),
+        (REG_VIEWS, "VIEWS"),
+        (REG_CHUNK_FRAMES, "CHUNK_FRAMES"),
+        (REG_BLOCK_CHUNKS, "BLOCK_CHUNKS"),
+    ]
+    .map(|(register, name)| (register, profile.parameters[name].parse::<u32>().unwrap()));
+    let media_blocks = profile.parameters["SLOTS"].parse::<u32>().unwrap()
+        / profile.parameters["BLOCK_CHUNKS"].parse::<u32>().unwrap();
+    let compiled = profile
+        .build(&root.join("work/marlin-suite/semantic-mmio-audio"))
+        .unwrap();
+    for old_half in ["aw", "w"] {
+        let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        let geometry = Geometry::new([8, 64, 32], 2);
+        let memory = Memory::attach(
+            &mut s,
+            Mode::Fixed,
+            geometry.words() + 128,
+            0x0100_0000,
+            &root.join("work/marlin-suite/semantic-mmio-audio/memory"),
+            92,
+        )
+        .unwrap();
+        memory.borrow_mut().control.stalls = true;
+        reset(&mut s);
+        for (register, value) in geometry_registers {
+            assert_eq!(read(&mut s, register), value);
+        }
+        for (register, value) in [
+            (REG_ID, SEMANTIC_DISCOVERY_ID),
+            (REG_VERSION, 16),
+            (REG_CORE_CLOCK_HZ, 100_000_000),
+            (REG_ARENA_BASE, 0x0100_0000),
+            (REG_ARENA_BYTES, 0x0800_0000),
+            (REG_MEDIA_BLOCKS, media_blocks),
+            (REG_QUANTUM, 32),
+            (REG_RECOVERY_ID, 0x52535431),
+            (REG_RECOVERY_STATUS, 0),
+            (REG_EPOCH, 1),
+            (REG_STATUS, 0),
+            (REG_COMPLETED_QUANTA, 0),
+            (REG_PEAK_QUANTUM_CYCLES, 0),
+            (REG_FAULT_EPOCH, 0),
+        ] {
+            assert_eq!(read(&mut s, register), value, "register {register:#x}");
+        }
+        s.model.set("audio_xruns", 0x80000012);
+        assert_eq!(read(&mut s, REG_AUDIO_XRUNS), 0x80000012);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        assert_eq!(s.model.get("irq"), 1);
+        ack(&mut s, true, 0, 1, 1);
+        assert_eq!(s.model.get("irq"), 0);
+        let cycles = quantum(&mut s, 0, 0, &mut vec![]);
+        assert_eq!(read(&mut s, REG_COMPLETED_QUANTA), 1);
+        assert_eq!(u64::from(read(&mut s, REG_PEAK_QUANTUM_CYCLES)), cycles);
+        assert_eq!(s.model.get("irq"), 1);
+        ack(&mut s, true, 0, 2, 1);
+        assert_eq!(s.model.get("irq"), 0);
+        s.model.set_all(&[
+            ("s_axi_awaddr", u64::from(REG_RECOVERY_REQUEST)),
+            ("s_axi_wdata", 1),
+            ("s_axi_wstrb", 3),
+        ]);
+        channel(&mut s, "s_axi_wvalid", "s_axi_wready");
+        channel(&mut s, "s_axi_awvalid", "s_axi_awready");
+        s.until(32, "malformed recovery strobe", |m| {
+            m.get("s_axi_bvalid") != 0
+        });
+        assert_eq!(s.model.get("s_axi_bresp"), 2);
+        s.model.set("s_axi_bready", 1);
+        s.idle(1);
+        s.model.set("s_axi_bready", 0);
+        assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_UNAVAILABLE);
+        write(&mut s, REG_RECOVERY_REQUEST, 0);
+        assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_EPOCH);
+        assert_eq!(read(&mut s, REG_RECOVERY_STATUS), 0);
+        memory.borrow_mut().control.hold_aw = true;
+        s.model.set_all(&[
+            ("cfg_valid", 1),
+            ("cfg_state", 0),
+            ("cfg_loop", 0),
+            ("cfg_write", 1),
+            ("cfg_address", 0),
+        ]);
+        s.model
+            .set_bits("cfg_write_data", &Bits::from_u64(0).resized(129));
+        s.model.eval();
+        assert_eq!(s.model.get("cfg_ready"), 1);
+        s.idle(1);
+        s.model.set("cfg_valid", 0);
+        s.until(10_000, "actual DDR AW before public recovery", |m| {
+            m.get("m_axi_awvalid") != 0
+        });
+        write(&mut s, REG_RECOVERY_REQUEST, 1);
+        assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_ACCEPTED);
+        assert_eq!(read(&mut s, REG_RECOVERY_STATUS), 1);
+        write(&mut s, REG_RECOVERY_REQUEST, 1);
+        assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_UNAVAILABLE);
+        s.model.set_all(&[
+            ("s_axi_awaddr", u64::from(REG_RECOVERY_REQUEST)),
+            ("s_axi_wdata", 2),
+            ("s_axi_wstrb", 15),
+        ]);
+        let (valid, ready, other_valid, other_ready) = if old_half == "aw" {
+            (
+                "s_axi_awvalid",
+                "s_axi_awready",
+                "s_axi_wvalid",
+                "s_axi_wready",
+            )
+        } else {
+            (
+                "s_axi_wvalid",
+                "s_axi_wready",
+                "s_axi_awvalid",
+                "s_axi_awready",
+            )
+        };
+        channel(&mut s, valid, ready);
+        assert_eq!(read_hold(&mut s, REG_EPOCH), 1);
+        memory.borrow_mut().control.hold_aw = false;
+        s.until(20_000, "real retirement and public-requested reset", |m| {
+            m.get("recovery_state") == 3
+        });
+        s.until(
+            8192,
+            "fresh startup with incomplete old AXI-Lite write",
+            |m| m.get("run_ready") != 0,
+        );
+        assert!(memory.borrow().writes() > 0);
+        assert_eq!(s.model.get("runtime_epoch"), 2);
+        assert_eq!(s.model.get("sync_frame"), 0);
+        release_read(&mut s, 1);
+        channel(&mut s, other_valid, other_ready);
+        s.until(32, "old-half recovery refusal", |m| {
+            m.get("s_axi_bvalid") != 0
+        });
+        release_write(&mut s);
+        assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_EPOCH);
+        assert_eq!(read(&mut s, REG_RECOVERY_STATUS), 3);
+        assert_eq!(read(&mut s, REG_EPOCH), 2);
+        assert_eq!(read(&mut s, REG_COMPLETED_QUANTA), 0);
+        assert_eq!(read(&mut s, REG_PEAK_QUANTUM_CYCLES), 0);
+        assert_eq!(read(&mut s, REG_FAULT_EPOCH), 1);
+        assert_eq!(read(&mut s, REG_FAULT_CAUSE), 0x90);
+        assert_eq!(read(&mut s, REG_FAULT_TAG), 0);
+        assert_eq!(read(&mut s, REG_FAULT_SEQUENCE_HIGH), 0);
+        assert_eq!(read(&mut s, REG_FAULT_FRAME_LOW), 32);
+        assert_eq!(read(&mut s, REG_FAULT_FRAME_HIGH), 0);
+        assert_eq!(read(&mut s, REG_FAULT_REVISION_LOW), 0);
+        assert_eq!(read(&mut s, REG_FAULT_REVISION_HIGH), 0);
+        assert_eq!(read(&mut s, REG_FAULT_OP), u32::MAX);
+        s.idle(32);
+        assert_eq!(
+            s.model.get("runtime_epoch"),
+            2,
+            "no recovery replay from {old_half}"
+        );
+        assert_eq!(s.model.get("recovery_state"), 3);
+    }
 }

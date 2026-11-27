@@ -17,8 +17,8 @@ FRONTEND_SOURCES = {
     "fifo_snapshots.sv", "fifo_audio_pipeline.sv", "fifo_media_audio_pipeline.sv",
     "host_recovery.sv", "host_fault_record.sv",
 }
-MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component; "
-              "no low-range discovery/preparation service, audio adapter, PS/DDR, thermal or protected board integration; "
+MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/retained diagnostics/recovery; "
+              "no preparation/service/abort MMIO, audio adapter, PS/DDR, thermal or protected board integration; "
               "frontend and existing execution/backend hierarchy reported separately")
 MMIO_SOURCES = {"semantic_registers.sv", "fifo_mmio.sv", "fifo_mmio_pipeline_axi.sv"}
 BOUNDARIES = {
@@ -147,4 +147,5 @@ close $report
                           "indexed_mmio": mmio,
                           "standard_optimization": mmio,
                           "low_range_service_included": False,
+                          "low_range_discovery_recovery_included": mmio,
                           "scope": MMIO_SCOPE if mmio else SCOPE}

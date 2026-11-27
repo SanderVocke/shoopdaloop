@@ -6,10 +6,11 @@ remain historical evidence in the [investigation report](../command-fifo-investi
 
 **Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
 Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
-7,000 FF**; all other limits remain unchanged. The indexed range is now joined to
-the actual semantic/audio/media/recovery candidate. Its measured partial frontend
-is **6,982 LUT / 6,727 FF after standard optimization**, leaving **1,018 LUT /
-273 FF** before the remaining low-range service/public and board integration.
+7,000 FF**; all other limits remain unchanged. Indexed MMIO plus low-range
+discovery/retained diagnostics/public recovery are joined to the actual semantic/
+audio/media candidate. Its measured partial frontend is **7,306 LUT / 6,793 FF
+after standard optimization**, leaving **694 LUT / 207 FF** before the remaining
+service/public and board integration.
 Unrouted WNS remains **−5.017 ns**; production still selects ABI 15. The original
 stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
@@ -1615,3 +1616,104 @@ transports and CPU-control retirement, full admitted-service/lifecycle/route/boa
 acceptance, the two baseline fault differences, and Stage 7 delivery/audit. Stages
 4–7 remain open; ABI 15 stays selected. No physical authorization, push/PR or
 whole-plan completion follows from this checkpoint.
+
+## Lower discovery, retained diagnostics and public recovery
+
+The existing `fifo_mmio` AXI-Lite owner now supports a `SYSTEM_REGISTERS` subset,
+enabled by the generated actual-pipeline wrapper and disabled in the indexed-only
+component fixture. It adds:
+
+- Discovery/geometry 0x000–0x03c, including identity `0x53484f50` and version 16.
+  Candidate definitions independently mirror the legacy addresses, not its retired
+  operation table. The existing 512-job admission cap is preserved even with
+  larger backend storage. The bounded candidate defaults to 128 MiB; a zero or
+  unrepresentable u32 arena extent is rejected instead of truncating 4 GiB to zero.
+- Saturating completed-quantum and peak-quantum clocks, plus trusted hardware
+  audio-xrun readback at 0x104–0x10c. Peak timing reuses the existing opportunity
+  counter and includes the accepted-boundary clock; no second elapsed-time tracker
+  or CPU-driven processing gate was added. Counters clear on actual runtime reset.
+- Recovery discovery/status/request at 0x114–0x11c and safety submission receipt
+  at 0x120. MMIO owns private wires directly to the existing recovery controller.
+  Complete current-epoch requests accept only in states 0/3. Old epoch/AXI halves
+  refuse with OKAY/2, busy or failed state with OKAY/5, malformed strobes with
+  SLVERR. Receipt 0 means accepted request, never successful fence or application
+  Ready; state 3 means hardware reset complete. Query status after a lost ACK,
+  rather than destructively replaying a request.
+- Retained fault fields 0x124–0x14c from the same qualified always-on record as
+  sequence-high 0x174. Runtime epoch and fault epoch may legitimately differ.
+  Runtime reset preserves accepted safety receipts and copied AXI R/B, but poisons
+  incomplete old halves so they cannot initiate another reset in a new epoch.
+- IRQ for complete result/snapshot availability or terminal fault. Its consumers,
+  held responses and lower-register reads never control audio admission.
+
+No second AXI owner, recovery machine, state allocator or live-state control
+fallback was introduced. Preparation/configuration interfaces remain private
+integration ports. **Preparation/loader/service/optional-trace MMIO and 0x110 ABORT
+are not implemented.** ABORT and actual external audio/watchdog events still need
+source-qualified cause routing; this checkpoint does not flatten them to generic
+pipeline faults. Production remains ABI 15, not this incomplete candidate.
+
+### Actual-path tests and compatibility
+
+The actual-pipeline module now has three indexed-MMIO tests. The original exact
+rendering, 32 gains at one boundary, coherent 4,880-u32 snapshot and held-copy/
+ACK/reuse test remains. The full-width first-fault test now requests recovery
+through MMIO, holds that B and old fault R through actual DDR retirement/reset,
+and compares every lower retained field against the saved ten-field record.
+
+The new case verifies geometry, IRQ and exact completed/peak clock telemetry,
+wrong-epoch and busy recovery refusals, malformed strobes, and both AW-first and
+W-first incomplete recovery writes crossing actual reset. It holds a copied low
+EPOCH=1 read while hardware reaches epoch 2, then pairs the old half with a new
+one carrying epoch 2: the write returns receipt 2 and cannot replay recovery.
+Fresh startup proceeds despite the incomplete write/held read. Original fault
+cause/epoch/frame remain truthful and runtime counters clear without advancing F.
+
+Fresh `stage4-low-discovery-milestone-v2` passes **259 Rust tests = 206 affected
+packages + 53 directed**, both 3,970-case kernel oracles, warnings/formatting,
+policy/coverage, all generators and **12 offline Python tests**. Full Linux
+`stage4-low-discovery-linux-v2` passes **3,584 / 11 skipped** in **404.162 s** with
+nextest 0.9.116 and an owned isolated 48 kHz/128-frame dummy JACK server. Default
+application/worklet and optional-reference worklet Wasm builds pass. These are
+not browser-runtime or physical-output qualification.
+
+The first broad run caught wrong new test indices in the ten-field saved record
+(opcode 6 versus tag 66). All assertions remain after correcting the mapping; no
+RTL change was needed. The first concurrent Linux/default-workspace build used a
+mismatched host fixture rejecting `test_signal`. A freshly rebuilt matching host
+and sequential full rerun pass without host changes. Both failed logs/statuses
+remain preserved, not relabeled as successful gates. Do not concurrently replace
+native fixture binaries while nextest is executing them.
+
+### Fresh partial resources
+
+[Native reports and 19 checksummed files](reports/low-discovery-efaad8ccd/results.json)
+freeze the working-tree source snapshot based on `efaad8ccd`, including changed
+MMIO RTL, wrapper, generated definitions, schema/generators, profile and Tcl.
+Default consumer Tcl and the earlier non-MMIO pipeline probe remain unchanged.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 30,988 / 21,682 | 7,309 / 6,793 |
+| Standard `opt_design` | 30,884 / 21,654 | **7,306 / 6,793** |
+
+The MMIO leaf is **938 LUT / 419 FF**. Kernel remains **1,595 LUT / 1,932 FF /
+no DSP**; component storage remains **62.5 RAMB36-equivalents** and four existing
+DSPs. Packed hierarchy includes LUTRAM and excludes only the same four disjoint
+existing execution/media/AXI/program boundaries. Standard optimization completes,
+runner 0/complete marker pass, with zero native errors/critical warnings and 217
+synthesis warnings. Unrouted WNS is **−5.481 ns synthesis / −5.017 ns optimized**.
+No placement/route or complete frontend/protected whole-design acceptance follows.
+
+Current frontend margin is **694 LUT / 207 FF**. Remaining preparation/service/
+abort and board integration must fit that margin and independent whole-design
+ceilings, without changing profile or acceptance criteria. Matching ABI-16 ARM/
+reference software, CPU-control retirement, source-specific audio/watchdog hookup,
+full admitted-service/lifecycle/route/platform qualification, the two baseline
+fault differentials and Stage 7 delivery/audit remain. Stages 4–7 are incomplete;
+no ABI promotion, physical authorization, push/PR or overall completion is claimed.
+
+Reproduce narrow tests/measurement with the preceding commands and a fresh
+measurement output directory. Local evidence is `stage4-low-discovery-` logs:
+`tests-v1`, `tooling-v1`, `milestone-v2`, `measure-v1`, `export-v1`, `linux-v2`,
+`wasm` and `precommit`. Failed first broad/Linux runs retain their unsuffixed names.

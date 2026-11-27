@@ -5,10 +5,10 @@ This is the frozen implementation contract for Stages 4–5 of
 **It is not a claim that ABI 16 is implemented or deployed.** The current legacy
 mailbox remains ABI 15 until the replacement and matching software pass their
 integration gates. Historical ABI-15 staged patches are not this interface.
-The indexed AXI-Lite register component and candidate SV/Rust definitions are now
-implemented as a verified subset, joined to the actual semantic audio/media/recovery
-candidate. The low-range discovery/preparation/service endpoint, ABI selection
-and matching software are still integration work.
+Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery are
+implemented as a verified subset, joined to the actual semantic audio/media
+candidate. Preparation/service/abort MMIO, external audio/watchdog hookup, ABI
+selection and matching software remain integration work.
 
 ## Ownership, profile and pacing
 
@@ -342,19 +342,45 @@ callbacks complete as epoch refusals, not successful execution/fences. Global
 reset alone clears AXI transport state. Local bank/snapshot services have their
 existing one-cycle copied-response contract and do not depend on ARM readiness.
 
-`semantic_registers.json` now generates candidate `semantic_registers` SV/Rust
-definitions independently of the unchanged ABI-15 legacy schema. `fifo_mmio.sv`
-implements only the new 0x150–0x32c indexed range (holes remain unmapped). It is
-not yet joined to the existing 0x000–0x14c discovery/service/recovery range or
-selected by production. Generated `fifo_mmio_pipeline_axi.sv` now joins this range
-to the actual semantic audio/media/recovery pipeline, with global transport reset,
-actual safe runtime reset/incarnation and sequence-high from the qualified
-always-on retained recorder, never a live consumer command. Actual-path tests
-cover held R/B, coherent 128-row readback, real program fences and delayed external
-retirement before reset. [Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/mmio-hookup-a07b89b06/results.json)
-include this hookup: 6,982 LUT / 6,727 FF after standard optimization. Low-range
-service and matching software remain absent; no ABI-16 deployment, complete
-frontend/whole-design or routed-timing acceptance is established.
+`semantic_registers.json` generates candidate SV/Rust definitions independently
+of the unchanged ABI-15 legacy schema/operations. `fifo_mmio.sv` implements the
+0x150–0x32c indexed range plus an optional lower subset; holes remain unmapped.
+Generated `fifo_mmio_pipeline_axi.sv` enables that subset on the actual semantic
+audio/media/recovery pipeline. Transport uses global reset; local authority uses
+actual safe runtime reset/incarnation. Both fault-sequence words and all retained
+fields use the qualified always-on record, never a live attempted command.
+
+| Lower subset | Implemented meaning |
+| --- | --- |
+| 0x000–0x03c | Discovery/geometry, ID `0x53484f50`, VERSION 16; existing 512-job admission cap retained |
+| 0x104–0x10c | Saturating completed quanta/peak clocks and trusted hardware audio-xrun readback |
+| 0x114–0x120 | Recovery ID/status/request and safety submission receipt |
+| 0x124–0x14c | Qualified retained epoch/cause/low sequence/op/cycles/detail/revision/F |
+
+A recovery write requires complete full-strobe AW/W authority and data equal to
+the current nonzero runtime epoch. It accepts in hardware states 0/3, refuses old
+epoch/halves with OKAY/receipt 2, and busy/failed state with OKAY/receipt 5.
+Malformed strobes use SLVERR without effects. Receipt 0 means accepted request,
+not successful fence or application Ready; state 3 means hardware reset complete.
+Query status after uncertain ACK instead of replaying recovery. Accepted safety
+receipts survive runtime reset, as do copied R/B; old incomplete halves cannot
+request another reset after epoch change. Runtime quantum counters clear without
+advancing F and share the existing opportunity timer. IRQ reflects complete
+result/snapshot availability or terminal fault, never reader readiness.
+
+The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
+zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
+approved profile capacity. Preparation/loader/service/optional-trace registers and
+**0x110 ABORT remain unmapped**. Source-qualified ABORT/audio/watchdog integration
+is still required; no generic-pipeline-fault substitute is claimed. Configuration
+ports remain private integration interfaces, not a completed public endpoint.
+
+Actual tests cover geometry/telemetry/IRQ, both reset-crossing recovery halves,
+all lower retained fields, held R/B, coherent 128-row readback, real program fences
+and delayed external retirement before reset. [Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/low-discovery-efaad8ccd/results.json)
+are 7,306 LUT / 6,793 FF after standard optimization, leaving 694 LUT / 207 FF.
+Service/matching software remain absent; no ABI-16 deployment, complete frontend/
+whole-design or routed-timing acceptance is established.
 
 ## Retained first-fault diagnostics
 
@@ -364,7 +390,8 @@ is not an event. A genuine newer-epoch fault may replace it. Global reset clears
 the record. Read its epoch before/after the fields to reject replacement races.
 Semantic sequence is the full u64 (`FAULT_TAG` low plus `FAULT_SEQUENCE_HIGH`),
 not a truncated correlation ID. The ABI-15 mailbox retains its existing u32 tag.
-This is a planned ABI-16 MMIO extension; deployed registers/schema remain ABI 15.
+This candidate ABI-16 extension is implemented on the semantic wrapper; deployed
+registers/schema remain ABI 15.
 
 Operation is the current decoded semantic kind, 5 for qualified pending-fence
 context, or `0xffffffff` when no command is decoded. A header refusal cannot
@@ -376,7 +403,7 @@ active audio opportunity's latched F, or the next opportunity when idle, never
 SP's advanced next-frame counter while the current opportunity still runs.
 
 Existing cause bits remain: memory 1, audio 2, control timeout 8, ABORT 16,
-pipeline 64, recovery 128. These are flags, not an exclusive enumeration.
+watchdog 32, pipeline 64, recovery 128. These are flags, not an exclusive enumeration.
 Optional trace overflow does not set an audio fault. Accepted recovery captures
 `ABORT|RECOVERY` only if no earlier same-epoch event exists. Quiesce/reset-induced
 abort events cannot overwrite/relabel the old record as a new-incarnation fault.

@@ -66,7 +66,7 @@ def semantic_definitions():
     spec = json.loads((HERE / "semantic_registers.json").read_text())
     registers = {name: int(value, 16) for name, value in spec["registers"].items()}
     if len(registers) != len(set(registers.values())) or any(
-            offset % 4 or not 0x150 <= offset < 4096 for offset in registers.values()):
+            offset % 4 or not 0 <= offset < 4096 for offset in registers.values()):
         raise ValueError("Overlapping, unaligned or out-of-range semantic register")
     constants = {name: int(value, 0) if isinstance(value, str) else value
                  for name, value in spec["constants"].items()}

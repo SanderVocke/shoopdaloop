@@ -7,10 +7,10 @@ complete, including the reduced-profile/ABI contract freeze. **Stage 4 area repa
 is authorized by the user's “try to fix the area problem.”** The RAM-mapping blowup
 is repaired. The user has explicitly approved raising only the replacement-frontend
 LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
-The measured partial frontend, now including indexed MMIO joined to the actual
-semantic/audio/media/recovery pipeline, is **6,982 LUT / 6,727 FF after standard
-optimization**, leaving **1,018 LUT / 273 FF** before the remaining service/public
-and board integration. Production still selects ABI 15. All other ceilings,
+The measured partial frontend, now including indexed MMIO plus low-range
+discovery/retained diagnostics/public recovery on the actual semantic/audio/media
+pipeline, is **7,306 LUT / 6,793 FF after standard optimization**, leaving
+**694 LUT / 207 FF** before the remaining service/public and board integration. Production still selects ABI 15. All other ceilings,
 profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
@@ -1094,6 +1094,71 @@ CPU-control retirement, source-specific external audio/watchdog hookup, the two
 baseline fault differentials, complete admitted-service/route/platform acceptance
 and delivery remain open. No profile/ceiling change, ABI-16 deployment, physical
 authorization, push/PR or completion of Stages 4–7 follows from this milestone.
+
+**Lower discovery/diagnostics/public recovery milestone:** the existing MMIO
+transaction owner now optionally decodes discovery/geometry at 0x000–0x03c,
+telemetry at 0x104–0x10c and recovery/retained diagnostics at 0x114–0x14c.
+The actual candidate enables that subset; the standalone indexed fixture keeps
+it disabled. The independent candidate schema mirrors these existing addresses
+without importing the retired legacy operations. Production/schema remain ABI 15.
+
+The recovery doorbell now owns private request/epoch wires into the existing
+always-on controller, not another AXI owner or recovery machine. A complete,
+current-epoch, full-strobe request is accepted only in hardware states 0/3.
+Wrong epoch/old AXI halves return OKAY/receipt 2; a busy/failed controller returns
+OKAY/receipt 5; malformed strobes return SLVERR without requesting recovery.
+Receipt 0 means request accepted, not successful retirement/fence or application
+Ready. Hardware state 3 still means reset complete only. Accepted safety receipts
+and copied R/B survive runtime reset; incomplete old halves cannot request another
+reset in the new epoch. All low fault fields, including `FAULT_TAG`, and high
+sequence 0x174 come from the same qualified always-on retained record.
+
+Saturating completed-quantum/peak-cycle telemetry reuses the existing audio-owned
+opportunity cycle counter; no second elapsed-time tracker or processing gate was
+added. Geometry preserves the existing 512-job admission cap despite larger
+backend storage. The candidate defaults to the approved 128 MiB arena and rejects
+an unrepresentable/zero u32 discovery extent rather than truncating 4 GiB to zero.
+IRQ reflects complete results/snapshots or terminal fault; the audio-xrun input is
+a trusted hardware interface, not an ARM mutation API or completed board hookup.
+
+Three actual-path MMIO tests now cover exact rendering/128-row copies and full
+retained-record reads, held public-recovery B and fault R across real DDR drain,
+low EPOCH R held across reset, both AW-first/W-first old recovery halves, wrong
+incarnation/busy/malformed requests, IRQ and audio-owned telemetry. Reads do not
+advance F. The new diagnostic assertion initially indexed the ten-field saved
+record incorrectly (opcode 6 versus tag 66); corrected test indices preserve all
+assertions, with no RTL change. The first concurrent Linux/default-build attempt
+used a mismatched host fixture rejecting `test_signal`. Its failed log remains;
+a fresh matching host rebuild and sequential full rerun pass without host changes.
+
+[Fresh native evidence](docs/fpga/command-fifo-implementation/reports/low-discovery-efaad8ccd/results.json),
+based on `efaad8ccd` plus the captured source changes, has **19 checksummed files**:
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 30,988 / 21,682 | 7,309 / 6,793 |
+| Standard `opt_design` | 30,884 / 21,654 | **7,306 / 6,793** |
+
+MMIO is **938 LUT / 419 FF**; kernel remains **1,595 LUT / 1,932 FF / no DSP**.
+Storage remains **62.5 RAMB36-equivalents**, with four existing DSPs. Runner 0,
+complete marker, zero native errors/critical warnings and 217 synthesis warnings
+are recorded. Unrouted WNS remains **−5.481 ns synthesis / −5.017 ns optimized**;
+there is no place/route or complete frontend/protected whole-design acceptance.
+Current partial frontend margin is **694 LUT / 207 FF**, not a whole-design waiver.
+
+`stage4-low-discovery-milestone-v2` passes **206 affected + 53 directed = 259 Rust
+tests**, both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
+generators and **12 Python tests**. `stage4-low-discovery-linux-v2` passes **3,584 /
+11 skipped**, nextest 0.9.116, 404.162 s with isolated dummy JACK; default and
+optional-reference Wasm builds pass. Original failed broad/Linux logs are retained.
+No physical or browser-runtime qualification follows from these gates.
+
+Preparation/loader/service/optional-trace MMIO and source-qualified ABORT/audio/
+watchdog integration remain open; **0x110 ABORT is still unmapped**, not wired as a
+generic pipeline fault. Matching ABI-16 software, CPU-control retirement, complete
+admitted-service/whole-design/route/platform acceptance, the two baseline fault
+differentials and delivery remain. Stages 4–7 are incomplete; no ABI promotion,
+physical authorization, push/PR or overall completion is claimed.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

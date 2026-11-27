@@ -1,0 +1,295 @@
+{
+  "outcome": "PARTIAL_DISCOVERY_RECOVERY_COMPONENT_WITHIN_FRONTEND_CEILINGS_TIMING_UNCLOSED",
+  "source_base": "efaad8ccd6fe3f84d81737d1312a92a43e9d4ed7",
+  "working_tree_snapshot": true,
+  "scope": "Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/retained diagnostics/recovery; no preparation/service/abort MMIO, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately",
+  "deployed_abi": 15,
+  "candidate_semantic_abi": 16,
+  "indexed_mmio_included": true,
+  "low_range_discovery_recovery_included": true,
+  "low_range_service_included": false,
+  "abort_mmio_included": false,
+  "audio_adapter_included": false,
+  "protected_board_included": false,
+  "runner_status": 0,
+  "synthesis_completed": true,
+  "standard_optimization_completed": true,
+  "route_performed": false,
+  "excluded_paths": {
+    "audio_execution": "dut/pipeline/execution/core/pipeline/execution",
+    "media_store": "dut/pipeline/execution/core/media",
+    "axi_backend": "dut/pipeline/execution/memory_endpoint",
+    "program_backend": "dut/pipeline/execution/ddr_program.program_bus"
+  },
+  "variants": {
+    "synthesis": {
+      "component": {
+        "lut": 30988,
+        "logic_lut": 30654,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21682,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10626,
+          "logic_lut": 10626,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11425,
+          "logic_lut": 11421,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1534,
+          "logic_lut": 1534,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 919,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7309,
+        "logic_lut": 6979,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6793,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1595,
+        "logic_lut": 1595,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1932,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 938,
+        "logic_lut": 938,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 419,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "observations": {
+        "lut": 605,
+        "logic_lut": 347,
+        "lutram": 258,
+        "srl": 0,
+        "ff": 615,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -5.481,
+        "tns_ns": -11707.077,
+        "setup_failing_endpoints": 8698,
+        "setup_total_endpoints": 70686,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 70686
+      }
+    },
+    "default-opt": {
+      "component": {
+        "lut": 30884,
+        "logic_lut": 30550,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21654,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10623,
+          "logic_lut": 10623,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11410,
+          "logic_lut": 11406,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1451,
+          "logic_lut": 1451,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 891,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7306,
+        "logic_lut": 6976,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6793,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1595,
+        "logic_lut": 1595,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1932,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 938,
+        "logic_lut": 938,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 419,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "observations": {
+        "lut": 605,
+        "logic_lut": 347,
+        "lutram": 258,
+        "srl": 0,
+        "ff": 615,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -5.017,
+        "tns_ns": -10478.698,
+        "setup_failing_endpoints": 8697,
+        "setup_total_endpoints": 70630,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 70630
+      }
+    }
+  },
+  "current_ceilings": {
+    "frontend_lut": 8000,
+    "frontend_ff": 7000,
+    "kernel_lut": 2500,
+    "kernel_ff": 2500,
+    "kernel_dsp": 0,
+    "whole_lut": 32000,
+    "whole_ff": 24000,
+    "whole_ramb36_equivalents": 100,
+    "whole_dsp": 4,
+    "command_cycles": 4096,
+    "snapshot_cycles": 8192,
+    "quantum_cycles": 60000
+  },
+  "gates": {
+    "partial_frontend_area_within_current_limits": true,
+    "kernel_area_within_limits": true,
+    "complete_frontend_accepted": false,
+    "protected_whole_design_accepted": false,
+    "routed_timing_accepted": false,
+    "all_admitted_quantum_budget_proven": false
+  },
+  "remaining_partial_frontend_headroom": {
+    "lut": 694,
+    "ff": 207
+  },
+  "native_messages": {
+    "synthesis_errors": 0,
+    "synthesis_critical_warnings": 0,
+    "synthesis_warnings": 217,
+    "overall_errors": 0,
+    "overall_critical_warnings": 0
+  },
+  "local_artifact_sha256": {
+    "console.log": "7a5bbf0d38c17ec28da0bdbc39fce01065918d9ba01c2eceaa24bd56866be515",
+    "build/component-synthesis.dcp": "30d01d86cd8f875d513896c5be97bc94df6ce6c6692a7104768171e9705ed7da",
+    "build/component-optimized.dcp": "09717e77de8b1ca0a61e2621f3c1deecdec1ca8573194d556c07179aab0cbdae"
+  },
+  "verification": {
+    "affected_package_rust_tests": 206,
+    "directed_component_rust_tests": 53,
+    "selected_rust_tests": 259,
+    "actual_mmio_tests": 3,
+    "offline_python_tests": 12,
+    "full_linux_passed": 3584,
+    "full_linux_skipped": 11,
+    "full_linux_seconds": 404.162,
+    "default_wasm_builds_passed": true,
+    "fpga_reference_worklet_wasm_build_passed": true,
+    "physical_tests_performed": false
+  },
+  "notes": [
+    "Packed hierarchical LUT totals include LUTRAM; raw primitive partitions are not packed LUT area.",
+    "Primitive partitions are post-optimization; primitive totals are synthesis.",
+    "Low discovery/diagnostics/recovery are included, not preparation/service/abort MMIO or the external audio/watchdog adapter.",
+    "The component excludes protected board integration; complete frontend and whole-design acceptance remain open.",
+    "Negative unrouted timing is not routed timing acceptance.",
+    "First broad run failed due to wrong new test indices in the ten-field saved diagnostic record; corrected without RTL changes.",
+    "Concurrent default native build/Linux tests produced a mismatched host fixture rejecting test_signal; sequential matching rebuild/full rerun passes.",
+    "Failed local gates/logs and all historical resource outcomes remain preserved."
+  ]
+}

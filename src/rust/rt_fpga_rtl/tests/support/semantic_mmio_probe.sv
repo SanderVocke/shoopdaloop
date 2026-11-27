@@ -42,7 +42,13 @@ module semantic_mmio_probe #(
     wire [31:0] snapshot_ack_epoch;
     wire [63:0] snapshot_ack_sequence;
     wire [3:0] snapshot_ack_receipt;
-    fifo_mmio #(.LOOPS(LOOPS)) mmio (.fault_sequence(diagnostic_sequence), .*);
+    fifo_mmio #(.LOOPS(LOOPS)) mmio (
+        .fault_sequence(diagnostic_sequence), .recovery_state(3'd0),
+        .recovery_request(), .recovery_epoch(), .irq(),
+        .quantum_done(1'b0), .quantum_cycles(32'd0), .audio_xruns(32'd0),
+        .first_fault_epoch(32'd0), .first_fault_cause(32'd0), .first_fault_op(32'd0),
+        .first_fault_cycles(32'd0), .first_fault_control_cycles(32'd0), .first_fault_detail(32'd0),
+        .first_fault_revision(64'd0), .first_fault_frame(64'd0), .*);
     semantic_group_probe #(.LOOPS(LOOPS)) core (
         .clk(clk), .reset(core_reset), .epoch(epoch), .pipeline_fault(pipeline_fault),
         .host_valid(host_valid), .host_ready(host_ready), .host_operation(host_operation), .host_bank(host_bank),

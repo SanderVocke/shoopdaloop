@@ -21,6 +21,16 @@ class SemanticRegistersTests(unittest.TestCase):
         for path, lines in semantic_definitions():
             self.assertEqual(path.read_text(), "\n".join(lines) + "\n")
 
+    def test_candidate_low_subset_retains_legacy_addresses_without_retired_operations(self):
+        spec = json.loads((HERE / "semantic_registers.json").read_text())
+        legacy = json.loads((HERE / "registers.json").read_text())
+        for name, address in spec["registers"].items():
+            if int(address, 16) < 0x150:
+                self.assertEqual(address, legacy["registers"][name])
+        self.assertEqual(spec["constants"]["DISCOVERY_ID"], legacy["id"])
+        self.assertNotIn("operations", spec)
+        self.assertNotIn("ABORT", spec["registers"])
+
     def test_legacy_schema_and_generated_version_remain_fifteen(self):
         self.assertEqual(json.loads((HERE / "registers.json").read_text())["version"], 15)
         self.assertIn("HOST_VERSION = 32'd15", (HERE / "rtl/host_registers.sv").read_text())

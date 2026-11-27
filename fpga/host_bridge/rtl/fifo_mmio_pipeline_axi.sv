@@ -24,9 +24,10 @@ module fifo_mmio_pipeline_axi #(
     parameter integer LOOP_DEPTH = 128,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000,
-    parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h100000000,
+    parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h08000000,
     parameter integer RECOVERY_TIMEOUT_CYCLES = 100_000_000,
-    parameter integer RECOVERY_RESET_CYCLES = 128
+    parameter integer RECOVERY_RESET_CYCLES = 128,
+    parameter integer CORE_CLOCK_HZ = 100_000_000
 ) (
     output wire midi_job_valid,
     input wire midi_job_ready,
@@ -242,8 +243,6 @@ module fifo_mmio_pipeline_axi #(
     input wire m_axi_rlast,
     input wire m_axi_rvalid,
     output wire m_axi_rready,
-    input wire recovery_request,
-    input wire [31:0] recovery_epoch,
     output wire [2:0] recovery_state,
     output wire [31:0] runtime_epoch,
     output wire runtime_reset,
@@ -257,6 +256,8 @@ module fifo_mmio_pipeline_axi #(
     output wire [63:0] first_fault_sequence,
     output wire [63:0] first_fault_revision,
     output wire [63:0] first_fault_frame,
+    output wire irq,
+    input wire [31:0] audio_xruns,
     input wire [11:0] s_axi_awaddr,
     input wire s_axi_awvalid,
     output wire s_axi_awready,
@@ -293,9 +294,27 @@ module fifo_mmio_pipeline_axi #(
     wire result_read_valid;
     wire [1:0] result_read_bank;
     wire [5:0] result_read_word;
-    fifo_mmio #(.LOOPS(LOOP_DEPTH)) mmio (.clk(clk), .reset(reset),
+    wire recovery_request;
+    wire [31:0] recovery_epoch;
+    fifo_mmio #(
+        .LOOPS(LOOP_DEPTH),
+        .SYSTEM_REGISTERS(1),
+        .CORE_CLOCK_HZ(CORE_CLOCK_HZ),
+        .ARENA_BASE(PHYSICAL_BASE),
+        .ARENA_BYTES(PHYSICAL_BYTES_LIMIT),
+        .PROGRAM_DEPTH(PROGRAM_DEPTH),
+        .STATE_DEPTH(STATE_DEPTH),
+        .JOB_DEPTH(JOB_DEPTH > 512 ? 512 : JOB_DEPTH),
+        .BUFFERS(BUFFERS),
+        .VIEWS(VIEWS),
+        .MEDIA_BLOCKS(SLOTS/BLOCK_CHUNKS),
+        .CHUNK_FRAMES(CHUNK_FRAMES),
+        .BLOCK_CHUNKS(BLOCK_CHUNKS),
+        .QUANTUM(32)) mmio (.clk(clk), .reset(reset),
         .runtime_reset(runtime_reset), .epoch(runtime_epoch),
-        .fault_sequence(first_fault_sequence), .*);
+        .fault_sequence(first_fault_sequence),
+        .quantum_done(done && !faulted && error_code==0),
+        .quantum_cycles((&diagnostic_cycles) ? diagnostic_cycles : diagnostic_cycles+32'd1), .*);
     fifo_recovery_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .ENABLE_MIDI(ENABLE_MIDI),
