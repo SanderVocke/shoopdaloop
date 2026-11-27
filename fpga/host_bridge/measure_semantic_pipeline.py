@@ -17,7 +17,7 @@ FRONTEND_SOURCES = {
     "fifo_snapshots.sv", "fifo_audio_pipeline.sv", "fifo_media_audio_pipeline.sv",
     "host_recovery.sv", "host_fault_record.sv",
 }
-MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort, configuration service and qualified safety sidebands; "
+MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort, configuration/CLEAR_VIEW service and qualified safety sidebands; "
               "no complete preparation/media/lifecycle/trace service, audio adapter, PS/DDR, thermal or protected board integration; "
               "frontend and existing execution/backend hierarchy reported separately")
 MMIO_SOURCES = {"semantic_registers.sv", "fifo_config_service.sv", "fifo_mmio.sv", "fifo_mmio_pipeline_axi.sv"}
@@ -151,7 +151,8 @@ close $report
                           "mmio_epoch_reset_coupled": mmio,
                           "standard_optimization": mmio,
                           "low_range_service_included": mmio,
-                          "configuration_service_only": mmio,
+                          "configuration_service_only": False,
+                          "clear_view_service_included": mmio,
                           "complete_preparation_service_included": False,
                           "low_range_discovery_recovery_included": mmio,
                           "abort_mmio_included": mmio,

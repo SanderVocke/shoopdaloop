@@ -7,8 +7,8 @@ mailbox remains ABI 15 until the replacement and matching software pass their
 integration gates. Historical ABI-15 staged patches are not this interface.
 Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
 ABORT and qualified hardware fault sidebands are implemented as a verified subset,
-joined to the actual semantic audio/media candidate. A configuration-only public
-CORE/AUDIO/STORE service subset is now implemented. Complete preparation/media/
+joined to the actual semantic audio/media candidate. Public CORE/AUDIO/STORE
+configuration and CLEAR_VIEW subsets are now implemented. Complete preparation/media/
 lifecycle/trace service, external physical audio/watchdog hookup, ABI selection
 and matching software remain integration work.
 
@@ -364,7 +364,7 @@ fields use the qualified always-on record, never a live attempted command.
 | Lower subset | Implemented meaning |
 | --- | --- |
 | 0x000–0x03c | Discovery/geometry, ID `0x53484f50`, VERSION 16; existing 512-job admission cap retained |
-| 0x040, 0x044, 0x048–0x074, 0x078 | Request epoch/opcode/twelve payload words/PUSH tag; configuration-only subset below |
+| 0x040, 0x044, 0x048–0x074, 0x078 | Request epoch/opcode/twelve payload words/PUSH tag; preparation subset below |
 | 0x080, 0x084, 0x088–0x0b4, 0x0b8 | Copied response tag/code/twelve data words/POP matching tag |
 | 0x104–0x10c | Saturating completed quanta/peak clocks and trusted hardware audio-xrun readback |
 | 0x110 | Epoch-qualified ABORT; local terminal halt, not retirement/fence/reset |
@@ -384,11 +384,11 @@ result/snapshot availability or terminal fault, never reader readiness.
 
 The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
-approved profile capacity. The configuration-only service below owns configuration
-inputs privately; complete preparation/media/lifecycle/optional-trace service is
+approved profile capacity. The preparation subset below owns configuration and
+media-command inputs privately; complete preparation/media/lifecycle/optional-trace service is
 still required, not a completed public endpoint.
 
-### Configuration-service subset
+### Preparation-service subset
 
 The actual wrapper enables `SERVICE_REGISTERS=1` on the same MMIO owner; standalone
 indexed MMIO defaults to 0. One private request/result slot accepts these opcodes:
@@ -398,8 +398,9 @@ indexed MMIO defaults to 0. One private request/result slot accepts these opcode
 | 1 CORE_CONFIG | Program/state/loop and unused-lease observations | `0x103` | u16 address / 129 data bits |
 | 2 AUDIO_CONFIG | JP configuration, including scratch and history invalidation | `0x103` | u32 address / 32 data bits |
 | 3 STORE_CONFIG | Media metadata configuration, **not bulk media upload** | `0x107` | u32 address / 160 data bits |
+| 4 CLEAR_VIEW | Existing private media loader/owner, backend CLEAR 2 | No configuration control | u64 view in words 0–1; words 2–11 zero |
 
-Payload word 0 contains low space bits and write bit 8; all other control bits
+For configuration opcodes 1/2/3, payload word 0 contains low space bits and write bit 8; all other control bits
 are zero. Word 1 is address, words 2–6 little-endian data, words 7–11 reserved zero.
 CORE's fifth data word has only bit 0; AUDIO's extra four data words are zero.
 Validate full opcode, widths and reserved bits before truncating/granting. Actual
@@ -408,6 +409,15 @@ I/O profile audio scratch space 2 is readable/writable; space 3 is write-only
 history invalidation, not a history readback/restoration interface. Configuration
 remains trusted inactive-program/unused-lease preparation, never an ARM live-state
 planner. The Stage 5 trusted API must enforce those ownership restrictions.
+
+CLEAR_VIEW validates its complete u64 view without truncation, with actual geometry
+checks in the existing media owner. It uses the same 160-bit working record and
+reserved result slot, not another dispatcher or backend controller. Completion is
+consumed locally without ARM readiness; every response data word is zero. A held
+reader retains only this service slot, not the media owner. This is trusted
+unused-lease preparation, never permission to clear a continuing allocation or
+claim a program/cache/DMA fence. Halt yields uncertainty without replay; accepted
+external work still needs real retirement before safe reset.
 
 Stage epoch at 0x040, full opcode at 0x044 and **all twelve** zero-padded payload
 words sequentially, then make writes visible and publish once with a nonzero u32
@@ -439,8 +449,11 @@ Matched software must serialize this lane, check incarnation around publication/
 response/POP, cancel stale software callbacks on reset and never replay uncertain
 operations or reuse their tags while authority is unresolved.
 
-Only 1/2/3 are implemented at this milestone. Other legitimate preparation/media/
-lifecycle/trace operations still belong to the approved final scope; temporary
+Only 1/2/3/4 are implemented at this milestone. Media command/response-ready
+controls are private to the service; sample-data interfaces remain integration
+seams pending the complete public bulk service. Other legitimate preparation/media/
+lifecycle/trace operations and full private 32-word staging still belong to the
+approved final scope; temporary
 subset refusals do not retire them. Old CPU live-control/staged-patch operations
 must not be imported to supply those missing services.
 

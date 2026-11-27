@@ -100,13 +100,7 @@ module fifo_mmio_pipeline_axi #(
     input wire loop_response_error,
     input wire [163:0] loop_response_data,
     input wire [63:0] arena_base,
-    input wire store_cmd_valid,
     output wire store_cmd_ready,
-    input wire [3:0] store_cmd_opcode,
-    input wire [63:0] store_cmd_view,
-    input wire [63:0] store_cmd_start,
-    input wire [63:0] store_cmd_length,
-    input wire [31:0] store_cmd_count,
     output wire store_busy,
     output wire store_done,
     output wire [7:0] store_error_code,
@@ -193,7 +187,6 @@ module fifo_mmio_pipeline_axi #(
     output wire [63:0] diagnostic_sequence,
     output wire [63:0] diagnostic_frame,
     output wire [63:0] diagnostic_revision,
-    input wire store_response_ready,
     output wire [31:0] store_result_count,
     output wire axi_quiescent,
     output wire axi_drain_fault,
@@ -273,6 +266,12 @@ module fifo_mmio_pipeline_axi #(
     wire audio_cfg_write;
     wire [31:0] audio_cfg_address;
     wire [31:0] audio_cfg_write_data;
+    wire store_cmd_valid;
+    wire [3:0] store_cmd_opcode;
+    wire [63:0] store_cmd_view;
+    wire [63:0] store_cmd_start;
+    wire [63:0] store_cmd_length;
+    wire [31:0] store_cmd_count;
     wire store_cfg_valid;
     wire store_cfg_write;
     wire [2:0] store_cfg_space;
@@ -297,6 +296,7 @@ module fifo_mmio_pipeline_axi #(
     wire [1:0] result_read_bank;
     wire [5:0] result_read_word;
     wire [31:0] pipeline_fault_cause;
+    wire store_response_ready;
     wire recovery_request;
     wire [31:0] recovery_epoch;
     wire abort_request;
@@ -313,40 +313,48 @@ module fifo_mmio_pipeline_axi #(
     wire [31:0] service_read_data;
     wire config_valid;
     wire config_ready;
-    wire [1:0] config_operation;
+    wire [2:0] config_operation;
     wire [2:0] config_space;
     wire config_write;
     wire [31:0] config_address;
     wire [159:0] config_data;
     wire config_response_valid;
     wire config_response_error;
+    wire config_response_ready;
     wire [128:0] config_core_data;
     wire [31:0] config_audio_data;
     wire [159:0] config_store_data;
     assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)
         | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);
-    assign cfg_valid=config_valid && config_operation==2'd1;
+    assign cfg_valid=config_valid && config_operation==3'd1;
     assign cfg_write=config_write;
     assign cfg_address=config_address[15:0];
     assign cfg_write_data=config_data[128:0];
     assign cfg_state=config_space[0];
     assign cfg_loop=config_space[1];
-    assign audio_cfg_valid=config_valid && config_operation==2'd2;
+    assign audio_cfg_valid=config_valid && config_operation==3'd2;
     assign audio_cfg_write=config_write;
     assign audio_cfg_address=config_address;
     assign audio_cfg_write_data=config_data[31:0];
     assign audio_cfg_space=config_space[1:0];
-    assign store_cfg_valid=config_valid && config_operation==2'd3;
+    assign store_cfg_valid=config_valid && config_operation==3'd3;
     assign store_cfg_write=config_write;
     assign store_cfg_address=config_address;
     assign store_cfg_write_data=config_data[159:0];
     assign store_cfg_space=config_space[2:0];
     assign config_ready=config_operation==1 ? cfg_ready
-        : config_operation==2 ? audio_cfg_ready : store_cfg_ready;
+        : config_operation==2 ? audio_cfg_ready : config_operation==3 ? store_cfg_ready : store_cmd_ready;
     assign config_response_valid=config_operation==1 ? cfg_response_valid
-        : config_operation==2 ? audio_cfg_response_valid : store_cfg_response_valid;
+        : config_operation==2 ? audio_cfg_response_valid : config_operation==3 ? store_cfg_response_valid : store_done;
     assign config_response_error=config_operation==1 ? cfg_response_error
-        : config_operation==2 ? audio_cfg_response_error : store_cfg_response_error;
+        : config_operation==2 ? audio_cfg_response_error : config_operation==3 ? store_cfg_response_error : (store_error_code!=0);
+    assign store_cmd_valid=config_valid && config_operation==3'd4;
+    assign store_cmd_opcode=4'd2;
+    assign store_cmd_view=config_data[63:0];
+    assign store_cmd_start=64'd0;
+    assign store_cmd_length=64'd0;
+    assign store_cmd_count=32'd0;
+    assign store_response_ready=config_response_ready && config_operation==3'd4;
     assign config_core_data=cfg_read_data;
     assign config_audio_data=audio_cfg_read_data;
     assign config_store_data=store_cfg_read_data;

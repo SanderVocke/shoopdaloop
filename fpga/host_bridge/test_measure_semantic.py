@@ -52,14 +52,17 @@ class MeasurementTests(unittest.TestCase):
             previous = ROOT / "docs/fpga/command-fifo-implementation/reports/coupled-epoch-519455096/semantic_profile.sv"
             private = {"cfg_valid", "cfg_state", "cfg_loop", "cfg_write", "cfg_address", "cfg_write_data",
                        "audio_cfg_valid", "audio_cfg_space", "audio_cfg_write", "audio_cfg_address", "audio_cfg_write_data",
-                       "store_cfg_valid", "store_cfg_space", "store_cfg_write", "store_cfg_address", "store_cfg_write_data"}
+                       "store_cfg_valid", "store_cfg_space", "store_cfg_write", "store_cfg_address", "store_cfg_write_data",
+                       "store_cmd_valid", "store_cmd_opcode", "store_cmd_view", "store_cmd_start",
+                       "store_cmd_length", "store_cmd_count", "store_response_ready"}
             pattern = re.compile(r"\b(?:" + "|".join(sorted(private)) + r")\b")
             lines = previous.read_text().splitlines(keepends=True)
-            self.assertEqual(sum(bool(pattern.search(line)) for line in lines), 32)
+            self.assertEqual(sum(bool(pattern.search(line)) for line in lines), 46)
             self.assertEqual(probe, "".join(line for line in lines if not pattern.search(line)))
             self.assertIsNone(pattern.search(probe))
             self.assertTrue(profile["low_range_service_included"])
-            self.assertTrue(profile["configuration_service_only"])
+            self.assertFalse(profile["configuration_service_only"])
+            self.assertTrue(profile["clear_view_service_included"])
             self.assertFalse(profile["complete_preparation_service_included"])
             self.assertTrue(profile["abort_mmio_included"])
             self.assertTrue(profile["qualified_fault_sidebands_included"])

@@ -92,6 +92,7 @@ fn complete_private_requests_and_copied_results_release_backend_without_arm_serv
             (1, 0x103, 0xffff, [11, 22, 33, 44, 1]),
             (2, 0x102, u32::MAX, [0xdead_beef, 0, 0, 0, 0]),
             (3, 0x107, u32::MAX, [55, 66, 77, 88, u32::MAX]),
+            (4, u32::MAX, 0x8000_0001, [0; 5]),
         ] {
             let words = request(op, control, address, payload);
             for (index, word) in words.iter().enumerate() {
@@ -114,7 +115,12 @@ fn complete_private_requests_and_copied_results_release_backend_without_arm_serv
                 assert_eq!(s.model.get("config_write"), 1);
                 assert_eq!(s.model.get("config_space"), u64::from(control & 7));
                 assert_eq!(s.model.get("config_address"), u64::from(address));
-                assert_eq!(s.model.bits("config_data"), Bits::from(payload));
+                let expected = if op == 4 {
+                    [control, address, 0, 0, 0]
+                } else {
+                    payload
+                };
+                assert_eq!(s.model.bits("config_data"), Bits::from(expected));
                 assert_eq!(access(s, 0, 0, 2), 1);
                 assert_eq!(access(s, 1, 0, 38), 1);
             }
@@ -139,6 +145,7 @@ fn complete_private_requests_and_copied_results_release_backend_without_arm_serv
                 1 => expected[..5].copy_from_slice(&core),
                 2 => expected[0] = audio,
                 3 => expected[..5].copy_from_slice(&store),
+                4 => {}
                 _ => unreachable!(),
             }
             assert_eq!(data(s), expected);
@@ -175,7 +182,9 @@ fn malformed_values_and_retired_operations_refuse_before_any_backend_effect() {
         assert_eq!(access(s, 3, 0, 1), 4);
         assert_eq!(access(s, 2, 0, 1), 5);
         let mut cases = vec![];
-        for op in [0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0x1_0001] {
+        for op in [
+            0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0x1_0001, 0x1_0004,
+        ] {
             cases.push((request(op, 0, 0, [0; 5]), 1));
         }
         for op in 1..=3 {
@@ -190,6 +199,11 @@ fn malformed_values_and_retired_operations_refuse_before_any_backend_effect() {
                 bad[reserved] = 1;
                 cases.push((bad, 2));
             }
+        }
+        for reserved in 4..14 {
+            let mut bad = request(4, u32::MAX, u32::MAX, [0; 5]);
+            bad[reserved] = 1;
+            cases.push((bad, 2));
         }
         cases.push((request(1, 0, 0x1_0000, [0; 5]), 2));
         cases.push((request(1, 0, 0, [0, 0, 0, 0, 2]), 2));
@@ -222,6 +236,52 @@ fn malformed_values_and_retired_operations_refuse_before_any_backend_effect() {
             7,
             "rebegin discards all prior completeness"
         );
+    });
+}
+
+#[shoop_test]
+fn clear_view_reply_readiness_is_local_and_halt_preserves_uncertainty() {
+    run(|s| {
+        for clocks in 0..18 {
+            reset(s);
+            fill(s, &request(4, u32::MAX, 0x8000_0001, [0; 5]));
+            assert_eq!(access(s, 1, 0, 19), 0);
+            s.idle(clocks);
+            if s.model.get("config_valid") != 0 {
+                assert_eq!(s.model.get("config_operation"), 4);
+                assert_eq!(
+                    s.model.bits("config_data").get(0, 64),
+                    0x8000_0001_ffff_ffff
+                );
+                assert_eq!(s.model.get("config_response_ready"), 1);
+            }
+            if clocks == 17 {
+                s.model.set("config_ready", 1);
+                s.idle(1);
+                s.model.set("config_ready", 0);
+            }
+            s.model
+                .set_all(&[("halt", 1), ("config_response_valid", 1)]);
+            s.model.eval();
+            assert_eq!(s.model.get("config_valid"), 0);
+            assert_eq!(s.model.get("config_response_ready"), 0);
+            s.idle(1);
+            wait_reply(s);
+            assert_eq!(s.model.get("response_code"), 3);
+            assert_eq!(data(s), [0; 12]);
+            s.model.set("halt", 0);
+            s.idle(16);
+            assert_eq!(s.model.get("config_response_ready"), 0);
+            assert_eq!(s.model.get("config_valid"), 0);
+            assert_eq!(s.model.get("response_code"), 3);
+            assert_eq!(data(s), [0; 12]);
+            s.model.set("live", 0);
+            s.idle(2);
+            s.model.set_all(&[("live", 1), ("epoch", 2)]);
+            s.idle(2);
+            assert_eq!(s.model.get("response_pending"), 0);
+            assert_eq!(access(s, 1, 0, 19), 7);
+        }
     });
 }
 

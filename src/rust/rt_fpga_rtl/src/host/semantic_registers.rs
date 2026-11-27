@@ -14,6 +14,7 @@ pub const SEMANTIC_PAYLOAD_WORDS: u32 = 0xc;
 pub const SEMANTIC_SERVICE_CORE_CONFIG: u32 = 0x1;
 pub const SEMANTIC_SERVICE_AUDIO_CONFIG: u32 = 0x2;
 pub const SEMANTIC_SERVICE_STORE_CONFIG: u32 = 0x3;
+pub const SEMANTIC_SERVICE_CLEAR_VIEW: u32 = 0x4;
 pub const REG_ID: u32 = 0x000;
 pub const REG_VERSION: u32 = 0x004;
 pub const REG_STATUS: u32 = 0x008;

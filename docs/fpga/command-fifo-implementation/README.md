@@ -11,9 +11,12 @@ stop/go ceilings; final numerical budgets need explicit Stage 6 agreement.
 BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
 The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
-are joined to the actual semantic/audio/media candidate, now with configuration-only
-CORE/AUDIO/STORE service. Its measured partial frontend is **7,943 LUT / 6,943 FF
-after standard optimization**, **57 LUT / 57 FF below the previous targets**.
+are joined to the actual semantic/audio/media candidate, now with public
+CORE/AUDIO/STORE configuration and CLEAR_VIEW service subsets. The latest measured
+partial frontend is **7,943 LUT / 6,943 FF after standard optimization**, **57 LUT /
+57 FF below the previous targets**. That measurement predates CLEAR_VIEW; this
+small functional extension has no new resource/timing result or current-source fit
+claim.
 That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
 **−9.754 ns**, still failing, with worse aggregate setup violations. Production
 still selects ABI 15. The original stop and repair evidence remain historical records;
@@ -2109,3 +2112,59 @@ incomplete. No push/PR/deployment/new physical permission is implied. Local pref
 `stage4-config-ready-` contains before-fix-v1/v2/v3, tests-v1, narrow/narrow-v2,
 measure-v1, milestone, wasm, linux, export and precommit logs; historical archives
 are unchanged. Same narrow/full-profile reproduction commands apply.
+
+## Public CLEAR_VIEW: functional subset, not complete preparation or measured fit
+
+The same reserved private service slot now accepts opcode 4. Payload words 0–1
+carry a full u64 view; words 2–11 must be zero. After complete publication and
+validation, the existing private loader and accepted-operation owner execute
+backend CLEAR 2. No second dispatcher, backend owner, working record or processing
+gate is added. The shared 160-bit record carries the view; local response-ready
+consumes the completion without ARM service. All twelve reply data words are zero,
+not stale metadata. Clear is not a program fence, rollback/cancellation or a grant
+to modify a continuing lease; the trusted Stage 5 API still must enforce ownership.
+
+Seven media-command/response-ready inputs become private, in addition to the
+sixteen existing configuration controls. Sample-data ports remain integration
+seams until complete public bulk preparation is implemented. The profile test
+allows exactly these seven additional declarations/bindings to disappear, with
+all other probe bytes/geometry unchanged. Full private 32-word staging and other
+legitimate media/lifecycle/trace operations remain required, not retired features.
+
+Four codec, seven indexed and eight actual-MMIO cases pass. The new actual case
+clears an unused empty range-view, renders silent quanta at every unpublished
+prefix and with B/R held, verifies locally consumed completion before ARM reads,
+reuses the lane with copied RDATA held, rejects u64 aliasing/reserved fields, and
+checks RPCs do not advance F. Codec coverage adds all ten reserved words and
+eighteen halt positions through validation/issue/wait, late replies and reset/no
+replay. The empty-view fixture does not establish nonempty clear/fence or complete
+hostile-lifecycle qualification.
+
+[Functional evidence and source hashes](reports/clear-view-8d60ec301/results.json)
+record **269 Rust tests = 210 affected + 59 directed**, both 3,970-case kernel
+oracles, warning-denying workspace build, formatting, policy/coverage, generators
+and **12 Python tests**. Full Linux passes **3,584 / 11 skipped**, **405.368 s**,
+pinned nextest 0.9.116/owned isolated dummy JACK. Default application/worklet and
+optional-reference worklet Wasm builds pass. Builds/tests ran sequentially.
+Local prefix `work/cmd-fifo-investigation/stage4-clear-view-` contains codec-v1,
+narrow-v1, milestone, wasm and linux logs/statuses; all passed. Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim \
+    --test config_service --test semantic_mmio -- --test-threads=1
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test semantic_audio mmio_audio -- --test-threads=1
+'
+```
+
+Under the functional-first amendment this small service extension has no new
+synthesis/route measurement. The previous **7,943 LUT / 6,943 FF / −9.754 ns** are
+pre-change partial evidence, not measured CLEAR_VIEW fit, complete frontend or
+protected whole-design acceptance. Final agreed LUT/FF budgets and unchanged
+BRAM/DSP/profile/cycle/routed-timing requirements remain. Bulk/lifecycle/trace,
+external adapters, matched software/CPU retirement, full admitted service,
+platform/fault-parity and delivery/independent audit remain open. ABI 15 stays
+selected; Stages 4–7 remain incomplete. No physical/browser-runtime qualification,
+physical authorization, push/PR or deployment follows.

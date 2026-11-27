@@ -15,11 +15,14 @@ final budgets must be explicitly agreed before hardware qualification, promotion
 or overall acceptance. See the functional-first amendment in Stage 2. BRAM/DSP,
 profile, semantic, cycle, timing and safety requirements are unchanged.
 
-The measured partial frontend now includes indexed MMIO, low-range discovery/
+The latest measured partial frontend includes indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
-on the actual semantic/audio/media pipeline, now with a configuration-only public
-service for CORE/AUDIO/STORE requests. It is **7,943 LUT / 6,943 FF after
-standard optimization**, **57 LUT / 57 FF below the previous 8,000/7,000 targets**.
+on the actual semantic/audio/media pipeline, with the CORE/AUDIO/STORE public
+configuration subset. It is **7,943 LUT / 6,943 FF after standard optimization**,
+**57 LUT / 57 FF below the previous 8,000/7,000 targets**. Current functional source
+also joins public CLEAR_VIEW through the existing private media loader/owner;
+that small functional extension has no new resource/timing measurement. The
+figures above are pre-CLEAR_VIEW evidence, not current-source fit.
 That narrow margin no longer blocks functional integration of the remaining
 media/lifecycle/trace services and adapters. The latest readiness refinement
 improves worst unrouted WNS to **−9.754 ns**, still failing; aggregate setup
@@ -1490,6 +1493,52 @@ runtime qualification. All remaining services/adapters/software/CPU retirement,
 admitted-envelope/whole-design/route/platform/fault-parity/delivery gates remain.
 Production stays ABI 15; Stages 4–7 remain incomplete. No physical authorization,
 push/PR/deployment or whole-goal completion follows from this refinement.
+
+**Public CLEAR_VIEW functional milestone:** extend the same private service slot
+with opcode 4, a full u64 view in payload words 0–1 and ten reserved-zero words.
+Complete publication and full-width validation precede a request to the existing
+private media loader/accepted-operation owner, using its real CLEAR opcode 2.
+No second dispatcher, backend owner, working record, processing gate or live-state
+planner is added. The existing 160-bit working record carries the view, and the
+same response slot captures completion without ARM readiness. All twelve response
+words are zero, including stale unused backend data. CLEAR is not a program fence,
+cancellation, backend retirement or permission to clear a continuing lease.
+
+- [x] Join candidate CLEAR_VIEW 4 to the real private loader/owner with complete
+  publication, full-width/reserved checks, locally consumed completion and public
+  actual-pipeline tests. This is another subset, not Stage 4 completion.
+
+The wrapper now privatizes seven media command/response-ready controls in addition
+to the existing sixteen configuration controls. Sample-data interfaces remain
+integration seams pending the complete public bulk service; their 32-word private
+staging, all other media operations and the full approved profile remain required.
+The profile drift check permits exactly those seven additional declarations and
+bindings to disappear, preserving every other probe byte/geometry. No fit or final
+capability acceptance is inferred from this still-incomplete endpoint.
+
+Four codec, seven indexed and eight actual-MMIO cases pass. The new actual case
+clears an unused empty range-view, checks all fourteen unpublished prefixes with
+silent audio progressing, held publication B, copied R across POP/reuse, backend
+reply release without ARM consumption, full-u64 nonaliasing, reserved-field refusal
+and no RPC-driven frame advance. The codec additionally tests all ten reserved
+words and eighteen halt positions through validation/issue/wait with late replies,
+no replay and reset flushing. Nonempty clear/fence and full hostile-lifecycle
+qualification are not established by the empty-view fixture.
+
+`stage4-clear-view-milestone` passes **210 affected + 59 directed = 269 Rust tests**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped** in **405.368 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK; default and optional-reference Wasm
+builds pass. All builds/tests ran sequentially. Source-qualified functional
+[evidence](docs/fpga/command-fifo-implementation/reports/clear-view-8d60ec301/results.json)
+records no new synthesis/route or cycle-envelope acceptance. The prior 7,943/6,943
+and −9.754 ns figures remain pre-change measurements, not measured CLEAR_VIEW fit.
+
+Complete bulk preparation/media/lifecycle/trace services, external adapters,
+matched software/CPU-control retirement, admitted-envelope/whole-design/route/
+platform/fault-parity gates and delivery remain open. Production stays ABI 15;
+Stages 4–7 remain incomplete. No physical authorization, push/PR/deployment or
+whole-goal completion follows from this functional subset.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

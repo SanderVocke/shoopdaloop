@@ -12,6 +12,8 @@ use rt_fpga_testbench::{
 use serde_json::{Value, json};
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "semantic_mmio_clear.rs"]
+mod clear;
 #[path = "semantic_mmio_config.rs"]
 mod configuration;
 #[path = "semantic_mmio_safety.rs"]

@@ -5,7 +5,7 @@ use super::{
 use rt_fpga_rtl::host::semantic_registers::*;
 use shoop_wasm_test_support::shoop_test;
 
-fn response_ready(s: &mut Sim<'_>) {
+pub(super) fn response_ready(s: &mut Sim<'_>) {
     let mut ready = false;
     for _ in 0..20_000 {
         if read(s, REG_STATUS) & 2 != 0 {
@@ -18,7 +18,7 @@ fn response_ready(s: &mut Sim<'_>) {
         "copied service response independent of reader readiness"
     );
 }
-fn request_writes(s: &mut Sim<'_>, operation: u32, payload: &[u32; 12], tag: u32) {
+pub(super) fn request_writes(s: &mut Sim<'_>, operation: u32, payload: &[u32; 12], tag: u32) {
     let epoch = s.model.get("runtime_epoch") as u32;
     write(s, REG_REQUEST_EPOCH, epoch);
     write(s, REG_REQUEST_OP, operation);

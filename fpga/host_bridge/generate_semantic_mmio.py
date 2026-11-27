@@ -23,7 +23,8 @@ def generate():
     external = {"irq", "audio_xruns"}
     local = {"abort_request"} | {n for _, n in mmio if n.startswith("service_")}
     private = {"pipeline_fault_cause"} | {
-        n for p, n in ports if p.startswith("input") and n.startswith(("cfg_", "audio_cfg_", "store_cfg_"))}
+        n for p, n in ports if p.startswith("input") and
+        (n.startswith(("cfg_", "audio_cfg_", "store_cfg_", "store_cmd_")) or n=="store_response_ready")}
     for declaration, name in mmio:
         if name.startswith("s_axi_") or name in external or name in expressions or name in local:
             continue
@@ -51,7 +52,7 @@ def generate():
     result += "    assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)\n"
     result += "        | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);\n"
     for kind, prefix, width in [(1, "cfg", 129), (2, "audio_cfg", 32), (3, "store_cfg", 160)]:
-        result += f"    assign {prefix}_valid=config_valid && config_operation==2'd{kind};\n"
+        result += f"    assign {prefix}_valid=config_valid && config_operation==3'd{kind};\n"
         result += f"    assign {prefix}_write=config_write;\n"
         result += f"    assign {prefix}_address=config_address" + ("[15:0]" if kind == 1 else "") + ";\n"
         result += f"    assign {prefix}_write_data=config_data[{width - 1}:0];\n"
@@ -59,9 +60,15 @@ def generate():
             result += "    assign cfg_state=config_space[0];\n    assign cfg_loop=config_space[1];\n"
         else:
             result += f"    assign {prefix}_space=config_space[{1 if kind == 2 else 2}:0];\n"
-    for target, suffix in [("ready", "ready"), ("response_valid", "response_valid"), ("response_error", "response_error")]:
+    for target, suffix, clear in [("ready", "ready", "store_cmd_ready"),
+                                  ("response_valid", "response_valid", "store_done"),
+                                  ("response_error", "response_error", "(store_error_code!=0)")]:
         result += f"    assign config_{target}=config_operation==1 ? cfg_{suffix}\n"
-        result += f"        : config_operation==2 ? audio_cfg_{suffix} : store_cfg_{suffix};\n"
+        result += f"        : config_operation==2 ? audio_cfg_{suffix} : config_operation==3 ? store_cfg_{suffix} : {clear};\n"
+    result += "    assign store_cmd_valid=config_valid && config_operation==3'd4;\n"
+    result += "    assign store_cmd_opcode=4'd2;\n    assign store_cmd_view=config_data[63:0];\n"
+    result += "    assign store_cmd_start=64'd0;\n    assign store_cmd_length=64'd0;\n    assign store_cmd_count=32'd0;\n"
+    result += "    assign store_response_ready=config_response_ready && config_operation==3'd4;\n"
     result += "    assign config_core_data=cfg_read_data;\n"
     result += "    assign config_audio_data=audio_cfg_read_data;\n"
     result += "    assign config_store_data=store_cfg_read_data;\n"

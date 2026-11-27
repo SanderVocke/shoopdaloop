@@ -7,10 +7,11 @@ module fifo_config_service (
     output wire [1:0] response_code,
     input wire [3:0] read_index, output wire [31:0] read_data,
     output wire config_valid, input wire config_ready,
-    output reg [1:0] config_operation, output reg [2:0] config_space,
+    output reg [2:0] config_operation, output reg [2:0] config_space,
     output reg config_write, output wire [31:0] config_address,
     output wire [159:0] config_data,
     input wire config_response_valid, config_response_error,
+    output wire config_response_ready,
     input wire [128:0] config_core_data,
     input wire [31:0] config_audio_data,
     input wire [159:0] config_store_data
@@ -35,7 +36,7 @@ module fifo_config_service (
     assign response_pending=live && phase==REPLY;
     assign response_code=response_pending ? code : 2'd0;
     assign read_data=!response_pending ? 32'd0 : read_index==14 ? value
-        : code!=0 || read_index>=5 || (config_operation==2 && read_index!=0)
+        : code!=0 || config_operation==4 || read_index>=5 || (config_operation==2 && read_index!=0)
         ? 32'd0 : config_operation==1 && read_index==4 ? {31'd0,value[0]} : value;
     assign config_valid=live && !halt && phase==ISSUE;
     assign receipt=!live ? EPOCH : halt ? FAULT
@@ -44,9 +45,11 @@ module fifo_config_service (
         : operation==0 ? (index>=14 ? INVALID : index!=0 && index!=cursor ? INCOMPLETE : ACCEPTED)
         : word==0 ? INVALID : cursor!=14 ? INCOMPLETE : value!=epoch ? EPOCH : ACCEPTED;
     wire accept=valid && receipt==ACCEPTED;
-    wire known_operation=value>=1 && value<=3;
+    assign config_response_ready=live && !halt && (phase==WAIT || phase==ISSUE);
+    wire known_operation=value>=1 && value<=4;
     wire bad_control=(value & (config_operation==3 ? 32'hfffffef8 : 32'hfffffefc))!=0;
-    wire bad_scan=(cursor==2 && bad_control)
+    wire bad_scan=config_operation==4 ? (cursor>=4 && value!=0)
+        : (cursor==2 && bad_control)
         || (cursor==3 && config_operation==1 && value[31:16]!=0)
         || (cursor==8 && config_operation==1 && value[31:1]!=0)
         || (cursor>=5 && cursor<=8 && config_operation==2 && value!=0)
@@ -71,10 +74,13 @@ module fifo_config_service (
                 default: ;
             endcase
             case (phase)
-                OPCODE: begin config_operation<=value[1:0]; cursor<=2; phase<=SCAN; end
+                OPCODE: begin config_operation<=value[2:0]; cursor<=2; phase<=SCAN; end
                 SCAN: begin
                     if (cursor==2) begin config_space<=value[2:0]; config_write<=value[8]; end
-                    if (cursor>=4 && cursor<=8) working<={value,working[159:32]};
+                    if (config_operation==4) begin
+                        if (cursor==2) working<={128'd0,value};
+                        if (cursor==3) working<={96'd0,value,working[31:0]};
+                    end else if (cursor>=4 && cursor<=8) working<={value,working[159:32]};
                     if (cursor==13) phase<=ISSUE; else cursor<=cursor+1'b1;
                 end
                 ISSUE: if (config_ready) phase<=WAIT;

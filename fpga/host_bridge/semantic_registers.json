@@ -14,7 +14,8 @@
     "PAYLOAD_WORDS": 12,
     "SERVICE_CORE_CONFIG": 1,
     "SERVICE_AUDIO_CONFIG": 2,
-    "SERVICE_STORE_CONFIG": 3
+    "SERVICE_STORE_CONFIG": 3,
+    "SERVICE_CLEAR_VIEW": 4
   },
   "registers": {
     "ID": "0x000",
