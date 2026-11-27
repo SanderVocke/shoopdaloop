@@ -3,9 +3,12 @@
 ## Status and execution contract
 
 **Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–3 are
-complete, including the reduced-profile/ABI contract freeze. **Stage 4 is paused
-at an actual resource-ceiling breach**, pending user direction; Stages 5–7 remain.
-The measured component and stop decision are recorded in the Stage 4 resource gate below.
+complete, including the reduced-profile/ABI contract freeze. **Stage 4 area repair
+is authorized by the user's “try to fix the area problem.”** The RAM-mapping blowup
+is repaired, but the incomplete frontend remains **345 LUT over its ceiling after
+standard optimization**; Stages 4–7 remain incomplete. All approved ceilings,
+profile and semantics are unchanged.
+The measured component and original stop decision are recorded in the Stage 4 resource gate below.
 See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
 Branch: `investigate/fpga-command-fifo`, production base `ff6c09551e9dee2cd3a12d37ccad19fa844b09aa`.
@@ -902,11 +905,56 @@ tooling paths were corrected after the run, without changing or resynthesizing
 production RTL. The previous 248-test milestone remains historical/current-RTL
 functional evidence, not evidence that this implementation fits.
 
-The approved breach rule has been triggered: **stop implementation and return to
-the user**. User direction is required before a RAM-oriented observations and
-frontend-area redesign under the unchanged ceilings. No ceiling increase, profile
+At `c6ddb7652`, the approved breach rule triggered a **stop and return to the
+user**. The subsequently supplied area-repair direction is recorded below; the
+stop did not authorize changing any ceiling, profile or semantic requirement. No ceiling increase, profile
 reduction, CPU fallback, ABI-16 deployment, physical work or delivery is authorized
 by this failed resource gate. Stages 4–7 remain incomplete.
+
+**Area-repair direction:** the user subsequently explicitly requested “try to fix
+the area problem.” This authorizes investigating and repairing RAM inference and
+frontend overhead within the existing limits, not changing acceptance criteria.
+The failed measurement remains historical evidence; repairs require fresh
+functional, source/hash, resource and eventually complete integration gates.
+
+**Area-repair milestone:** explicit single-address/single-write observation banks
+now infer distributed RAM instead of 16,512 data flip-flops and wide register muxes.
+Runtime effects still outrank configuration/reads, independent fields can update
+together, and one-cycle copied responses, original f32 bits, saturating counts,
+optional trace loss and reset persistence remain unchanged. A fourth standalone
+observation test covers cross-row gain/failure updates, read/config contention,
+read-before-write initialization and isolation of all three initialization words.
+
+The sequential command packet and single kernel working record now shift only on
+accepted responses; writeback reads the fixed head rather than a variable wide
+mux. No states, passes, commands, working records or cycles are added. Both frozen
+prototype and production kernels still pass 3,970 differential cases per source;
+maximum synthetic group/fence service remains 3,783 clocks.
+
+[Fresh evidence](docs/fpga/command-fifo-implementation/reports/area-repair-c6ddb7652/results.json)
+uses the same Q32/128-loop/full-storage profile and packed hierarchy accounting:
+
+| Variant | Component LUT / FF | Frontend LUT / FF |
+| --- | ---: | ---: |
+| Observation RAM repair | 30,322 / 21,268 | 6,643 / 6,379 |
+| Plus sequential working records | 30,027 / 21,263 | 6,348 / 6,374 |
+| Same checkpoint, standard `opt_design` | 29,923 / 21,235 | **6,345 / 6,374** |
+
+Observations fall from 55,372 LUT / 17,127 FF to **605 LUT / 615 FF**, including
+258 LUTRAMs. The kernel is **1,595 LUT / 1,932 FF / no DSP**. Total storage remains
+62.5 RAMB36-equivalents and four existing DSPs. Synthesis/optimization complete
+without errors/critical warnings; the initial postprocessing attempt's unopened
+checkpoint error remains separately recorded, not a resource result.
+
+`stage4-area-repair-milestone.{log,status}` passes **199 affected-package +
+50 directed = 249 selected Rust tests**, workspace warnings/formatting,
+test-policy/coverage, generators and three offline tooling tests. Real semantic
+SP/JP, 128-row/initial snapshots, media/AXI fences, fault-stop and recovery remain
+covered. There is no fresh full Linux/Wasm or physical qualification. **The area
+problem is improved, not fully solved:** 345 frontend LUTs plus future MMIO margin
+still need removing. Whole-component figures exclude board integration and are
+not whole-design acceptance; unrouted timing still fails, and no route or
+all-admitted-quantum proof is claimed. Stages 4–7 remain open.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

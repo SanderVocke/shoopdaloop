@@ -62,7 +62,7 @@ module fifo_edit_kernel #(
     assign memory_write = phase == WRITE_WORD || phase == GAIN;
     assign memory_state = phase == GAIN;
     assign memory_address = phase == GAIN ? gain_address : {slot[11:0],word_index};
-    assign memory_write_data = phase == GAIN ? {1'b1,64'd0,args[31:0],args[31:0]} : {65'd0,row[word_index]};
+    assign memory_write_data = phase == GAIN ? {1'b1,64'd0,args[31:0],args[31:0]} : {65'd0,row[0]};
 
     task automatic refuse(input [3:0] code);
         begin result_code<=code; phase<=RESULT; end
@@ -86,7 +86,8 @@ module fifo_edit_kernel #(
                 READ_WAIT: if (memory_response_valid) begin
                     if (memory_response_error) refuse(CANNOT);
                     else begin
-                        row[word_index]<=memory_read_data[63:0];
+                        for (integer i=0;i<15;i=i+1) row[i]<=row[i+1];
+                        row[15]<=memory_read_data[63:0];
                         if (word_index==15) phase<=CHECK;
                         else begin word_index<=word_index+1'b1; phase<=READ_WORD; end
                     end
@@ -223,8 +224,11 @@ module fifo_edit_kernel #(
                 WRITE_WORD: if (memory_ready) phase<=WRITE_WAIT;
                 WRITE_WAIT: if (memory_response_valid) begin
                     if (memory_response_error) begin write_fault<=1; refuse(CANNOT); end
-                    else if (word_index==15) phase<=RESULT;
-                    else begin word_index<=word_index+1'b1; phase<=WRITE_WORD; end
+                    else begin
+                        for (integer i=0;i<15;i=i+1) row[i]<=row[i+1];
+                        if (word_index==15) phase<=RESULT;
+                        else begin word_index<=word_index+1'b1; phase<=WRITE_WORD; end
+                    end
                 end
                 GAIN: if (memory_ready) phase<=GAIN_WAIT;
                 GAIN_WAIT: if (memory_response_valid) begin

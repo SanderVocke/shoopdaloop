@@ -43,18 +43,23 @@ module fifo_observations #(
         ? cfg_write_data[63:32]==0 && cfg_write_data[30:23]!=8'hff : cfg_write_data[63:0]==0);
     wire cfg_accepted=cfg_valid && cfg_ready;
     wire initialize=cfg_accepted && cfg_write && cfg_in_range && cfg_value_valid;
-    wire [31:0] failure_value=failures[event_index];
+    wire [INDEX_BITS-1:0] metadata_index=read_valid ? read_slot[INDEX_BITS-1:0] : cfg_index;
+    wire [INDEX_BITS-1:0] gain_address=gain_valid ? gain_slot[INDEX_BITS-1:0] : metadata_index;
+    wire [INDEX_BITS-1:0] event_address=required_event ? event_index : metadata_index;
+    wire [31:0] gain_value=gains[gain_address];
+    wire [31:0] failure_value=failures[event_address];
+    wire [63:0] pulse_value=pulses[event_address];
+    wire pulse_valid_value=pulse_valid[event_address];
+    wire gain_write=gain_valid || (initialize && cfg_word==0);
+    wire failure_write=(required_event && failure && !(&failure_value)) || (initialize && cfg_word==0);
+    wire pulse_write=(required_event && pulse) || (initialize && cfg_word==1);
+    wire pulse_valid_write=(required_event && pulse) || (initialize && cfg_word==2);
     always @(posedge clk) begin
         if (!reset && !faulted) begin
-            if (gain_valid) gains[gain_slot[INDEX_BITS-1:0]]<=gain_bits;
-            if (required_event && pulse) begin pulses[event_index]<=event_data[255:192]; pulse_valid[event_index]<=1; end
-            if (required_event && failure && !(&failure_value)) failures[event_index]<=failure_value+1'b1;
-            if (initialize) case (cfg_word)
-                0: begin gains[cfg_index]<=cfg_write_data[31:0]; failures[cfg_index]<=0; end
-                1: pulses[cfg_index]<=0;
-                2: pulse_valid[cfg_index]<=0;
-                default: ;
-            endcase
+            if (gain_write) gains[gain_address]<=gain_valid ? gain_bits : cfg_write_data[31:0];
+            if (failure_write) failures[event_address]<=initialize ? 32'd0 : failure_value+1'b1;
+            if (pulse_write) pulses[event_address]<=initialize ? 64'd0 : event_data[255:192];
+            if (pulse_valid_write) pulse_valid[event_address]<=!initialize;
         end
         if (reset) begin
             retained_fault<=0; cfg_response_valid<=0; cfg_response_error<=0; cfg_read_data<=0;
@@ -66,7 +71,7 @@ module fifo_observations #(
             response_error<=read_valid && read_ready && read_slot>=16'(LOOPS);
             if (read_valid && read_ready) begin
                 if (read_slot<16'(LOOPS))
-                    read_data<={pulse_valid[read_slot[INDEX_BITS-1:0]],pulses[read_slot[INDEX_BITS-1:0]],failures[read_slot[INDEX_BITS-1:0]],gains[read_slot[INDEX_BITS-1:0]]};
+                    read_data<={pulse_valid_value,pulse_value,failure_value,gain_value};
                 else read_data<=0;
             end
             cfg_response_valid<=cfg_accepted;
@@ -74,9 +79,9 @@ module fifo_observations #(
             if (cfg_accepted) begin
                 cfg_read_data<=0;
                 if (cfg_in_range) case (cfg_word)
-                    0: cfg_read_data<={65'b0,failures[cfg_index],gains[cfg_index]};
-                    1: cfg_read_data<={65'b0,pulses[cfg_index]};
-                    2: cfg_read_data<={128'b0,pulse_valid[cfg_index]};
+                    0: cfg_read_data<={65'b0,failure_value,gain_value};
+                    1: cfg_read_data<={65'b0,pulse_value};
+                    2: cfg_read_data<={128'b0,pulse_valid_value};
                     default: ;
                 endcase
             end

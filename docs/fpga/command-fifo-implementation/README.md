@@ -4,9 +4,10 @@ The authoritative scope, approval and acceptance criteria are in
 [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md). The isolated kernel measurements
 remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
 
-**Current gate: Stage 4 paused after an actual resource-ceiling breach.** Stages
-0–3 are complete; Stages 4–7 are not. See the resource-stop record below. No
-production RTL redesign will proceed without user direction at this gate.
+**Current gate: authorized Stage 4 area repair, not complete fit.** Stages 0–3
+are complete; Stages 4–7 are not. The observation RAM-mapping blowup is repaired,
+but the incomplete frontend remains 345 LUT above its ceiling after standard
+optimization. The original stop and subsequent repair evidence are recorded below.
 
 ## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
 
@@ -1300,9 +1301,74 @@ still emits the byte-identical measured profile, the original consumer-only Tcl
 is unchanged, and packed frontend accounting reconciles with native hierarchy.
 These are record/tooling checks, not additional Rust functional or fit tests.
 
-**Implementation is stopped pending user direction**, as required for an actual
-ceiling breach. A possible next step is a RAM-oriented observations and
-frontend-area redesign under the unchanged limits, followed by fresh functional
-and resource gates. No profile reduction, raised ceiling, CPU fallback, ABI-16
+**Implementation was stopped at `c6ddb7652` pending user direction**, as required
+for an actual ceiling breach. The user subsequently requested “try to fix the
+area problem,” authorizing the bounded area repair recorded below. That direction
+does not change any numerical limit, profile or semantic requirement. No profile reduction, raised ceiling, CPU fallback, ABI-16
 selection, board access, push/PR or delivery is implied. The deployed interface
 remains ABI 15 and Stages 4–7 remain incomplete.
+
+## Area repair: real RAM ports and sequential working records
+
+[New evidence](reports/area-repair-c6ddb7652/results.json) preserves the original
+failed measurement and compares three subsequent variants with the same
+Q32/128-loop/512-state-buffer-view/full-media profile. This is a **partial repair,
+not a resource acceptance pass**.
+
+Vivado identified multiple write ports in each observation array. Runtime updates
+and trusted initialization were mutually exclusive in the protocol, but separate
+indexed assignments prevented RAM inference. Each field now has one explicitly
+selected address and one write assignment. Required updates still outrank reads
+and configuration; gain and SP updates can affect different banks/rows together.
+No RAM reset, continuing-state restoration, extra response cycle or reader gating
+was added. All original f32, pulse-valid/frame, saturation and optional-trace
+semantics remain. The added test exercises all 128 rows with cross-row gain/failure
+updates, denied configuration, accepted diagnostic reads, read-before-write
+initialization and preservation of the other fields between initialization words.
+
+The complete 12-word command packet shifts only on command-read responses. The
+kernel's single 16-word record shifts only on successful read/write responses,
+with a fixed-head write-data output. This replaces variable wide register muxes;
+it does not add a planner, duplicated record, state or cycle. Frozen prototype
+source/evidence remain unchanged.
+
+| Phase | Component LUT / FF | Frontend LUT / FF | Observation LUT / FF |
+| --- | ---: | ---: | ---: |
+| Original failed synthesis | 85,056 / 37,785 | 61,414 / 22,894 | 55,372 / 17,127 |
+| Explicit observation RAM ports | 30,322 / 21,268 | 6,643 / 6,379 | 605 / 615 |
+| Plus sequential working records | 30,027 / 21,263 | 6,348 / 6,374 | 605 / 615 |
+| Same checkpoint, standard `opt_design` | 29,923 / 21,235 | **6,345 / 6,374** | 605 / 615 |
+
+The 16,512 observation data FFs become **258 LUTRAMs**, included in the frontend
+LUT total rather than excluded from accounting. The kernel is **1,595 LUT /
+1,932 FF / no DSP**, within its ceiling. Component storage stays at 59 RAMB36 +
+7 RAMB18 = 62.5 equivalents with four existing DSPs. No capacity/profile reduction
+or limit increase was used. Native packed hierarchy, not raw LUT primitive counts,
+reconciles frontend versus existing execution/media/AXI/program backend in every
+variant. Source hashes, changed RTL snapshots, the identical generated profile,
+Tcl/provenance, native reports and 23 checksums accompany the results.
+
+`stage4-area-repair-milestone.{log,status}` passes **249 selected Rust tests =
+199 affected-package + 50 directed**, warning-denying workspace build, formatting,
+test-policy/coverage, generators and the three offline measurement-tool tests.
+The two kernel tests each retain **3,970 differential cases** and their original
+73/65/35/99-cycle successful paths. All nine group tests pass; maximum synthetic
+iteration/fence arbitration stays **3,783 clocks**. Actual SP/JP, initial/128-row
+snapshots, local observations, word/AXI media fences, stop/reset and retained
+first-fault fixtures are included. No tests/oracle assertions were weakened.
+
+Local narrow logs are `stage4-area-observation-ports-tests` and
+`stage4-area-streaming-record-tests`. Synthesis runs are
+`vivado-area-{observation-ports,streaming-record}-v1`; both complete successfully
+with zero errors/critical warnings. `vivado-area-streaming-record-opt-v2` opens
+the exact synthesized checkpoint and runs standard optimization, without placement
+or routing. Its initial `-opt-v1` used `read_checkpoint` without opening a design;
+that failure remains separate and supplied no usable optimization result.
+
+**Remaining:** the frontend is still **345 LUT over 6,000**, before public MMIO
+and its required margin. The partial component being below 32,000 LUT / 24,000 FF
+does not prove the protected whole design fits. Unrouted estimates still fail
+setup (streaming synthesis WNS −5.475 ns; default optimization −5.015 ns), so no
+routed timing acceptance follows. Public MMIO, full integration/quantum bounds,
+the two baseline fault-path differences, fresh full Linux/Wasm/platform gates,
+physical authorization and delivery remain open. ABI deployment remains 15.

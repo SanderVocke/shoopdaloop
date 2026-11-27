@@ -1,0 +1,7 @@
+{
+  "image": "docker.io/siliconbootcamp/xilinx-vivado@sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "expected_launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "input_checkpoint_sha256": "fb8efb062210f0575bc4e468f8ba294b1e64caf2625b28e565b15803ab39244f",
+  "tcl_sha256": "022cb034bc9463aed330bcd5c4019fb131e6fe715461a725c164611a0c9e92b6",
+  "scope": "same frozen synthesis input; standard opt_design only, no place/route"
+}

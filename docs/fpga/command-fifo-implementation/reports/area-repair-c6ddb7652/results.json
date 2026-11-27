@@ -1,0 +1,291 @@
+{
+  "outcome": "PARTIAL_AREA_REPAIR_FRONTEND_STILL_OVER_LUT_LIMIT",
+  "source_base": "c6ddb7652fe6df92f07b328371dd815eabd898b5",
+  "working_tree_snapshot": true,
+  "scope": "same fixed Q32/128-loop/512-state-buffer-view profile as original failure; no public MMIO/audio adapter/PS/DDR/thermal board integration",
+  "excluded_paths": {
+    "audio_execution": "dut/execution/core/pipeline/execution",
+    "media_store": "dut/execution/core/media",
+    "axi_backend": "dut/execution/memory_endpoint",
+    "program_backend": "dut/execution/ddr_program.program_bus"
+  },
+  "variants": {
+    "observation-ports": {
+      "component": {
+        "lut": 30322,
+        "logic_lut": 29988,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21268,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_execution_backend": {
+        "audio_execution": {
+          "lut": 10626,
+          "logic_lut": 10626,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11425,
+          "logic_lut": 11421,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1534,
+          "logic_lut": 1534,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 919,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue": {
+        "lut": 6643,
+        "logic_lut": 6313,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6379,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1815,
+        "logic_lut": 1815,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1937,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "observations": {
+        "lut": 605,
+        "logic_lut": 347,
+        "lutram": 258,
+        "srl": 0,
+        "ff": 615,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      }
+    },
+    "streaming-record": {
+      "component": {
+        "lut": 30027,
+        "logic_lut": 29693,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21263,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_execution_backend": {
+        "audio_execution": {
+          "lut": 10626,
+          "logic_lut": 10626,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11425,
+          "logic_lut": 11421,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1534,
+          "logic_lut": 1534,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 919,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue": {
+        "lut": 6348,
+        "logic_lut": 6018,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6374,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1595,
+        "logic_lut": 1595,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1932,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "observations": {
+        "lut": 605,
+        "logic_lut": 347,
+        "lutram": 258,
+        "srl": 0,
+        "ff": 615,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      }
+    },
+    "default-opt": {
+      "component": {
+        "lut": 29923,
+        "logic_lut": 29589,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21235,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_execution_backend": {
+        "audio_execution": {
+          "lut": 10623,
+          "logic_lut": 10623,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11410,
+          "logic_lut": 11406,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1451,
+          "logic_lut": 1451,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 891,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue": {
+        "lut": 6345,
+        "logic_lut": 6015,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6374,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1595,
+        "logic_lut": 1595,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1932,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "observations": {
+        "lut": 605,
+        "logic_lut": 347,
+        "lutram": 258,
+        "srl": 0,
+        "ff": 615,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      }
+    }
+  },
+  "ceilings": {
+    "kernel_lut": 2500,
+    "kernel_ff": 2500,
+    "frontend_lut": 6000,
+    "frontend_ff": 7000,
+    "whole_lut": 32000,
+    "whole_ff": 24000,
+    "ramb36_equivalents": 100,
+    "dsp": 4
+  },
+  "frontend_lut_excess_synthesis": 348,
+  "frontend_lut_excess_default_opt": 345,
+  "complete_frontend_fit": false,
+  "route_performed": false,
+  "deployed_abi": 15,
+  "functional_gate": {
+    "selected_rust_tests": 249,
+    "affected_packages": 199,
+    "directed_components": 50,
+    "tooling_tests": 3,
+    "kernel_differential_cases_per_source": 3970,
+    "synthetic_maximal_group_with_fence_cycles": 3783
+  },
+  "preserved_local_failure": "vivado-area-streaming-record-opt-v1 used read_checkpoint without opening a design; no usable optimization results; corrected v2 uses open_checkpoint",
+  "remaining": "Need additional frontend LUT savings plus unimplemented MMIO, integrated timing/quantum/platform and delivery gates; no limits, profile or semantics reduced."
+}

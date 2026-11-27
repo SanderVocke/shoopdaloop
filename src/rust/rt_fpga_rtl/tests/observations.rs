@@ -164,6 +164,83 @@ fn all_128_rows_update_with_trace_full_and_execution_wins_over_configuration_and
 }
 
 #[shoop_test]
+fn single_port_fields_preserve_cross_row_updates_read_priority_and_read_before_initialization() {
+    run(false, |s| {
+        let base = 1.0f32.to_bits();
+        let mut gains = [base; 128];
+        let mut failures = [0u64; 128];
+        for slot in 0..128 {
+            initialize(s, slot, base);
+            event(s, 2, 0, slot, 0x1234_5678_0000_0000 + slot);
+            s.idle(1);
+            s.model.set("event_valid", 0);
+        }
+        for step in 0..256 {
+            let target = step % 128;
+            let gain_target = (target + 37) % 128;
+            let reader = 127 - target;
+            event(s, 3, 3, target, step);
+            s.model.set_all(&[
+                ("gain_valid", 1),
+                ("gain_slot", gain_target),
+                ("gain_bits", u64::from(base) + step),
+                ("read_valid", 1),
+                ("read_slot", reader),
+                ("cfg_valid", 1),
+                ("cfg_write", 1),
+                ("cfg_address", reader * 3),
+            ]);
+            s.model.set_bits("cfg_write_data", &Bits::from_u64(0));
+            s.model.eval();
+            assert_eq!(s.model.get("read_ready"), 0);
+            assert_eq!(s.model.get("cfg_ready"), 0);
+            s.idle(1);
+            failures[target as usize] += 1;
+            gains[gain_target as usize] = base + step as u32;
+            assert_eq!(s.model.get("response_valid"), 0);
+            assert_eq!(s.model.get("cfg_response_valid"), 0);
+            s.model.set_all(&[("gain_valid", 0), ("event_valid", 0)]);
+            s.model.eval();
+            assert_eq!(s.model.get("read_ready"), 1);
+            assert_eq!(s.model.get("cfg_ready"), 0);
+            s.idle(1);
+            let data = s.model.bits("read_data");
+            assert_eq!(s.model.get("response_valid"), 1);
+            assert_eq!(s.model.get("cfg_response_valid"), 0);
+            assert_eq!(data.get(0, 32), u64::from(gains[reader as usize]));
+            assert_eq!(data.get(32, 32), failures[reader as usize]);
+            assert_eq!(data.get(64, 64), 0x1234_5678_0000_0000 + reader);
+            assert_eq!(data.get(128, 1), 1);
+            s.model.set_all(&[("read_valid", 0), ("cfg_valid", 0)]);
+        }
+        for slot in 0..128 {
+            let frame = 0x1234_5678_0000_0000 + slot;
+            let data = configure(s, slot * 3, Some(&Bits::from_u64(u64::from(base))), false);
+            assert_eq!(data.get(0, 32), u64::from(gains[slot as usize]));
+            assert_eq!(data.get(32, 32), failures[slot as usize]);
+            let data = read(s, slot, false);
+            assert_eq!(data.get(0, 32), u64::from(base));
+            assert_eq!(data.get(32, 32), 0);
+            assert_eq!(data.get(64, 64), frame);
+            assert_eq!(data.get(128, 1), 1);
+            assert_eq!(
+                configure(s, slot * 3 + 1, Some(&Bits::zero(129)), false).get(0, 64),
+                frame
+            );
+            let data = read(s, slot, false);
+            assert_eq!(data.get(64, 64), 0);
+            assert_eq!(data.get(128, 1), 1);
+            assert_eq!(
+                configure(s, slot * 3 + 2, Some(&Bits::zero(129)), false).get(0, 1),
+                1
+            );
+            assert_eq!(read(s, slot, false).get(128, 1), 0);
+        }
+        assert_eq!(s.model.get("faulted"), 0);
+    });
+}
+
+#[shoop_test]
 fn failure_and_optional_loss_counters_saturate_at_their_actual_32_and_64_bit_limits() {
     run(true, |s| {
         initialize(s, 0, 1.0f32.to_bits());

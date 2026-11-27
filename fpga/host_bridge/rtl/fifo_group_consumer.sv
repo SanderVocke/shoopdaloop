@@ -314,7 +314,7 @@ module fifo_group_consumer #(
                     else begin stream_sent<=0; phase<=COMMAND_READ; end
                 end
                 COMMAND_READ: if (command_response_valid) begin
-                    packet[32*response_index +: 32]<=command_read_data;
+                    packet<={command_read_data,packet[383:32]};
                     if (response_index==11) phase<=COMMAND_CHECK;
                 end
                 COMMAND_CHECK: begin
