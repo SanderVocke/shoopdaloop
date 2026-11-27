@@ -4,10 +4,12 @@ The authoritative scope, approval and acceptance criteria are in
 [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md). The isolated kernel measurements
 remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
 
-**Current gate: authorized Stage 4 area repair, not complete fit.** Stages 0–3
-are complete; Stages 4–7 are not. The observation RAM-mapping blowup is repaired,
-but the incomplete frontend remains 345 LUT above its ceiling after standard
-optimization. The original stop and subsequent repair evidence are recorded below.
+**Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
+Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
+7,000 FF**; all other limits remain unchanged. The measured partial frontend is
+6,345 LUT / 6,374 FF after standard optimization, leaving 1,655 LUT before MMIO and
+integration. The original stop and repair evidence remain historical records;
+the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
 ## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
 
@@ -1365,10 +1367,21 @@ the exact synthesized checkpoint and runs standard optimization, without placeme
 or routing. Its initial `-opt-v1` used `read_checkpoint` without opening a design;
 that failure remains separate and supplied no usable optimization result.
 
-**Remaining:** the frontend is still **345 LUT over 6,000**, before public MMIO
-and its required margin. The partial component being below 32,000 LUT / 24,000 FF
-does not prove the protected whole design fits. Unrouted estimates still fail
-setup (streaming synthesis WNS −5.475 ns; default optimization −5.015 ns), so no
-routed timing acceptance follows. Public MMIO, full integration/quantum bounds,
-the two baseline fault-path differences, fresh full Linux/Wasm/platform gates,
-physical authorization and delivery remain open. ABI deployment remains 15.
+**Historical area outcome:** at this milestone the partial frontend was **345 LUT
+over the then-approved 6,000**. The archived results and original ceilings remain
+unchanged; the repair did not retroactively pass that gate.
+
+**Subsequent user-approved amendment:** after `90b5c26b3`, the user confirmed
+raising only the frontend LUT limit to **8,000**. Frontend FF remains 7,000;
+whole-design 32,000 LUT / 24,000 FF, RAM/DSP, cycle, profile and routed-timing
+requirements are unchanged. The partial frontend's 6,345 LUT now leaves **1,655 LUT
+before public MMIO/integration**; no further reduction is required merely to clear
+the old 6,000-LUT ceiling. This is not complete frontend or whole-design acceptance.
+
+**Remaining:** the partial component being below 32,000 LUT / 24,000 FF does not
+prove the protected whole design fits. Unrouted estimates still fail setup
+(streaming synthesis WNS −5.475 ns; default optimization −5.015 ns), so no routed
+timing acceptance follows. Public MMIO, full integration/quantum bounds, the two
+baseline fault-path differences, fresh full Linux/Wasm/platform gates, physical
+authorization and delivery remain open. ABI deployment remains 15. The amendment
+is documentation-only and supplies no new simulation, synthesis or route result.

@@ -5,9 +5,12 @@
 **Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–3 are
 complete, including the reduced-profile/ABI contract freeze. **Stage 4 area repair
 is authorized by the user's “try to fix the area problem.”** The RAM-mapping blowup
-is repaired, but the incomplete frontend remains **345 LUT over its ceiling after
-standard optimization**; Stages 4–7 remain incomplete. All approved ceilings,
-profile and semantics are unchanged.
+is repaired. The user has explicitly approved raising only the replacement-frontend
+LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
+The measured partial frontend is **6,345 LUT / 6,374 FF after standard optimization**,
+leaving **1,655 LUT** before public MMIO/integration. All other ceilings, profile
+and semantics are unchanged; Stages 4–7 remain incomplete. This is not complete
+frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
 See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
@@ -79,7 +82,8 @@ part of this removal. Do not expand the FPGA profile's other feature support.
    the FPGA host path. Loader-only writes cannot block scheduled processing.
 8. Hardware command service, arbitration and publication have explicit finite
    bounds. Resource usage and total quantum timing meet the numerical ceilings
-   approved at Stage 2; a smaller FSM state count alone is not evidence of success.
+   approved at Stage 2, as explicitly amended below; a smaller FSM state count
+   alone is not evidence of success.
 9. Native/browser behavior outside the explicitly reduced FPGA profile is
    preserved. Matching software/RTL capabilities, documentation and ABI rejection
    make the reduced support truthful end to end.
@@ -178,7 +182,7 @@ composites/primitive switching, four complete banks of up to 32 commands,
 one complete group per quantum from a fixed publication cutoff, reserved replies
 and independently nonblocking snapshots. Native/browser support remains unchanged.
 
-Approved ceilings (report §6): kernel 2,500 LUT/2,500 FF/no DSP; replacement
+Original Stage 2 ceilings (report §6): kernel 2,500 LUT/2,500 FF/no DSP; replacement
 frontend 6,000 LUT/7,000 FF excluding existing execution/storage; whole design
 32,000 LUT/24,000 FF/100 RAMB36-equivalents/at most the existing four DSPs;
 command phase 4,096 cycles, snapshot phase 8,192 cycles for at most 128 rows,
@@ -187,9 +191,39 @@ setup/hold slack. Any breach returns to the user rather than weakening limits.
 This GO does not waive Stage 6's separate physical-test authorization or Stage 7's
 no-autonomous-merge rule.
 
-Verification: an explicit recorded user decision. All subsequent stages depend on
-that go; any later ceiling breach requires returning to the user, not silently
-increasing limits or reducing acceptance criteria.
+#### User-approved frontend LUT amendment
+
+After area-repair checkpoint `90b5c26b3431d66bde286696bed0b81b80bc6095`, the
+user requested “relax the area limit in the plan before we continue.” The proposed
+change was **only replacement-frontend LUTs: 6,000 → 8,000**, with every other
+limit unchanged. The user explicitly confirmed: **“confirmed, go ahead.”**
+
+The current approved limits are therefore:
+
+| Scope | Current approved ceiling |
+| --- | --- |
+| Replacement frontend, excluding existing execution/storage | **8,000 LUT / 7,000 FF** |
+| Shared kernel, included in frontend | 2,500 LUT / 2,500 FF / no DSP |
+| Protected whole design | 32,000 LUT / 24,000 FF / 100 RAMB36-equivalents / at most the existing four DSPs |
+| Command phase | 4,096 cycles/group |
+| Snapshot phase | 8,192 cycles / at most 128 rows |
+| Total admitted quantum | 60,000 cycles at 100 MHz, Q=32/48 kHz |
+| Routed timing | Nonnegative setup and hold slack |
+
+Only the frontend LUT entry supersedes the original approval; all other resource,
+RAM, DSP, timing, capacity, profile, semantic and safety requirements remain binding.
+The whole-design ceiling applies independently: the extra frontend allowance is
+not an increase to the whole-design budget or a guarantee of integrated fit.
+The 6,345-LUT partial measurement leaves 1,655 LUT under the amended ceiling, but
+excludes public MMIO and board integration and does not establish final acceptance.
+Historical reports, their original ceilings and recorded failed outcomes remain
+unchanged. This documentation-only amendment does not supply new measurements,
+waive remaining tests, authorize physical work or mark any later stage complete.
+
+Verification: explicit original GO and the recorded frontend-LUT amendment. All
+subsequent stages depend on that approval; any later breach of the current limits
+requires returning to the user, not silently increasing limits or reducing
+acceptance criteria.
 
 ### Stage 3 — Remove composite live switching and freeze the contract
 
@@ -875,14 +909,14 @@ final-delivery qualification follows from the selected tests.
 Verification: RTL kernel/queue/arbitration tests and cycle assertions pass against
 Stage 2 bounds, including stalls at every packet word and request/response phase.
 
-**Resource gate — implementation paused after an actual breach:** the broader
+**Historical resource gate — breach and stop at `c6ddb7652`:** the broader
 fixed-Q32 semantic/media/recovery component was synthesized with Vivado 2021.1,
 `xc7z020clg400-2`, 100 MHz, 128 loops, 512 state rows/buffers/views, DDR program
 storage and the board's 128 MiB PL arena. The
 [resource evidence](docs/fpga/command-fifo-implementation/reports/pipeline-synthesis-9b8cd12c8/results.json)
 records packed hierarchical area, not raw LUT primitive counts:
 
-| Measured scope | LUT | FF | Relevant approved ceiling |
+| Measured scope | LUT | FF | Then-approved ceiling |
 | --- | ---: | ---: | --- |
 | Kernel | 1,824 | 1,940 | 2,500 / 2,500 |
 | New frontend/glue, excluding SP/JP, media store and existing AXI/program backend | 61,414 | 22,894 | 6,000 / 7,000 |
@@ -950,11 +984,16 @@ checkpoint error remains separately recorded, not a resource result.
 50 directed = 249 selected Rust tests**, workspace warnings/formatting,
 test-policy/coverage, generators and three offline tooling tests. Real semantic
 SP/JP, 128-row/initial snapshots, media/AXI fences, fault-stop and recovery remain
-covered. There is no fresh full Linux/Wasm or physical qualification. **The area
-problem is improved, not fully solved:** 345 frontend LUTs plus future MMIO margin
-still need removing. Whole-component figures exclude board integration and are
-not whole-design acceptance; unrouted timing still fails, and no route or
-all-admitted-quantum proof is claimed. Stages 4–7 remain open.
+covered. There is no fresh full Linux/Wasm or physical qualification. At this
+milestone, the partial frontend exceeded the then-approved 6,000-LUT ceiling by
+345 LUT; that historical result is preserved. **Subsequent approved amendment:**
+Stage 2 now records an 8,000-LUT frontend ceiling, leaving 1,655 LUT under that
+limit before public MMIO/integration. The frontend FF ceiling remains 7,000.
+This removes the partial measurement's frontend-LUT overrun under the current
+limits, not the remaining integration/acceptance work. Whole-component figures
+exclude board integration and are not whole-design acceptance; unrouted timing
+still fails, and no route or all-admitted-quantum proof is claimed. Stages 4–7
+remain open.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 
