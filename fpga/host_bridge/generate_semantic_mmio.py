@@ -49,7 +49,7 @@ def generate():
             result += "    " + re.sub(r"(?:input|output)\s+(?:wire|reg)", "wire", p) + n + ";\n"
     result += "    assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)\n"
     result += "        | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);\n"
-    settings = {"LOOPS": "LOOP_DEPTH", "SYSTEM_REGISTERS": "1", "CORE_CLOCK_HZ": "CORE_CLOCK_HZ",
+    settings = {"LOOPS": "LOOP_DEPTH", "SYSTEM_REGISTERS": "1", "EPOCH_RESET_COUPLED": "1", "CORE_CLOCK_HZ": "CORE_CLOCK_HZ",
                 "ARENA_BASE": "PHYSICAL_BASE", "ARENA_BYTES": "PHYSICAL_BYTES_LIMIT",
                 "PROGRAM_DEPTH": "PROGRAM_DEPTH", "STATE_DEPTH": "STATE_DEPTH",
                 "JOB_DEPTH": "JOB_DEPTH > 512 ? 512 : JOB_DEPTH", "BUFFERS": "BUFFERS", "VIEWS": "VIEWS",

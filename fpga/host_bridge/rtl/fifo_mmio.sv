@@ -1,5 +1,5 @@
 module fifo_mmio #(
-    parameter integer LOOPS=128, SYSTEM_REGISTERS=0,
+    parameter integer LOOPS=128, SYSTEM_REGISTERS=0, EPOCH_RESET_COUPLED=0,
     parameter [31:0] CORE_CLOCK_HZ=100_000_000, ARENA_BASE=32'h30000000,
     parameter [63:0] ARENA_BYTES=64'h08000000,
     parameter integer PROGRAM_DEPTH=0, STATE_DEPTH=0, JOB_DEPTH=0,
@@ -69,7 +69,8 @@ module fifo_mmio #(
     reg [63:0] result_ack_sequence, saved_snapshot_sequence;
     reg [31:0] result_ack_epoch, saved_snapshot_epoch;
     reg [3:0] command_receipt, result_receipt, snapshot_receipt;
-    wire live=!reset && !runtime_reset && epoch!=0 && epoch==live_epoch;
+    wire epoch_changed=EPOCH_RESET_COUPLED==0 && epoch!=live_epoch;
+    wire live=!reset && !runtime_reset && epoch!=0 && (EPOCH_RESET_COUPLED!=0 || epoch==live_epoch);
     wire write_current=live && aw_current && w_current;
     wire write_complete=aw_pending && w_pending && write_owner==WRITE_NONE && !s_axi_bvalid;
     wire read_accept=s_axi_arvalid && s_axi_arready;
@@ -325,7 +326,7 @@ module fifo_mmio #(
                     endcase
                 end
             end
-            if (runtime_reset || epoch!=live_epoch) begin
+            if (runtime_reset || epoch_changed) begin
                 completed_quanta<=0; peak_quantum_cycles<=0;
                 aw_current<=0; w_current<=0; read_current<=0; read_advance<=0;
                 command_bank<=0; result_bank<=0; snapshot_bank<=0; result_cursor<=0; snapshot_cursor<=0;

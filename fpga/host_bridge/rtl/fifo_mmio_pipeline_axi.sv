@@ -305,6 +305,7 @@ module fifo_mmio_pipeline_axi #(
     fifo_mmio #(
         .LOOPS(LOOP_DEPTH),
         .SYSTEM_REGISTERS(1),
+        .EPOCH_RESET_COUPLED(1),
         .CORE_CLOCK_HZ(CORE_CLOCK_HZ),
         .ARENA_BASE(PHYSICAL_BASE),
         .ARENA_BYTES(PHYSICAL_BYTES_LIMIT),

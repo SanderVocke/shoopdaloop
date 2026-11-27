@@ -148,6 +148,7 @@ close $report
                           "excluded_execution_boundaries": boundaries,
                           "remaining_primitives": "frontend_and_glue; raw counts are not packed LUT area",
                           "indexed_mmio": mmio,
+                          "mmio_epoch_reset_coupled": mmio,
                           "standard_optimization": mmio,
                           "low_range_service_included": False,
                           "low_range_discovery_recovery_included": mmio,

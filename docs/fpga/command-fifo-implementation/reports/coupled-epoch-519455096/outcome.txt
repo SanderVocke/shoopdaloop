@@ -1,0 +1,8 @@
+Vivado 2021.1 / xc7z020clg400-2 / 100 MHz / unchanged fixed Q32/128-loop/512-state-buffer-view profile.
+Runner0/completepassed; zero synthesis errors/critical warnings,217warnings.
+Partial frontend: synthesis7461LUT/6767FF; optimized7457LUT/6767FF; savings20LUT/32FF.
+Current8000LUT/7000FF ceiling leaves543LUT/233FF. Optimized partial component31035LUT/21628FF.
+Kernel1763LUT/1936FF/noDSP; component62.5RAMB36-equivalents/four existingDSPs.
+Unrouted WNS -8.997ns for both variants, still unclosed. No route or whole-design acceptance.
+Only the actual reset-owned epoch path uses the optimization; standalone/default independent epoch guards remain.
+ABI15 remains selected; preparation/service, external adapter, matching software and Stages4-7 remain incomplete.

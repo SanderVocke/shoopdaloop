@@ -5,10 +5,11 @@ This is the frozen implementation contract for Stages 4–5 of
 **It is not a claim that ABI 16 is implemented or deployed.** The current legacy
 mailbox remains ABI 15 until the replacement and matching software pass their
 integration gates. Historical ABI-15 staged patches are not this interface.
-Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery are
-implemented as a verified subset, joined to the actual semantic audio/media
-candidate. Preparation/service/abort MMIO, external audio/watchdog hookup, ABI
-selection and matching software remain integration work.
+Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
+ABORT and qualified hardware fault sidebands are implemented as a verified subset,
+joined to the actual semantic audio/media candidate. Preparation/service MMIO,
+external physical audio/watchdog hookup, ABI selection and matching software
+remain integration work.
 
 ## Ownership, profile and pacing
 
@@ -342,6 +343,15 @@ callbacks complete as epoch refusals, not successful execution/fences. Global
 reset alone clears AXI transport state. Local bank/snapshot services have their
 existing one-cycle copied-response contract and do not depend on ARM readiness.
 
+Standalone MMIO defaults to independent epoch tracking. Only the actual wrapper
+selects static `EPOCH_RESET_COUPLED=1`: its existing always-on recovery controller
+latches runtime epoch and changes it only with global or safe runtime reset, so
+MMIO need not duplicate that 32-bit tracker. Never use this mode for an independently
+changing epoch source. Runtime reset still poisons all old halves/callbacks, while
+actual execution/capture retain reset-qualified startup gates and nonzero epoch
+latches. A boot-seed change alone neither changes runtime authority nor releases
+startup. Copied AXI R/B remain owned by global transport reset, not this refinement.
+
 `semantic_registers.json` generates candidate SV/Rust definitions independently
 of the unchanged ABI-15 legacy schema/operations. `fifo_mmio.sv` implements the
 0x150–0x32c indexed range plus an optional lower subset; holes remain unmapped.
@@ -393,9 +403,11 @@ halves, all lower retained fields, held R/B, coherent 128-row readback, real pro
 fences, five source combinations and delayed external retirement before reset.
 A genuine newer-epoch fault can replace the retained record without relabeling
 old copied cause RDATA; epoch advance/reset alone cannot replace it.
-[Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/qualified-safety-d6faa5c77/results.json)
-are **7,477 LUT / 6,799 FF** after standard optimization, leaving **523 LUT / 201 FF**.
-Unrouted WNS worsened from −5.017 to **−9.142 ns**. Service/matching software remain
+[Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/coupled-epoch-519455096/results.json)
+are **7,457 LUT / 6,767 FF** after standard optimization, leaving **543 LUT / 233 FF**.
+The reset-owned refinement saves 20 LUT / 32 FF without changing the public profile.
+Unrouted WNS improves from −9.142 to **−8.997 ns**, still unclosed and worse than
+older −5.017 ns. Service/matching software remain
 absent; no ABI-16 deployment, complete frontend/whole-design or routed-timing
 acceptance is established.
 

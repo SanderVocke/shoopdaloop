@@ -9,9 +9,9 @@ Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000
 7,000 FF**; all other limits remain unchanged. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate. Its measured partial
-frontend is **7,477 LUT / 6,799 FF after standard optimization**, leaving
-**523 LUT / 201 FF** before remaining service/public and board integration.
-Unrouted WNS worsened to **−9.142 ns**; production still selects ABI 15. The original
+frontend is **7,457 LUT / 6,767 FF after standard optimization**, leaving
+**543 LUT / 233 FF** before remaining service/public and board integration.
+Unrouted WNS is **−8.997 ns**, still unclosed; production still selects ABI 15. The original
 stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
@@ -1723,6 +1723,9 @@ measurement output directory. Local evidence is `stage4-low-discovery-` logs:
 
 ## Qualified ABORT/audio/watchdog safety routing
 
+This checkpoint precedes the reset-owned epoch refinement below; its measured
+resource/timing results remain historical.
+
 The existing MMIO owner now decodes **0x110 ABORT** with complete full-strobe,
 current-epoch AW/W authority and data equal to the epoch. A single half has no
 effect; malformed strobes return SLVERR, wrong epoch/old halves return OKAY/2.
@@ -1796,3 +1799,66 @@ Reproduce with the preceding narrow commands and a fresh `--pipeline --mmio`
 measurement directory. Local gates use prefix `stage4-qualified-safety-`:
 `tooling-v1`, `test-v2`, `measure-v1`, `milestone`, `wasm`, `linux`, `export`,
 `precommit`. Failed `tests-v1`/`test-backtrace` logs/statuses remain preserved.
+
+## Reset-owned epoch authority: margin before loader buffering
+
+Only the actual wrapper now selects `EPOCH_RESET_COUPLED=1`. The existing
+always-on recovery controller latches runtime epoch at global reset and advances
+it only while asserting actual safe runtime reset. MMIO can use that existing
+authority instead of retaining another 32-bit tracker/comparator. Standalone MMIO
+keeps default 0, including independent epoch-change invalidation; coupled mode is
+not valid for an independently changing epoch source. No controller, epoch width,
+startup capture/authority gate or acceptance criterion is reduced.
+
+Runtime reset still poisons incomplete halves and callbacks, clears local cursors/
+ACK authority and preserves global AXI transport ownership. Old copied RDATA and
+BRESP remain stable; actual banks/capture still latch the real reset-qualified
+incarnation. No reader, ACK or boot-seed change can release startup or advance F.
+
+### Verification and fresh resources
+
+A fifth actual-MMIO test changes the boot seed from 1 to 99 while the real runtime
+remains epoch 1. Seed-99 ABORT/recovery refuse; a real epoch-1 group executes with
+its publication B held. It observes every clock around the actual epoch 1→2
+transition and requires reset asserted at that transition, holding EPOCH=1 RDATA
+and recovery B through initial capture/startup. Then a global reset with seed zero
+proves a later seed-99 change alone cannot release startup. A genuine global reset
+latches 99. The prior four actual-path and seven standalone cases retain all
+assertions for generic epoch changes, old halves, callbacks and copied responses.
+
+[Native evidence and 16 checksummed files](reports/coupled-epoch-519455096/results.json)
+freeze the `519455096`-based source snapshot, changed RTL/generator, profile and
+reports. The public MMIO profile is byte-identical to the preceding qualified-safety
+probe; default non-MMIO/consumer guards remain unchanged. No I/O/capacity/clock/
+constraint/profile reduction or historical evidence rewrite occurred.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,140 / 21,656 | 7,461 / 6,767 |
+| Standard `opt_design` | 31,035 / 21,628 | **7,457 / 6,767** |
+
+MMIO is **944 LUT / 387 FF**: saving **20 LUT / 32 FF**, leaving **543 LUT / 233 FF**.
+Kernel remains 1,763 LUT / 1,936 FF / no DSP; component storage remains 62.5 RAMB36-
+equivalents/four existing DSPs. Packed hierarchy includes LUTRAM and subtracts only
+the same four disjoint existing backends. Runner 0/complete marker pass, zero
+errors/critical warnings, 217 synthesis warnings. Unrouted WNS improves from −9.142
+to **−8.997 ns**, still unclosed and worse than older −5.017 ns. No route or complete
+frontend/protected whole-design acceptance is supplied.
+
+Fresh `stage4-coupled-epoch-milestone` passes **261 Rust = 206 affected + 55 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped** in **405.239 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and optional-reference
+worklet Wasm builds pass. Fixture builds and full Linux tests ran sequentially;
+these are not physical or browser-runtime gates.
+
+No public preparation/loader/service/optional-trace lane was added: its buffered
+storage is next under the measured margin. External audio/watchdog adapter,
+matching ABI-16 software/CPU-control retirement, full admitted-service/whole-design/
+route/platform acceptance, the two baseline fault differences and Stage 7 delivery/
+audit remain. Stages 4–7 are incomplete, ABI 15 stays selected, and no push/PR,
+physical authorization, deployment or overall completion is claimed.
+
+Local gates use prefix `stage4-coupled-epoch-`: `tooling-v1`, `tests-v1`, `measure-v1`,
+`milestone`, `wasm`, `linux`, `export`, `precommit`. Measurement reproduction still
+requires a fresh output directory and the verified existing Vivado image/catalog.

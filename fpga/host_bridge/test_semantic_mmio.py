@@ -40,6 +40,7 @@ class SemanticMmioTests(unittest.TestCase):
         self.assertNotIn("input wire recovery_request", source)
         self.assertIn(".quantum_done(done && !faulted && error_code==0)", source)
         self.assertIn("diagnostic_cycles+32'd1", source)
+        self.assertIn(".EPOCH_RESET_COUPLED(1)", source)
         self.assertNotIn("input wire [31:0] pipeline_fault_cause", source)
         self.assertIn(".pipeline_fault(pipeline_fault || audio_fault || watchdog_fault || abort_request)", source)
         for name, cause in [("pipeline_fault", 64), ("audio_fault", 2), ("watchdog_fault", 32), ("abort_request", 16)]:

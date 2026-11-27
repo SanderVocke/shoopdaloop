@@ -9,8 +9,8 @@ is repaired. The user has explicitly approved raising only the replacement-front
 LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
 The measured partial frontend now includes indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
-on the actual semantic/audio/media pipeline. It is **7,477 LUT / 6,799 FF after
-standard optimization**, leaving **523 LUT / 201 FF** before the remaining
+on the actual semantic/audio/media pipeline. It is **7,457 LUT / 6,767 FF after
+standard optimization**, leaving **543 LUT / 233 FF** before the remaining
 service/public and board integration. Production still selects ABI 15. All other ceilings,
 profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
@@ -1200,7 +1200,7 @@ MMIO is **964 LUT / 419 FF**; the unchanged kernel source maps to **1,763 LUT /
 Runner 0/complete marker pass, with zero errors/critical warnings and 217 synthesis
 warnings. **Unrouted WNS worsened from −5.017 to −9.142 ns** (both new variants).
 No place/route or complete frontend/protected whole-design acceptance is claimed.
-Remaining partial frontend margin is **523 LUT / 201 FF**. The non-MMIO default
+At this checkpoint, partial frontend margin was **523 LUT / 201 FF**. The non-MMIO default
 probe changes only by a new cause input tied to zero; tests byte-check all other
 probe I/O/geometry and the unchanged consumer Tcl against historical evidence.
 
@@ -1216,6 +1216,54 @@ integration remain open, as do matched ABI-16 software and CPU-control retiremen
 full admitted-service/whole-design/route/platform acceptance, both baseline fault
 differentials and delivery. Production remains ABI 15. Stages 4–7 remain incomplete;
 no physical authorization, push/PR or overall completion follows.
+
+**Reset-owned epoch margin refinement:** before adding buffered loader services,
+remove only the duplicate MMIO epoch tracker in the actual wrapper. Its existing
+always-on recovery controller already latches runtime epoch and changes it only
+with global reset or real safe runtime reset. Static `EPOCH_RESET_COUPLED=1` uses
+that authority; standalone MMIO defaults to 0 and retains independent epoch-change
+tracking. Never enable the coupled mode for an independently changing epoch source.
+No controller, epoch width, startup gate, transport owner or acceptance criterion
+was removed or reduced. Runtime reset still poisons every old half/callback and
+clears local selection/ACK authority; only global reset drops copied R/B.
+
+The fifth actual-MMIO test changes the boot seed while epoch 1 is live: seed 99
+cannot become request authority, prevent a real epoch-1 group or change runtime
+epoch. It observes the actual 1→2 transition under reset, with old EPOCH=1 RDATA
+and recovery BRESP held through fresh startup. Global reset with seed zero then
+proves a later seed change alone cannot release startup; another genuine global
+reset latches seed 99. All prior four actual and seven standalone MMIO cases pass,
+including generic uncoupled epoch changes, both stale-half orders and callbacks.
+
+[Fresh evidence](docs/fpga/command-fifo-implementation/reports/coupled-epoch-519455096/results.json)
+contains **16 checksummed files** based on `519455096`. The public profile probe
+is byte-identical to the preceding qualified-safety probe: no I/O, capacity,
+geometry, clock, delay or service-budget reduction.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,140 / 21,656 | 7,461 / 6,767 |
+| Standard `opt_design` | 31,035 / 21,628 | **7,457 / 6,767** |
+
+This saves **20 LUT / 32 FF**, leaving **543 LUT / 233 FF**. MMIO is **944 LUT /
+387 FF**; kernel remains 1,763 LUT / 1,936 FF / no DSP. Storage remains 62.5
+RAMB36-equivalents and four existing DSPs. Runner 0/complete marker pass, zero
+errors/critical warnings, 217 synthesis warnings. Unrouted WNS improves slightly
+from −9.142 to **−8.997 ns**, still unclosed and worse than the older −5.017 ns
+checkpoint. No route, complete frontend or protected whole-design acceptance.
+
+`stage4-coupled-epoch-milestone` passes **206 affected + 55 directed = 261 Rust
+tests**, both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
+generators and **12 Python tests**. Full Linux passes **3,584 / 11 skipped** in
+**405.239 s**, pinned nextest 0.9.116 and isolated owned dummy JACK; default and
+optional-reference Wasm builds pass. Native fixture builds and Linux tests remain
+sequential. Physical/browser-runtime qualification was not performed.
+
+Preparation/loader/service/optional-trace MMIO is still absent: this refinement
+frees measured margin for its storage, not a claim that it is implemented. All
+remaining integration/software/timing/platform/delivery gates above remain open.
+Production remains ABI 15; Stages 4–7 remain incomplete. No new physical permission,
+push/PR, deployment or whole-goal completion follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

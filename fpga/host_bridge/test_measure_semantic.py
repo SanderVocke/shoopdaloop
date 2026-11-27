@@ -27,6 +27,7 @@ class MeasurementTests(unittest.TestCase):
             self.assertEqual(probe.read_text().count(binding), 1)
             self.assertEqual(probe.read_text().replace(binding, ""), (ARCHIVE / "semantic_profile.sv").read_text())
             self.assertEqual(profile["fixed_fault_inputs"], {"pipeline_fault_cause": "32'd0"})
+            self.assertFalse(profile["mmio_epoch_reset_coupled"])
             for width in re.findall(r"\[([^]]+)\]", probe.read_text()):
                 self.assertIsNone(re.search(r"[A-Za-z_]", width))
             self.assertEqual(profile["fixed_audio_inputs"],
@@ -47,6 +48,9 @@ class MeasurementTests(unittest.TestCase):
             probe = (source / "semantic_profile.sv").read_text()
             self.assertTrue(profile["indexed_mmio"])
             self.assertTrue(profile["standard_optimization"])
+            self.assertTrue(profile["mmio_epoch_reset_coupled"])
+            previous = ROOT / "docs/fpga/command-fifo-implementation/reports/qualified-safety-d6faa5c77/semantic_profile.sv"
+            self.assertEqual(probe, previous.read_text())
             self.assertFalse(profile["low_range_service_included"])
             self.assertTrue(profile["abort_mmio_included"])
             self.assertTrue(profile["qualified_fault_sidebands_included"])

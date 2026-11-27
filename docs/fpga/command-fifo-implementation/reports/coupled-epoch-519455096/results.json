@@ -1,0 +1,282 @@
+{
+  "outcome": "PARTIAL_RESET_COUPLED_EPOCH_COMPONENT_WITHIN_FRONTEND_CEILINGS_TIMING_UNCLOSED",
+  "source_base": "5194550960ee2e18131f9f93ed5168899f68dae6",
+  "working_tree_snapshot": true,
+  "scope": "Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort and qualified safety sidebands; no preparation/service MMIO, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately",
+  "deployed_abi": 15,
+  "candidate_semantic_abi": 16,
+  "indexed_mmio_included": true,
+  "low_range_discovery_recovery_included": true,
+  "low_range_service_included": false,
+  "abort_mmio_included": true,
+  "qualified_fault_sidebands_included": true,
+  "mmio_epoch_reset_coupled": true,
+  "standalone_mmio_default_epoch_tracking_retained": true,
+  "audio_adapter_included": false,
+  "protected_board_included": false,
+  "runner_status": 0,
+  "synthesis_completed": true,
+  "standard_optimization_completed": true,
+  "route_performed": false,
+  "excluded_paths": {
+    "audio_execution": "dut/pipeline/execution/core/pipeline/execution",
+    "media_store": "dut/pipeline/execution/core/media",
+    "axi_backend": "dut/pipeline/execution/memory_endpoint",
+    "program_backend": "dut/pipeline/execution/ddr_program.program_bus"
+  },
+  "variants": {
+    "synthesis": {
+      "component": {
+        "lut": 31140,
+        "logic_lut": 30806,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21656,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10626,
+          "logic_lut": 10626,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11425,
+          "logic_lut": 11421,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1534,
+          "logic_lut": 1534,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 919,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7461,
+        "logic_lut": 7131,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6767,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1763,
+        "logic_lut": 1763,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1936,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 944,
+        "logic_lut": 944,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 387,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -8.997,
+        "tns_ns": -44296.051,
+        "setup_failing_endpoints": 10679,
+        "setup_total_endpoints": 70642,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 70642
+      }
+    },
+    "default-opt": {
+      "component": {
+        "lut": 31035,
+        "logic_lut": 30701,
+        "lutram": 334,
+        "srl": 0,
+        "ff": 21628,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10623,
+          "logic_lut": 10623,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11410,
+          "logic_lut": 11406,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1451,
+          "logic_lut": 1451,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 891,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7457,
+        "logic_lut": 7127,
+        "lutram": 330,
+        "srl": 0,
+        "ff": 6767,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1763,
+        "logic_lut": 1763,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1936,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 944,
+        "logic_lut": 944,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 387,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -8.997,
+        "tns_ns": -42917.125,
+        "setup_failing_endpoints": 10685,
+        "setup_total_endpoints": 70586,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 70586
+      }
+    }
+  },
+  "optimized_frontend_change_from_previous": {
+    "lut": -20,
+    "ff": -32
+  },
+  "current_ceilings": {
+    "frontend_lut": 8000,
+    "frontend_ff": 7000,
+    "kernel_lut": 2500,
+    "kernel_ff": 2500,
+    "kernel_dsp": 0,
+    "whole_lut": 32000,
+    "whole_ff": 24000,
+    "whole_ramb36_equivalents": 100,
+    "whole_dsp": 4,
+    "command_cycles": 4096,
+    "snapshot_cycles": 8192,
+    "quantum_cycles": 60000
+  },
+  "gates": {
+    "partial_frontend_area_within_current_limits": true,
+    "kernel_area_within_limits": true,
+    "complete_frontend_accepted": false,
+    "protected_whole_design_accepted": false,
+    "routed_timing_accepted": false,
+    "all_admitted_quantum_budget_proven": false
+  },
+  "remaining_partial_frontend_headroom": {
+    "lut": 543,
+    "ff": 233
+  },
+  "native_messages": {
+    "synthesis_errors": 0,
+    "synthesis_critical_warnings": 0,
+    "synthesis_warnings": 217,
+    "overall_errors": 0,
+    "overall_critical_warnings": 0
+  },
+  "local_artifact_sha256": {
+    "console.log": "efb6066e26f05a0ad88cd313bf5390bc28d1a48d2db25a97fcbecef629c4c5de",
+    "build/component-synthesis.dcp": "58f480454f00cb3e7b276793291f5386ef96790fba08032dc7b3296754928df4",
+    "build/component-optimized.dcp": "03c357c7b07a43f000500f1a9676d47c459bd5233806d80a07f6182353b444b2"
+  },
+  "verification": {
+    "affected_package_rust_tests": 206,
+    "directed_component_rust_tests": 55,
+    "selected_rust_tests": 261,
+    "actual_mmio_tests": 5,
+    "offline_python_tests": 12,
+    "full_linux_passed": 3584,
+    "full_linux_skipped": 11,
+    "full_linux_seconds": 405.239,
+    "default_wasm_builds_passed": true,
+    "fpga_reference_worklet_wasm_build_passed": true,
+    "physical_tests_performed": false
+  },
+  "notes": [
+    "Only the actual wrapper selects reset-coupled epoch authority; standalone MMIO retains independent epoch tracking by default.",
+    "The existing always-on controller latches runtime epoch; it changes only with global or safe runtime reset. No new tracker/controller is added.",
+    "Boot-seed changes cannot become authority or release epoch-zero startup. Actual epoch increments under runtime reset with copied R/B held.",
+    "Old-half and callback poison, reliable results, retained fault identity and global transport ownership remain covered.",
+    "Public profile source is byte-identical to the preceding qualified-safety probe; geometry, I/O, clocks and capacities are unchanged.",
+    "Unrouted WNS improves from -9.142 to -8.997 ns, still worse than older -5.017 ns; no routed timing acceptance.",
+    "This frees margin before loader buffering; no preparation/service MMIO or physical audio/watchdog adapter is added.",
+    "Native fixture builds and full Linux tests ran sequentially; all historical resource/failed gate evidence remains unchanged."
+  ]
+}
