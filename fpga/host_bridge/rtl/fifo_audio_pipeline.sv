@@ -206,6 +206,7 @@ module fifo_audio_pipeline #(
     input wire run_valid,
     output wire run_ready,
     output wire busy,
+    input wire [31:0] pipeline_fault_cause,
     output wire diagnostic_valid,
     output wire [31:0] diagnostic_cause,
     output wire [31:0] diagnostic_opcode,
@@ -296,7 +297,9 @@ module fifo_audio_pipeline #(
     assign diagnostic_cause = (fault_reason[5] ? 32'd8 : 0)
         | ((fault_reason[3] || fault_reason[4]) ? 32'd1 : 0)
         | (error_code!=0 ? 32'd2 : 0)
-        | (|{fault_reason[7:6],fault_reason[2:0]} ? 32'd64 : 0);
+        | (|{fault_reason[7:6],fault_reason[2:1]} ? 32'd64 : 0)
+        | (fault_reason[0] ? ((pipeline_fault ? (pipeline_fault_cause!=0 ? pipeline_fault_cause : 32'd64) : 0)
+            | ((observations_fault || snapshots_fault || error_code!=0 || execution_revision!=active_revision) ? 32'd64 : 0)) : 0);
     assign diagnostic_sequence = fault_sequence;
     assign diagnostic_frame = fault_sequence!=0 ? fault_frame : opportunity_active ? opportunity_frame : sync_frame;
     assign diagnostic_revision = active_revision;

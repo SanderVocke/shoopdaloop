@@ -29,7 +29,7 @@ class SemanticRegistersTests(unittest.TestCase):
                 self.assertEqual(address, legacy["registers"][name])
         self.assertEqual(spec["constants"]["DISCOVERY_ID"], legacy["id"])
         self.assertNotIn("operations", spec)
-        self.assertNotIn("ABORT", spec["registers"])
+        self.assertEqual(spec["registers"]["ABORT"], "0x110")
 
     def test_legacy_schema_and_generated_version_remain_fifteen(self):
         self.assertEqual(json.loads((HERE / "registers.json").read_text())["version"], 15)

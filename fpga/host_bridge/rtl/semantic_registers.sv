@@ -30,6 +30,7 @@ package semantic_registers;
     localparam logic [11:0] REG_COMPLETED_QUANTA = 12'h104;
     localparam logic [11:0] REG_PEAK_QUANTUM_CYCLES = 12'h108;
     localparam logic [11:0] REG_AUDIO_XRUNS = 12'h10c;
+    localparam logic [11:0] REG_ABORT = 12'h110;
     localparam logic [11:0] REG_RECOVERY_ID = 12'h114;
     localparam logic [11:0] REG_RECOVERY_STATUS = 12'h118;
     localparam logic [11:0] REG_RECOVERY_REQUEST = 12'h11c;

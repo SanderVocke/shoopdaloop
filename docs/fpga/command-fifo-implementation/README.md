@@ -6,12 +6,12 @@ remain historical evidence in the [investigation report](../command-fifo-investi
 
 **Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
 Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
-7,000 FF**; all other limits remain unchanged. Indexed MMIO plus low-range
-discovery/retained diagnostics/public recovery are joined to the actual semantic/
-audio/media candidate. Its measured partial frontend is **7,306 LUT / 6,793 FF
-after standard optimization**, leaving **694 LUT / 207 FF** before the remaining
-service/public and board integration.
-Unrouted WNS remains **−5.017 ns**; production still selects ABI 15. The original
+7,000 FF**; all other limits remain unchanged. Indexed MMIO, low-range discovery/
+retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
+are joined to the actual semantic/audio/media candidate. Its measured partial
+frontend is **7,477 LUT / 6,799 FF after standard optimization**, leaving
+**523 LUT / 201 FF** before remaining service/public and board integration.
+Unrouted WNS worsened to **−9.142 ns**; production still selects ABI 15. The original
 stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
@@ -1619,6 +1619,9 @@ whole-plan completion follows from this checkpoint.
 
 ## Lower discovery, retained diagnostics and public recovery
 
+This historical checkpoint precedes the qualified safety milestone below; its
+resource figures and unmapped-ABORT boundary are retained as measured.
+
 The existing `fifo_mmio` AXI-Lite owner now supports a `SYSTEM_REGISTERS` subset,
 enabled by the generated actual-pipeline wrapper and disabled in the indexed-only
 component fixture. It adds:
@@ -1717,3 +1720,79 @@ Reproduce narrow tests/measurement with the preceding commands and a fresh
 measurement output directory. Local evidence is `stage4-low-discovery-` logs:
 `tests-v1`, `tooling-v1`, `milestone-v2`, `measure-v1`, `export-v1`, `linux-v2`,
 `wasm` and `precommit`. Failed first broad/Linux runs retain their unsuffixed names.
+
+## Qualified ABORT/audio/watchdog safety routing
+
+The existing MMIO owner now decodes **0x110 ABORT** with complete full-strobe,
+current-epoch AW/W authority and data equal to the epoch. A single half has no
+effect; malformed strobes return SLVERR, wrong epoch/old halves return OKAY/2.
+Receipt 0 accepts local halt only: it neither retires backend ownership nor reports
+fence success, safe reset or application Ready. The same existing sticky halt and
+same-edge side-effect masks apply. Only explicit recovery requests engage the
+actual serial AXI drain/reset controller; ABORT does not cancel or fabricate beats.
+
+Trusted `audio_fault`/`watchdog_fault` hardware inputs join the actual pipeline,
+not an ARM-mutated source register. Their flags remain **2/32**, ABORT remains
+**16**, and independent simultaneous generic pipeline faults retain **64**. The
+shared wrapper's qualified cause input defaults to generic 64 when zero, preserving
+existing callers; internal fault flags and AXI quiesce/drain qualification remain.
+No second owner/controller, elapsed timer, shadow record or CPU live-state fallback
+was introduced. Physical adapter/source integration remains incomplete.
+
+### Lifecycle verification
+
+Four actual-MMIO tests pass, including the existing exact render/32-command/
+4,880-u32 snapshot and full-width retained-record cases. The reset-crossing-half
+case now checks both recovery and ABORT, both AW-first/W-first, refusing stale
+pairs even when their data equals the fresh epoch. They cannot abort that runtime.
+
+The new test checks five source combinations: ABORT 16, audio 2, watchdog 32,
+audio+watchdog 34 and generic+watchdog 96. It renders while an ABORT AW is incomplete,
+checks malformed/stale refusal, captures the actual cause on the first event,
+and proves local halt leaves a real DDR AW owned with no reset. Later generic
+faults cannot relabel the record. Explicit recovery drains the original write;
+old cause RDATA and recovery BRESP survive reset/initial capture. Epoch advance
+alone retains the old record; a genuine epoch-2 watchdog event replaces it without
+relabeling already copied cause RDATA.
+
+First narrow/backtrace runs failed because the new fixture queried nonexistent
+`sample_output_valid`. Correcting it to actual `sample_output_write` retains the
+same-edge assertion, without RTL changes. Both failed logs remain. Fresh broad
+`stage4-qualified-safety-milestone` passes **260 Rust = 206 affected + 54 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped** in **404.838 s**, pinned
+nextest 0.9.116 with owned isolated dummy JACK; default application/worklet and
+optional-reference worklet Wasm builds pass. Native fixture builds and Linux tests
+were sequential with a fresh matching host. No physical/browser-runtime test ran.
+
+### Fresh partial resource checkpoint
+
+[Native reports and 25 checksummed files](reports/qualified-safety-d6faa5c77/results.json)
+freeze the `d6faa5c77`-based working-tree source, changed RTL/generators, profile and
+Tcl. Historical archives remain unchanged. The non-MMIO default profile now ties
+the new cause input to zero; tests remove only that one binding and byte-compare
+all remaining probe geometry/I/O and the consumer Tcl to historical evidence.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,160 / 21,688 | 7,481 / 6,799 |
+| Standard `opt_design` | 31,055 / 21,660 | **7,477 / 6,799** |
+
+MMIO is **964 LUT / 419 FF**; unchanged kernel source maps to **1,763 LUT / 1,936 FF /
+no DSP**. The component uses 62.5 RAMB36-equivalents and four existing DSPs. Packed
+hierarchy includes LUTRAM, subtracting only the same four disjoint existing backend
+boundaries. Runner 0/complete marker pass, zero native errors/critical warnings,
+217 synthesis warnings. **Unrouted WNS worsened from −5.017 to −9.142 ns** for both
+new variants; no place/route or complete frontend/protected whole-design acceptance.
+
+Remaining frontend margin is **523 LUT / 201 FF**. Preparation/loader/service/
+optional-trace MMIO, external audio/watchdog adapter integration, matched ABI-16
+ARM/reference transports, CPU-control retirement, admitted-service/lifecycle/
+whole-design/route/platform acceptance, the two baseline fault differentials and
+Stage 7 delivery/audit remain. Stages 4–7 are incomplete; ABI 15 stays selected.
+No new physical authorization, push/PR or overall completion is claimed.
+
+Reproduce with the preceding narrow commands and a fresh `--pipeline --mmio`
+measurement directory. Local gates use prefix `stage4-qualified-safety-`:
+`tooling-v1`, `test-v2`, `measure-v1`, `milestone`, `wasm`, `linux`, `export`,
+`precommit`. Failed `tests-v1`/`test-backtrace` logs/statuses remain preserved.

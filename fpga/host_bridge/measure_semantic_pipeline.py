@@ -17,8 +17,8 @@ FRONTEND_SOURCES = {
     "fifo_snapshots.sv", "fifo_audio_pipeline.sv", "fifo_media_audio_pipeline.sv",
     "host_recovery.sv", "host_fault_record.sv",
 }
-MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/retained diagnostics/recovery; "
-              "no preparation/service/abort MMIO, audio adapter, PS/DDR, thermal or protected board integration; "
+MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort and qualified safety sidebands; "
+              "no preparation/service MMIO, audio adapter, PS/DDR, thermal or protected board integration; "
               "frontend and existing execution/backend hierarchy reported separately")
 MMIO_SOURCES = {"semantic_registers.sv", "fifo_mmio.sv", "fifo_mmio_pipeline_axi.sv"}
 BOUNDARIES = {
@@ -67,10 +67,12 @@ def freeze(source, digest, common_script, *, mmio=False):
               "SLOTS": 31 * 1024 * 1024 // 32, "AXI_DATA_WIDTH": 64,
               "PHYSICAL_BASE": board.rust_end, "PHYSICAL_BYTES_LIMIT": board.pl_bytes}
     constants = {"run_quantum": 32, "run_chunk_frames": 32, "run_inputs": 1, "run_outputs": 2}
+    fault_constants = {} if mmio else {"pipeline_fault_cause": "32'd0"}
+    fixed = constants | fault_constants
     root_file = source / ("fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv" if mmio
                           else "fpga/axi_memory/rtl/fifo_recovery_pipeline_axi.sv")
     _, ports = header(root_file.read_text())
-    assert set(constants) <= {name for _, name in ports}
+    assert set(fixed) <= {name for _, name in ports}
     definitions = dict(re.findall(r"^`define\s+(\w+)\s+(\d+)\s*$",
                                  (source / "fpga/state_processor/rtl/state_processor_defs.svh").read_text(), re.M))
 
@@ -84,10 +86,10 @@ def freeze(source, digest, common_script, *, mmio=False):
 
     profile = '`include "state_processor_defs.svh"\nmodule semantic_profile (\n'
     profile += ",\n".join("    " + port_type(prefix) + name
-                             for prefix, name in ports if name not in constants) + "\n);\n"
+                             for prefix, name in ports if name not in fixed) + "\n);\n"
     profile += f"    {module} #(\n"
     profile += ",\n".join(f"        .{name}({value})" for name, value in params.items()) + "\n    ) dut (\n"
-    profile += ",\n".join(f"        .{name}({constants[name] if name in constants else name})"
+    profile += ",\n".join(f"        .{name}({fixed[name] if name in fixed else name})"
                              for _, name in ports) + "\n    );\nendmodule\n"
     probe = source / "semantic_profile.sv"
     probe.write_text(profile)
@@ -140,6 +142,7 @@ close $report
     assert reports.count(marker) == 1
     tcl += reports.replace(marker, partition + marker)
     return sources, tcl, {"parameters": params, "fixed_audio_inputs": constants,
+                          "fixed_fault_inputs": fault_constants,
                           "literal_port_defines": definitions,
                           "compiled_sources": [str(p.relative_to(source)) for p in files],
                           "excluded_execution_boundaries": boundaries,
@@ -148,4 +151,6 @@ close $report
                           "standard_optimization": mmio,
                           "low_range_service_included": False,
                           "low_range_discovery_recovery_included": mmio,
+                          "abort_mmio_included": mmio,
+                          "qualified_fault_sidebands_included": mmio,
                           "scope": MMIO_SCOPE if mmio else SCOPE}

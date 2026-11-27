@@ -12,6 +12,9 @@ use rt_fpga_testbench::{
 use serde_json::{Value, json};
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "semantic_mmio_safety.rs"]
+mod safety;
+
 const BANKS: &str = "pipeline.execution.core.pipeline.consumer.banks";
 
 fn design() -> Design {
@@ -471,7 +474,7 @@ fn indexed_mmio_uses_safe_runtime_reset_and_the_retained_full_width_fault_sequen
 }
 
 #[shoop_test(no_wasm = "Native public discovery and recovery against actual AXI ownership")]
-fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_recovery_halves() {
+fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_safety_halves() {
     let root = rt_fpga_testbench::root();
     let profile = design();
     let geometry_registers = [
@@ -489,7 +492,12 @@ fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_recov
     let compiled = profile
         .build(&root.join("work/marlin-suite/semantic-mmio-audio"))
         .unwrap();
-    for old_half in ["aw", "w"] {
+    for (old_half, late_address) in [
+        ("aw", REG_RECOVERY_REQUEST),
+        ("w", REG_RECOVERY_REQUEST),
+        ("aw", REG_ABORT),
+        ("w", REG_ABORT),
+    ] {
         let mut s = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
         let geometry = Geometry::new([8, 64, 32], 2);
         let memory = Memory::attach(
@@ -577,7 +585,7 @@ fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_recov
         write(&mut s, REG_RECOVERY_REQUEST, 1);
         assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_UNAVAILABLE);
         s.model.set_all(&[
-            ("s_axi_awaddr", u64::from(REG_RECOVERY_REQUEST)),
+            ("s_axi_awaddr", u64::from(late_address)),
             ("s_axi_wdata", 2),
             ("s_axi_wstrb", 15),
         ]);
@@ -621,6 +629,11 @@ fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_recov
         assert_eq!(read(&mut s, REG_EPOCH), 2);
         assert_eq!(read(&mut s, REG_COMPLETED_QUANTA), 0);
         assert_eq!(read(&mut s, REG_PEAK_QUANTUM_CYCLES), 0);
+        assert_eq!(
+            s.model.get("faulted"),
+            0,
+            "old half must not abort the fresh runtime"
+        );
         assert_eq!(read(&mut s, REG_FAULT_EPOCH), 1);
         assert_eq!(read(&mut s, REG_FAULT_CAUSE), 0x90);
         assert_eq!(read(&mut s, REG_FAULT_TAG), 0);

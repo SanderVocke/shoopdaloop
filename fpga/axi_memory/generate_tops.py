@@ -97,6 +97,7 @@ def generate():
         if name == 'fifo_media_audio_pipeline':
             text += "    localparam integer PROGRAM_REGIONS = 2;\n"
             core_ports += ", .pipeline_fault(pipeline_fault || axi_quiesce || axi_drain_fault)"
+            core_ports += ", .pipeline_fault_cause(pipeline_fault_cause | ((axi_quiesce || axi_drain_fault) ? 32'd64 : 0))"
         if is_pipeline:
             core_ports += ", " + ", ".join(
                 f".{n}(media_{n})" for p, n in private if n.startswith('memory_meta_'))

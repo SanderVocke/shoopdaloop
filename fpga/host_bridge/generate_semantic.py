@@ -69,6 +69,7 @@ def generate():
     public.extend((p, snapshot_links[n]) for p, n in snapshots if n not in private_snapshots)
     public.extend((p, n) for p, n in fifo if n in fifo_public and n not in {n for _, n in public})
     public.extend((p, n) for p, n in ports if n in {"run_valid", "run_ready", "busy"})
+    public.append(("input wire [31:0] ", "pipeline_fault_cause"))
     public.extend(("output wire ", n) for n in ["diagnostic_valid"])
     public.extend(("output wire [31:0] ", "diagnostic_" + n) for n in ["cause", "opcode", "cycles", "control_cycles", "detail"])
     public.extend(("output wire [63:0] ", "diagnostic_" + n) for n in ["sequence", "frame", "revision"])
@@ -100,7 +101,9 @@ def generate():
     assign diagnostic_cause = (fault_reason[5] ? 32'd8 : 0)
         | ((fault_reason[3] || fault_reason[4]) ? 32'd1 : 0)
         | (error_code!=0 ? 32'd2 : 0)
-        | (|{fault_reason[7:6],fault_reason[2:0]} ? 32'd64 : 0);
+        | (|{fault_reason[7:6],fault_reason[2:1]} ? 32'd64 : 0)
+        | (fault_reason[0] ? ((pipeline_fault ? (pipeline_fault_cause!=0 ? pipeline_fault_cause : 32'd64) : 0)
+            | ((observations_fault || snapshots_fault || error_code!=0 || execution_revision!=active_revision) ? 32'd64 : 0)) : 0);
     assign diagnostic_sequence = fault_sequence;
     assign diagnostic_frame = fault_sequence!=0 ? fault_frame : opportunity_active ? opportunity_frame : sync_frame;
     assign diagnostic_revision = active_revision;

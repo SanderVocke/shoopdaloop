@@ -7,10 +7,11 @@ complete, including the reduced-profile/ABI contract freeze. **Stage 4 area repa
 is authorized by the user's “try to fix the area problem.”** The RAM-mapping blowup
 is repaired. The user has explicitly approved raising only the replacement-frontend
 LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
-The measured partial frontend, now including indexed MMIO plus low-range
-discovery/retained diagnostics/public recovery on the actual semantic/audio/media
-pipeline, is **7,306 LUT / 6,793 FF after standard optimization**, leaving
-**694 LUT / 207 FF** before the remaining service/public and board integration. Production still selects ABI 15. All other ceilings,
+The measured partial frontend now includes indexed MMIO, low-range discovery/
+retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
+on the actual semantic/audio/media pipeline. It is **7,477 LUT / 6,799 FF after
+standard optimization**, leaving **523 LUT / 201 FF** before the remaining
+service/public and board integration. Production still selects ABI 15. All other ceilings,
 profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
@@ -1144,7 +1145,7 @@ Storage remains **62.5 RAMB36-equivalents**, with four existing DSPs. Runner 0,
 complete marker, zero native errors/critical warnings and 217 synthesis warnings
 are recorded. Unrouted WNS remains **−5.481 ns synthesis / −5.017 ns optimized**;
 there is no place/route or complete frontend/protected whole-design acceptance.
-Current partial frontend margin is **694 LUT / 207 FF**, not a whole-design waiver.
+At this checkpoint, partial frontend margin was **694 LUT / 207 FF**, not a whole-design waiver.
 
 `stage4-low-discovery-milestone-v2` passes **206 affected + 53 directed = 259 Rust
 tests**, both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
@@ -1153,12 +1154,68 @@ generators and **12 Python tests**. `stage4-low-discovery-linux-v2` passes **3,5
 optional-reference Wasm builds pass. Original failed broad/Linux logs are retained.
 No physical or browser-runtime qualification follows from these gates.
 
-Preparation/loader/service/optional-trace MMIO and source-qualified ABORT/audio/
-watchdog integration remain open; **0x110 ABORT is still unmapped**, not wired as a
-generic pipeline fault. Matching ABI-16 software, CPU-control retirement, complete
-admitted-service/whole-design/route/platform acceptance, the two baseline fault
-differentials and delivery remain. Stages 4–7 are incomplete; no ABI promotion,
-physical authorization, push/PR or overall completion is claimed.
+**Historical subset boundary:** this checkpoint did not map 0x110 ABORT or provide
+qualified audio/watchdog inputs. The following milestone adds those paths without
+claiming complete service/software/board integration or acceptance.
+
+**Qualified safety/ABORT milestone:** the same MMIO owner now maps 0x110 ABORT.
+It requires complete, full-strobe, current-epoch AW/W authority and data equal to
+the epoch. Neither half alone halts execution; wrong epoch/old halves refuse with
+OKAY/receipt 2, malformed strobes with SLVERR. Receipt 0 means accepted local halt,
+not backend retirement, a successful fence, runtime reset or application Ready.
+Only explicit recovery requests enter the existing drain/reset controller.
+
+- [x] Implement candidate ABORT and cause-qualified hardware sideband routing on
+  the actual pipeline, retaining the existing sticky halt and same-edge masks.
+  ABORT/audio/watchdog retain flags **16/2/32**; genuine simultaneous generic
+  pipeline faults retain **64**, rather than flattening all events to 64.
+  Physical audio/watchdog adapter integration remains separate and incomplete.
+
+The shared semantic wrapper carries a qualified cause word through the existing
+fault path. A zero cause retains legacy generic-64 behavior; AXI quiesce/drain
+faults preserve their generic qualification. No new halt/recovery controller,
+backend owner, elapsed timer, state record or CPU live-state fallback was added.
+Global/local reset separation and retained first-fault identity are unchanged.
+
+Four actual-MMIO tests now pass. The new test covers five source combinations,
+rendering while an ABORT AW is incomplete, malformed/stale ABORT, terminal local
+halt with an actual DDR AW still owned, explicit recovery with copied R/B held,
+and genuine higher-epoch replacement while old copied cause RDATA stays immutable.
+The previous reset-crossing-half test now covers both ABORT and recovery, in both
+AW-first/W-first orders. Its original assertions remain. The first new test run
+queried nonexistent `sample_output_valid`; correcting the fixture to the actual
+`sample_output_write` retains the same-edge assertion and requires no RTL change.
+Failed narrow/backtrace logs remain preserved.
+
+[Fresh native evidence](docs/fpga/command-fifo-implementation/reports/qualified-safety-d6faa5c77/results.json)
+freezes the source based on `d6faa5c77` in **25 checksummed files**:
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,160 / 21,688 | 7,481 / 6,799 |
+| Standard `opt_design` | 31,055 / 21,660 | **7,477 / 6,799** |
+
+MMIO is **964 LUT / 419 FF**; the unchanged kernel source maps to **1,763 LUT /
+1,936 FF / no DSP**. Storage remains 62.5 RAMB36-equivalents/four existing DSPs.
+Runner 0/complete marker pass, with zero errors/critical warnings and 217 synthesis
+warnings. **Unrouted WNS worsened from −5.017 to −9.142 ns** (both new variants).
+No place/route or complete frontend/protected whole-design acceptance is claimed.
+Remaining partial frontend margin is **523 LUT / 201 FF**. The non-MMIO default
+probe changes only by a new cause input tied to zero; tests byte-check all other
+probe I/O/geometry and the unchanged consumer Tcl against historical evidence.
+
+`stage4-qualified-safety-milestone` passes **206 affected + 54 directed = 260 Rust
+tests**, both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
+generators and **12 Python tests**. Full pinned-nextest Linux passes **3,584 /
+11 skipped** in **404.838 s** with isolated dummy JACK; default/optional-reference
+Wasm builds pass. Native fixture builds and Linux tests ran sequentially with a
+fresh matching host binary. These gates are not physical/browser-runtime proof.
+
+Preparation/loader/service/optional-trace MMIO and external audio/watchdog adapter
+integration remain open, as do matched ABI-16 software and CPU-control retirement,
+full admitted-service/whole-design/route/platform acceptance, both baseline fault
+differentials and delivery. Production remains ABI 15. Stages 4–7 remain incomplete;
+no physical authorization, push/PR or overall completion follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

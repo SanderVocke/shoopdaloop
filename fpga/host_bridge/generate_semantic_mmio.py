@@ -19,9 +19,10 @@ def generate():
     expressions = {"quantum_done": "done && !faulted && error_code==0",
                    "quantum_cycles": "(&diagnostic_cycles) ? diagnostic_cycles : diagnostic_cycles+32'd1"}
     external = {"irq", "audio_xruns"}
-    private = set()
+    local = {"abort_request"}
+    private = {"pipeline_fault_cause"}
     for declaration, name in mmio:
-        if name.startswith("s_axi_") or name in external or name in expressions:
+        if name.startswith("s_axi_") or name in external or name in expressions or name in local:
             continue
         target = connections.get(name, name)
         assert target in core_ports, (name, target)
@@ -33,6 +34,7 @@ def generate():
     assert all(core_ports[n].startswith("output") for n in ["done", "faulted", "error_code", "diagnostic_cycles"])
     public = [(p, n) for p, n in ports if n not in private]
     public += [(p.replace("output reg", "output wire"), n) for p, n in mmio if n.startswith("s_axi_") or n in external]
+    public += [("input wire ", "audio_fault"), ("input wire ", "watchdog_fault")]
     params = core[2].strip().replace("PHYSICAL_BYTES_LIMIT = 64'h100000000", "PHYSICAL_BYTES_LIMIT = 64'h08000000")
     names = re.findall(r"parameter\s+(?:integer|\[[^\]]+\])\s+(\w+)\s*=", params)
     params += ",\n    parameter integer CORE_CLOCK_HZ = 100_000_000"
@@ -42,6 +44,11 @@ def generate():
     for p, n in ports:
         if n in private:
             result += "    " + re.sub(r"(?:input|output)\s+(?:wire|reg)", "wire", p) + n + ";\n"
+    for p, n in mmio:
+        if n in local:
+            result += "    " + re.sub(r"(?:input|output)\s+(?:wire|reg)", "wire", p) + n + ";\n"
+    result += "    assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)\n"
+    result += "        | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);\n"
     settings = {"LOOPS": "LOOP_DEPTH", "SYSTEM_REGISTERS": "1", "CORE_CLOCK_HZ": "CORE_CLOCK_HZ",
                 "ARENA_BASE": "PHYSICAL_BASE", "ARENA_BYTES": "PHYSICAL_BYTES_LIMIT",
                 "PROGRAM_DEPTH": "PROGRAM_DEPTH", "STATE_DEPTH": "STATE_DEPTH",
@@ -55,7 +62,7 @@ def generate():
     result += ",\n".join(f"        .{n}({v})" for n, v in expressions.items()) + ", .*);\n"
     result += "    fifo_recovery_pipeline_axi #(\n        "
     result += ",\n        ".join(f".{n}({n})" for n in names)
-    return result + ") pipeline (.*);\nendmodule\n"
+    return result + ") pipeline (.pipeline_fault(pipeline_fault || audio_fault || watchdog_fault || abort_request), .*);\nendmodule\n"
 
 
 def main():

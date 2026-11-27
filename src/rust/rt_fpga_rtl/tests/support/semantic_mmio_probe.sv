@@ -44,7 +44,7 @@ module semantic_mmio_probe #(
     wire [3:0] snapshot_ack_receipt;
     fifo_mmio #(.LOOPS(LOOPS)) mmio (
         .fault_sequence(diagnostic_sequence), .recovery_state(3'd0),
-        .recovery_request(), .recovery_epoch(), .irq(),
+        .recovery_request(), .recovery_epoch(), .irq(), .abort_request(),
         .quantum_done(1'b0), .quantum_cycles(32'd0), .audio_xruns(32'd0),
         .first_fault_epoch(32'd0), .first_fault_cause(32'd0), .first_fault_op(32'd0),
         .first_fault_cycles(32'd0), .first_fault_control_cycles(32'd0), .first_fault_detail(32'd0),

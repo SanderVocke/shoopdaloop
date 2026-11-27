@@ -18,12 +18,15 @@ class MeasurementTests(unittest.TestCase):
         old = ROOT / "docs/fpga/command-fifo-implementation/reports/consumer-route-2cd453c8/run.tcl"
         self.assertEqual(old.read_text().replace("if {1}", "if {0}"), SCRIPT.replace("ROUTE_ENABLED", "0"))
 
-    def test_profile_snapshot_resolves_widths_and_preserves_measured_probe(self):
+    def test_profile_snapshot_preserves_measured_probe_except_neutral_fault_binding(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory)
             manifest, script, profile = freeze(source, digest, SCRIPT)
             probe = source / "semantic_profile.sv"
-            self.assertEqual(probe.read_bytes(), (ARCHIVE / "semantic_profile.sv").read_bytes())
+            binding = "        .pipeline_fault_cause(32'd0),\n"
+            self.assertEqual(probe.read_text().count(binding), 1)
+            self.assertEqual(probe.read_text().replace(binding, ""), (ARCHIVE / "semantic_profile.sv").read_text())
+            self.assertEqual(profile["fixed_fault_inputs"], {"pipeline_fault_cause": "32'd0"})
             for width in re.findall(r"\[([^]]+)\]", probe.read_text()):
                 self.assertIsNone(re.search(r"[A-Za-z_]", width))
             self.assertEqual(profile["fixed_audio_inputs"],
@@ -45,6 +48,12 @@ class MeasurementTests(unittest.TestCase):
             self.assertTrue(profile["indexed_mmio"])
             self.assertTrue(profile["standard_optimization"])
             self.assertFalse(profile["low_range_service_included"])
+            self.assertTrue(profile["abort_mmio_included"])
+            self.assertTrue(profile["qualified_fault_sidebands_included"])
+            self.assertEqual(profile["fixed_fault_inputs"], {})
+            self.assertIn("input wire audio_fault", probe)
+            self.assertIn("input wire watchdog_fault", probe)
+            self.assertNotIn("input wire [31:0] pipeline_fault_cause", probe)
             self.assertIn("fifo_mmio_pipeline_axi #(", probe)
             self.assertIn("input wire [11:0] s_axi_awaddr", probe)
             self.assertNotIn("input wire host_valid", probe)

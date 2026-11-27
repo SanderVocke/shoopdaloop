@@ -274,7 +274,9 @@ module fifo_mmio_pipeline_axi #(
     output wire [31:0] s_axi_rdata,
     output wire [1:0] s_axi_rresp,
     output wire s_axi_rvalid,
-    input wire s_axi_rready
+    input wire s_axi_rready,
+    input wire audio_fault,
+    input wire watchdog_fault
 );
     wire snapshot_read_valid;
     wire snapshot_read_bank;
@@ -294,8 +296,12 @@ module fifo_mmio_pipeline_axi #(
     wire result_read_valid;
     wire [1:0] result_read_bank;
     wire [5:0] result_read_word;
+    wire [31:0] pipeline_fault_cause;
     wire recovery_request;
     wire [31:0] recovery_epoch;
+    wire abort_request;
+    assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)
+        | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);
     fifo_mmio #(
         .LOOPS(LOOP_DEPTH),
         .SYSTEM_REGISTERS(1),
@@ -352,5 +358,5 @@ module fifo_mmio_pipeline_axi #(
         .PHYSICAL_BASE(PHYSICAL_BASE),
         .PHYSICAL_BYTES_LIMIT(PHYSICAL_BYTES_LIMIT),
         .RECOVERY_TIMEOUT_CYCLES(RECOVERY_TIMEOUT_CYCLES),
-        .RECOVERY_RESET_CYCLES(RECOVERY_RESET_CYCLES)) pipeline (.*);
+        .RECOVERY_RESET_CYCLES(RECOVERY_RESET_CYCLES)) pipeline (.pipeline_fault(pipeline_fault || audio_fault || watchdog_fault || abort_request), .*);
 endmodule

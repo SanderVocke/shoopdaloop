@@ -8,7 +8,7 @@ module fifo_mmio #(
 ) (
     input wire clk, reset, runtime_reset, input wire [31:0] epoch,
     input wire faulted, input wire [2:0] recovery_state,
-    output wire recovery_request, output wire [31:0] recovery_epoch, output wire irq,
+    output wire recovery_request, output wire [31:0] recovery_epoch, output wire irq, abort_request,
     input wire quantum_done, input wire [31:0] quantum_cycles, audio_xruns,
     input wire [31:0] first_fault_epoch, first_fault_cause, first_fault_op,
     input wire [31:0] first_fault_cycles, first_fault_control_cycles, first_fault_detail,
@@ -78,6 +78,8 @@ module fifo_mmio #(
         || write_address==REG_COMMAND_PUBLISH || write_address==REG_RESULT_ACK;
     wire snapshot_request=write_address==REG_SNAPSHOT_ACK;
     wire recovery_access=SYSTEM_REGISTERS!=0 && write_address==REG_RECOVERY_REQUEST;
+    wire abort_access=SYSTEM_REGISTERS!=0 && write_address==REG_ABORT;
+    assign abort_request=write_complete && write_format && write_current && abort_access && write_data==epoch;
     wire recovery_available=recovery_state==0 || recovery_state==3;
     wire system_fault=faulted || recovery_state==4;
     assign recovery_request=write_complete && write_format && write_current && recovery_access
@@ -118,7 +120,7 @@ module fifo_mmio #(
             REG_RESULT_REWIND, REG_SNAPSHOT_REWIND, REG_RESULT_ACK, REG_SNAPSHOT_ACK:
                 write_format=write_format && write_data==1;
             REG_COMMAND_DATA: write_format=1;
-            REG_RECOVERY_REQUEST: write_format=write_format && SYSTEM_REGISTERS!=0;
+            REG_ABORT, REG_RECOVERY_REQUEST: write_format=write_format && SYSTEM_REGISTERS!=0;
             REG_COMMAND_BEGIN, REG_COMMAND_PUBLISH, REG_RESULT_ACK_LOW, REG_RESULT_ACK_HIGH,
             REG_RESULT_ACK_EPOCH, REG_SNAPSHOT_ACK_LOW, REG_SNAPSHOT_ACK_HIGH, REG_SNAPSHOT_ACK_EPOCH: ;
             default: write_format=0;
@@ -288,10 +290,10 @@ module fifo_mmio #(
             if (write_complete) begin
                 if (!write_format) respond_write(SLVERR);
                 else if (!write_current) begin respond_write(OKAY); refuse_write_epoch(); end
-                else if (recovery_access) begin
+                else if (abort_access || recovery_access) begin
                     respond_write(OKAY);
                     submission_receipt<=write_data!=epoch ? RECEIPT_EPOCH
-                        : recovery_available ? RECEIPT_ACCEPTED : RECEIPT_UNAVAILABLE;
+                        : abort_access || recovery_available ? RECEIPT_ACCEPTED : RECEIPT_UNAVAILABLE;
                 end else if (command_request) begin
                     if (host_ready) begin
                         aw_pending<=0; w_pending<=0;

@@ -215,6 +215,7 @@ module fifo_recovery_pipeline_axi #(
     output wire [63:0] groups_attempted,
     output wire [31:0] peak_command_cycles,
     output wire [31:0] current_command_cycles,
+    input wire [31:0] pipeline_fault_cause,
     output wire diagnostic_valid,
     output wire [31:0] diagnostic_cause,
     output wire [31:0] diagnostic_opcode,

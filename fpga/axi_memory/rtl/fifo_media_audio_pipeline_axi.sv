@@ -215,6 +215,7 @@ module fifo_media_audio_pipeline_axi #(
     output wire [63:0] groups_attempted,
     output wire [31:0] peak_command_cycles,
     output wire [31:0] current_command_cycles,
+    input wire [31:0] pipeline_fault_cause,
     output wire diagnostic_valid,
     output wire [31:0] diagnostic_cause,
     output wire [31:0] diagnostic_opcode,
@@ -352,7 +353,7 @@ module fifo_media_audio_pipeline_axi #(
         .READ_BUFFERS(READ_BUFFERS),
         .WRITE_BUFFERS(WRITE_BUFFERS),
         .BURST_MEMORY(BURST_MEMORY),
-        .LOOP_DEPTH(LOOP_DEPTH)) core (.*, .pipeline_fault(pipeline_fault || axi_quiesce || axi_drain_fault), .memory_meta_valid(media_memory_meta_valid), .memory_meta_ready(media_memory_meta_ready), .memory_meta_write(media_memory_meta_write), .memory_meta_address(media_memory_meta_address), .memory_meta_write_data(media_memory_meta_write_data), .memory_meta_count(media_memory_meta_count), .memory_meta_write_valid(media_memory_meta_write_valid), .memory_meta_write_ready(media_memory_meta_write_ready), .memory_meta_read_valid(media_memory_meta_read_valid), .memory_meta_read_ready(media_memory_meta_read_ready), .memory_meta_response_valid(media_memory_meta_response_valid), .memory_meta_response_ready(media_memory_meta_response_ready), .memory_meta_response_error(media_memory_meta_response_error), .memory_meta_read_data(media_memory_meta_read_data));
+        .LOOP_DEPTH(LOOP_DEPTH)) core (.*, .pipeline_fault(pipeline_fault || axi_quiesce || axi_drain_fault), .pipeline_fault_cause(pipeline_fault_cause | ((axi_quiesce || axi_drain_fault) ? 32'd64 : 0)), .memory_meta_valid(media_memory_meta_valid), .memory_meta_ready(media_memory_meta_ready), .memory_meta_write(media_memory_meta_write), .memory_meta_address(media_memory_meta_address), .memory_meta_write_data(media_memory_meta_write_data), .memory_meta_count(media_memory_meta_count), .memory_meta_write_valid(media_memory_meta_write_valid), .memory_meta_write_ready(media_memory_meta_write_ready), .memory_meta_read_valid(media_memory_meta_read_valid), .memory_meta_read_ready(media_memory_meta_read_ready), .memory_meta_response_valid(media_memory_meta_response_valid), .memory_meta_response_ready(media_memory_meta_response_ready), .memory_meta_response_error(media_memory_meta_response_error), .memory_meta_read_data(media_memory_meta_read_data));
     localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;
     localparam [63:0] PROGRAM_OFFSET = ((STORAGE_WORDS*4+63)/64)*64;
     localparam [63:0] TOTAL_BYTES = DDR_PROGRAM != 0

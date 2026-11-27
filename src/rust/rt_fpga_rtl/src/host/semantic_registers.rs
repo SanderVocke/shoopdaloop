@@ -29,6 +29,7 @@ pub const REG_QUANTUM: u32 = 0x03c;
 pub const REG_COMPLETED_QUANTA: u32 = 0x104;
 pub const REG_PEAK_QUANTUM_CYCLES: u32 = 0x108;
 pub const REG_AUDIO_XRUNS: u32 = 0x10c;
+pub const REG_ABORT: u32 = 0x110;
 pub const REG_RECOVERY_ID: u32 = 0x114;
 pub const REG_RECOVERY_STATUS: u32 = 0x118;
 pub const REG_RECOVERY_REQUEST: u32 = 0x11c;

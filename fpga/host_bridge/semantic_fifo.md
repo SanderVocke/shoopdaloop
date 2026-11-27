@@ -354,6 +354,7 @@ fields use the qualified always-on record, never a live attempted command.
 | --- | --- |
 | 0x000–0x03c | Discovery/geometry, ID `0x53484f50`, VERSION 16; existing 512-job admission cap retained |
 | 0x104–0x10c | Saturating completed quanta/peak clocks and trusted hardware audio-xrun readback |
+| 0x110 | Epoch-qualified ABORT; local terminal halt, not retirement/fence/reset |
 | 0x114–0x120 | Recovery ID/status/request and safety submission receipt |
 | 0x124–0x14c | Qualified retained epoch/cause/low sequence/op/cycles/detail/revision/F |
 
@@ -370,17 +371,33 @@ result/snapshot availability or terminal fault, never reader readiness.
 
 The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
-approved profile capacity. Preparation/loader/service/optional-trace registers and
-**0x110 ABORT remain unmapped**. Source-qualified ABORT/audio/watchdog integration
-is still required; no generic-pipeline-fault substitute is claimed. Configuration
-ports remain private integration interfaces, not a completed public endpoint.
+approved profile capacity. Preparation/loader/service/optional-trace registers
+remain unmapped; configuration ports are private integration interfaces, not a
+completed public endpoint.
 
-Actual tests cover geometry/telemetry/IRQ, both reset-crossing recovery halves,
-all lower retained fields, held R/B, coherent 128-row readback, real program fences
-and delayed external retirement before reset. [Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/low-discovery-efaad8ccd/results.json)
-are 7,306 LUT / 6,793 FF after standard optimization, leaving 694 LUT / 207 FF.
-Service/matching software remain absent; no ABI-16 deployment, complete frontend/
-whole-design or routed-timing acceptance is established.
+ABORT requires full-strobe, complete current-epoch AW/W authority and data equal
+to that epoch. Neither half alone has effects; wrong epoch/old halves return
+OKAY/receipt 2, malformed strobes SLVERR. Receipt 0 accepts a local sticky halt,
+not backend retirement, successful fence, reset or application Ready. Explicit
+recovery remains separate and waits for actual AXI ownership retirement.
+
+Trusted hardware `audio_fault`/`watchdog_fault` sidebands carry flags 2/32, ABORT
+carries 16, and genuine simultaneous generic pipeline faults retain 64. They use
+the existing same-edge halt path, not new controllers or ARM source registers.
+The shared qualified cause word is zero-compatible with legacy generic-64 callers;
+internal/AXI fault qualification is preserved. Physical source/adapter integration
+remains open, not established by simulation inputs.
+
+Actual tests cover geometry/telemetry/IRQ, both reset-crossing ABORT/recovery
+halves, all lower retained fields, held R/B, coherent 128-row readback, real program
+fences, five source combinations and delayed external retirement before reset.
+A genuine newer-epoch fault can replace the retained record without relabeling
+old copied cause RDATA; epoch advance/reset alone cannot replace it.
+[Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/qualified-safety-d6faa5c77/results.json)
+are **7,477 LUT / 6,799 FF** after standard optimization, leaving **523 LUT / 201 FF**.
+Unrouted WNS worsened from −5.017 to **−9.142 ns**. Service/matching software remain
+absent; no ABI-16 deployment, complete frontend/whole-design or routed-timing
+acceptance is established.
 
 ## Retained first-fault diagnostics
 
