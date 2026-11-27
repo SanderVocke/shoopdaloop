@@ -1,0 +1,8 @@
+Vivado2021.1/xc7z020clg400-2/100MHz/byte-identical full Q32/128loop/512state-buffer-view profile/Tcl.
+Remove only requester-valid from two ready terms; actual accept/grant/priority/fault masks and all widths/phases remain.
+Runner0/completepassed;zero errors-critical warnings/217 synthesis warnings.
+Synth component31624/21832,frontend7948/6943;opt component31518/21804,frontend7943/6943.
+Three LUT saved in EXCLUDED execution only; frontend headroom remains57LUT/57FF. Kernel1763/1936/noDSP;62.5RAMB36eq/four existingDSP.
+Unrouted WNS-10.218ns synth/-9.754ns opt:worst improves2.361ns,aggregate TNS/failing endpoints worsen;35levels/19.204ns to SP RAM write enable.
+267selectedRust/12Python/Linux3584passed11skipped/default and optional-referenceWasm pass; no routed/whole-design/physical acceptance.
+Configuration subset1/2/3 only; Stages4-7 incomplete, ABI15 selected, no deployment/push/PR/new physical permission.

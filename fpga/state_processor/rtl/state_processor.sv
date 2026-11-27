@@ -143,7 +143,7 @@ module state_processor #(
     assign cfg_ready = !local_valid && !cfg_pending && !program_cfg_busy && !program_cfg_response
         && (!external_cfg || program_cfg_ready) && !reset && (!capture_valid || (!cfg_loop && !cfg_state))
         && (PROGRAM_REGIONS == 1 || !run_valid) && (!busy ||
-        (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write && (cfg_loop ? !loop_ram_write : cfg_state ? !state_write_enable : 1'b1)));
+        (PROGRAM_REGIONS == 2 && cfg_write && (cfg_loop ? !loop_ram_write : cfg_state ? !state_write_enable : 1'b1)));
     assign run_ready = !busy && !cfg_pending
         && (PROGRAM_REGIONS == 2 || (!cfg_valid && !program_cfg_busy && !program_cfg_response))
         && !reset && !sync_fault;

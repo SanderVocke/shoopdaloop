@@ -478,7 +478,19 @@ fault masks change. Distinct raw 129/32/160-bit replies retain exact source/mask
 assertions. Public probe bytes and complete profile metadata remain identical to
 the configuration checkpoint. The measured saving is 47 LUT / no FF, not a larger
 preflight estimate. Unrouted WNS **−12.579 ns synthesis / −12.115 ns optimized** is
-effectively unchanged from −12.116 ns, not closure of the 40-level fault/ready path.
+effectively unchanged from −12.116 ns at that checkpoint.
+The [latest readiness refinement](../../docs/fpga/command-fifo-implementation/reports/config-ready-b1c37e8fd/results.json)
+removes requester valid only from two dual-region ready terms. Actual valid-and-
+ready grants, processing/local priority, single-region/capture protection and
+same-edge fault masks remain unchanged: ready without valid cannot cause effects.
+Eight standalone/core × one/two-region × local/DDR variants check grant probes,
+129/64-bit RAM nonmutation, no callback/backend/frame activity without valid, then
+real accepted payload/response. Profile bytes, metadata and Tcl stay identical.
+Frontend remains **7,943 LUT / 6,943 FF**, **57 LUT / 57 FF** margin; three saved
+LUT are in excluded execution, not frontend. Worst unrouted WNS is **−10.218 ns
+synthesis / −9.754 ns optimized**, improving 2.361 ns, but aggregate TNS/failing
+endpoints worsen. The 35-level path now reaches real SP state-RAM write enable;
+this is not timing closure, a delayed fault mask or routed/whole-design acceptance.
 Complete service/matching software remain unfinished; no ABI-16 deployment,
 complete frontend/whole-design or routed-timing acceptance is established.
 Production remains ABI 15 and Stages 4–7 remain incomplete.

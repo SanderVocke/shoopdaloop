@@ -229,7 +229,7 @@ module audio_pipeline #(
     assign busy = phase != IDLE;
     assign run_ready = boundary_ready && !(LIVE_LOADING != 0 && switch_valid && !switch_response_valid);
     assign local_ready = local_window && state_local_ready && !halted;
-    assign cfg_ready = state_cfg_ready && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write))
+    assign cfg_ready = state_cfg_ready && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write))
         && !(PROGRAM_REGIONS == 2 && state_admission) && (!halted || !cfg_write);
     assign audio_cfg_ready = (phase == IDLE) && job_cfg_ready && (!halted || !audio_cfg_write);
     assign monitor_valid = sp_job_valid && !halted && (!SPLIT_JOBS || sp_job_ready);

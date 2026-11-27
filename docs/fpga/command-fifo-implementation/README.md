@@ -11,9 +11,9 @@ retained diagnostics/public recovery/ABORT and qualified audio/watchdog sideband
 are joined to the actual semantic/audio/media candidate, now with configuration-only
 CORE/AUDIO/STORE service. Its measured partial frontend is **7,943 LUT / 6,943 FF
 after standard optimization**, leaving only **57 LUT / 57 FF** before remaining
-media/lifecycle/trace service and board integration. Unrouted WNS remains
-**−12.115 ns**, still unclosed; production still selects ABI 15. The original
-stop and repair evidence remain historical records;
+media/lifecycle/trace service and board integration. Latest worst unrouted WNS is
+**−9.754 ns**, still failing, with worse aggregate setup violations. Production
+still selects ABI 15. The original stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
 ## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
@@ -2045,3 +2045,64 @@ remain incomplete. No push/PR/deployment/new physical permission is implied.
 Local prefix `stage4-config-reply-mux-` contains `tests-v1`, `measure-v1`,
 `milestone`, `wasm`, `linux`, `export`, `precommit`; the previous archive stays
 immutable. Reproduction uses the same narrow/full-profile commands above.
+
+## Valid-independent readiness: acceptance preserved, timing still unclosed
+
+Two dual-region background-write `cfg_ready` expressions no longer depend on
+requester `cfg_valid`. Actual acceptance remains valid-and-ready:
+`valid && (idle || valid && eligible) == valid && (idle || eligible)`.
+Ready without valid cannot grant, mutate RAM or create a callback. Actual child
+valid/grants, local/processing priority, single-region protection, capture and
+same-edge halt masks stay unchanged. No registers/states/widths or accepted-
+transaction cycles change; no timing exception is added.
+
+The new regression runs **eight configurations**: standalone SP/audio core ×
+one/two regions × local/DDR program memory. It checks four internal grant probes,
+129/64-bit RAM fingerprints, no backend request/response/frame advance under
+valid 0, capture exclusion, then valid-1 acceptance/original four-beat DDR payload/
+completion. All seven indexed and seven actual-MMIO cases remain green, including
+same-edge safety and reset ownership. First fixture attempts supplied a 160-bit
+value to a 129-bit port; corrected before-fix-v3 then fails actual readiness 0 vs 1.
+The initial surrounding run exposed a default driver's inapplicable busy/ready
+exclusion on dual-region loading. Its explicit loading variant retains run/job
+exclusions, payload protocol and bounds; default/single-region guards and all
+actual-effect assertions stay intact. Failed logs remain retained.
+
+[Native reports and 18 checksummed files](reports/config-ready-b1c37e8fd/results.json)
+freeze source based on `b1c37e8fd`, including changed RTL and regression/driver.
+All 65 native source hashes match; public profile bytes, complete metadata and
+Tcl constraints equal the preceding checkpoint. No I/O/profile/capacity reduction.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,624 / 21,832 | 7,948 / 6,943 |
+| Standard `opt_design` | 31,518 / 21,804 | **7,943 / 6,943** |
+
+Only **three LUT in excluded execution** are saved; frontend margin remains
+**57 LUT / 57 FF**, not 60 LUT. Packed LUTRAM/four disjoint exclusions are unchanged.
+MMIO 1,030/388, codec 395/175, kernel 1,763/1,936/no DSP, 62.5 RAMB36-equivalents/
+four existing DSPs remain. Runner 0/complete marker pass, zero errors/critical
+warnings, 217 synthesis warnings.
+
+Worst unrouted WNS improves 2.361 ns to **−10.218 ns synthesis / −9.754 ns
+optimized**. **Aggregate TNS worsens to −58,656.453 ns / 12,143 failing setup
+endpoints**. The new worst path has 35 levels/19.204 ns estimated data delay,
+MMIO ABORT through faults/service valid into actual SP state-RAM write enable.
+There is still no route, complete frontend/protected whole-design acceptance,
+nonnegative timing or admitted-quantum proof. Do not weaken same-edge suppression
+or hide the remaining path with timing exceptions.
+
+`stage4-config-ready-milestone` passes **267 Rust = 209 affected + 58 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped**, **400.699 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and optional-reference
+worklet Wasm builds pass. All ran sequentially, not physical/browser-runtime proof.
+
+Only configuration 1/2/3 is joined. All remaining preparation/media/lifecycle/
+trace services, external adapters, matched software/CPU bridge retirement,
+admitted-envelope/whole-design/route/platform gates, two baseline fault differences
+and delivery/independent audit remain. ABI 15 stays selected; Stages 4–7 remain
+incomplete. No push/PR/deployment/new physical permission is implied. Local prefix
+`stage4-config-ready-` contains before-fix-v1/v2/v3, tests-v1, narrow/narrow-v2,
+measure-v1, milestone, wasm, linux, export and precommit logs; historical archives
+are unchanged. Same narrow/full-profile reproduction commands apply.
