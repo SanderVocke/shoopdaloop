@@ -17,6 +17,10 @@ FRONTEND_SOURCES = {
     "fifo_snapshots.sv", "fifo_audio_pipeline.sv", "fifo_media_audio_pipeline.sv",
     "host_recovery.sv", "host_fault_record.sv",
 }
+MMIO_SCOPE = ("Q32 indexed-MMIO/semantic/audio/media/recovery component; "
+              "no low-range discovery/preparation service, audio adapter, PS/DDR, thermal or protected board integration; "
+              "frontend and existing execution/backend hierarchy reported separately")
+MMIO_SOURCES = {"semantic_registers.sv", "fifo_mmio.sv", "fifo_mmio_pipeline_axi.sv"}
 BOUNDARIES = {
     "audio_execution": "dut/execution/core/pipeline/execution",
     "media_store": "dut/execution/core/media",
@@ -25,8 +29,12 @@ BOUNDARIES = {
 }
 
 
-def freeze(source, digest, common_script):
+def freeze(source, digest, common_script, *, mmio=False):
     sources = []
+    module = "fifo_mmio_pipeline_axi" if mmio else "fifo_recovery_pipeline_axi"
+    base = "dut/pipeline" if mmio else "dut"
+    boundaries = {key: path.replace("dut/", base + "/", 1) for key, path in BOUNDARIES.items()}
+    frontend = FRONTEND_SOURCES | (MMIO_SOURCES if mmio else set())
 
     def copy(original):
         relative = original.relative_to(ROOT)
@@ -45,6 +53,10 @@ def freeze(source, digest, common_script):
                      "fpga/host_bridge/zturn_v2.tcl", "fpga/host_bridge/measure_semantic.py",
                      "fpga/host_bridge/measure_semantic_pipeline.py"]:
         copy(ROOT / relative)
+    if mmio:
+        for relative in ["fpga/host_bridge/generate_semantic_mmio.py", "fpga/host_bridge/generate_top.py",
+                         "fpga/host_bridge/semantic_registers.json"]:
+            copy(ROOT / relative)
     board = boards.load("zturn-v2")
     if board.data["part"] != "xc7z020clg400-2" or board.data["fpga"]["clock_hz"] != 100_000_000:
         raise ValueError("component measurement requires the approved Z-turn part/clock")
@@ -55,7 +67,8 @@ def freeze(source, digest, common_script):
               "SLOTS": 31 * 1024 * 1024 // 32, "AXI_DATA_WIDTH": 64,
               "PHYSICAL_BASE": board.rust_end, "PHYSICAL_BYTES_LIMIT": board.pl_bytes}
     constants = {"run_quantum": 32, "run_chunk_frames": 32, "run_inputs": 1, "run_outputs": 2}
-    root_file = source / "fpga/axi_memory/rtl/fifo_recovery_pipeline_axi.sv"
+    root_file = source / ("fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv" if mmio
+                          else "fpga/axi_memory/rtl/fifo_recovery_pipeline_axi.sv")
     _, ports = header(root_file.read_text())
     assert set(constants) <= {name for _, name in ports}
     definitions = dict(re.findall(r"^`define\s+(\w+)\s+(\d+)\s*$",
@@ -72,7 +85,7 @@ def freeze(source, digest, common_script):
     profile = '`include "state_processor_defs.svh"\nmodule semantic_profile (\n'
     profile += ",\n".join("    " + port_type(prefix) + name
                              for prefix, name in ports if name not in constants) + "\n);\n"
-    profile += "    fifo_recovery_pipeline_axi #(\n"
+    profile += f"    {module} #(\n"
     profile += ",\n".join(f"        .{name}({value})" for name, value in params.items()) + "\n    ) dut (\n"
     profile += ",\n".join(f"        .{name}({constants[name] if name in constants else name})"
                              for _, name in ports) + "\n    );\nendmodule\n"
@@ -80,8 +93,12 @@ def freeze(source, digest, common_script):
     probe.write_text(profile)
     sources.append({"path": "generated/semantic_profile.sv", "sha256": digest(probe)})
     files = [p for p in sorted(source.glob("fpga/*/rtl/*.sv"))
-             if p.parent.parent.name != "host_bridge" or p.name in FRONTEND_SOURCES]
-    assert {p.name for p in files if p.parent.parent.name == "host_bridge"} == FRONTEND_SOURCES
+             if p.parent.parent.name != "host_bridge" or p.name in frontend]
+    assert {p.name for p in files if p.parent.parent.name == "host_bridge"} == frontend
+    if mmio:
+        package = source / "fpga/host_bridge/rtl/semantic_registers.sv"
+        files.remove(package)
+        files.insert(0, package)
     files.append(probe)
     tcl = '''
 set_param general.maxThreads 4
@@ -92,12 +109,18 @@ set_property include_dirs {/source/fpga/state_processor/rtl /source/fpga/host_br
     tcl += "read_verilog -sv [list " + " ".join("/source/" + str(p.relative_to(source)) for p in files) + "]\n"
     tcl += "synth_design -mode out_of_context -flatten_hierarchy none -top semantic_profile -part xc7z020clg400-2\n"
     reports = common_script[common_script.index("create_clock -name core"):].replace("consumer-", "component-")
+    if mmio:
+        reports = reports.replace("if {ROUTE_ENABLED}", '''opt_design
+report_utilization -hierarchical -file component-optimized-utilization.rpt
+report_timing_summary -file component-optimized-timing.rpt
+write_checkpoint -force component-optimized.dcp
+if {ROUTE_ENABLED}''')
     partition = '''set counts [dict create]
 foreach cell [get_cells -hierarchical -filter {IS_PRIMITIVE == 1}] {
     set name [get_property NAME $cell]
     set region frontend_and_glue
 '''
-    for region, boundary in BOUNDARIES.items():
+    for region, boundary in boundaries.items():
         partition += f'    if {{[string match "{boundary}/*" $name]}} {{set region {region}}}\n'
     partition += '''    dict incr counts [list $region [get_property REF_NAME $cell]]
 }
@@ -106,9 +129,12 @@ puts $report "REGION PRIMITIVE COUNT"
 foreach key [lsort [dict keys $counts]] {puts $report "$key [dict get $counts $key]"}
 close $report
 '''
-    for boundary in [*BOUNDARIES.values(), "dut/recovery", "dut/retained_fault",
-                     "dut/execution/core/pipeline/consumer", "dut/execution/core/pipeline/observations",
-                     "dut/execution/core/pipeline/snapshots", "dut/execution/core/owner/loader", "dut/execution/core/owner"]:
+    required = [*boundaries.values(), f"{base}/recovery", f"{base}/retained_fault",
+                f"{base}/execution/core/pipeline/consumer", f"{base}/execution/core/pipeline/observations",
+                f"{base}/execution/core/pipeline/snapshots", f"{base}/execution/core/owner/loader", f"{base}/execution/core/owner"]
+    if mmio:
+        required.append("dut/mmio")
+    for boundary in required:
         partition += f'if {{[llength [get_cells -quiet {boundary}]] != 1}} {{error "missing accounting boundary {boundary}"}}\n'
     marker = "set done [open complete.txt w]"
     assert reports.count(marker) == 1
@@ -116,6 +142,9 @@ close $report
     return sources, tcl, {"parameters": params, "fixed_audio_inputs": constants,
                           "literal_port_defines": definitions,
                           "compiled_sources": [str(p.relative_to(source)) for p in files],
-                          "excluded_execution_boundaries": BOUNDARIES,
+                          "excluded_execution_boundaries": boundaries,
                           "remaining_primitives": "frontend_and_glue; raw counts are not packed LUT area",
-                          "scope": SCOPE}
+                          "indexed_mmio": mmio,
+                          "standard_optimization": mmio,
+                          "low_range_service_included": False,
+                          "scope": MMIO_SCOPE if mmio else SCOPE}

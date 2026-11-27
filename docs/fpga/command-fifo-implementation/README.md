@@ -6,11 +6,12 @@ remain historical evidence in the [investigation report](../command-fifo-investi
 
 **Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
 Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
-7,000 FF**; all other limits remain unchanged. The last measured partial frontend
-is 6,345 LUT / 6,374 FF after standard optimization, leaving 1,655 LUT before MMIO
-and integration. The indexed-MMIO component now passes its functional gate, but
-is not yet joined to the actual audio/media/recovery wrapper or included in that
-measurement. The original stop and repair evidence remain historical records;
+7,000 FF**; all other limits remain unchanged. The indexed range is now joined to
+the actual semantic/audio/media/recovery candidate. Its measured partial frontend
+is **6,982 LUT / 6,727 FF after standard optimization**, leaving **1,018 LUT /
+273 FF** before the remaining low-range service/public and board integration.
+Unrouted WNS remains **−5.017 ns**; production still selects ABI 15. The original
+stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
 ## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
@@ -1388,7 +1389,7 @@ baseline fault-path differences, fresh full Linux/Wasm/platform gates, physical
 authorization and delivery remain open. ABI deployment remains 15. The amendment
 is documentation-only and supplies no new simulation, synthesis or route result.
 
-## Candidate indexed AXI-Lite MMIO component
+## Candidate indexed AXI-Lite MMIO component (`a07b89b06`)
 
 [`fifo_mmio.sv`](../../../fpga/host_bridge/rtl/fifo_mmio.sv) now implements the
 ABI-16 indexed range **0x150–0x32c**: discovery of semantic capabilities/limits,
@@ -1486,9 +1487,131 @@ nix develop --command python3 fpga/host_bridge/test_semantic_registers.py
 nix develop --command python3 fpga/host_bridge/generate_registers.py --check
 ```
 
-**Remaining:** integrate the complete register/service endpoint with actual
-semantic/audio/media/recovery ownership; measure its frozen full-profile cost
-against **8,000 LUT / 7,000 FF** and the independent whole-design limits. The old
-6,345-LUT/6,374-FF measurement excludes this new MMIO component. No integrated
-resource or timing pass, complete Stage 4, ABI-16 deployment, firmware/reference
-replacement, push/PR or physical authorization follows from this milestone.
+**At this component-only checkpoint:** actual audio/media/recovery hookup and a
+fresh cost measurement including MMIO remained open. The following milestone
+records those steps; the complete low-range service/public endpoint and matching
+software still remain incomplete.
+
+## Actual indexed-MMIO/audio/recovery hookup and fresh partial resources
+
+`generate_semantic_mmio.py` generates `rtl/fifo_mmio_pipeline_axi.sv`, also covered
+by the normal `generate_top.py --check`. The wrapper joins indexed AXI-Lite to the
+actual semantic SP/JP/RAM, observation/snapshot producer, private media owner,
+shared AXI and always-on recovery. It introduces no controller or shadow owner:
+MMIO drives the existing private packet/ACK/read wires directly.
+
+Critical domain bindings are explicit:
+
+- Transport reset is global reset, not runtime reset; held RDATA/BRESP survive
+  safe runtime reset until ARM consumes them.
+- Local authority receives the actual recovery-owned runtime reset/incarnation,
+  not the initial seed epoch or a synthetic host pulse.
+- `FAULT_SEQUENCE_HIGH` receives `first_fault_sequence` from the qualified retained
+  recorder, not the consumer's live attempted group.
+- Private preparation/configuration and recovery-request inputs are still external
+  integration ports. They are **not** a complete 0x000–0x14c public service map.
+  The production native/browser/deployed FPGA/audio-pacing path is not promoted.
+
+### Actual-path verification
+
+Two new tests in `tests/support/semantic_mmio_audio.rs`, included by the existing
+`semantic_audio` target, use the real 64-bit AXI/media/recovery pipeline and DDR
+program storage, with 128 snapshot rows:
+
+- ACK/reuse of a snapshot bank while its old copied sequence word remains held in
+  RDATA; three exact silent quanta continue, both banks fill, and the next whole
+  opportunity skips without faulting. Readers/preparation do not advance time.
+- Initial selection and sample-accurate input/gain/output rendering while publish
+  B remains held; successful reliable completion comes through the actual
+  JP/cache/metadata/DMA fence, not a test-controlled callback.
+- ACK/reuse of the reliable bank with an old sequence word held in RDATA; a complete
+  32-command repeated-target gain group executes at one boundary, with all 32
+  original-f32 strobes, exact half-gain samples and copied-result immutability.
+- Every one of **4,880 u32 words** in a coherent actual 128-row snapshot is read
+  through indexed MMIO; original gain, epoch/F/revision/sequence/skip identity and
+  cursor exhaustion remain checked.
+- Actual-width counter probes seed a high u64 group identity without adding a
+  production restoration API. A genuine fault retains it. A held real DDR upload
+  AW prevents reset/epoch advance; actual external retirement then permits reset
+  and fresh local capture even with ARM R/B held. Retained sequence-high remains
+  correct after live diagnostic sequence becomes zero, until a genuine newer-epoch
+  fault. Stale admission/ACK cannot acquire or release fresh ownership.
+
+Small-fixture quantum costs are **[4662, 4662, 45, 4962, 6641] clocks**, command
+peak **1734**, snapshot peak **4619**. These are not all-admitted service/60,000-cycle
+bounds. The older dirty-writeback, unread-loader, failed-fence, 32-target, static
+composite, snapshot, stop/reset and qualified-fault assertions remain in the fresh
+broader gate.
+
+### Fresh fixed-profile measurement
+
+[Native reports, frozen inputs and results](reports/mmio-hookup-a07b89b06/results.json)
+use the same approved Q32/128-loop/512-state-buffer-view profile, 124 MiB sample
+arena, Vivado 2021.1, `xc7z020clg400-2`, 100 MHz and 1 ns I/O delays. This working-tree
+snapshot is based on `a07b89b06`; its complete source manifest and new generated
+wrapper are preserved, with **15 checksummed files**. The verified existing catalog
+is mounted read-only; no tool download or board access occurred.
+
+| Variant | Partial component LUT / FF | Frontend including indexed MMIO LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 30,664 / 21,616 | 6,985 / 6,727 |
+| Standard `opt_design` | 30,560 / 21,588 | **6,982 / 6,727** |
+
+The MMIO leaf is **638 LUT / 353 FF**. Kernel remains **1595 LUT / 1932 FF / no
+DSP**; component storage remains **62.5 RAMB36-equivalents** and four existing
+DSPs. Packed LUT totals include LUTRAM. Only the same four disjoint existing
+execution/media/AXI/program subtrees are excluded, now beneath `dut/pipeline`;
+raw primitive partitions are not packed LUT area. Synthesis primitive totals and
+post-optimization partitions are labeled separately.
+
+Synthesis and optimization complete with **zero errors/critical warnings**,
+runner status **0** and a complete marker. Synthesis reports 217 other warnings.
+Unrouted WNS is **−5.481 ns synthesis / −5.017 ns optimized**, WHS **+0.183 ns**.
+No place/route or protected-board result is supplied. The remaining **1018 LUT /
+273 FF** frontend margin does not increase or prove the independent whole-design
+budget. The endpoint still lacks the low-range service and matching software;
+this is **not** complete frontend acceptance.
+
+The new opt-in `--pipeline --mmio` freezes this composition, loads the semantic
+package first, performs standard optimization and checks the nested accounting
+boundaries. Without that option the historical consumer Tcl/default pipeline probe
+remain byte-identical. Offline regressions cover both modes and reject `--mmio`
+without `--pipeline` before creating output.
+
+### Milestone gates and reproduction
+
+- **258 selected Rust tests = 206 affected-package + 52 directed**, including both
+  3,970-case kernel oracles and the two new actual-MMIO tests.
+- **11 offline Python tests**, generator drift, coverage/test policy, formatting and
+  warning-denying workspace build pass.
+- Fresh full Linux: **3584 passed / 11 skipped**, nextest **0.9.116**, **406.205 s**,
+  isolated 48 kHz/128-frame dummy JACK and `SHOOP_ALLOW_MISSING_BACKENDS=1`.
+- Default application/worklet Wasm and optional `fpga-reference` worklet Wasm builds
+  pass. These are compile/dummy-host checks, not browser-runtime or physical-output
+  qualification. The two known standalone FPGA fault differentials remain Stage 6
+  work, not erased by these passing feature selections.
+
+Local logs/status: `stage4-mmio-hookup-{tests-v1,tooling-v1,milestone,measure-v1,export,linux,wasm}`
+under `work/cmd-fifo-investigation/`. Both new directed cases and the new synthesis
+run passed on their first attempt; no interrupted/failed run is relabeled.
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test semantic_audio mmio_audio -- --test-threads=1
+'
+nix develop --command python3 fpga/host_bridge/test_semantic_mmio.py
+nix develop --command python3 fpga/host_bridge/test_measure_semantic.py
+nix develop --command python3 fpga/host_bridge/measure_semantic.py \
+  work/cmd-fifo-investigation/vivado-mmio-hookup-rerun --pipeline --mmio --run \
+  --catalog work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip
+```
+
+Use a fresh output directory; historical reports/ceilings/outcomes remain unchanged.
+**Remaining:** complete 0x000–0x14c discovery/preparation/service/recovery/diagnostic
+MMIO, source-specific external audio/watchdog hookup, matching ARM/reference
+transports and CPU-control retirement, full admitted-service/lifecycle/route/board
+acceptance, the two baseline fault differences, and Stage 7 delivery/audit. Stages
+4–7 remain open; ABI 15 stays selected. No physical authorization, push/PR or
+whole-plan completion follows from this checkpoint.

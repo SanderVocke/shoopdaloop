@@ -7,12 +7,12 @@ complete, including the reduced-profile/ABI contract freeze. **Stage 4 area repa
 is authorized by the user's “try to fix the area problem.”** The RAM-mapping blowup
 is repaired. The user has explicitly approved raising only the replacement-frontend
 LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
-The measured partial frontend is **6,345 LUT / 6,374 FF after standard optimization**,
-leaving **1,655 LUT** before public MMIO/integration. The new indexed-MMIO
-component is functionally verified but not yet integrated or included in that
-measurement. All other ceilings, profile
-and semantics are unchanged; Stages 4–7 remain incomplete. This is not complete
-frontend, protected whole-design or routed-timing acceptance.
+The measured partial frontend, now including indexed MMIO joined to the actual
+semantic/audio/media/recovery pipeline, is **6,982 LUT / 6,727 FF after standard
+optimization**, leaving **1,018 LUT / 273 FF** before the remaining service/public
+and board integration. Production still selects ABI 15. All other ceilings,
+profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
+complete frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
 See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
 and [baseline](docs/fpga/command-fifo-investigation/baseline.md).
@@ -1035,6 +1035,65 @@ tests pass. No profile/ceiling change, complete frontend/resource/route proof,
 full Linux/Wasm or physical qualification is implied. The 6,345-LUT measurement
 predates this unintegrated MMIO component. Stage 4 remains open for complete
 public integration/broader lifecycle qualification; Stages 5–7 remain open.
+
+**Actual indexed-MMIO/audio/recovery hookup milestone:** generated
+`fifo_mmio_pipeline_axi.sv` now joins the indexed AXI-Lite range to the actual
+semantic SP/JP/RAM, snapshots, media owner, shared AXI and always-on recovery.
+The normal generator drift gate includes this wrapper. MMIO receives global reset
+for its transport, the real safe runtime reset for local authority, the recovery
+controller's runtime incarnation and the qualified retained recorder's full
+sequence—not the live consumer diagnostic sequence. Packet controls are private
+wires owned by MMIO; preparation/configuration and recovery request inputs remain
+private integration interfaces, not a completed low-range public service.
+
+Two new actual-pipeline tests render exact samples with B held at publication,
+ACK/reuse a real snapshot and result bank while an old copied R word is held,
+execute 32 repeated gain commands at one boundary, and read all 4,880 u32 words
+of a coherent 128-row packet. Uploads/readback do not advance frames. Small-fixture
+quanta take **4,662 / 4,662 / 45 / 4,962 / 6,641 clocks**, command peak **1,734**,
+128-row snapshot peak **4,619**. These are not all-admitted-graph cycle bounds.
+A second test seeds actual-width sequence counters through simulation-only probes,
+faults the accepted group, and holds a real DDR upload AW during recovery. Reset
+and epoch change wait for actual external retirement while MMIO R/B remain held;
+fresh local startup needs neither reader. Retained sequence-high stays correct
+when live diagnostic sequence becomes zero, until a genuine higher-epoch fault.
+Stale admission and snapshot ACK cannot acquire/release epoch-2 ownership.
+
+[Fresh same-profile evidence](docs/fpga/command-fifo-implementation/reports/mmio-hookup-a07b89b06/results.json)
+includes the indexed range, unlike the earlier 6,345-LUT checkpoint:
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 30,664 / 21,616 | 6,985 / 6,727 |
+| Standard `opt_design` | 30,560 / 21,588 | **6,982 / 6,727** |
+
+The indexed MMIO leaf is **638 LUT / 353 FF**; kernel remains **1,595 LUT /
+1,932 FF / no DSP**. Component storage remains **62.5 RAMB36-equivalents** and
+four existing DSPs. Packed frontend totals include LUTRAM and exclude only the
+same four disjoint execution/media/AXI/program backend boundaries, now under the
+new wrapper. `--pipeline --mmio` freezes this profile; default consumer Tcl and the
+earlier pipeline probe remain unchanged. Source hashes, both native reports,
+Tcl/profile/provenance and 15 archive checksums are preserved. Synthesis and
+optimization complete with zero errors/critical warnings, runner status 0 and a
+complete marker. Unrouted WNS is **−5.481 ns synthesis / −5.017 ns optimized**;
+there is no route, protected-board or complete-frontend acceptance.
+
+`stage4-mmio-hookup-milestone.{log,status}` passes **206 affected-package +
+52 directed = 258 selected Rust tests**, including both 3,970-case kernel oracles
+and the retained real-media/fence/reset/fault regressions, warnings/formatting,
+policy/coverage, generators and **11 offline Python tests**. Fresh full Linux
+passes **3,584 / 11 skipped** with nextest 0.9.116 and isolated dummy JACK; default
+application/worklet and optional `fpga-reference` worklet Wasm builds pass.
+These compile/dummy-host gates do not qualify physical audio or browser runtime.
+
+The current partial frontend is below **8,000 LUT / 7,000 FF**, with **1,018 LUT /
+273 FF** left for remaining integration; the independent whole-design ceilings
+remain binding. The 0x000–0x14c discovery/preparation/service/recovery/diagnostic
+range is not yet joined to the new endpoint. ABI-16 ARM/reference adapters,
+CPU-control retirement, source-specific external audio/watchdog hookup, the two
+baseline fault differentials, complete admitted-service/route/platform acceptance
+and delivery remain open. No profile/ceiling change, ABI-16 deployment, physical
+authorization, push/PR or completion of Stages 4–7 follows from this milestone.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

@@ -6,8 +6,9 @@ This is the frozen implementation contract for Stages 4–5 of
 mailbox remains ABI 15 until the replacement and matching software pass their
 integration gates. Historical ABI-15 staged patches are not this interface.
 The indexed AXI-Lite register component and candidate SV/Rust definitions are now
-implemented as a verified subset; the complete public audio/media/recovery and
-service endpoint, ABI selection and matching software are still integration work.
+implemented as a verified subset, joined to the actual semantic audio/media/recovery
+candidate. The low-range discovery/preparation/service endpoint, ABI selection
+and matching software are still integration work.
 
 ## Ownership, profile and pacing
 
@@ -345,10 +346,15 @@ existing one-cycle copied-response contract and do not depend on ARM readiness.
 definitions independently of the unchanged ABI-15 legacy schema. `fifo_mmio.sv`
 implements only the new 0x150–0x32c indexed range (holes remain unmapped). It is
 not yet joined to the existing 0x000–0x14c discovery/service/recovery range or
-selected by production. Its sequence-high input must come from the qualified
-always-on retained recorder, never a live consumer command. No ABI-16 deployment,
-complete frontend area, real MMIO-to-audio/media integration or route acceptance
-is established by this component milestone.
+selected by production. Generated `fifo_mmio_pipeline_axi.sv` now joins this range
+to the actual semantic audio/media/recovery pipeline, with global transport reset,
+actual safe runtime reset/incarnation and sequence-high from the qualified
+always-on retained recorder, never a live consumer command. Actual-path tests
+cover held R/B, coherent 128-row readback, real program fences and delayed external
+retirement before reset. [Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/mmio-hookup-a07b89b06/results.json)
+include this hookup: 6,982 LUT / 6,727 FF after standard optimization. Low-range
+service and matching software remain absent; no ABI-16 deployment, complete
+frontend/whole-design or routed-timing acceptance is established.
 
 ## Retained first-fault diagnostics
 

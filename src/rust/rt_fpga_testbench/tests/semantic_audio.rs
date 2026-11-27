@@ -11,6 +11,9 @@ use rt_fpga_testbench::{
 use serde_json::json;
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "support/semantic_mmio_audio.rs"]
+mod mmio_audio;
+
 fn host(s: &mut Sim<'_>, operation: u64, bank: u64, word: u32, sequence: u64) -> u64 {
     s.model.set_all(&[
         ("host_valid", 1),

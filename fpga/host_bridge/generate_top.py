@@ -12,6 +12,7 @@ sys.path.insert(0, str(AXI))
 from generate_tops import header
 from generate_semantic import generate as semantic_audio
 from generate_semantic_media import generate as semantic_media
+from generate_semantic_mmio import generate as semantic_mmio
 
 
 def generate():
@@ -141,7 +142,8 @@ def generate():
     native_wrapper += "\n    );\nendmodule\n"
     return {"host_pipeline_axi.sv": text, "host_pipeline_bd.v": wrapper,
             "native_audio_bd.v": native_wrapper, "fifo_audio_pipeline.sv": semantic_audio(),
-            "fifo_media_audio_pipeline.sv": semantic_media()}
+            "fifo_media_audio_pipeline.sv": semantic_media(),
+            "fifo_mmio_pipeline_axi.sv": semantic_mmio()}
 
 
 if __name__ == "__main__":

@@ -55,8 +55,11 @@ def main():
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--route", action="store_true")
     parser.add_argument("--pipeline", action="store_true", help="measure the fixed-Q32 semantic/media/recovery component")
+    parser.add_argument("--mmio", action="store_true", help="include the candidate indexed MMIO hookup; requires --pipeline")
     parser.add_argument("--catalog", type=pathlib.Path)
     args = parser.parse_args()
+    if args.mmio and not args.pipeline:
+        parser.error("--mmio requires --pipeline")
     catalog = args.catalog.resolve() if args.catalog else None
     catalog_info = None
     catalog_mount = []
@@ -74,9 +77,9 @@ def main():
     profile = {"loops": 128, "states": 512, "instructions": 1024, "buffers": 512}
     scope = SCOPE
     if args.pipeline:
-        from measure_semantic_pipeline import freeze, SCOPE as pipeline_scope
-        sources, tcl, profile = freeze(source, digest, SCRIPT)
-        scope = pipeline_scope
+        from measure_semantic_pipeline import freeze
+        sources, tcl, profile = freeze(source, digest, SCRIPT, mmio=args.mmio)
+        scope = profile["scope"]
     else:
         sources = []
         for name in ["fifo_edit_kernel.sv", "fifo_group_banks.sv", "fifo_group_consumer.sv"]:
@@ -102,6 +105,7 @@ def main():
         "tcl_sha256": digest(script),
         "scope": scope,
         "pipeline": args.pipeline,
+        "indexed_mmio": args.mmio,
         "route": args.route,
     }
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")

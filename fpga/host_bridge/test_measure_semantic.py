@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -34,6 +36,42 @@ class MeasurementTests(unittest.TestCase):
                 self.assertEqual(digest(path), item["sha256"])
             for boundary in BOUNDARIES.values():
                 self.assertIn(f"get_cells -quiet {boundary}", script)
+
+    def test_indexed_mmio_profile_preserves_geometry_and_uses_disjoint_nested_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            manifest, script, profile = freeze(source, digest, SCRIPT, mmio=True)
+            probe = (source / "semantic_profile.sv").read_text()
+            self.assertTrue(profile["indexed_mmio"])
+            self.assertTrue(profile["standard_optimization"])
+            self.assertFalse(profile["low_range_service_included"])
+            self.assertIn("fifo_mmio_pipeline_axi #(", probe)
+            self.assertIn("input wire [11:0] s_axi_awaddr", probe)
+            self.assertNotIn("input wire host_valid", probe)
+            for name, value in {"LOOP_DEPTH": 128, "STATE_DEPTH": 512, "BUFFERS": 512,
+                                "VIEWS": 512, "PROGRAM_DEPTH": 1024, "AXI_DATA_WIDTH": 64,
+                                "PHYSICAL_BASE": 0x30000000, "PHYSICAL_BYTES_LIMIT": 128 * 1024 * 1024}.items():
+                self.assertEqual(profile["parameters"][name], value)
+            expected = {name: path.replace("dut/", "dut/pipeline/", 1) for name, path in BOUNDARIES.items()}
+            self.assertEqual(profile["excluded_execution_boundaries"], expected)
+            for path in [*expected.values(), "dut/mmio", "dut/pipeline/recovery", "dut/pipeline/retained_fault"]:
+                self.assertIn(f"get_cells -quiet {path}", script)
+            self.assertLess(script.index("/source/fpga/host_bridge/rtl/semantic_registers.sv"),
+                            script.index("/source/fpga/host_bridge/rtl/fifo_mmio.sv"))
+            self.assertIn("component-optimized-utilization.rpt", script)
+            self.assertIn("component-optimized-timing.rpt", script)
+            for item in manifest:
+                path = source / ("semantic_profile.sv" if item["path"] == "generated/semantic_profile.sv" else item["path"])
+                self.assertEqual(digest(path), item["sha256"])
+
+    def test_mmio_flag_requires_pipeline_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "invalid"
+            result = subprocess.run([sys.executable, str(ROOT / "fpga/host_bridge/measure_semantic.py"),
+                                     str(output), "--mmio"], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("--mmio requires --pipeline", result.stderr)
+            self.assertFalse(output.exists())
 
     def test_packed_accounting_and_failed_gate_are_explicit(self):
         result = json.loads((ARCHIVE / "results.json").read_text())
