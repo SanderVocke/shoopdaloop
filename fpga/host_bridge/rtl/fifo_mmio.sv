@@ -16,6 +16,9 @@ module fifo_mmio #(
     input wire [3:0] service_receipt,
     input wire service_request_space, service_response_pending,
     input wire [1:0] service_response_code, input wire [31:0] service_read_data,
+    output wire service_media_valid, output wire [1:0] service_media_operation,
+    output wire [31:0] service_media_word, input wire [3:0] service_media_receipt,
+    input wire [2:0] service_media_status, input wire [31:0] service_media_read_data,
     input wire trace_valid, output wire trace_ready,
     input wire [31:0] trace_epoch, input wire [63:0] trace_revision, trace_lost,
     input wire [255:0] trace_data,
@@ -77,7 +80,7 @@ module fifo_mmio #(
     reg [12:0] snapshot_cursor;
     reg [63:0] result_ack_sequence, saved_snapshot_sequence;
     reg [31:0] result_ack_epoch, saved_snapshot_epoch;
-    reg [3:0] command_receipt, result_receipt, snapshot_receipt, trace_receipt;
+    reg [3:0] command_receipt, result_receipt, snapshot_receipt, trace_receipt, media_receipt;
     reg [3:0] trace_cursor;
     wire epoch_changed=EPOCH_RESET_COUPLED==0 && epoch!=live_epoch;
     wire live=!reset && !runtime_reset && epoch!=0 && (EPOCH_RESET_COUPLED!=0 || epoch==live_epoch);
@@ -103,6 +106,12 @@ module fifo_mmio #(
     wire service_enabled=SYSTEM_REGISTERS!=0 && SERVICE_REGISTERS!=0;
     wire service_access=service_enabled && ((write_address>=REG_REQUEST_EPOCH
         && write_address<REG_REQUEST_DATA+12'd48) || write_address==REG_REQUEST_PUSH || write_address==REG_RESPONSE_POP);
+    wire media_access=service_enabled && (write_address==REG_MEDIA_TAG || write_address==REG_MEDIA_WRITE);
+    wire media_write_request=write_complete && write_format && write_current && media_access;
+    wire media_read_request=read_accept && service_enabled && s_axi_araddr==REG_MEDIA_READ;
+    assign service_media_valid=media_write_request || media_read_request;
+    assign service_media_operation=media_read_request ? 2'd2 : write_address==REG_MEDIA_TAG ? 2'd0 : 2'd1;
+    assign service_media_word=write_data;
     assign service_live=service_enabled && live;
     assign service_valid=write_complete && write_format && write_current && service_access;
     assign service_operation=write_address==REG_REQUEST_PUSH ? 2'd1 : write_address==REG_RESPONSE_POP ? 2'd2 : 2'd0;
@@ -119,7 +128,7 @@ module fifo_mmio #(
     assign s_axi_awready=!reset && !aw_pending && !s_axi_bvalid && write_owner==WRITE_NONE;
     assign s_axi_wready=!reset && !w_pending && !s_axi_bvalid && write_owner==WRITE_NONE;
     assign s_axi_arready=!reset && !s_axi_rvalid && read_owner==READ_NONE
-        && !(service_valid && service_operation==2);
+        && !(service_valid && service_operation==2) && !media_write_request;
     assign host_valid=write_complete && write_format && write_current && command_request;
     assign host_operation=write_address==REG_COMMAND_DATA ? 3'd1
         : write_address==REG_COMMAND_PUBLISH ? 3'd2 : write_address==REG_RESULT_ACK ? 3'd3 : 3'd0;
@@ -151,7 +160,7 @@ module fifo_mmio #(
             REG_ABORT, REG_RECOVERY_REQUEST: write_format=write_format && SYSTEM_REGISTERS!=0;
             REG_COMMAND_BEGIN, REG_COMMAND_PUBLISH, REG_RESULT_ACK_LOW, REG_RESULT_ACK_HIGH,
             REG_RESULT_ACK_EPOCH, REG_SNAPSHOT_ACK_LOW, REG_SNAPSHOT_ACK_HIGH, REG_SNAPSHOT_ACK_EPOCH: ;
-            default: write_format=write_format && service_access;
+            default: write_format=write_format && (service_access || media_access);
         endcase
     end
     task automatic respond_write(input [1:0] response);
@@ -162,7 +171,8 @@ module fifo_mmio #(
     endtask
     task automatic refuse_write_epoch;
         begin
-            if (write_address<REG_SEMANTIC_ID) submission_receipt<=RECEIPT_EPOCH;
+            if (media_access) begin submission_receipt<=RECEIPT_EPOCH; media_receipt<=RECEIPT_EPOCH; end
+            else if (write_address<REG_SEMANTIC_ID) submission_receipt<=RECEIPT_EPOCH;
             else if (write_address>=REG_SNAPSHOT_READY) snapshot_receipt<=RECEIPT_EPOCH;
             else if (write_address>=REG_RESULT_READY) result_receipt<=RECEIPT_EPOCH;
             else command_receipt<=RECEIPT_EPOCH;
@@ -179,6 +189,7 @@ module fifo_mmio #(
             result_ack_sequence<=0; saved_snapshot_sequence<=0; result_ack_epoch<=0; saved_snapshot_epoch<=0;
             command_receipt<=RECEIPT_UNAVAILABLE; result_receipt<=RECEIPT_UNAVAILABLE;
             snapshot_receipt<=RECEIPT_UNAVAILABLE; trace_receipt<=RECEIPT_UNAVAILABLE; trace_cursor<=0;
+            media_receipt<=RECEIPT_UNAVAILABLE;
         end else begin
             live_epoch<=epoch;
             if (SYSTEM_REGISTERS!=0 && live && quantum_done) begin
@@ -306,6 +317,11 @@ module fifo_mmio #(
                     REG_SNAPSHOT_SKIPPED_LOW: s_axi_rdata<=snapshot_skipped[31:0];
                     REG_SNAPSHOT_SKIPPED_HIGH: s_axi_rdata<=snapshot_skipped[63:32];
                     REG_SNAPSHOT_STATUS: s_axi_rdata<={31'b0,snapshot_sequence_exhausted};
+                    REG_MEDIA_STATUS: if (service_enabled) s_axi_rdata<={29'd0,service_media_status}; else s_axi_rresp<=SLVERR;
+                    REG_MEDIA_RECEIPT: if (service_enabled) s_axi_rdata<={28'd0,media_receipt}; else s_axi_rresp<=SLVERR;
+                    REG_MEDIA_READ: if (service_enabled) begin
+                        s_axi_rdata<=service_media_read_data; media_receipt<=service_media_receipt;
+                    end else s_axi_rresp<=SLVERR;
                     REG_TRACE_STATUS: if (trace_enabled) s_axi_rdata<={31'd0,trace_available}; else s_axi_rresp<=SLVERR;
                     REG_TRACE_LOST_LOW: if (trace_enabled) s_axi_rdata<=trace_lost[31:0]; else s_axi_rresp<=SLVERR;
                     REG_TRACE_LOST_HIGH: if (trace_enabled) s_axi_rdata<=trace_lost[63:32]; else s_axi_rresp<=SLVERR;
@@ -344,6 +360,8 @@ module fifo_mmio #(
                         : abort_access || recovery_available ? RECEIPT_ACCEPTED : RECEIPT_UNAVAILABLE;
                 end else if (service_access) begin
                     respond_write(OKAY); submission_receipt<=service_receipt;
+                end else if (media_access) begin
+                    respond_write(OKAY); submission_receipt<=service_media_receipt; media_receipt<=service_media_receipt;
                 end else if (command_request) begin
                     if (host_ready) begin
                         aw_pending<=0; w_pending<=0;
@@ -377,7 +395,7 @@ module fifo_mmio #(
             end
             if (!trace_available) trace_cursor<=0;
             if (runtime_reset || epoch_changed) begin
-                trace_cursor<=0; trace_receipt<=RECEIPT_EPOCH;
+                trace_cursor<=0; trace_receipt<=RECEIPT_EPOCH; media_receipt<=RECEIPT_EPOCH;
                 completed_quanta<=0; peak_quantum_cycles<=0;
                 aw_current<=0; w_current<=0; read_current<=0; read_advance<=0;
                 command_bank<=0; result_bank<=0; snapshot_bank<=0; result_cursor<=0; snapshot_cursor<=0;

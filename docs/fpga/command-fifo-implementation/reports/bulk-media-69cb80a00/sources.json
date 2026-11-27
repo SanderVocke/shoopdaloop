@@ -1,0 +1,19 @@
+{
+  "fpga/host_bridge/generate_semantic_mmio.py": "14b45435b331373cc462cf256d42ae2eb93ef61461ae387746903812dbbfeb76",
+  "fpga/host_bridge/measure_semantic_pipeline.py": "c95b1c58641049f64295d5063cd6d64b85a65ac9a44d019b7eb873fe86190238",
+  "fpga/host_bridge/rtl/fifo_config_service.sv": "76005bed189c2db8fc20ddd291a6957d6adf20b2fdf5a14c9369b4da1f0e2f46",
+  "fpga/host_bridge/rtl/fifo_mmio.sv": "16c23fd4ef7f880c8a3be8b09d71eed80ddf2f7d536748688a55c4354f6e2343",
+  "fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv": "85b65abaa9ee20b291fefde9d7bea9f45fa92c32e364d129b4f4d78fd6ae1fb0",
+  "fpga/host_bridge/rtl/semantic_registers.sv": "e28f52905d3f03bd41b03db26e4752b5d104e6727985893a81ece9ca50f29b68",
+  "fpga/host_bridge/semantic_registers.json": "20450c291b42af5e652b90d7b9f39faa10d74dae48cc5d7ebb5b7416507b0625",
+  "fpga/host_bridge/test_measure_semantic.py": "b39e1b2efdb7800bfd7c9d8685600f20d0591c8cad8fe6a168ac3d6b21980750",
+  "fpga/host_bridge/test_semantic_mmio.py": "7ce7a36f84778a90a18a675ee57f9d24c18e41604daba98c97b6d6695b7383c9",
+  "fpga/host_bridge/test_semantic_registers.py": "d393acecb42b76e0982dcab2cfef67530da29cea55a88480206aed4dbf7248e6",
+  "src/rust/rt_fpga_rtl/src/host/semantic_registers.rs": "d7cb18619b20e89c78b90db2ecd41a881bd1055fd418aab4f8741265196ff5aa",
+  "src/rust/rt_fpga_rtl/tests/config_service.rs": "84198dd8b692143bc6227b7641fe4e346164767fc4c7e41f889dde1b087e764f",
+  "src/rust/rt_fpga_rtl/tests/support/config_media.rs": "878b96a6817f6be8d9591926a0b9bdb24143faa336e14e31a3cc50fddac3498e",
+  "src/rust/rt_fpga_rtl/tests/support/semantic_mmio_probe.sv": "a6b38c9615d2c6732222dad41127d50ed218b2e6c51d4f68b2c35467d63156a2",
+  "src/rust/rt_fpga_rtl/tests/support/semantic_trace.rs": "ca999220e734f08d51c06c0bc75048000e4db9ec02f7c435859b79121e82bdb2",
+  "src/rust/rt_fpga_testbench/tests/support/semantic_mmio_audio.rs": "ce9e8098425b0e46b665d8ca638b2ae12bd2c151416f97c7c857b70b109ba1c0",
+  "src/rust/rt_fpga_testbench/tests/support/semantic_mmio_media.rs": "812509688355a0d20174f8ec247cb86832de9138721491e626953d28696436ba"
+}

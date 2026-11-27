@@ -18,6 +18,10 @@ class SemanticRegistersTests(unittest.TestCase):
         self.assertEqual(spec["registers"]["COMMAND_PUBLISH"], "0x210")
         self.assertEqual(spec["registers"]["RESULT_DATA"], "0x28c")
         self.assertEqual(spec["registers"]["SNAPSHOT_DATA"], "0x30c")
+        self.assertEqual(spec["constants"]["SERVICE_MEDIA_COMMAND"], 17)
+        for name, address in {"MEDIA_STATUS": "0x400", "MEDIA_TAG": "0x404", "MEDIA_WRITE": "0x408",
+                              "MEDIA_READ": "0x40c", "MEDIA_RECEIPT": "0x410"}.items():
+            self.assertEqual(spec["registers"][name], address)
         for path, lines in semantic_definitions():
             self.assertEqual(path.read_text(), "\n".join(lines) + "\n")
 
@@ -47,6 +51,9 @@ class SemanticRegistersTests(unittest.TestCase):
             ("registers", "COMMAND_DATA", "0x0b4"),
             ("registers", "COMMAND_DATA", "0x4b8"),
             ("registers", "TRACE_DATA", "0xfd8"),
+            ("registers", "MEDIA_WRITE", "0x40c"),
+            ("registers", "MEDIA_STATUS", "0x30c"),
+            ("registers", "MEDIA_READ", "0x1000"),
             ("constants", "TRACE_WORDS", 0),
             ("constants", "TRACE_WORDS", 12),
             ("constants", "PAYLOAD_WORDS", 0),

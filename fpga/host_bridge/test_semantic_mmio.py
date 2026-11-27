@@ -14,7 +14,7 @@ class SemanticMmioTests(unittest.TestCase):
         self.assertEqual((HERE / "rtl/fifo_mmio_pipeline_axi.sv").read_text(), source)
         self.assertEqual(host_tops()["fifo_mmio_pipeline_axi.sv"], source)
 
-    def test_transport_owns_packet_config_and_clear_controls_but_sample_data_remains_integration_only(self):
+    def test_transport_owns_packet_configuration_and_all_private_media_controls(self):
         _, ports = header(generate())
         public = {name for _, name in ports}
         _, mmio = header((HERE / "rtl/fifo_mmio.sv").read_text())
@@ -24,12 +24,13 @@ class SemanticMmioTests(unittest.TestCase):
             elif declaration.startswith("output"):
                 self.assertNotIn(name, public)
         for name in ["clk", "reset", "epoch", "runtime_reset", "runtime_epoch",
-                     "store_write_valid", "store_read_ready", "audio_xruns", "audio_fault", "watchdog_fault", "first_fault_sequence"]:
+                     "audio_xruns", "audio_fault", "watchdog_fault", "first_fault_sequence"]:
             self.assertIn(name, public)
         _, core = header((AXI / "rtl/fifo_recovery_pipeline_axi.sv").read_text())
         private = {n for p, n in core if p.startswith("input") and
-                   (n.startswith(("cfg_", "audio_cfg_", "store_cfg_", "store_cmd_")) or n=="store_response_ready")}
-        self.assertEqual(len(private), 23)
+                   (n.startswith(("cfg_", "audio_cfg_", "store_cfg_", "store_cmd_"))
+                    or n in {"store_response_ready", "store_write_valid", "store_write_data", "store_read_ready"})}
+        self.assertEqual(len(private), 26)
         self.assertFalse(private & public)
 
     def test_critical_reset_epoch_retention_and_geometry_connections_are_explicit(self):

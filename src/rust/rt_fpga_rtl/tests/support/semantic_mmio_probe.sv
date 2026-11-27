@@ -51,6 +51,8 @@ module semantic_mmio_probe #(
         .service_live(), .service_valid(), .service_operation(), .service_index(), .service_read_index(), .service_word(),
         .service_receipt(4'd0), .service_request_space(1'b0), .service_response_pending(1'b0),
         .service_response_code(2'd0), .service_read_data(32'd0),
+        .service_media_valid(), .service_media_operation(), .service_media_word(),
+        .service_media_receipt(4'd5), .service_media_status(3'd0), .service_media_read_data(32'd0),
         .quantum_done(1'b0), .quantum_cycles(32'd0), .audio_xruns(32'd0),
         .first_fault_epoch(32'd0), .first_fault_cause(32'd0), .first_fault_op(32'd0),
         .first_fault_cycles(32'd0), .first_fault_control_cycles(32'd0), .first_fault_detail(32'd0),

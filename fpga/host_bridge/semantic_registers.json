@@ -16,6 +16,7 @@
     "SERVICE_AUDIO_CONFIG": 2,
     "SERVICE_STORE_CONFIG": 3,
     "SERVICE_CLEAR_VIEW": 4,
+    "SERVICE_MEDIA_COMMAND": 17,
     "TRACE_WORDS": 11
   },
   "registers": {
@@ -111,6 +112,11 @@
     "SNAPSHOT_SKIPPED_LOW": "0x324",
     "SNAPSHOT_SKIPPED_HIGH": "0x328",
     "SNAPSHOT_STATUS": "0x32c",
+    "MEDIA_STATUS": "0x400",
+    "MEDIA_TAG": "0x404",
+    "MEDIA_WRITE": "0x408",
+    "MEDIA_READ": "0x40c",
+    "MEDIA_RECEIPT": "0x410",
     "TRACE_STATUS": "0x480",
     "TRACE_LOST_LOW": "0x484",
     "TRACE_LOST_HIGH": "0x488",

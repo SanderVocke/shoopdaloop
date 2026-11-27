@@ -2,6 +2,9 @@
 use rt_fpga_rtl::{bits::Bits, model::Design, sim::Sim};
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "support/config_media.rs"]
+mod media;
+
 fn run(test: impl FnOnce(&mut Sim<'_>)) {
     let root = rt_fpga_rtl::root();
     let model = Design::new(
@@ -23,6 +26,13 @@ fn reset(s: &mut Sim<'_>) {
         ("config_ready", 0),
         ("config_response_valid", 0),
         ("config_response_error", 0),
+        ("media_valid", 0),
+        ("media_operation", 0),
+        ("media_word", 0),
+        ("config_media_write_ready", 0),
+        ("config_media_read_valid", 0),
+        ("config_media_result_empty", 0),
+        ("config_media_result_view", 0),
     ]);
     s.idle(2);
     s.model.set("live", 1);

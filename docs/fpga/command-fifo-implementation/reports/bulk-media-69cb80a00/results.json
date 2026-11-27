@@ -1,0 +1,94 @@
+{
+  "outcome": "PARTIAL_PUBLIC_BULK_MEDIA_FUNCTIONAL_GATES_PASSED_NO_RESOURCE_MEASUREMENT",
+  "source_base": "69cb80a008e7554063b6e6bf484de92cafbe09e7",
+  "source_manifest": "sources.json",
+  "scope": "Candidate ABI 16 public media preparation; lifecycle/adapters and matched software remain pending; production ABI 15",
+  "interface": {
+    "service_opcode": 17,
+    "backend_opcodes": "CREATE 0, SLICE 1, CLEAR 2, REMOVE 3, RECLAIM 4, APPEND 5, READ 6, FENCE 7",
+    "payload": "backend opcode; u64 view/start/length; u32 count; four reserved-zero words",
+    "append_read_word_limit": 32,
+    "complete_descriptor_before_loader_grant": true,
+    "working_records": 1,
+    "working_bits_before_after": [
+      160,
+      224
+    ],
+    "slot_ram_u32_words": 16,
+    "phases": 7,
+    "reply_copy_clocks": 5,
+    "additional_banks_owners_dispatchers_publication_counters": 0,
+    "additional_local_authorization": "one bit, comparing existing reserved request tag",
+    "registers": {
+      "status": "0x400",
+      "tag": "0x404",
+      "write": "0x408",
+      "read": "0x40c",
+      "receipt": "0x410"
+    },
+    "append": "existing private bank fills completely before acquiring backend; ARM cannot hold the accepted operation",
+    "read": "complete successful private result only; accepted AR copies global RDATA and consumes independently of RREADY",
+    "pop": "receipt 7 while data remains; retired error prefixes discard locally; validation refusal cannot drain",
+    "response": "backend result view, empty and successful read count; unused/error words zero",
+    "reset": "existing live/half authority and safe retirement; copied global R/B retained; local tag authority flushed",
+    "fence": "loader FENCE never completes the consumer's separately qualified handoff",
+    "profile": "26 private configuration/media inputs plus trace-ready; only three extra declaration/binding pairs removed; other probe bytes/geometry unchanged",
+    "software_contract": "serialize descriptor/tag/body/result/POP; incarnation/callback checks; no unresolved tag reuse/uncertain replay; trusted unused/inactive/retired ownership"
+  },
+  "verification": {
+    "codec_tests": 8,
+    "indexed_mmio_tests": 8,
+    "actual_mmio_tests": 11,
+    "affected_rust_tests": 215,
+    "directed_rust_tests": 62,
+    "selected_rust_total": 277,
+    "kernel_differential_cases_per_source": 3970,
+    "kernel_sources": 2,
+    "python_tests": 12,
+    "warning_denying_workspace_build_format_policy_coverage_generators": "passed",
+    "new_codec_tests": 4,
+    "codec_coverage": "all eight full-width descriptors; tag/data gates; opcode/alias/reserved/count refusal; error-prefix discard; nineteen halt positions; refused tag cannot redirect unrelated configuration RAM address",
+    "new_actual_tests": 2,
+    "actual_coverage": "real loader/store/cache/DMA/64-bit AXI; 14 unpublished header and 32 partial body prefixes; exact silent quanta; held publication/data B and unread replies/data; zero counts; malformed nonconsumption; all media operations; dirty fence stalled at real B; independent 32-word backing check; copied final R across POP/reuse; nonempty CLEAR_VIEW; both stale media half orders through real retirement/epoch reset",
+    "actual_scope_limit": "new bulk fixtures use empty programs/silent output; retained actual JP/playback/capture regressions also pass, not all-admitted or physical proof",
+    "linux": {
+      "passed": 3584,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 405.549,
+      "nextest": "0.9.116",
+      "audio": "owned isolated dummy JACK 48 kHz/128 frames"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "builds_and_tests_serialized": true
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "latest_pre_clear_view_trace_and_bulk_measurement": "../config-ready-b1c37e8fd/results.json",
+    "prechange_frontend_lut": 7943,
+    "prechange_frontend_ff": 6943,
+    "prechange_optimized_unrouted_wns_ns": -9.754,
+    "final_lut_ff_budgets_agreed": false,
+    "other_resource_profile_cycle_safety_timing_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stages5_to7_complete": false,
+    "complete_preparation_lifecycle_adapters": false,
+    "matching_abi16_software": false,
+    "cpu_control_retired": false,
+    "protected_whole_design": false,
+    "all_admitted_cycle_proof": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization": false,
+    "browser_runtime_or_physical_proof": false
+  },
+  "reproduce_narrow": [
+    "nix develop --command cargo test -p rt_fpga_rtl --features sim --test config_service --test semantic_mmio -- --test-threads=1",
+    "nix develop --command cargo test -p rt_fpga_testbench --features sim --test semantic_audio mmio_audio -- --test-threads=1"
+  ],
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage4-bulk-"
+}

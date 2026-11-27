@@ -16,6 +16,8 @@ use shoop_wasm_test_support::shoop_test;
 mod clear;
 #[path = "semantic_mmio_config.rs"]
 mod configuration;
+#[path = "semantic_mmio_media.rs"]
+mod media;
 #[path = "semantic_mmio_safety.rs"]
 mod safety;
 #[path = "semantic_mmio_trace.rs"]

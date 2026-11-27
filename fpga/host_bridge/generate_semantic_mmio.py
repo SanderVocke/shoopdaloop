@@ -24,7 +24,8 @@ def generate():
     local = {"abort_request"} | {n for _, n in mmio if n.startswith("service_")}
     private = {"pipeline_fault_cause"} | {
         n for p, n in ports if p.startswith("input") and
-        (n.startswith(("cfg_", "audio_cfg_", "store_cfg_", "store_cmd_")) or n=="store_response_ready")}
+        (n.startswith(("cfg_", "audio_cfg_", "store_cfg_", "store_cmd_"))
+         or n in {"store_response_ready", "store_write_valid", "store_write_data", "store_read_ready"})}
     for declaration, name in mmio:
         if name.startswith("s_axi_") or name in external or name in expressions or name in local:
             continue
@@ -65,10 +66,17 @@ def generate():
                                   ("response_error", "response_error", "(store_error_code!=0)")]:
         result += f"    assign config_{target}=config_operation==1 ? cfg_{suffix}\n"
         result += f"        : config_operation==2 ? audio_cfg_{suffix} : config_operation==3 ? store_cfg_{suffix} : {clear};\n"
-    result += "    assign store_cmd_valid=config_valid && config_operation==3'd4;\n"
-    result += "    assign store_cmd_opcode=4'd2;\n    assign store_cmd_view=config_data[63:0];\n"
-    result += "    assign store_cmd_start=64'd0;\n    assign store_cmd_length=64'd0;\n    assign store_cmd_count=32'd0;\n"
-    result += "    assign store_response_ready=config_response_ready && config_operation==3'd4;\n"
+    result += "    assign store_cmd_valid=config_valid && (config_operation==3'd4 || config_operation==3'd5);\n"
+    result += "    assign store_cmd_opcode=config_operation==4 ? 4'd2 : {1'b0,config_space};\n"
+    result += "    assign store_cmd_view=config_media_data[63:0];\n"
+    result += "    assign store_cmd_start=config_operation==4 ? 64'd0 : config_media_data[127:64];\n"
+    result += "    assign store_cmd_length=config_operation==4 ? 64'd0 : config_media_data[191:128];\n"
+    result += "    assign store_cmd_count=config_operation==4 ? 32'd0 : config_media_data[223:192];\n"
+    result += "    assign store_response_ready=config_response_ready && (config_operation==3'd4 || config_operation==3'd5);\n"
+    result += "    assign store_write_valid=config_media_write_valid;\n    assign store_write_data=config_media_write_data;\n"
+    result += "    assign config_media_write_ready=store_write_ready;\n    assign config_media_read_valid=store_read_valid;\n"
+    result += "    assign store_read_ready=config_media_read_ready;\n    assign config_media_read_data=store_read_data;\n"
+    result += "    assign config_media_result_view=store_result_view;\n    assign config_media_result_empty=store_result_empty;\n"
     result += "    assign config_core_data=cfg_read_data;\n"
     result += "    assign config_audio_data=audio_cfg_read_data;\n"
     result += "    assign config_store_data=store_cfg_read_data;\n"

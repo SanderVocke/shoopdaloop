@@ -106,11 +106,8 @@ module fifo_mmio_pipeline_axi #(
     output wire [7:0] store_error_code,
     output wire [31:0] store_result_view,
     output wire store_result_empty,
-    input wire store_write_valid,
     output wire store_write_ready,
-    input wire [31:0] store_write_data,
     output wire store_read_valid,
-    input wire store_read_ready,
     output wire [31:0] store_read_data,
     output wire store_cfg_ready,
     output wire store_cfg_response_valid,
@@ -271,6 +268,9 @@ module fifo_mmio_pipeline_axi #(
     wire [63:0] store_cmd_start;
     wire [63:0] store_cmd_length;
     wire [31:0] store_cmd_count;
+    wire store_write_valid;
+    wire [31:0] store_write_data;
+    wire store_read_ready;
     wire store_cfg_valid;
     wire store_cfg_write;
     wire [2:0] store_cfg_space;
@@ -311,6 +311,12 @@ module fifo_mmio_pipeline_axi #(
     wire service_response_pending;
     wire [1:0] service_response_code;
     wire [31:0] service_read_data;
+    wire service_media_valid;
+    wire [1:0] service_media_operation;
+    wire [31:0] service_media_word;
+    wire [3:0] service_media_receipt;
+    wire [2:0] service_media_status;
+    wire [31:0] service_media_read_data;
     wire config_valid;
     wire config_ready;
     wire [2:0] config_operation;
@@ -318,6 +324,15 @@ module fifo_mmio_pipeline_axi #(
     wire config_write;
     wire [31:0] config_address;
     wire [159:0] config_data;
+    wire [223:0] config_media_data;
+    wire config_media_write_valid;
+    wire config_media_write_ready;
+    wire [31:0] config_media_write_data;
+    wire config_media_read_valid;
+    wire config_media_read_ready;
+    wire [31:0] config_media_read_data;
+    wire [31:0] config_media_result_view;
+    wire config_media_result_empty;
     wire config_response_valid;
     wire config_response_error;
     wire config_response_ready;
@@ -348,13 +363,21 @@ module fifo_mmio_pipeline_axi #(
         : config_operation==2 ? audio_cfg_response_valid : config_operation==3 ? store_cfg_response_valid : store_done;
     assign config_response_error=config_operation==1 ? cfg_response_error
         : config_operation==2 ? audio_cfg_response_error : config_operation==3 ? store_cfg_response_error : (store_error_code!=0);
-    assign store_cmd_valid=config_valid && config_operation==3'd4;
-    assign store_cmd_opcode=4'd2;
-    assign store_cmd_view=config_data[63:0];
-    assign store_cmd_start=64'd0;
-    assign store_cmd_length=64'd0;
-    assign store_cmd_count=32'd0;
-    assign store_response_ready=config_response_ready && config_operation==3'd4;
+    assign store_cmd_valid=config_valid && (config_operation==3'd4 || config_operation==3'd5);
+    assign store_cmd_opcode=config_operation==4 ? 4'd2 : {1'b0,config_space};
+    assign store_cmd_view=config_media_data[63:0];
+    assign store_cmd_start=config_operation==4 ? 64'd0 : config_media_data[127:64];
+    assign store_cmd_length=config_operation==4 ? 64'd0 : config_media_data[191:128];
+    assign store_cmd_count=config_operation==4 ? 32'd0 : config_media_data[223:192];
+    assign store_response_ready=config_response_ready && (config_operation==3'd4 || config_operation==3'd5);
+    assign store_write_valid=config_media_write_valid;
+    assign store_write_data=config_media_write_data;
+    assign config_media_write_ready=store_write_ready;
+    assign config_media_read_valid=store_read_valid;
+    assign store_read_ready=config_media_read_ready;
+    assign config_media_read_data=store_read_data;
+    assign config_media_result_view=store_result_view;
+    assign config_media_result_empty=store_result_empty;
     assign config_core_data=cfg_read_data;
     assign config_audio_data=audio_cfg_read_data;
     assign config_store_data=store_cfg_read_data;
@@ -392,6 +415,12 @@ module fifo_mmio_pipeline_axi #(
         .response_code(service_response_code),
         .read_index(service_read_index),
         .read_data(service_read_data),
+        .media_valid(service_media_valid),
+        .media_operation(service_media_operation),
+        .media_word(service_media_word),
+        .media_receipt(service_media_receipt),
+        .media_status(service_media_status),
+        .media_read_data(service_media_read_data),
         .clk(clk),
         .epoch(runtime_epoch),
         .halt(pipeline_fault || audio_fault || watchdog_fault || abort_request || recovery_request || faulted || diagnostic_valid || (recovery_state!=0 && recovery_state!=3)), .*);

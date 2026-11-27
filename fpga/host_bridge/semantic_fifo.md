@@ -8,8 +8,8 @@ integration gates. Historical ABI-15 staged patches are not this interface.
 Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
 ABORT and qualified hardware fault sidebands are implemented as a verified subset,
 joined to the actual semantic audio/media candidate. Public CORE/AUDIO/STORE
-configuration, CLEAR_VIEW and optional-trace subsets are now implemented. Complete
-preparation/media/lifecycle service, external physical audio/watchdog hookup, ABI selection
+configuration, CLEAR_VIEW, bulk-media and optional-trace subsets are now implemented.
+Complete preparation/lifecycle service, external physical audio/watchdog hookup, ABI selection
 and matching software remain integration work.
 
 ## Ownership, profile and pacing
@@ -356,7 +356,7 @@ startup. Copied AXI R/B remain owned by global transport reset, not this refinem
 `semantic_registers.json` generates candidate SV/Rust definitions independently
 of the unchanged ABI-15 legacy schema/operations. `fifo_mmio.sv` implements the
 0x150–0x32c indexed range, optional lower subset and optional trace range at
-0x480–0x4b8; holes remain unmapped.
+0x480–0x4b8 and bulk-media aperture at 0x400–0x410; holes remain unmapped.
 Generated `fifo_mmio_pipeline_axi.sv` enables that subset on the actual semantic
 audio/media/recovery pipeline. Transport uses global reset; local authority uses
 actual safe runtime reset/incarnation. Both fault-sequence words and all retained
@@ -387,7 +387,7 @@ The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
 approved profile capacity. The preparation subset below owns configuration and
 media-command inputs privately. Optional trace uses the separate reader below;
-complete preparation/media/lifecycle service remains required, not a completed
+complete preparation/lifecycle service remains required, not a completed
 public endpoint.
 
 ### Preparation-service subset
@@ -413,8 +413,9 @@ remains trusted inactive-program/unused-lease preparation, never an ARM live-sta
 planner. The Stage 5 trusted API must enforce those ownership restrictions.
 
 CLEAR_VIEW validates its complete u64 view without truncation, with actual geometry
-checks in the existing media owner. It uses the same 160-bit working record and
-reserved result slot, not another dispatcher or backend controller. Completion is
+checks in the existing media owner. It uses the same working record (224 bits
+after adding bulk descriptors) and reserved result slot, not another dispatcher
+or backend controller. Completion is
 consumed locally without ARM readiness; every response data word is zero. A held
 reader retains only this service slot, not the media owner. This is trusted
 unused-lease preparation, never permission to clear a continuing allocation or
@@ -451,12 +452,69 @@ Matched software must serialize this lane, check incarnation around publication/
 response/POP, cancel stale software callbacks on reset and never replay uncertain
 operations or reuse their tags while authority is unresolved.
 
-Only 1/2/3/4 are implemented at this milestone. Media command/response-ready
-controls are private to the service; sample-data interfaces remain integration
-seams pending the complete public bulk service. Other legitimate preparation/media/
-lifecycle operations and full private 32-word staging still belong to the approved
-final scope; temporary subset refusals do not retire them. Old CPU live-control/staged-patch operations
-must not be imported to supply those missing services.
+Configuration/CLEAR 1/2/3/4 and media 17 below are implemented. Media command,
+response and sample-data controls are private to this service. Lifecycle including
+ENABLE_AUDIO 9, external adapters and matched trusted software remain required;
+temporary refusals do not retire them. Do not import old CPU live-control/staged-
+patch operations to supply missing services.
+
+### Bulk-media preparation service
+
+Service **17 MEDIA_COMMAND** uses the same reserved slot and sequential publication.
+It does not reuse retired service opcodes 5–8 or 10–16. Payload fields are:
+
+| Words | Meaning |
+| --- | --- |
+| 0 | Full backend opcode: CREATE 0, SLICE 1, CLEAR 2, REMOVE 3, RECLAIM 4, APPEND 5, READ 6, FENCE 7 |
+| 1–2 | u64 view |
+| 3–4 | u64 start |
+| 5–6 | u64 length |
+| 7 | u32 count; at most 32 for APPEND/READ |
+| 8–11 | Reserved zero |
+
+Validate full opcode/count/reserved bits before grant, and preserve all 64-bit
+fields until native geometry checks. The one working record is 224 bits for these
+seven descriptor words, not a second state record. Configuration/CLEAR formats,
+16-u32 slot RAM and five-clock reply copy remain unchanged. Successful reply words
+0/1/2 are backend result view, empty (0/1), and successful READ count (zero if
+empty); all other words are zero. All error data stays zero. Code 3 means backend
+error/uncertainty, never rollback, cancellation or a fence. The trusted Stage 5 API
+must enforce inactive/unused/retired lease ownership, not initialize continuing
+state or use these reads to resolve live semantic commands.
+
+| Address | Meaning |
+| --- | --- |
+| 0x400 MEDIA_STATUS | Bit 0 authorized write-ready, bit 1 authorized read-ready, bit 2 current media tag authorized |
+| 0x404 MEDIA_TAG | Write current reserved u32 request tag to authorize its data lane |
+| 0x408 MEDIA_WRITE | Write one complete u32 APPEND word |
+| 0x40c MEDIA_READ | Read one complete copied u32 READ word |
+| 0x410 MEDIA_RECEIPT | Last data-lane receipt; writes also update SUBMISSION_RESULT |
+
+One authorization bit compares the slot's existing tag, not another tag record.
+Tag writes may refuse unavailable 5 while descriptor validation is pending; query/
+retry that local authorization, never replay uncertain request publication. Wrong
+tag or unauthorised data gives 6; inactive/unready data gives 5; halt gives 3 and
+stale incarnation/halves gives 2. Expected refusals use OKAY/zero data. Malformed/
+unaligned/partial-strobe accesses use SLVERR without consuming a word. The default
+standalone service remains disabled/unmapped; the actual wrapper enables it.
+
+APPEND can reserve private fill after its complete validated descriptor, but the
+existing loader cannot acquire the store before all count words are local. READ
+exposes data only after the whole successful result is copied privately. Accepted
+AR copies current data into global RDATA and consumes locally; RREADY never holds
+the source or backend. POP refuses 7 while private READ data remains. Retired
+backend-error prefixes discard locally rather than leaking successful words;
+validation refusal cannot drain another result. Unread data/replies retain only
+this preparation lane, not store/JP/audio service. No second 32-word bank, owner,
+dispatcher or publication counter is added.
+
+Serialize descriptor/tag/body/result/POP in software, check incarnation and cancel
+stale callbacks; do not reuse unresolved tags or replay uncertain transfers. Reset
+clears local authorization while accepted global R/B survive; old halves cannot
+consume/acquire the new incarnation. Same-edge halt masks data/commands. A loader
+FENCE completes its own cache/DMA operation, never the consumer's independently
+qualified program-handoff fence or application Ready. Requests/data/polls/POP
+cannot advance F, acknowledge semantic/snapshot reservations or pace rendering.
 
 ### Optional trace reader
 

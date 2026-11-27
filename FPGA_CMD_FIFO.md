@@ -20,12 +20,12 @@ retained diagnostics/public recovery/ABORT and qualified audio/watchdog sideband
 on the actual semantic/audio/media pipeline, with the CORE/AUDIO/STORE public
 configuration subset. It is **7,943 LUT / 6,943 FF after standard optimization**,
 **57 LUT / 57 FF below the previous 8,000/7,000 targets**. Current functional source
-also joins public CLEAR_VIEW through the existing private media loader/owner
+also joins public CLEAR_VIEW/bulk-media through the existing private loader/owner
 and a complete optional-trace reader through the existing immutable trace slot.
-These small functional extensions have no new resource/timing measurement. The
-figures above predate CLEAR_VIEW/trace and are not current-source fit.
-That narrow margin no longer blocks functional integration of the remaining
-bulk-media/lifecycle services and adapters. The latest readiness refinement
+These functional extensions have no new resource/timing measurement. The figures
+above predate CLEAR_VIEW/trace/bulk-media and are not current-source fit.
+That narrow margin no longer blocks functional integration of remaining
+preparation/lifecycle services and adapters. The latest readiness refinement
 improves worst unrouted WNS to **−9.754 ns**, still failing; aggregate setup
 violations worsen. Production still selects ABI 15; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
@@ -381,8 +381,8 @@ timing/physical qualification, final-head CI or delivery.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
 
-**Current priority:** complete the remaining public preparation/media/
-lifecycle/trace services, adapters and hostile lifecycle correctness coverage,
+**Current priority:** complete the remaining public preparation/lifecycle
+services, adapters and hostile lifecycle correctness coverage,
 then the matched Stage 5 transports and CPU-control retirement. Do not insert
 further area-only milestones ahead of required functionality solely because the
 previous LUT/FF targets have little headroom. Keep resource evidence honest;
@@ -1586,6 +1586,63 @@ CPU-control retirement, full admitted-envelope/whole-design/route/platform/fault
 parity gates and delivery remain open. ABI 15 stays selected; Stages 4–7 remain
 incomplete. No physical authorization, push/PR/deployment or whole-goal completion
 follows from this functional subset.
+
+**Public bulk-media functional milestone:** candidate service 17 now carries
+backend opcode 0–7, full u64 view/start/length, u32 count and four reserved-zero
+words in the existing twelve-word payload. Retired CPU opcodes remain refused.
+The same single working record grows **160→224 bits** for the complete descriptor;
+configuration/CLEAR wire formats, 16-u32 slot RAM, seven phases and five-clock
+reply copying stay unchanged. No second dispatcher, operation owner, payload bank
+or publication counter is added. Full opcode/reserved/count checks precede grant;
+APPEND/READ count is at most 32. Existing backend geometry checks and the Stage 5
+trusted unused-lease API retain ownership responsibility.
+
+- [x] Join all public preparation media operations 0–7 through service 17 and
+  tag-qualified transfers through the existing private 32-word bank. This does
+  not complete lifecycle/adapters, matched software or Stage 4 acceptance.
+
+The aperture at 0x400–0x410 provides status, tag authorization, write/read data
+and receipt. One authorization bit compares the existing reserved slot tag, not a
+new tag record. An APPEND can occupy private fill after its validated descriptor,
+but cannot acquire the store before its whole body is local. READ becomes visible
+only after complete successful backend work; accepted AR copies globally and
+consumes locally, never on RREADY. Unread data retains only this preparation lane;
+POP refuses 7 while data remains. Retired error-prefix data is discarded locally,
+never published as success; validation refusal cannot drain another result.
+Generic replies contain backend view/empty/read count and zero padding; errors
+remain all-zero data/uncertainty. Runtime reset/old halves and same-edge halt reuse
+existing authority/masks. A loader FENCE cannot complete the consumer's separately
+qualified program-handoff fence. Service/data/polls/POP never advance F.
+
+Four new codec cases cover all eight full-width descriptors, tag/data gates,
+malformed/reserved/alias/count refusal, error-prefix discard, nineteen halt
+positions and a refused media tag not redirecting an unrelated live configuration
+address. Two new actual loader/store/cache/DMA/64-bit-AXI cases cover all fourteen
+unpublished header and thirty-two partial body prefixes with exact silent quanta,
+held publication/data B, unread replies/data, malformed-access nonconsumption,
+zero counts, all backend operations, a real stalled dirty fence and all 32 words in
+independent backing memory. Copied final R survives POP/reuse with different new
+source data. Nonempty CLEAR_VIEW is now tested. Both old AW/W-half orders retain
+copied bulk R while actual DDR retirement precedes epoch 1→2/reset; stale data
+cannot acquire the fresh incarnation. These are not authored-JP/all-admitted or
+physical qualification; the existing actual JP/playback/capture cases also pass.
+
+`stage4-bulk-milestone` passes **215 affected + 62 directed = 277 Rust tests**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage/generators and
+**12 Python tests**. Eight codec/eight indexed/eleven actual-MMIO cases pass.
+Full Linux passes **3,584 / 11 skipped**, **405.549 s**, pinned nextest 0.9.116 and
+owned isolated dummy JACK; default and optional-reference Wasm builds pass.
+Builds/tests remain serialized. The strict profile guard permits only three more
+sample-data input declarations/bindings to become private: 26 configuration/media
+inputs plus trace-ready, with all other probe bytes/geometry unchanged.
+[Functional evidence](docs/fpga/command-fifo-implementation/reports/bulk-media-69cb80a00/results.json)
+records no new synthesis/route, current-source fit or admitted-cycle acceptance.
+
+Lifecycle (including ENABLE_AUDIO 9), external audio/watchdog adapters and complete
+hostile lifecycle coverage, matched software/CPU-control retirement, full envelope/
+whole-design/route/platform/fault-parity gates and delivery remain open. Production
+remains ABI 15; Stages 4–7 remain incomplete. No new physical authorization,
+push/PR/deployment or whole-goal completion follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

@@ -50,6 +50,11 @@ fn complete(s: &mut Sim<'_>, expected: &[u32; 11]) {
 fn optional_trace_copies_complete_records_and_never_consumes_a_reset_or_reused_prefix() {
     run(|s| {
         for address in [
+            REG_MEDIA_STATUS,
+            REG_MEDIA_TAG,
+            REG_MEDIA_WRITE,
+            REG_MEDIA_READ,
+            REG_MEDIA_RECEIPT,
             REG_TRACE_STATUS,
             REG_TRACE_LOST_LOW,
             REG_TRACE_LOST_HIGH,
@@ -57,7 +62,11 @@ fn optional_trace_copies_complete_records_and_never_consumes_a_reset_or_reused_p
             REG_TRACE_DATA,
         ] {
             ar(s, address);
-            assert_eq!(finish_read(s), (2, 0), "disabled trace stays unmapped");
+            assert_eq!(
+                finish_read(s),
+                (2, 0),
+                "disabled optional ranges stay unmapped"
+            );
             assert_eq!(s.model.get("trace_ready"), 0);
         }
     });

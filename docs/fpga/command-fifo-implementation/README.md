@@ -12,11 +12,11 @@ BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
 The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate, now with public
-CORE/AUDIO/STORE configuration, CLEAR_VIEW and optional-trace subsets. The latest measured
+CORE/AUDIO/STORE configuration, CLEAR_VIEW, bulk-media and optional-trace subsets. The latest measured
 partial frontend is **7,943 LUT / 6,943 FF after standard optimization**, **57 LUT /
-57 FF below the previous targets**. That measurement predates CLEAR_VIEW/trace;
-these small functional extensions have no new resource/timing result or current-
-source fit claim.
+57 FF below the previous targets**. That measurement predates CLEAR_VIEW/trace/
+bulk-media; these functional extensions have no new resource/timing result or
+current-source fit claim.
 That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
 **−9.754 ns**, still failing, with worse aggregate setup violations. Production
 still selects ABI 15. The original stop and repair evidence remain historical records;
@@ -2216,3 +2216,58 @@ pre-CLEAR_VIEW/trace results. Bulk preparation/media/lifecycle, external adapter
 matched software/CPU-control retirement, full envelope/area/route/platform/fault-
 parity and delivery/independent audit remain open. Production is still ABI 15;
 Stages 4–7 remain incomplete. No physical authorization, push/PR or deployment.
+
+## Public bulk media: one descriptor and the existing private loader bank
+
+Service **17 MEDIA_COMMAND** fills the required media preparation path without
+reviving retired CPU opcodes. Payload carries full backend opcode 0–7, u64 view/
+start/length, u32 count and four reserved-zero words. APPEND/READ count is at most
+32. Full validation precedes grant; existing native geometry checks remain. The
+single working record grows **160→224 bits**, not a second record; configuration/
+CLEAR formats, 16-u32 RAM, seven phases and five-clock reply copy are unchanged.
+The trusted Stage 5 API still must enforce inactive/unused/retired lease ownership.
+
+Status/tag/write/read/receipt at 0x400–0x410 use one authorization bit against the
+existing reserved request tag. No second payload bank, backend owner, dispatcher,
+publication counter or processing gate is added. APPEND descriptor acceptance
+reserves the private fill lane, but only the whole body can acquire the store.
+READ copies its complete result before ARM service; accepted AR consumes into
+existing global RDATA without waiting for RREADY. POP refuses 7 while private data
+remains. Completed error prefixes discard locally; validation refusal cannot drain
+unrelated data. Backend view/empty/read count are copied into the same reply RAM,
+with zero padding/error data. Halt preserves uncertainty, not rollback/cancel or
+retirement. A loader FENCE never substitutes for the consumer's qualified handoff.
+Runtime reset clears local tag/data authority while old global R/B stay immutable;
+old AW/W halves cannot mutate the new incarnation. Polls/data/POP do not advance F.
+
+Four new codec cases test all backend descriptors at full width, tag/data gates,
+reserved/alias/count refusal, retired-error discard, nineteen halt positions and
+a refused media tag not redirecting another configuration's RAM address. Two new
+actual store/cache/DMA/64-bit-AXI cases test every fourteen-word header and 32-word
+body prefix with exact silent quanta, held publication/data B, unread reply/data,
+malformed accesses without consumption, zero counts, all operations, real dirty
+fence stalling and all 32 samples in independent backing memory. A copied final R
+survives POP/reuse while the new source holds a different word. Nonempty public
+CLEAR_VIEW and both reset-crossing media-half orders are covered. Genuine external
+retirement precedes epoch 1→2 and the old copied bulk word survives reset. This
+is not a new authored-JP/all-admitted envelope or physical qualification; retained
+actual JP/playback/capture and semantic/snapshot/fault regressions also pass.
+
+[Results/source hashes](reports/bulk-media-69cb80a00/results.json) record
+**277 Rust = 215 affected + 62 directed**, both 3,970-case kernel oracles,
+warning-denying workspace build, format/policy/coverage/generators and **12 Python
+tests**. Eight codec/eight indexed/eleven actual-MMIO tests pass. Full Linux passes
+**3,584 / 11 skipped**, **405.549 s**, pinned nextest 0.9.116/owned isolated dummy
+JACK; default app/worklet and optional-reference worklet Wasm builds pass. Builds/
+tests ran sequentially. Local prefix `stage4-bulk-`: smoke-v1, actual-v1/v2,
+milestone, wasm and linux logs/statuses pass. The narrow commands above include
+the new actual cases; `--test config_service` runs the codec cases.
+
+The profile guard permits only three additional data-input declarations/bindings
+to become private: 26 configuration/media inputs plus trace-ready, all other probe
+bytes/geometry unchanged. There is no new synthesis/route or current-source fit;
+**7,943 LUT / 6,943 FF / −9.754 ns** remain pre-CLEAR_VIEW/trace/bulk-media values.
+Lifecycle/ENABLE_AUDIO 9, external adapters, complete hostile lifecycle, matched
+software/CPU retirement, full envelope/whole-design/route/platform/fault-parity,
+independent audit and delivery remain open. ABI 15 stays selected; Stages 4–7 are
+incomplete. No physical authorization, push/PR or deployment follows.
