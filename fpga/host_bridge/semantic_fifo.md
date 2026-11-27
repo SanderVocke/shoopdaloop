@@ -8,9 +8,10 @@ integration gates. Historical ABI-15 staged patches are not this interface.
 Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
 ABORT and qualified hardware fault sidebands are implemented as a verified subset,
 joined to the actual semantic audio/media candidate. Public CORE/AUDIO/STORE
-configuration, CLEAR_VIEW, bulk-media and optional-trace subsets are now implemented.
-Complete preparation/lifecycle service, external physical audio/watchdog hookup, ABI selection
-and matching software remain integration work.
+configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO and optional trace are now
+implemented, with existing generated/I²S/watchdog adapters joined offline. Complete
+lifecycle (including DRAIN_STOP 12), protected board hookup, ABI selection and
+matching software remain integration work.
 
 ## Ownership, profile and pacing
 
@@ -401,6 +402,7 @@ indexed MMIO defaults to 0. One private request/result slot accepts these opcode
 | 2 AUDIO_CONFIG | JP configuration, including scratch and history invalidation | `0x103` | u32 address / 32 data bits |
 | 3 STORE_CONFIG | Media metadata configuration, **not bulk media upload** | `0x107` | u32 address / 160 data bits |
 | 4 CLEAR_VIEW | Existing private media loader/owner, backend CLEAR 2 | No configuration control | u64 view in words 0–1; words 2–11 zero |
+| 9 ENABLE_AUDIO | Local one-way lifecycle, not a backend request | Full boolean 0/1 | Word 0 boolean; words 1–11 zero |
 
 For configuration opcodes 1/2/3, payload word 0 contains low space bits and write bit 8; all other control bits
 are zero. Word 1 is address, words 2–6 little-endian data, words 7–11 reserved zero.
@@ -452,16 +454,18 @@ Matched software must serialize this lane, check incarnation around publication/
 response/POP, cancel stale software callbacks on reset and never replay uncertain
 operations or reuse their tags while authority is unresolved.
 
-Configuration/CLEAR 1/2/3/4 and media 17 below are implemented. Media command,
-response and sample-data controls are private to this service. Lifecycle including
-ENABLE_AUDIO 9, external adapters and matched trusted software remain required;
-temporary refusals do not retire them. Do not import old CPU live-control/staged-
-patch operations to supply missing services.
+Configuration/CLEAR 1/2/3/4, enable 9 and media 17 below are implemented. Media
+command/response/sample controls and the local enable lifetime belong to this
+service. DRAIN_STOP 12, complete hostile lifecycle and matched trusted software
+remain required; temporary refusals do not retire them. Do not import old CPU
+live-control/staged-patch operations to supply missing services.
 
 ### Bulk-media preparation service
 
 Service **17 MEDIA_COMMAND** uses the same reserved slot and sequential publication.
-It does not reuse retired service opcodes 5–8 or 10–16. Payload fields are:
+It does not reuse retired control opcodes 5–8, 10–11 or 13–16. DRAIN_STOP 12
+remains a legitimate pending lifecycle operation, not a retired CPU-control
+fallback. Payload fields are:
 
 | Words | Meaning |
 | --- | --- |
@@ -515,6 +519,43 @@ consume/acquire the new incarnation. Same-edge halt masks data/commands. A loade
 FENCE completes its own cache/DMA operation, never the consumer's independently
 qualified program-handoff fence or application Ready. Requests/data/polls/POP
 cannot advance F, acknowledge semantic/snapshot reservations or pace rendering.
+
+### Audio enable and hardware-owned pacing
+
+Service **9 ENABLE_AUDIO** validates the full boolean in payload word 0 and eleven
+reserved-zero words before its local effect. It reserves the same request/reply,
+never issues configuration/media work or waits for backend/ARM readiness, and
+returns twelve zero words. Two bits track enable/started in the existing codec;
+seven phases and reply copying remain. Duplicate enable is idempotent. Disable
+stops new audio admissions, not accepted SP/JP/backend work. Re-enable after disable
+refuses code 2 until genuine safe runtime reset. It is not cancellation, a fence,
+quiescence, fresh membership or application Ready. Halt masks enable through the
+existing sticky owner; runtime reset clears lifetime/callback/half authority,
+while global copied AXI R/B retain their original ownership.
+
+The trusted Stage 5 installation sequence publishes the initial semantic group
+before enabling. First selection/rendering uses the first real audio quantum's F,
+not an RPC-created opportunity. Unlike the old dispatcher, enable need not wait for
+an already-selected revision; that would deadlock boundary-owned selection or
+require a fake startup quantum. Revision-0/F0 capture still runs once independently
+before processing. Missing installation is not permission for software to restore
+state or invent a first-frame identity; Ready still requires fresh real evidence.
+
+Generated `fifo_audio_host_axi` exposes AXI plus trusted clock/reset/seed/generic
+fault and physical I²S pins, not run shape/opportunity/sample-injection inputs.
+It connects existing audio_io Q32 mono/stereo ownership through generated or I²S
+drivers, fixed shape, real ready/done and sample streams. Diagnostic run-ready/
+frame outputs are not mutation authority. No RPC RUN_QUANTUM, CPU PCM bridge,
+second scheduler/dispatcher/backend/recovery owner or elapsed timer is introduced.
+Candidate drivers bind their existing audio_io watchdog to 60,000 clocks. Existing
+reason 2 is qualified watchdog cause 32; other audio faults give 2, and independent
+generic faults remain combinable. Legacy defaults are unchanged. Fault requests
+halt only; explicit recovery alone drives existing serialized actual AXI retirement/
+safe reset. Hardware recovery state 3 is not application Ready.
+
+This is offline integration, not protected board/physical or all-admitted timing
+acceptance. DRAIN_STOP 12 remains legitimate pending lifecycle scope; loader FENCE
+cannot substitute for semantic handoff or whole-runtime retirement.
 
 ### Optional trace reader
 

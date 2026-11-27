@@ -3,7 +3,7 @@
 import re
 import unittest
 
-from generate_semantic_mmio import AXI, HERE, generate
+from generate_semantic_mmio import AXI, HERE, generate, generate_audio
 from generate_top import generate as host_tops
 from generate_tops import header
 
@@ -13,6 +13,26 @@ class SemanticMmioTests(unittest.TestCase):
         source = generate()
         self.assertEqual((HERE / "rtl/fifo_mmio_pipeline_axi.sv").read_text(), source)
         self.assertEqual(host_tops()["fifo_mmio_pipeline_axi.sv"], source)
+
+    def test_audio_host_has_no_rpc_run_shape_or_opportunity_input(self):
+        source = generate_audio()
+        self.assertEqual((HERE / "rtl/fifo_audio_host_axi.sv").read_text(), source)
+        self.assertEqual(host_tops()["fifo_audio_host_axi.sv"], source)
+        _, ports = header(source)
+        inputs = {n for p, n in ports if p.startswith("input")}
+        self.assertEqual({n for n in inputs if not n.startswith(("s_axi_", "m_axi_"))},
+                         {"clk", "reset", "epoch", "pipeline_fault", "audio_ref", "i2s_adc_data"})
+        self.assertIn(".run_valid(quantum_valid && audio_enable)", source)
+        self.assertIn(".run_quantum(32'd32)", source)
+        self.assertIn(".reset(runtime_reset)", source)
+        self.assertIn(".epoch(runtime_epoch)", source)
+        self.assertIn(".audio_fault(audio_fault && !watchdog_fault)", source)
+        self.assertEqual(source.count(".WATCHDOG_CYCLES(60000)"), 2)
+        self.assertIn("host_i2s_audio", source)
+        self.assertIn("host_generated_audio", source)
+        self.assertNotIn("host_dispatch", source)
+        self.assertNotIn("native_audio_mmio", source)
+        self.assertEqual(source.count("fifo_mmio_pipeline_axi #("), 1)
 
     def test_transport_owns_packet_configuration_and_all_private_media_controls(self):
         _, ports = header(generate())

@@ -3,7 +3,7 @@ module fifo_config_service (
     input wire valid, input wire [1:0] operation, input wire [3:0] index,
     input wire [31:0] word,
     output wire [3:0] receipt,
-    output wire request_space, response_pending,
+    output wire request_space, response_pending, audio_enable,
     output wire [1:0] response_code,
     input wire [3:0] read_index, output wire [31:0] read_data,
     input wire media_valid, input wire [1:0] media_operation, input wire [31:0] media_word,
@@ -30,7 +30,7 @@ module fifo_config_service (
     reg [3:0] cursor;
     reg [1:0] code;
     reg [223:0] working;
-    reg media_authorized;
+    reg media_authorized, audio_enabled, audio_started;
     wire media_active=config_operation==5 && (phase==ISSUE || phase==WAIT || (phase==REPLY && code==0));
     (* ram_style="distributed" *) reg [31:0] memory [0:15];
     wire [3:0] read_address=media_valid && media_operation==0 && media_active ? 4'd14
@@ -50,9 +50,12 @@ module fifo_config_service (
     assign response_pending=live && phase==REPLY;
     assign response_code=response_pending ? code : 2'd0;
     assign read_data=!response_pending ? 32'd0 : read_index==14 ? value
-        : code!=0 || config_operation==4 || read_index>=5 || (config_operation==2 && read_index!=0)
+        : code!=0 || config_operation==4 || config_operation==6 || read_index>=5 || (config_operation==2 && read_index!=0)
         ? 32'd0 : config_operation==1 && read_index==4 ? {31'd0,value[0]} : value;
-    assign config_valid=live && !halt && phase==ISSUE;
+    assign audio_enable=live && !halt && audio_enabled;
+    wire lifecycle_issue=live && !halt && phase==ISSUE && config_operation==6;
+    wire lifecycle_refused=config_space[0] && audio_started && !audio_enabled;
+    assign config_valid=live && !halt && phase==ISSUE && config_operation!=6;
     assign receipt=!live ? EPOCH : halt ? FAULT
         : operation==2 ? (phase!=REPLY ? UNAVAILABLE : word!=value ? OLD
             : config_operation==5 && config_space==6 && config_media_read_valid ? INCOMPLETE : ACCEPTED)
@@ -74,10 +77,11 @@ module fifo_config_service (
     assign config_media_write_data=media_word;
     assign config_media_read_ready=(media_accept && media_operation==2)
         || (live && !halt && config_operation==5 && config_space==6 && phase==REPLY && code==3);
-    assign config_response_ready=live && !halt && (phase==WAIT || phase==ISSUE);
-    wire known_operation=(value>=1 && value<=4) || value==17;
+    assign config_response_ready=live && !halt && config_operation!=6 && (phase==WAIT || phase==ISSUE);
+    wire known_operation=(value>=1 && value<=4) || value==9 || value==17;
     wire bad_control=(value & (config_operation==3 ? 32'hfffffef8 : 32'hfffffefc))!=0;
-    wire bad_scan=config_operation==5 ? ((cursor==2 && value[31:3]!=0)
+    wire bad_scan=config_operation==6 ? (cursor==2 ? value>1 : value!=0)
+        : config_operation==5 ? ((cursor==2 && value[31:3]!=0)
             || (cursor==9 && (config_space==5 || config_space==6) && value>32)
             || (cursor>=10 && value!=0)) : config_operation==4 ? (cursor>=4 && value!=0)
         : (cursor==2 && bad_control)
@@ -86,7 +90,9 @@ module fifo_config_service (
         || (cursor>=5 && cursor<=8 && config_operation==2 && value!=0)
         || (cursor>=9 && value!=0);
     wire refuse=(phase==OPCODE && !known_operation) || (phase==SCAN && bad_scan);
-    wire complete=(phase==WAIT || (phase==ISSUE && config_ready)) && config_response_valid;
+    wire complete=lifecycle_issue || (config_operation!=6
+        && (phase==WAIT || (phase==ISSUE && config_ready)) && config_response_valid);
+    wire complete_error=!lifecycle_issue && config_response_error;
     wire abandon=halt && phase!=FILL && phase!=COPY && phase!=REPLY;
     wire copy_write=live && phase==COPY;
     wire write_enable=copy_write || (accept && operation!=2);
@@ -97,7 +103,11 @@ module fifo_config_service (
         if (!live) begin
             phase<=FILL; cursor<=0; code<=0;
             config_operation<=0; config_space<=0; config_write<=0; media_authorized<=0;
+            audio_enabled<=0; audio_started<=0;
         end else begin
+            if (lifecycle_issue && !lifecycle_refused) begin
+                audio_enabled<=config_space[0]; audio_started<=audio_started || config_space[0];
+            end
             if (media_accept && media_operation==0) media_authorized<=1;
             if (accept && operation!=0) media_authorized<=0;
             if (accept) case (operation)
@@ -107,7 +117,7 @@ module fifo_config_service (
                 default: ;
             endcase
             case (phase)
-                OPCODE: begin config_operation<=value==17 ? 3'd5 : value[2:0]; cursor<=2; phase<=SCAN; end
+                OPCODE: begin config_operation<=value==17 ? 3'd5 : value==9 ? 3'd6 : value[2:0]; cursor<=2; phase<=SCAN; end
                 SCAN: begin
                     if (cursor==2) begin config_space<=value[2:0]; config_write<=value[8]; end
                     if (config_operation==5) begin
@@ -126,9 +136,9 @@ module fifo_config_service (
                 default: ;
             endcase
             if (complete) begin
-                phase<=config_response_error ? REPLY : COPY; cursor<=0;
-                working<={64'd0,config_response_data};
-                code<=config_response_error ? 2'd3 : 2'd0;
+                phase<=complete_error || (lifecycle_issue && lifecycle_refused) ? REPLY : COPY; cursor<=0;
+                working<=lifecycle_issue ? 224'd0 : {64'd0,config_response_data};
+                code<=complete_error ? 2'd3 : lifecycle_issue && lifecycle_refused ? 2'd2 : 2'd0;
             end
             if (refuse || abandon) begin
                 phase<=REPLY;

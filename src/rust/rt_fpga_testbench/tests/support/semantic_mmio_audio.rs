@@ -18,6 +18,8 @@ mod clear;
 mod configuration;
 #[path = "semantic_mmio_media.rs"]
 mod media;
+#[path = "semantic_mmio_paced.rs"]
+mod paced;
 #[path = "semantic_mmio_safety.rs"]
 mod safety;
 #[path = "semantic_mmio_trace.rs"]

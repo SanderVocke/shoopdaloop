@@ -12,11 +12,12 @@ BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
 The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate, now with public
-CORE/AUDIO/STORE configuration, CLEAR_VIEW, bulk-media and optional-trace subsets. The latest measured
+CORE/AUDIO/STORE configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO, optional trace
+and offline generated/I²S/watchdog adapters. The latest measured
 partial frontend is **7,943 LUT / 6,943 FF after standard optimization**, **57 LUT /
 57 FF below the previous targets**. That measurement predates CLEAR_VIEW/trace/
-bulk-media; these functional extensions have no new resource/timing result or
-current-source fit claim.
+bulk-media/ENABLE_AUDIO/audio adapters; these functional extensions have no new
+resource/timing result or current-source fit claim.
 That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
 **−9.754 ns**, still failing, with worse aggregate setup violations. Production
 still selects ABI 15. The original stop and repair evidence remain historical records;
@@ -2267,7 +2268,55 @@ The profile guard permits only three additional data-input declarations/bindings
 to become private: 26 configuration/media inputs plus trace-ready, all other probe
 bytes/geometry unchanged. There is no new synthesis/route or current-source fit;
 **7,943 LUT / 6,943 FF / −9.754 ns** remain pre-CLEAR_VIEW/trace/bulk-media values.
-Lifecycle/ENABLE_AUDIO 9, external adapters, complete hostile lifecycle, matched
-software/CPU retirement, full envelope/whole-design/route/platform/fault-parity,
-independent audit and delivery remain open. ABI 15 stays selected; Stages 4–7 are
-incomplete. No physical authorization, push/PR or deployment follows.
+At this checkpoint lifecycle/ENABLE_AUDIO 9, external adapters and remaining
+acceptance were open; the following milestone joins enable and pacing offline.
+ABI 15 stays selected; no physical authorization, push/PR or deployment follows.
+
+## ENABLE_AUDIO and existing generated/I²S/watchdog adapters
+
+Service **9** now carries a full 0/1 plus eleven reserved-zero words through the
+same private lane, seven phases and reply RAM, with two local enable/started bits.
+It never issues a backend request or waits for backend/ARM readiness. Replies are
+all zero. Duplicate enable is idempotent. Disable is one-way until safe runtime
+reset: it stops new admissions, not accepted work, and grants no retirement/fence/
+application-Ready authority. Halt masks enable immediately through the existing
+sticky runtime owner; reset clears local lifetime/half/callback authority, not
+accepted global R/B. Malformed/aliases refuse before any effect.
+
+Initial installation must be published by the trusted Stage 5 API before enabling;
+selection/rendering then happen at the first real audio-owned F. Requiring prior
+selection would need a fake startup quantum or second scheduler. Hardware does
+not use service delivery/readback as a quantum. Generated `fifo_audio_host_axi.sv`
+privatizes run shape/opportunities and sample streams, reuses existing generated/
+I²S audio_io banks/clocks/ready/done, and adds no dispatcher/backend/recovery owner.
+Candidate drivers bind the existing watchdog to **60,000 clocks**, retaining reason
+2 as qualified cause **32** (other audio faults 2); legacy defaults stay unchanged.
+Only explicit recovery invokes the existing genuine AXI retirement/reset path.
+
+Two codec cases test every header prefix/reserved bit/boolean and opcode alias,
+zero replies despite stale backend responses, one-way/reset, unread results and
+twenty halt positions. Three new actual cases test exact generated stereo with
+B/R held, unread semantic/snapshot returns and copied tag 71 across POP/reuse with
+tag 72; disable while accepted SP/JP work remains live; asynchronous I²S ADC→SP/JP→
+DAC with 48 final PCM words; actual stalled DDR AR triggering watchdog 32 without
+automatic recovery; and both old-half orders through real retirement/reset with
+copied cause R held. Fresh epoch-2 enable is explicit; state 3 is not app Ready.
+
+[Results/source hashes](reports/lifecycle-audio-ba97f98e6/results.json) record
+**286 Rust = 217 affected + 69 directed**, including four retained audio-I/O tests,
+both 3,970-case kernel sources, warnings/format/policy/coverage/generators and
+**13 Python tests**. Ten codec/eight indexed/fourteen actual-MMIO cases pass. Full
+Linux passes **3,584 / 11 skipped / 405.643 s**, pinned nextest 0.9.116/owned isolated
+dummy JACK; both Wasm profiles pass. Builds/tests remain serialized. Local logs
+`stage4-lifecycle-{smoke-v2,actual-v1,milestone,linux,wasm}` pass. Smoke-v1's mistaken
+probe-token count (3 on two lines, not 2) is retained as a fixture failure.
+
+The profile guard permits only the added enable declaration/binding beyond prior
+private inputs; all other geometry/probe bytes remain. No synthesis/route/current-
+source fit or full admitted-envelope proof is claimed. Earlier **7,943/6,943/
+−9.754 ns** figures predate CLEAR_VIEW/trace/bulk/enable/adapters. DRAIN_STOP **12**
+is legitimate pending lifecycle scope, not retired along with CPU control 10/11 or
+13–16; the contract corrects the earlier overbroad range. Complete hostile lifecycle,
+matched ABI-16 software/CPU retirement, full envelope/whole-design/route/platform/
+fault-parity, independent audit and delivery remain open. ABI 15 stays selected;
+Stages 4–7 remain incomplete. No physical qualification/push/PR/deployment follows.

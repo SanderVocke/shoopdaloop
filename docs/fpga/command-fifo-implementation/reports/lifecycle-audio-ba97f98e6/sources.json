@@ -1,0 +1,20 @@
+{
+  "fpga/host_bridge/generate_semantic_mmio.py": "d4ff83c5cd2361744d865b1d9242a41dc0dd66d9f24a84bace1ebcf5bc30f87e",
+  "fpga/host_bridge/generate_top.py": "aefb8d896937b3a5603584dc25577ae2c41df8f6a75bd15128f8873b2b0b8722",
+  "fpga/host_bridge/measure_semantic_pipeline.py": "203f20a0ecd7d93cdfb757bcb881159738c72db70534e985a2a44ea8391a42ec",
+  "fpga/host_bridge/rtl/fifo_audio_host_axi.sv": "7288eb55006b032b999095b734e17e6755414144dc316a922480e50ddf331e62",
+  "fpga/host_bridge/rtl/fifo_config_service.sv": "3454e64d8b51328628212a82b2bb8848d3b54a5487a62b510f3ec0e4028551a8",
+  "fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv": "00a80b5744c7d4b1be2701ff052b711c379b25f6e83fdf7868689fbee88b3377",
+  "fpga/host_bridge/rtl/host_generated_audio.v": "2d741db525597303b384bcb74434d50b3317b282f70796252cfe3d0accae1caa",
+  "fpga/host_bridge/rtl/host_i2s_audio.v": "618db2d7488241bbaf8c5de774bd4c20ed9b1f2e444951a89a94d37300ac6403",
+  "fpga/host_bridge/rtl/semantic_registers.sv": "0c12baf9c3fecdc9554c6c2eeddec56fe6124b994b717bd008964c8f0c3e05f9",
+  "fpga/host_bridge/semantic_registers.json": "2e45a0ece7a0d0d833fab90b5c495cb123de72df43259b257ac7c7ee4071637a",
+  "fpga/host_bridge/test_measure_semantic.py": "35db95402fc8613a351cecc43c7320bae511a6f3cde10285631a58d6623e9339",
+  "fpga/host_bridge/test_semantic_mmio.py": "e74c299d1d1b6122ea06b2c92eb686712803f13432118c206dd31ba93063e9b8",
+  "fpga/host_bridge/test_semantic_registers.py": "8ecba60892c0d81a67104bea4eed1e5eb3f1a6b1c3d29357089f0f9759db8b3a",
+  "src/rust/rt_fpga_rtl/src/host/semantic_registers.rs": "40fe8dbfb57a826eab570036fd0d64cab920b202af3a7f49dbdda72302c7d077",
+  "src/rust/rt_fpga_rtl/tests/config_service.rs": "021ca655bf10390ac4b62d6f742a22d69c023117a18d85fab7d9189a941f2feb",
+  "src/rust/rt_fpga_rtl/tests/support/config_lifecycle.rs": "2885d814c0afd47db1cb6a0c3e408198cdbfca58f44650fe7829f2137128dadf",
+  "src/rust/rt_fpga_testbench/tests/support/semantic_mmio_audio.rs": "c491f292a757a5df7f032e651870293e3dd5b2edabad5900bd378cb6d493e76c",
+  "src/rust/rt_fpga_testbench/tests/support/semantic_mmio_paced.rs": "00d499c43078158ec443321746331218a9609e0e0e49f6089f5e52ca06b5f20e"
+}

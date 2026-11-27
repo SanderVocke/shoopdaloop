@@ -248,6 +248,7 @@ module fifo_mmio_pipeline_axi #(
     output wire [1:0] s_axi_rresp,
     output wire s_axi_rvalid,
     input wire s_axi_rready,
+    output wire audio_enable,
     input wire audio_fault,
     input wire watchdog_fault
 );
@@ -412,6 +413,7 @@ module fifo_mmio_pipeline_axi #(
         .receipt(service_receipt),
         .request_space(service_request_space),
         .response_pending(service_response_pending),
+        .audio_enable(audio_enable),
         .response_code(service_response_code),
         .read_index(service_read_index),
         .read_data(service_read_data),

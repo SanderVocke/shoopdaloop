@@ -23,7 +23,8 @@ configuration subset. It is **7,943 LUT / 6,943 FF after standard optimization**
 also joins public CLEAR_VIEW/bulk-media through the existing private loader/owner
 and a complete optional-trace reader through the existing immutable trace slot.
 These functional extensions have no new resource/timing measurement. The figures
-above predate CLEAR_VIEW/trace/bulk-media and are not current-source fit.
+above predate CLEAR_VIEW/trace/bulk-media/ENABLE_AUDIO/audio adapters and are not
+current-source fit.
 That narrow margin no longer blocks functional integration of remaining
 preparation/lifecycle services and adapters. The latest readiness refinement
 improves worst unrouted WNS to **−9.754 ns**, still failing; aggregate setup
@@ -381,9 +382,10 @@ timing/physical qualification, final-head CI or delivery.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
 
-**Current priority:** complete the remaining public preparation/lifecycle
-services, adapters and hostile lifecycle correctness coverage,
-then the matched Stage 5 transports and CPU-control retirement. Do not insert
+**Current priority:** complete DRAIN_STOP 12 and remaining hostile lifecycle
+correctness coverage, then the matched Stage 5 transports and CPU-control
+retirement. ENABLE_AUDIO/generated/I²S/watchdog adapters are joined offline, not
+promoted or physically qualified. Do not insert
 further area-only milestones ahead of required functionality solely because the
 previous LUT/FF targets have little headroom. Keep resource evidence honest;
 final optimization/fit acceptance remains a Stage 6 gate under the amendment above.
@@ -1643,6 +1645,65 @@ hostile lifecycle coverage, matched software/CPU-control retirement, full envelo
 whole-design/route/platform/fault-parity gates and delivery remain open. Production
 remains ABI 15; Stages 4–7 remain incomplete. No new physical authorization,
 push/PR/deployment or whole-goal completion follows.
+
+**ENABLE_AUDIO and paced-adapter functional milestone:** service 9 now uses the
+same reserved lane, full boolean plus eleven reserved-zero words and zero reply.
+Two enable/started bits reuse its seven phases and existing reply RAM; no backend
+request or readiness is involved. Full validation precedes the local effect.
+Duplicate enable is idempotent; disable stops new admissions but cannot re-enable
+until safe runtime reset. It is **not** cancellation, retirement, a handoff fence
+or application Ready: already-accepted SP/JP/backend work continues.
+
+First enable may precede selection. The trusted Stage 5 API publishes installation
+first, then the first **real audio quantum** selects/renders at hardware-owned F.
+The old dispatcher's selected-revision precondition would deadlock this boundary-
+owned consumer or require a fabricated startup quantum. No synthetic scheduler,
+service-driven F, new backend owner or recovery controller is added. DRAIN_STOP 12
+remains required lifecycle work; the prior bulk contract's blanket “10–16 retired”
+wording was too broad and is corrected without relabeling historical evidence.
+
+- [x] Join candidate ENABLE_AUDIO 9 and existing generated/I²S audio drivers to the
+  actual semantic SP/JP/media/AXI/recovery path with FPGA-owned pacing and qualified
+  watchdog faults. This offline milestone is not complete lifecycle or Stage 4.
+
+Generated `fifo_audio_host_axi.sv` privatizes run shape/opportunities and sample
+streams. Existing audio_io supplies Q32, mono-input/stereo-output bank ownership,
+real process-ready/done and clocks; no manual RPC RUN_QUANTUM or native CPU PCM
+bridge is instantiated. Candidate drivers bind their existing watchdog to 60,000
+clocks and expose its existing reason-2 qualification. Watchdog maps to cause 32,
+other audio faults to 2; independent generic causes and immediate execution masks
+remain. Legacy driver defaults are unchanged. Safe runtime reset/epoch come from
+the same serialized retirement owner, not watchdog-driven automatic recovery.
+
+Two new codec cases cover all fourteen unpublished prefixes, every reserved bit,
+boolean/opcode aliases, zero replies despite unrelated backend responses, one-way
+stop/reset, unread replies and twenty halt positions/no replay. Three real-pipeline
+cases verify sample-exact generated stereo while ARM B/R and semantic/snapshot
+returns are held; copied tag 71 survives POP/reuse with tag 72; disabling during
+accepted work does not cancel it. The asynchronous I²S case drives ADC PCM and
+checks 48 final DAC words through actual SP/JP with publication B held. Actual
+held DDR AR produces watchdog cause **32**, not ARM-injected fault flags; no
+implicit recovery occurs. Both old service-half orders retain copied cause R
+through real DDR retirement/reset to epoch 2, cannot re-enable, and fresh audio
+starts only after a new explicit service. Reset-complete is not application Ready.
+
+`stage4-lifecycle-milestone` passes **217 affected + 69 directed = 286 Rust tests**,
+including four retained audio-I/O suites, both 3,970-case kernel sources,
+warning-denying workspace build, format/policy/coverage/generators and **13 Python
+tests**. Ten codec/eight indexed/fourteen actual-MMIO cases pass. Full Linux passes
+**3,584 / 11 skipped**, **405.643 s**, pinned nextest 0.9.116/owned isolated dummy
+JACK; default app/worklet and optional-reference worklet Wasm builds pass. Builds/
+tests ran sequentially. The first smoke failed an incorrect probe-token count
+(3 occurrences on two lines, not 2); corrected smoke and all functional tests pass,
+with the failed log retained. The profile guard permits only the two new enable
+output lines beyond the existing private-input removals, preserving geometry.
+[Functional evidence](docs/fpga/command-fifo-implementation/reports/lifecycle-audio-ba97f98e6/results.json)
+records no new synthesis/route, current-source fit or full admitted-cycle proof.
+
+DRAIN_STOP 12/complete hostile lifecycle, matched software/CPU-control retirement,
+full service-envelope/whole-design/route/platform/fault-parity gates, independent
+audit and delivery remain open. Production remains ABI 15; Stages 4–7 remain
+incomplete. No board access, physical qualification, push/PR or deployment follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 
