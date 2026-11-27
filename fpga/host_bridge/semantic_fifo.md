@@ -491,6 +491,13 @@ LUT are in excluded execution, not frontend. Worst unrouted WNS is **−10.218 n
 synthesis / −9.754 ns optimized**, improving 2.361 ns, but aggregate TNS/failing
 endpoints worsen. The 35-level path now reaches real SP state-RAM write enable;
 this is not timing closure, a delayed fault mask or routed/whole-design acceptance.
+The plan's subsequent **functional-first area amendment** makes prior kernel/
+frontend/whole-design LUT/FF numbers interim reference targets, not integration
+stop/go gates. No new numerical ceilings are invented; final budgets require
+explicit agreement and full-design fit before qualification/promotion/acceptance.
+BRAM/DSP, capacities, semantics, safety, cycles and timing remain binding. Historical
+resource outcomes are unchanged. Required functionality now precedes further
+area-only optimization; this policy does not authorize physical testing.
 Complete service/matching software remain unfinished; no ABI-16 deployment,
 complete frontend/whole-design or routed-timing acceptance is established.
 Production remains ABI 15 and Stages 4–7 remain incomplete.

@@ -5,13 +5,16 @@ The authoritative scope, approval and acceptance criteria are in
 remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
 
 **Current gate: Stage 4 integration, not complete fit.** Stages 0–3 are complete;
-Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
-7,000 FF**; all other limits remain unchanged. Indexed MMIO, low-range discovery/
+Stages 4–7 are not. The user's **functional-first area amendment** now treats
+kernel/frontend/whole-design LUT/FF figures as interim reference targets, not
+stop/go ceilings; final numerical budgets need explicit Stage 6 agreement.
+BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
+The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate, now with configuration-only
 CORE/AUDIO/STORE service. Its measured partial frontend is **7,943 LUT / 6,943 FF
-after standard optimization**, leaving only **57 LUT / 57 FF** before remaining
-media/lifecycle/trace service and board integration. Latest worst unrouted WNS is
+after standard optimization**, **57 LUT / 57 FF below the previous targets**.
+That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
 **−9.754 ns**, still failing, with worse aggregate setup violations. Production
 still selects ABI 15. The original stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).

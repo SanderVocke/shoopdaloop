@@ -2,20 +2,28 @@
 
 ## Status and execution contract
 
-**Full execution authorized by the user's explicit Stage 2 GO.** Stages 0–3 are
-complete, including the reduced-profile/ABI contract freeze. **Stage 4 area repair
-is authorized by the user's “try to fix the area problem.”** The RAM-mapping blowup
-is repaired. The user has explicitly approved raising only the replacement-frontend
-LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
+**Execution has resumed under the renewed explicit full-plan GO.** The earlier
+plan-only update did not itself resume implementation. The original Stage 2 GO
+and historical area-repair/LUT amendments remain recorded below.
+Stages 0–3 are complete, including the reduced-profile/ABI contract freeze.
+
+**Current priority: functional correctness first.** The user has
+requested another area-budget relaxation. Kernel/frontend/whole-design LUT/FF
+figures are now interim reference targets, not stop/go gates during functional
+integration. No new numerical LUT/FF ceilings were supplied or are invented here;
+final budgets must be explicitly agreed before hardware qualification, promotion
+or overall acceptance. See the functional-first amendment in Stage 2. BRAM/DSP,
+profile, semantic, cycle, timing and safety requirements are unchanged.
+
 The measured partial frontend now includes indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 on the actual semantic/audio/media pipeline, now with a configuration-only public
 service for CORE/AUDIO/STORE requests. It is **7,943 LUT / 6,943 FF after
-standard optimization**, leaving only **57 LUT / 57 FF** before the remaining
-media/lifecycle/trace services and board integration. The latest readiness refinement
+standard optimization**, **57 LUT / 57 FF below the previous 8,000/7,000 targets**.
+That narrow margin no longer blocks functional integration of the remaining
+media/lifecycle/trace services and adapters. The latest readiness refinement
 improves worst unrouted WNS to **−9.754 ns**, still failing; aggregate setup
-violations worsen. Production still selects ABI 15. All other ceilings,
-profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
+violations worsen. Production still selects ABI 15; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
 See [the investigation report](docs/fpga/command-fifo-investigation/README.md)
@@ -87,9 +95,11 @@ part of this removal. Do not expand the FPGA profile's other feature support.
 7. No running-audio CPU-driven control window or state-patch fallback remains in
    the FPGA host path. Loader-only writes cannot block scheduled processing.
 8. Hardware command service, arbitration and publication have explicit finite
-   bounds. Resource usage and total quantum timing meet the numerical ceilings
-   approved at Stage 2, as explicitly amended below; a smaller FSM state count
-   alone is not evidence of success.
+   bounds. Final resource usage meets the numerical budgets explicitly agreed
+   under Stage 2's functional-first amendment before hardware qualification,
+   promotion or overall acceptance. Total quantum timing retains its approved
+   ceilings. Deferring interim LUT/FF gates is not final fit acceptance; a smaller
+   FSM state count alone is not evidence of success.
 9. Native/browser behavior outside the explicitly reduced FPGA profile is
    preserved. Matching software/RTL capabilities, documentation and ABI rejection
    make the reduced support truthful end to end.
@@ -193,7 +203,9 @@ frontend 6,000 LUT/7,000 FF excluding existing execution/storage; whole design
 32,000 LUT/24,000 FF/100 RAMB36-equivalents/at most the existing four DSPs;
 command phase 4,096 cycles, snapshot phase 8,192 cycles for at most 128 rows,
 total admitted quantum 60,000 cycles at 100 MHz, Q=32/48 kHz; nonnegative routed
-setup/hold slack. Any breach returns to the user rather than weakening limits.
+setup/hold slack. These were the original hard-stop limits; historical breaches
+and stops remain unchanged. The later functional-first amendment below defers
+interim LUT/FF gates only, not other binding limits.
 This GO does not waive Stage 6's separate physical-test authorization or Stage 7's
 no-autonomous-merge rule.
 
@@ -204,9 +216,9 @@ user requested “relax the area limit in the plan before we continue.” The pr
 change was **only replacement-frontend LUTs: 6,000 → 8,000**, with every other
 limit unchanged. The user explicitly confirmed: **“confirmed, go ahead.”**
 
-The current approved limits are therefore:
+The numerical limits after that amendment were:
 
-| Scope | Current approved ceiling |
+| Scope | Previously approved numerical reference |
 | --- | --- |
 | Replacement frontend, excluding existing execution/storage | **8,000 LUT / 7,000 FF** |
 | Shared kernel, included in frontend | 2,500 LUT / 2,500 FF / no DSP |
@@ -216,20 +228,51 @@ The current approved limits are therefore:
 | Total admitted quantum | 60,000 cycles at 100 MHz, Q=32/48 kHz |
 | Routed timing | Nonnegative setup and hold slack |
 
-Only the frontend LUT entry supersedes the original approval; all other resource,
-RAM, DSP, timing, capacity, profile, semantic and safety requirements remain binding.
-The whole-design ceiling applies independently: the extra frontend allowance is
-not an increase to the whole-design budget or a guarantee of integrated fit.
-The 6,345-LUT partial measurement leaves 1,655 LUT under the amended ceiling, but
-excludes public MMIO and board integration and does not establish final acceptance.
-Historical reports, their original ceilings and recorded failed outcomes remain
-unchanged. This documentation-only amendment does not supply new measurements,
-waive remaining tests, authorize physical work or mark any later stage complete.
+At that amendment, only frontend LUTs changed. The extra allowance did not raise
+the whole-design ceiling or guarantee integrated fit. The 6,345-LUT partial
+measurement excluded public MMIO and board integration. Historical reports,
+original ceilings and failed outcomes remain unchanged; they are not relabeled
+as passes by either amendment. Neither amendment supplies new measurements,
+waives remaining tests, authorizes physical work or completes a later stage.
 
-Verification: explicit original GO and the recorded frontend-LUT amendment. All
-subsequent stages depend on that approval; any later breach of the current limits
-requires returning to the user, not silently increasing limits or reducing
-acceptance criteria.
+#### User-requested functional-first area amendment
+
+The user subsequently requested: **“relax the area budget again. lets go for
+functional correctness first. update the plan”**.
+
+This changes the ordering and interim LUT/FF acceptance policy:
+
+- Prioritize complete functional integration and correctness coverage in Stages
+  4–5 before further area-only optimization. Do not delay required services,
+  matched software or meaningful tests merely to preserve the narrow current
+  LUT/FF margin.
+- Kernel, replacement-frontend and protected-whole-design **LUT/FF numbers above
+  become reference targets, not interim hard-stop ceilings**. Record and report
+  overruns honestly; a LUT/FF overrun alone no longer stops functional development.
+  Keep source-qualified, same-profile measurements at meaningful milestones,
+  without requiring a new synthesis run for every small functional change.
+- **No new numerical LUT/FF ceilings are agreed yet.** After the complete
+  functional baseline is established, measure the complete protected design,
+  present actual area/timing and obtain explicit user agreement on final LUT/FF
+  budgets. Meet those budgets before hardware qualification, production promotion
+  or overall acceptance, or return to the user if they cannot be met. This is not
+  an unlimited final budget or permission to exceed the target device's capacity.
+- Retain the shared sequential architecture, full profile/capacities, ownership,
+  semantics, fault/recovery protections and all correctness coverage. Do not
+  reduce functionality or move live decisions back to ARM to manufacture fit.
+- **BRAM/DSP constraints remain binding**, including the kernel's no-DSP/useful-
+  scratch restriction and whole-design 100 RAMB36-equivalents/existing four DSPs.
+  Command/snapshot/quantum bounds, clock/Q/rate and nonnegative routed setup/hold
+  requirements are unchanged. A breach of a still-binding limit returns to the
+  user rather than silently weakening it.
+- The amendment request was documentation-only and did not resume the earlier
+  paused goal. The renewed explicit full-plan GO subsequently resumed software
+  implementation under this policy, not deployment, physical testing or acceptance.
+
+Verification: retain the original GO, both user-requested amendments and all
+historical measurements. Stage 6 must explicitly freeze final numerical LUT/FF
+budgets and verify full-design fit; interim functional success cannot waive that
+gate or imply completion of Stages 4–7.
 
 ### Stage 3 — Remove composite live switching and freeze the contract
 
@@ -333,6 +376,13 @@ Stage 3 completion does not claim a production FIFO, fresh integrated resources,
 timing/physical qualification, final-head CI or delivery.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
+
+**Current priority:** complete the remaining public preparation/media/
+lifecycle/trace services, adapters and hostile lifecycle correctness coverage,
+then the matched Stage 5 transports and CPU-control retirement. Do not insert
+further area-only milestones ahead of required functionality solely because the
+previous LUT/FF targets have little headroom. Keep resource evidence honest;
+final optimization/fit acceptance remains a Stage 6 gate under the amendment above.
 
 - [ ] Turn the validated edit kernel into the production local controller. Execute
   each complete group in order against actual boundary state, then release to SP
@@ -1480,9 +1530,15 @@ commands and program switching. ARM firmware and fixtures build successfully.
   differentials reproduced at `ff6c09551` (preflight queue refusal versus partial
   SP effects, and streamed jobs remaining after JP failure). Preserve meaningful
   fault/partial-effect/fail-closed coverage; do not hide them by dropping tests.
-- [ ] Synthesize/route the matching full design and compare net resources, routed
-  timing and worst-case total quantum cycles with the approved baseline/ceilings.
-  Do not call kernel-only synthesis or network observation a system timing proof.
+- [ ] After the complete functional baseline, measure the protected full design,
+  present the resource/timing tradeoffs and obtain explicit user agreement on
+  final numerical kernel/frontend/whole-design LUT/FF budgets. Do not substitute
+  the former interim targets, an invented increase or device capacity alone for
+  this acceptance decision.
+- [ ] Optimize and synthesize/route the matching full design to meet those final
+  budgets and the unchanged BRAM/DSP, routed-timing and total-quantum requirements.
+  Compare net resources/timing/cycles with the recorded baseline. Do not call
+  kernel-only synthesis or network observation a system timing proof.
 - [ ] Report offline results first. Perform any physical test **only with separate
   user authorization** and a protected matching pair: supervised temperature/age
   guard, watchdog, factory PS/DDR/clocks/files preserved, no destructive replay,
