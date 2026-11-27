@@ -10,7 +10,11 @@
     "ROW_WORDS": 19,
     "COMMAND_CYCLES": 4096,
     "SNAPSHOT_CYCLES": 8192,
-    "QUANTUM_CYCLES": 60000
+    "QUANTUM_CYCLES": 60000,
+    "PAYLOAD_WORDS": 12,
+    "SERVICE_CORE_CONFIG": 1,
+    "SERVICE_AUDIO_CONFIG": 2,
+    "SERVICE_STORE_CONFIG": 3
   },
   "registers": {
     "ID": "0x000",
@@ -29,6 +33,14 @@
     "CHUNK_FRAMES": "0x034",
     "BLOCK_CHUNKS": "0x038",
     "QUANTUM": "0x03c",
+    "REQUEST_EPOCH": "0x040",
+    "REQUEST_OP": "0x044",
+    "REQUEST_DATA": "0x048",
+    "REQUEST_PUSH": "0x078",
+    "RESPONSE_TAG": "0x080",
+    "RESPONSE_CODE": "0x084",
+    "RESPONSE_DATA": "0x088",
+    "RESPONSE_POP": "0x0b8",
     "COMPLETED_QUANTA": "0x104",
     "PEAK_QUANTUM_CYCLES": "0x108",
     "AUDIO_XRUNS": "0x10c",

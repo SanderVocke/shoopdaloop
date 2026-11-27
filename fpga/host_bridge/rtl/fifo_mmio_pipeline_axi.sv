@@ -79,22 +79,11 @@ module fifo_mmio_pipeline_axi #(
     output wire jobs_busy,
     output wire jobs_done,
     output wire [BUFFERS-1:0] buffer_ready,
-    input wire cfg_valid,
     output wire cfg_ready,
-    input wire cfg_state,
-    input wire cfg_loop,
-    input wire cfg_write,
-    input wire [15:0] cfg_address,
-    input wire [`SHOOP_SP_STATE_BITS-1:0] cfg_write_data,
     output wire cfg_response_valid,
     output wire cfg_response_error,
     output wire [`SHOOP_SP_STATE_BITS-1:0] cfg_read_data,
-    input wire audio_cfg_valid,
     output wire audio_cfg_ready,
-    input wire [1:0] audio_cfg_space,
-    input wire audio_cfg_write,
-    input wire [31:0] audio_cfg_address,
-    input wire [31:0] audio_cfg_write_data,
     output wire audio_cfg_response_valid,
     output wire audio_cfg_response_error,
     output wire [31:0] audio_cfg_read_data,
@@ -129,12 +118,7 @@ module fifo_mmio_pipeline_axi #(
     output wire store_read_valid,
     input wire store_read_ready,
     output wire [31:0] store_read_data,
-    input wire store_cfg_valid,
     output wire store_cfg_ready,
-    input wire store_cfg_write,
-    input wire [2:0] store_cfg_space,
-    input wire [31:0] store_cfg_address,
-    input wire [159:0] store_cfg_write_data,
     output wire store_cfg_response_valid,
     output wire store_cfg_response_error,
     output wire [159:0] store_cfg_read_data,
@@ -278,6 +262,22 @@ module fifo_mmio_pipeline_axi #(
     input wire audio_fault,
     input wire watchdog_fault
 );
+    wire cfg_valid;
+    wire cfg_state;
+    wire cfg_loop;
+    wire cfg_write;
+    wire [15:0] cfg_address;
+    wire [`SHOOP_SP_STATE_BITS-1:0] cfg_write_data;
+    wire audio_cfg_valid;
+    wire [1:0] audio_cfg_space;
+    wire audio_cfg_write;
+    wire [31:0] audio_cfg_address;
+    wire [31:0] audio_cfg_write_data;
+    wire store_cfg_valid;
+    wire store_cfg_write;
+    wire [2:0] store_cfg_space;
+    wire [31:0] store_cfg_address;
+    wire [159:0] store_cfg_write_data;
     wire snapshot_read_valid;
     wire snapshot_read_bank;
     wire [12:0] snapshot_read_word;
@@ -300,12 +300,59 @@ module fifo_mmio_pipeline_axi #(
     wire recovery_request;
     wire [31:0] recovery_epoch;
     wire abort_request;
+    wire service_live;
+    wire service_valid;
+    wire [1:0] service_operation;
+    wire [3:0] service_index;
+    wire [3:0] service_read_index;
+    wire [31:0] service_word;
+    wire [3:0] service_receipt;
+    wire service_request_space;
+    wire service_response_pending;
+    wire [1:0] service_response_code;
+    wire [31:0] service_read_data;
+    wire config_valid;
+    wire config_ready;
+    wire [1:0] config_operation;
+    wire [2:0] config_space;
+    wire config_write;
+    wire [31:0] config_address;
+    wire [159:0] config_data;
+    wire config_response_valid;
+    wire config_response_error;
+    wire [159:0] config_response_data;
     assign pipeline_fault_cause = (pipeline_fault ? 32'd64 : 0) | (audio_fault ? 32'd2 : 0)
         | (watchdog_fault ? 32'd32 : 0) | (abort_request ? 32'd16 : 0);
+    assign cfg_valid=config_valid && config_operation==2'd1;
+    assign cfg_write=config_write;
+    assign cfg_address=config_address[15:0];
+    assign cfg_write_data=config_data[128:0];
+    assign cfg_state=config_space[0];
+    assign cfg_loop=config_space[1];
+    assign audio_cfg_valid=config_valid && config_operation==2'd2;
+    assign audio_cfg_write=config_write;
+    assign audio_cfg_address=config_address;
+    assign audio_cfg_write_data=config_data[31:0];
+    assign audio_cfg_space=config_space[1:0];
+    assign store_cfg_valid=config_valid && config_operation==2'd3;
+    assign store_cfg_write=config_write;
+    assign store_cfg_address=config_address;
+    assign store_cfg_write_data=config_data[159:0];
+    assign store_cfg_space=config_space[2:0];
+    assign config_ready=config_operation==1 ? cfg_ready
+        : config_operation==2 ? audio_cfg_ready : store_cfg_ready;
+    assign config_response_valid=config_operation==1 ? cfg_response_valid
+        : config_operation==2 ? audio_cfg_response_valid : store_cfg_response_valid;
+    assign config_response_error=config_operation==1 ? cfg_response_error
+        : config_operation==2 ? audio_cfg_response_error : store_cfg_response_error;
+    assign config_response_data={store_cfg_read_data[159:129],
+        (config_operation==1 ? cfg_read_data[128:32] : store_cfg_read_data[128:32]),
+        (config_operation==1 ? cfg_read_data[31:0] : config_operation==2 ? audio_cfg_read_data : store_cfg_read_data[31:0])};
     fifo_mmio #(
         .LOOPS(LOOP_DEPTH),
         .SYSTEM_REGISTERS(1),
         .EPOCH_RESET_COUPLED(1),
+        .SERVICE_REGISTERS(1),
         .CORE_CLOCK_HZ(CORE_CLOCK_HZ),
         .ARENA_BASE(PHYSICAL_BASE),
         .ARENA_BYTES(PHYSICAL_BYTES_LIMIT),
@@ -322,6 +369,21 @@ module fifo_mmio_pipeline_axi #(
         .fault_sequence(first_fault_sequence),
         .quantum_done(done && !faulted && error_code==0),
         .quantum_cycles((&diagnostic_cycles) ? diagnostic_cycles : diagnostic_cycles+32'd1), .*);
+    fifo_config_service service (
+        .live(service_live),
+        .valid(service_valid),
+        .operation(service_operation),
+        .index(service_index),
+        .word(service_word),
+        .receipt(service_receipt),
+        .request_space(service_request_space),
+        .response_pending(service_response_pending),
+        .response_code(service_response_code),
+        .read_index(service_read_index),
+        .read_data(service_read_data),
+        .clk(clk),
+        .epoch(runtime_epoch),
+        .halt(pipeline_fault || audio_fault || watchdog_fault || abort_request || recovery_request || faulted || diagnostic_valid || (recovery_state!=0 && recovery_state!=3)), .*);
     fifo_recovery_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .ENABLE_MIDI(ENABLE_MIDI),

@@ -1,5 +1,5 @@
 module fifo_mmio #(
-    parameter integer LOOPS=128, SYSTEM_REGISTERS=0, EPOCH_RESET_COUPLED=0,
+    parameter integer LOOPS=128, SYSTEM_REGISTERS=0, EPOCH_RESET_COUPLED=0, SERVICE_REGISTERS=0,
     parameter [31:0] CORE_CLOCK_HZ=100_000_000, ARENA_BASE=32'h30000000,
     parameter [63:0] ARENA_BYTES=64'h08000000,
     parameter integer PROGRAM_DEPTH=0, STATE_DEPTH=0, JOB_DEPTH=0,
@@ -10,6 +10,12 @@ module fifo_mmio #(
     input wire faulted, input wire [2:0] recovery_state,
     output wire recovery_request, output wire [31:0] recovery_epoch, output wire irq, abort_request,
     input wire quantum_done, input wire [31:0] quantum_cycles, audio_xruns,
+    output wire service_live, service_valid,
+    output wire [1:0] service_operation, output wire [3:0] service_index, service_read_index,
+    output wire [31:0] service_word,
+    input wire [3:0] service_receipt,
+    input wire service_request_space, service_response_pending,
+    input wire [1:0] service_response_code, input wire [31:0] service_read_data,
     input wire [31:0] first_fault_epoch, first_fault_cause, first_fault_op,
     input wire [31:0] first_fault_cycles, first_fault_control_cycles, first_fault_detail,
     input wire [63:0] first_fault_revision, first_fault_frame,
@@ -83,16 +89,26 @@ module fifo_mmio #(
     assign abort_request=write_complete && write_format && write_current && abort_access && write_data==epoch;
     wire recovery_available=recovery_state==0 || recovery_state==3;
     wire system_fault=faulted || recovery_state==4;
+    wire service_enabled=SYSTEM_REGISTERS!=0 && SERVICE_REGISTERS!=0;
+    wire service_access=service_enabled && ((write_address>=REG_REQUEST_EPOCH
+        && write_address<REG_REQUEST_DATA+12'd48) || write_address==REG_REQUEST_PUSH || write_address==REG_RESPONSE_POP);
+    assign service_live=service_enabled && live;
+    assign service_valid=write_complete && write_format && write_current && service_access;
+    assign service_operation=write_address==REG_REQUEST_PUSH ? 2'd1 : write_address==REG_RESPONSE_POP ? 2'd2 : 2'd0;
+    assign service_index=write_address[5:2];
+    assign service_word=write_data;
+    assign service_read_index=s_axi_araddr==REG_RESPONSE_TAG ? 4'd14 : s_axi_araddr[5:2]-4'd2;
     assign recovery_request=write_complete && write_format && write_current && recovery_access
         && write_data==epoch && recovery_available;
     assign recovery_epoch=write_data;
     assign irq=SYSTEM_REGISTERS!=0 && !reset && epoch!=0
-        && (system_fault || result_ready_mask!=0 || snapshot_ready_mask!=0);
+        && (system_fault || result_ready_mask!=0 || snapshot_ready_mask!=0 || (service_enabled && service_response_pending));
     wire result_access=read_accept && s_axi_araddr==REG_RESULT_DATA && live && result_cursor<48;
     wire snapshot_access=read_accept && s_axi_araddr==REG_SNAPSHOT_DATA && live && snapshot_cursor<SNAPSHOT_WORDS;
     assign s_axi_awready=!reset && !aw_pending && !s_axi_bvalid && write_owner==WRITE_NONE;
     assign s_axi_wready=!reset && !w_pending && !s_axi_bvalid && write_owner==WRITE_NONE;
-    assign s_axi_arready=!reset && !s_axi_rvalid && read_owner==READ_NONE;
+    assign s_axi_arready=!reset && !s_axi_rvalid && read_owner==READ_NONE
+        && !(service_valid && service_operation==2);
     assign host_valid=write_complete && write_format && write_current && command_request;
     assign host_operation=write_address==REG_COMMAND_DATA ? 3'd1
         : write_address==REG_COMMAND_PUBLISH ? 3'd2 : write_address==REG_RESULT_ACK ? 3'd3 : 3'd0;
@@ -124,7 +140,7 @@ module fifo_mmio #(
             REG_ABORT, REG_RECOVERY_REQUEST: write_format=write_format && SYSTEM_REGISTERS!=0;
             REG_COMMAND_BEGIN, REG_COMMAND_PUBLISH, REG_RESULT_ACK_LOW, REG_RESULT_ACK_HIGH,
             REG_RESULT_ACK_EPOCH, REG_SNAPSHOT_ACK_LOW, REG_SNAPSHOT_ACK_HIGH, REG_SNAPSHOT_ACK_EPOCH: ;
-            default: write_format=0;
+            default: write_format=write_format && service_access;
         endcase
     end
     task automatic respond_write(input [1:0] response);
@@ -186,10 +202,14 @@ module fifo_mmio #(
             if (read_accept) begin
                 s_axi_rvalid<=1; s_axi_rresp<=OKAY; s_axi_rdata<=0;
                 if (SYSTEM_REGISTERS!=0 && s_axi_araddr<REG_SEMANTIC_ID) begin
-                    case (s_axi_araddr)
+                    if (service_enabled && s_axi_araddr>=REG_RESPONSE_DATA
+                        && s_axi_araddr<REG_RESPONSE_DATA+12'd48 && s_axi_araddr[1:0]==0)
+                        s_axi_rdata<=service_read_data;
+                    else case (s_axi_araddr)
                         REG_ID: s_axi_rdata<=SEMANTIC_DISCOVERY_ID;
                         REG_VERSION: s_axi_rdata<=SEMANTIC_VERSION;
-                        REG_STATUS: s_axi_rdata<={29'd0,system_fault,2'd0};
+                        REG_STATUS: s_axi_rdata<={29'd0,system_fault,
+                            (service_enabled && service_response_pending),(service_enabled && service_request_space)};
                         REG_EPOCH: s_axi_rdata<=epoch;
                         REG_CORE_CLOCK_HZ: s_axi_rdata<=CORE_CLOCK_HZ;
                         REG_ARENA_BASE: s_axi_rdata<=ARENA_BASE;
@@ -209,6 +229,8 @@ module fifo_mmio #(
                         REG_RECOVERY_ID: s_axi_rdata<=32'h52535431;
                         REG_RECOVERY_STATUS: s_axi_rdata<={29'd0,recovery_state};
                         REG_SUBMISSION_RESULT: s_axi_rdata<={28'd0,submission_receipt};
+                        REG_RESPONSE_TAG: if (service_enabled) s_axi_rdata<=service_read_data; else s_axi_rresp<=SLVERR;
+                        REG_RESPONSE_CODE: if (service_enabled) s_axi_rdata<={30'd0,service_response_code}; else s_axi_rresp<=SLVERR;
                         REG_FAULT_EPOCH: s_axi_rdata<=first_fault_epoch;
                         REG_FAULT_CAUSE: s_axi_rdata<=first_fault_cause;
                         REG_FAULT_TAG: s_axi_rdata<=fault_sequence[31:0];
@@ -295,6 +317,8 @@ module fifo_mmio #(
                     respond_write(OKAY);
                     submission_receipt<=write_data!=epoch ? RECEIPT_EPOCH
                         : abort_access || recovery_available ? RECEIPT_ACCEPTED : RECEIPT_UNAVAILABLE;
+                end else if (service_access) begin
+                    respond_write(OKAY); submission_receipt<=service_receipt;
                 end else if (command_request) begin
                     if (host_ready) begin
                         aw_pending<=0; w_pending<=0;

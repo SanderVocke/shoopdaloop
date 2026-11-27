@@ -8,10 +8,11 @@ remain historical evidence in the [investigation report](../command-fifo-investi
 Stages 4–7 are not. The user explicitly approved a frontend ceiling of **8,000 LUT /
 7,000 FF**; all other limits remain unchanged. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
-are joined to the actual semantic/audio/media candidate. Its measured partial
-frontend is **7,457 LUT / 6,767 FF after standard optimization**, leaving
-**543 LUT / 233 FF** before remaining service/public and board integration.
-Unrouted WNS is **−8.997 ns**, still unclosed; production still selects ABI 15. The original
+are joined to the actual semantic/audio/media candidate, now with configuration-only
+CORE/AUDIO/STORE service. Its measured partial frontend is **7,990 LUT / 6,943 FF
+after standard optimization**, leaving only **10 LUT / 57 FF** before remaining
+media/lifecycle/trace service and board integration. Unrouted WNS regressed to
+**−12.116 ns**, still unclosed; production still selects ABI 15. The original
 stop and repair evidence remain historical records;
 the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
 
@@ -1852,8 +1853,8 @@ nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and optional-refe
 worklet Wasm builds pass. Fixture builds and full Linux tests ran sequentially;
 these are not physical or browser-runtime gates.
 
-No public preparation/loader/service/optional-trace lane was added: its buffered
-storage is next under the measured margin. External audio/watchdog adapter,
+At this epoch-refinement checkpoint no public preparation/loader/service/optional-
+trace lane was added: its buffered storage was next under the measured margin. External audio/watchdog adapter,
 matching ABI-16 software/CPU-control retirement, full admitted-service/whole-design/
 route/platform acceptance, the two baseline fault differences and Stage 7 delivery/
 audit remain. Stages 4–7 are incomplete, ABI 15 stays selected, and no push/PR,
@@ -1862,3 +1863,133 @@ physical authorization, deployment or overall completion is claimed.
 Local gates use prefix `stage4-coupled-epoch-`: `tooling-v1`, `tests-v1`, `measure-v1`,
 `milestone`, `wasm`, `linux`, `export`, `precommit`. Measurement reproduction still
 requires a fresh output directory and the verified existing Vivado image/catalog.
+
+## Configuration-only public service: actual CORE/AUDIO/STORE ownership
+
+The existing MMIO transaction owner now optionally enables `SERVICE_REGISTERS=1`
+on the actual candidate. CORE_CONFIG 1, AUDIO_CONFIG 2 and STORE_CONFIG 3 route to
+the real SP, JP and metadata configuration endpoints; their 16 input signals become
+private MMIO-owned wires. Backend outputs remain observable. Bulk media command/
+data ports are still separate integration seams. No legacy dispatcher, second
+transport/recovery owner, CPU semantic planner or continuing-state initializer is
+introduced. Matched ABI-16 software and trusted unused-lease APIs remain Stage 5.
+
+A single 16-u32 distributed RAM holds the private request and paired result.
+Epoch, full opcode and all twelve zero-padded payload words are written in order,
+then a nonzero tag publishes once. Rewriting epoch restarts an unpublished fill;
+wrong-order/duplicate fields refuse incomplete without advancing the cursor.
+Publication validates completeness/incarnation before reservation, then serial
+full-width/control/reserved checks precede any endpoint grant. This ordering
+matches the inspected existing submit sequence, not a claim that the ABI-15
+client already supports ABI 16. See the [contract](../../../fpga/host_bridge/semantic_fifo.md#configuration-service-subset).
+
+One cursor, one selected RAM read/write and one 160-bit working register avoid
+wide validity masks or dissolved RAM. The backend response is captured without
+ARM readiness and copied into private RAM over five clocks. Unread replies retain
+only this lane, not the backend or semantic results/snapshots. STATUS bits 0/1
+report request space/response pending; IRQ includes complete service replies.
+Matching POP releases storage, while accepted RDATA remains immutable through
+POP/reuse. Shared RAM read arbitration can defer AR during POP; it does not gate
+processing. Runtime reset flushes local service authority, preserves global copied
+R/B and poisons incomplete old halves. Halt/uncertainty never becomes a fake
+cancellation, retirement or successful memory-ownership fence.
+
+### Codec preflight evidence, not integrated fit arithmetic
+
+All four native standalone experiments are preserved in the
+[new archive](reports/config-mmio-606ce161b/results.json), including sources,
+Tcl/provenance and optimized utilization/timing. None is full frontend acceptance.
+
+| Standalone design | Optimized LUT / FF | LUTRAM | Unrouted WNS ns |
+| --- | ---: | ---: | ---: |
+| Five distributed fields | 548 / 89 | 120 | +2.164 |
+| Serial validation, multiple RAM reads | 522 / 701 | 0 | +2.596 |
+| One selected RAM read | 360 / 221 | 24 | +2.029 |
+| Cursor and tag in RAM, selected read/write | 315 / 175 | 24 | +1.210 |
+
+The multiple-read variant's RAM dissolved into FFs despite its attribute; selecting
+one address restored inference. The final cursor replaces the field mask/tag
+register without reducing data width or permitted configuration payloads. Nominal
+leaf cost versus prior margin was preflight only; fresh native subtraction below
+establishes the integrated partial area.
+
+### Public real-path verification
+
+Three standalone codec, seven indexed-MMIO and seven actual-MMIO cases pass.
+The actual tests now initialize unused observations and upload programs through
+public requests, rather than exposed configuration inputs. Held-DDR cases start
+requests without waiting for intentionally stalled backend completion. All
+existing sample/fence/128-row/retained-fault/boot-seed assertions remain.
+
+Two additional actual tests verify every unpublished request prefix with unchanged
+gain and continuing audio, full 32-bit scratch/full 160-bit metadata readback,
+held publication B, unread replies, held RDATA across POP/reuse and continued
+rendering. Both old-half orders cross real DDR drain/reset with a service word
+already copied into RDATA; the fresh epoch refuses the old pair without starting
+an epoch fill, and initial capture needs no reader. Retired operation 16 and a
+backend refusal expose failure/zero data without replay or audio fault.
+
+The first lifecycle run incorrectly treated audio space 3 as readable history;
+it is write-only history invalidation. Fixtures now use readable scratch space 2,
+while explicitly retaining space-3 read refusal/zero-data/continued-render checks.
+Failed `stage4-config-mmio-lifecycle-v1` remains evidence. No RTL workaround or
+weakened assertion was needed.
+
+Fresh `stage4-config-mmio-milestone` passes **266 Rust = 209 affected + 57 directed**,
+including both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
+generators and **12 Python tests**. Full Linux passes **3,584 / 11 skipped** in
+**405.917 s**, nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and
+optional-reference worklet Wasm builds pass. Builds/tests ran sequentially with
+a matching host fixture. These are not physical or browser-runtime qualification.
+
+### Fresh integrated partial resource checkpoint
+
+[Native reports and 40 checksummed files](reports/config-mmio-606ce161b/results.json)
+freeze `606ce161b` plus the exact measured source. All 65 native source hashes match
+current measured files. The separately checked register generator reproduces the
+frozen map and validates all twelve words of both data windows for overlap/range.
+The probe changes only by removing the 16 configuration input declarations and
+16 bindings now owned internally. A strict byte check excludes exactly those
+32 lines; every other byte/parameter remains identical. No profile/capacity/clock/
+delay reduction or historical evidence rewrite occurred.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,674 / 21,832 | 7,995 / 6,943 |
+| Standard `opt_design` | 31,568 / 21,804 | **7,990 / 6,943** |
+
+Packed hierarchy includes LUTRAM and subtracts only the same four disjoint existing
+execution/media/AXI/program backends. MMIO is **1,030 LUT / 388 FF**; service is
+**315 LUT / 175 FF**, including 24 LUTRAM. Kernel remains **1,763 LUT / 1,936 FF /
+no DSP**; storage remains 62.5 RAMB36-equivalents/four existing DSPs. Runner 0 and
+complete marker pass, zero errors/critical warnings, 217 synthesis warnings.
+**Unrouted WNS regressed from −8.997 ns to −12.580 ns synthesis / −12.116 ns
+optimized.** No placement/route or complete frontend/protected whole-design gate
+passes. Only **10 LUT / 57 FF** remain after optimization (5 LUT / 57 FF synthesis).
+Remaining integration must fit unchanged limits; an actual breach returns to the
+user rather than silently raising limits or reducing scope.
+
+**This is configuration-only:** STORE_CONFIG is metadata, not bulk media upload.
+Other legitimate preparation/media/lifecycle/optional-trace services remain
+required, not retired by this subset's refusals. External audio/watchdog adapter,
+matched ABI-16 ARM/reference transports, CPU-control retirement, full admitted-
+service/whole-design/route/platform qualification, both baseline fault differences
+and Stage 7 delivery/independent audit remain. Stages 4–7 are incomplete, production
+stays ABI 15, and no physical permission/push/PR/deployment/completion is claimed.
+
+Reproduce narrow cases through Nix:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim \
+    --test semantic_mmio --test config_service -- --test-threads=1
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test semantic_audio mmio_audio -- --test-threads=1
+'
+```
+
+Measurement still uses a fresh `--pipeline --mmio` output directory and the verified
+existing image/catalog. Local prefix `stage4-config-mmio-` has `tests-v1`, `tooling-v1`,
+`lifecycle-v2`, `measure-v1`, `milestone`, `wasm`, `linux`, `export` and `precommit`;
+failed lifecycle-v1 is retained. Earlier standalone logs use `stage4-config-codec-`.

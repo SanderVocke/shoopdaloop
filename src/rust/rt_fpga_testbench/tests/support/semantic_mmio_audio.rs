@@ -1,4 +1,4 @@
-use super::{cfg, first_fault, initialize_observations, quantum, recovery_design, wait_initial};
+use super::{first_fault, quantum, recovery_design, wait_initial};
 use rt_fpga_rtl::host::semantic_registers::*;
 use rt_fpga_testbench::{
     bits::Bits,
@@ -12,6 +12,8 @@ use rt_fpga_testbench::{
 use serde_json::{Value, json};
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "semantic_mmio_config.rs"]
+mod configuration;
 #[path = "semantic_mmio_safety.rs"]
 mod safety;
 
@@ -24,7 +26,7 @@ fn design() -> Design {
     design
         .sources
         .insert(0, root.join("fpga/host_bridge/rtl/semantic_registers.sv"));
-    for module in ["fifo_mmio", "fifo_mmio_pipeline_axi"] {
+    for module in ["fifo_config_service", "fifo_mmio", "fifo_mmio_pipeline_axi"] {
         design
             .sources
             .push(root.join(format!("fpga/host_bridge/rtl/{module}.sv")));
@@ -138,27 +140,68 @@ fn ack(s: &mut Sim<'_>, snapshot: bool, bank: u32, sequence: u64, epoch: u32) {
     write(s, authority, epoch);
     write(s, doorbell, 1);
 }
+fn start_request(s: &mut Sim<'_>, operation: u32, payload: &[u32; 12], tag: u32) {
+    assert_eq!(read(s, REG_STATUS) & 3, 1, "private service reservation");
+    write(s, REG_REQUEST_EPOCH, s.model.get("runtime_epoch") as u32);
+    write(s, REG_REQUEST_OP, operation);
+    for (index, word) in payload.iter().enumerate() {
+        write(s, REG_REQUEST_DATA + 4 * index as u32, *word);
+    }
+    write(s, REG_REQUEST_PUSH, tag);
+    assert_eq!(read(s, REG_SUBMISSION_RESULT), RECEIPT_ACCEPTED);
+}
+fn finish_request(s: &mut Sim<'_>, tag: u32) -> [u32; 12] {
+    let mut complete = false;
+    for _ in 0..20_000 {
+        if read(s, REG_STATUS) & 2 != 0 {
+            complete = true;
+            break;
+        }
+    }
+    assert!(complete, "copied service completion");
+    assert_eq!(read(s, REG_RESPONSE_TAG), tag);
+    assert_eq!(read(s, REG_RESPONSE_CODE), 0);
+    let result = core::array::from_fn(|index| read(s, REG_RESPONSE_DATA + 4 * index as u32));
+    write(s, REG_RESPONSE_POP, tag);
+    assert_eq!(read(s, REG_SUBMISSION_RESULT), RECEIPT_ACCEPTED);
+    result
+}
+fn start_cfg(s: &mut Sim<'_>, state: bool, loops: bool, address: u64, value: Option<&Bits>) {
+    let mut payload = [0; 12];
+    payload[0] = u32::from(state) | (u32::from(loops) << 1) | (u32::from(value.is_some()) << 8);
+    payload[1] = address.try_into().unwrap();
+    if let Some(value) = value {
+        payload[2..7].copy_from_slice(&value.resized(129).array::<5>());
+    }
+    start_request(s, SEMANTIC_SERVICE_CORE_CONFIG, &payload, 1);
+}
+fn cfg(s: &mut Sim<'_>, state: bool, loops: bool, address: u64, value: Option<&Bits>) -> Bits {
+    start_cfg(s, state, loops, address, value);
+    let result = finish_request(s, 1);
+    assert_eq!(&result[5..], &[0; 7]);
+    let words: [u32; 5] = result[..5].try_into().unwrap();
+    Bits::from(words).resized(129)
+}
+fn initialize_observations(s: &mut Sim<'_>, slot: u64, gain: u32) {
+    for word in 0..3 {
+        cfg(
+            s,
+            true,
+            true,
+            slot * 3 + word,
+            Some(&Bits::from_u64(if word == 0 { u64::from(gain) } else { 0 })),
+        );
+    }
+}
 fn upload(s: &mut Sim<'_>, address: u64, instruction: &Value) {
-    s.model.set_all(&[
-        ("cfg_valid", 1),
-        ("cfg_state", 0),
-        ("cfg_loop", 0),
-        ("cfg_write", 1),
-        ("cfg_address", address),
-    ]);
-    s.model.set_bits(
-        "cfg_write_data",
-        &codec::instruction(instruction).unwrap().resized(129),
+    start_cfg(
+        s,
+        false,
+        false,
+        address,
+        Some(&codec::instruction(instruction).unwrap().resized(129)),
     );
-    s.model.eval();
-    assert_eq!(s.model.get("cfg_ready"), 1);
-    s.idle(1);
-    s.model.set("cfg_valid", 0);
-    s.until(20_000, "DDR instruction upload", |m| {
-        m.get("cfg_response_valid") != 0
-    });
-    assert_eq!(s.model.get("cfg_response_error"), 0);
-    s.idle(2);
+    finish_request(s, 1);
 }
 fn reset(s: &mut Sim<'_>) {
     s.model.set_all(&[
@@ -368,25 +411,19 @@ fn indexed_mmio_uses_safe_runtime_reset_and_the_retained_full_width_fault_sequen
     let mut refused = [0; 12];
     refused[0] = 6;
     refused[4] = 5;
-    publish_hold(&mut s, 0, sequence, 0, &[refused]);
     memory.borrow_mut().control.hold_aw = true;
-    s.model.set_all(&[
-        ("cfg_valid", 1),
-        ("cfg_state", 0),
-        ("cfg_loop", 0),
-        ("cfg_write", 1),
-        ("cfg_address", 0),
-    ]);
-    s.model.set_bits(
-        "cfg_write_data",
-        &codec::instruction(&json!({"kind":"process_input","port":0,"destination":0}))
-            .unwrap()
-            .resized(129),
+    start_cfg(
+        &mut s,
+        false,
+        false,
+        0,
+        Some(
+            &codec::instruction(&json!({"kind":"process_input","port":0,"destination":0}))
+                .unwrap()
+                .resized(129),
+        ),
     );
-    s.model.eval();
-    assert_eq!(s.model.get("cfg_ready"), 1);
-    s.idle(1);
-    s.model.set("cfg_valid", 0);
+    publish_hold(&mut s, 0, sequence, 0, &[refused]);
     s.until(10_000, "actual held DDR upload AW", |m| {
         m.get("m_axi_awvalid") != 0
     });
@@ -525,7 +562,7 @@ fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_safet
             (REG_RECOVERY_ID, 0x52535431),
             (REG_RECOVERY_STATUS, 0),
             (REG_EPOCH, 1),
-            (REG_STATUS, 0),
+            (REG_STATUS, 1),
             (REG_COMPLETED_QUANTA, 0),
             (REG_PEAK_QUANTUM_CYCLES, 0),
             (REG_FAULT_EPOCH, 0),
@@ -563,19 +600,13 @@ fn indexed_mmio_discovers_geometry_counts_audio_and_refuses_reset_crossing_safet
         assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_EPOCH);
         assert_eq!(read(&mut s, REG_RECOVERY_STATUS), 0);
         memory.borrow_mut().control.hold_aw = true;
-        s.model.set_all(&[
-            ("cfg_valid", 1),
-            ("cfg_state", 0),
-            ("cfg_loop", 0),
-            ("cfg_write", 1),
-            ("cfg_address", 0),
-        ]);
-        s.model
-            .set_bits("cfg_write_data", &Bits::from_u64(0).resized(129));
-        s.model.eval();
-        assert_eq!(s.model.get("cfg_ready"), 1);
-        s.idle(1);
-        s.model.set("cfg_valid", 0);
+        start_cfg(
+            &mut s,
+            false,
+            false,
+            0,
+            Some(&Bits::from_u64(0).resized(129)),
+        );
         s.until(10_000, "actual DDR AW before public recovery", |m| {
             m.get("m_axi_awvalid") != 0
         });

@@ -9,9 +9,11 @@ is repaired. The user has explicitly approved raising only the replacement-front
 LUT ceiling from **6,000 to 8,000**, as recorded in the Stage 2 amendment below.
 The measured partial frontend now includes indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
-on the actual semantic/audio/media pipeline. It is **7,457 LUT / 6,767 FF after
-standard optimization**, leaving **543 LUT / 233 FF** before the remaining
-service/public and board integration. Production still selects ABI 15. All other ceilings,
+on the actual semantic/audio/media pipeline, now with a configuration-only public
+service for CORE/AUDIO/STORE requests. It is **7,990 LUT / 6,943 FF after
+standard optimization**, leaving only **10 LUT / 57 FF** before the remaining
+media/lifecycle/trace services and board integration. Unrouted WNS has regressed to
+**−12.116 ns** and remains unclosed. Production still selects ABI 15. All other ceilings,
 profile and semantics are unchanged; Stages 4–7 remain incomplete. This is not
 complete frontend, protected whole-design or routed-timing acceptance.
 The measured component and original stop decision are recorded in the Stage 4 resource gate below.
@@ -1264,6 +1266,83 @@ frees measured margin for its storage, not a claim that it is implemented. All
 remaining integration/software/timing/platform/delivery gates above remain open.
 Production remains ABI 15; Stages 4–7 remain incomplete. No new physical permission,
 push/PR, deployment or whole-goal completion follows.
+
+**Configuration-only public-service milestone:** the same MMIO owner now accepts
+CORE_CONFIG 1, AUDIO_CONFIG 2 and STORE_CONFIG 3 through the retained request/
+response addresses. A single private 16-u32 distributed RAM reserves the paired
+request/reply before backend effects. Epoch, full opcode and all twelve payload
+words are staged in order, then a nonzero tag publishes once. Incomplete or
+out-of-order fields cannot issue a configuration request; writing epoch restarts
+an unpublished fill. Full-width/reserved checks precede truncation and grant.
+One cursor, one selected RAM read/write and one 160-bit working register preserve
+RAM inference rather than adding field masks, a dispatcher or another AXI owner.
+
+- [x] Join candidate configuration service 1/2/3 to the actual SP/JP/store ports,
+  with complete private publication, copied replies and public lifecycle tests.
+  This is a subset milestone, not completion of the Stage 4 checklist above.
+
+Backend replies are captured without ARM readiness and copied privately over five
+clocks. An unread reply reserves this lane only, never audio or semantic result/
+snapshot capacity. STATUS bits 0/1 expose request space/response pending; IRQ adds
+a complete service reply. Matching POP releases the lane. Accepted RDATA remains
+stable across POP/reuse; the existing read channel briefly arbitrates the shared
+RAM on POP, without a new transport FSM or processing gate. Runtime reset flushes
+local service authority; old AXI halves stay poisoned and copied R/B stay owned
+by global transport. Fault/uncertain replies are not cancellation or a fence.
+
+The actual wrapper now owns all **16 configuration inputs** privately through
+MMIO; corresponding backend outputs remain observable. The profile probe differs
+from the epoch checkpoint only by those 16 declarations and 16 instance bindings.
+Every other byte/parameter is checked unchanged: no capacity, clock, delay or
+capability reduction. Ordered staging matches the inspected existing submit
+ordering, but that client is still ABI 15; matched ABI-16 software and trusted
+unused-lease APIs remain Stage 5. No continuing-state initializer or CPU semantic
+fallback is introduced. STORE_CONFIG is metadata, **not** bulk media preparation.
+Other legitimate preparation/media/lifecycle/trace operations remain required;
+this subset's refusals do not remove them from the approved final scope.
+
+Three standalone codec, seven indexed and seven actual-MMIO tests pass. New real
+paths cover every unpublished configuration prefix with audio/gain nonmutation,
+32-bit scratch and full 160-bit metadata readback, held publication B, unread
+replies, held R across POP/reuse, continued rendering, and both stale service-half
+orders across actual held-DDR retirement/reset. Existing full-width snapshots,
+real fences, retained faults and boot-seed qualification remain covered. Initial
+new fixtures incorrectly read write-only audio history-invalidation space 3;
+using scratch space 2 fixes them, while explicit space-3 refusal/zero data and
+continued rendering remain tested. The failed log is retained; no RTL workaround
+or weakened assertion was needed.
+
+[Native evidence](docs/fpga/command-fifo-implementation/reports/config-mmio-606ce161b/results.json)
+contains **40 checksummed files** based on `606ce161b`, including four preserved
+standalone codec variants, the final integrated source/profile and native reports.
+Standalone optimized LUT/FF costs were 548/89, 522/701, 360/221 and 315/175;
+these were preflight experiments, not arithmetic proof of integrated fit.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,674 / 21,832 | 7,995 / 6,943 |
+| Standard `opt_design` | 31,568 / 21,804 | **7,990 / 6,943** |
+
+Packed totals include LUTRAM and exclude only the same four disjoint execution/
+media/AXI/program backends. MMIO is **1,030 LUT / 388 FF**, service **315 LUT /
+175 FF** including 24 LUTRAM, kernel **1,763 LUT / 1,936 FF / no DSP**. Component
+storage remains 62.5 RAMB36-equivalents/four existing DSPs. Runner 0/complete marker
+pass, zero errors/critical warnings, 217 synthesis warnings. **Unrouted WNS worsens
+from −8.997 ns to −12.580 ns synthesis / −12.116 ns optimized.** No placement/route,
+complete frontend or protected whole-design acceptance follows. Only **10 LUT /
+57 FF** remain after optimization (5 LUT / 57 FF at synthesis); remaining integration
+must still fit, or an actual breach returns to the user under the unchanged rule.
+
+`stage4-config-mmio-milestone` passes **209 affected + 57 directed = 266 Rust tests**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped** in **405.917 s** with
+pinned nextest 0.9.116/owned isolated dummy JACK; default and optional-reference
+Wasm builds pass. Fixture builds and Linux ran sequentially. No physical or
+browser-runtime qualification was performed. Complete preparation/media/lifecycle/
+trace service, external adapters, matched software/CPU-control retirement, admitted
+service/whole-design/routed timing/platform qualification, baseline fault parity
+and delivery remain open. Production remains ABI 15; Stages 4–7 are incomplete.
+No physical authorization, push/PR, deployment or whole-goal completion follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

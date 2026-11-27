@@ -1,6 +1,6 @@
 use super::{
     channel, design, first_fault, publish_hold, quantum, read, read_hold, release_read,
-    release_write, reset, wait_initial, write, write_hold,
+    release_write, reset, start_cfg, wait_initial, write, write_hold,
 };
 use rt_fpga_rtl::host::semantic_registers::*;
 use rt_fpga_testbench::{
@@ -40,19 +40,13 @@ fn abort_and_hardware_faults_keep_their_causes_without_retiring_or_replaying_bac
         memory.borrow_mut().control.stalls = true;
         reset(&mut s);
         memory.borrow_mut().control.hold_aw = true;
-        s.model.set_all(&[
-            ("cfg_valid", 1),
-            ("cfg_state", 0),
-            ("cfg_loop", 0),
-            ("cfg_write", 1),
-            ("cfg_address", 0),
-        ]);
-        s.model
-            .set_bits("cfg_write_data", &Bits::from_u64(0).resized(129));
-        s.model.eval();
-        assert_eq!(s.model.get("cfg_ready"), 1);
-        s.idle(1);
-        s.model.set("cfg_valid", 0);
+        start_cfg(
+            &mut s,
+            false,
+            false,
+            0,
+            Some(&Bits::from_u64(0).resized(129)),
+        );
         s.until(10_000, "actual upload AW held before local fault", |m| {
             m.get("m_axi_awvalid") != 0
         });
@@ -70,7 +64,7 @@ fn abort_and_hardware_faults_keep_their_causes_without_retiring_or_replaying_bac
             s.model.set("s_axi_bready", 1);
             s.idle(1);
             s.model.set("s_axi_bready", 0);
-            assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_UNAVAILABLE);
+            assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_ACCEPTED);
             write(&mut s, REG_ABORT, 0);
             assert_eq!(read(&mut s, REG_SUBMISSION_RESULT), RECEIPT_EPOCH);
             s.model.set("s_axi_awaddr", u64::from(REG_ABORT));
@@ -119,7 +113,7 @@ fn abort_and_hardware_faults_keep_their_causes_without_retiring_or_replaying_bac
         assert_eq!(saved[3], u64::from(u32::MAX));
         assert_eq!(saved[7], 0);
         assert_eq!(saved[9], 32);
-        assert_eq!(read(&mut s, REG_STATUS), 4);
+        assert_eq!(read(&mut s, REG_STATUS), 6);
         assert_eq!(s.model.get("irq"), 1);
         assert_eq!(read(&mut s, REG_FAULT_CAUSE), cause as u32);
         if abort {

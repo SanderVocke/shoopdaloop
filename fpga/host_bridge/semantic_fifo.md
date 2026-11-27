@@ -7,9 +7,10 @@ mailbox remains ABI 15 until the replacement and matching software pass their
 integration gates. Historical ABI-15 staged patches are not this interface.
 Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
 ABORT and qualified hardware fault sidebands are implemented as a verified subset,
-joined to the actual semantic audio/media candidate. Preparation/service MMIO,
-external physical audio/watchdog hookup, ABI selection and matching software
-remain integration work.
+joined to the actual semantic audio/media candidate. A configuration-only public
+CORE/AUDIO/STORE service subset is now implemented. Complete preparation/media/
+lifecycle/trace service, external physical audio/watchdog hookup, ABI selection
+and matching software remain integration work.
 
 ## Ownership, profile and pacing
 
@@ -363,6 +364,8 @@ fields use the qualified always-on record, never a live attempted command.
 | Lower subset | Implemented meaning |
 | --- | --- |
 | 0x000–0x03c | Discovery/geometry, ID `0x53484f50`, VERSION 16; existing 512-job admission cap retained |
+| 0x040, 0x044, 0x048–0x074, 0x078 | Request epoch/opcode/twelve payload words/PUSH tag; configuration-only subset below |
+| 0x080, 0x084, 0x088–0x0b4, 0x0b8 | Copied response tag/code/twelve data words/POP matching tag |
 | 0x104–0x10c | Saturating completed quanta/peak clocks and trusted hardware audio-xrun readback |
 | 0x110 | Epoch-qualified ABORT; local terminal halt, not retirement/fence/reset |
 | 0x114–0x120 | Recovery ID/status/request and safety submission receipt |
@@ -381,9 +384,65 @@ result/snapshot availability or terminal fault, never reader readiness.
 
 The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
-approved profile capacity. Preparation/loader/service/optional-trace registers
-remain unmapped; configuration ports are private integration interfaces, not a
-completed public endpoint.
+approved profile capacity. The configuration-only service below owns configuration
+inputs privately; complete preparation/media/lifecycle/optional-trace service is
+still required, not a completed public endpoint.
+
+### Configuration-service subset
+
+The actual wrapper enables `SERVICE_REGISTERS=1` on the same MMIO owner; standalone
+indexed MMIO defaults to 0. One private request/result slot accepts these opcodes:
+
+| Opcode | Existing endpoint | Control mask | Address / data width |
+| --- | --- | --- | --- |
+| 1 CORE_CONFIG | Program/state/loop and unused-lease observations | `0x103` | u16 address / 129 data bits |
+| 2 AUDIO_CONFIG | JP configuration, including scratch and history invalidation | `0x103` | u32 address / 32 data bits |
+| 3 STORE_CONFIG | Media metadata configuration, **not bulk media upload** | `0x107` | u32 address / 160 data bits |
+
+Payload word 0 contains low space bits and write bit 8; all other control bits
+are zero. Word 1 is address, words 2–6 little-endian data, words 7–11 reserved zero.
+CORE's fifth data word has only bit 0; AUDIO's extra four data words are zero.
+Validate full opcode, widths and reserved bits before truncating/granting. Actual
+endpoint geometry/value checks remain in their existing owners. In the external-
+I/O profile audio scratch space 2 is readable/writable; space 3 is write-only
+history invalidation, not a history readback/restoration interface. Configuration
+remains trusted inactive-program/unused-lease preparation, never an ARM live-state
+planner. The Stage 5 trusted API must enforce those ownership restrictions.
+
+Stage epoch at 0x040, full opcode at 0x044 and **all twelve** zero-padded payload
+words sequentially, then make writes visible and publish once with a nonzero u32
+tag at 0x078. Writing epoch restarts an unpublished fill. Wrong-order/duplicate
+fields refuse receipt 7 without changing cursor/data; incomplete PUSH also refuses
+7. Wrong staged incarnation refuses 2, zero tag 4. Receipt 0 reserves the private
+paired slot and accepts validation, not completed backend effects or a fence.
+This sequential staging is compatible with the inspected existing submit ordering;
+it does not make that ABI-15 client a matching ABI-16 transport.
+
+A full-width opcode outside this subset produces response code 1 without backend
+effects; malformed payload gives 2. Code 0 is successful endpoint completion;
+code 3 is backend error or fault/uncertainty, never proof of rollback, cancellation
+or ownership retirement. The backend response is captured without ARM readiness,
+then copied into private RAM over five clocks. Read twelve immutable response
+words; unused/high bits and all error data are zero. Tag/code are immutable until
+matching POP. Wrong tag refuses 6, no pending reply 5, terminal halt 3. An unread
+reply reserves only this lane. STATUS bit 0 is request space, bit 1 response pending,
+bit 2 existing terminal fault; IRQ adds pending service reply independently of
+semantic results/snapshots. Requests/polls/POP do not advance F or pace rendering.
+
+One selected RAM read/write and cursor serve fill/validation/copy. AR can defer
+while POP verifies its tag on that shared read port. Already accepted RDATA uses
+the existing global holding register and survives POP/reuse or safe runtime reset;
+only global reset drops it. Per-half authority rejects reset-crossing service
+writes. Safe runtime reset flushes private fill/reply/callback ownership without
+replay; accepted backend work still requires real external retirement before reset.
+Matched software must serialize this lane, check incarnation around publication/
+response/POP, cancel stale software callbacks on reset and never replay uncertain
+operations or reuse their tags while authority is unresolved.
+
+Only 1/2/3 are implemented at this milestone. Other legitimate preparation/media/
+lifecycle/trace operations still belong to the approved final scope; temporary
+subset refusals do not retire them. Old CPU live-control/staged-patch operations
+must not be imported to supply those missing services.
 
 ABORT requires full-strobe, complete current-epoch AW/W authority and data equal
 to that epoch. Neither half alone has effects; wrong epoch/old halves return
@@ -403,13 +462,19 @@ halves, all lower retained fields, held R/B, coherent 128-row readback, real pro
 fences, five source combinations and delayed external retirement before reset.
 A genuine newer-epoch fault can replace the retained record without relabeling
 old copied cause RDATA; epoch advance/reset alone cannot replace it.
-[Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/coupled-epoch-519455096/results.json)
-are **7,457 LUT / 6,767 FF** after standard optimization, leaving **543 LUT / 233 FF**.
-The reset-owned refinement saves 20 LUT / 32 FF without changing the public profile.
-Unrouted WNS improves from −9.142 to **−8.997 ns**, still unclosed and worse than
-older −5.017 ns. Service/matching software remain
-absent; no ABI-16 deployment, complete frontend/whole-design or routed-timing
-acceptance is established.
+Two additional actual tests cover all unpublished configuration prefixes with
+continuing audio/nonmutation, all three endpoints/full 160-bit metadata readback,
+held R across POP/reuse, and both old service-half orders across actual DDR drain/
+reset. A write-only history-read fixture failure is preserved; readable scratch
+and explicit history-read refusal remain tested without an RTL workaround.
+[Fresh partial resources](../../docs/fpga/command-fifo-implementation/reports/config-mmio-606ce161b/results.json)
+are **7,990 LUT / 6,943 FF** after standard optimization, leaving only **10 LUT / 57 FF**.
+Synthesis is 7,995 LUT / 6,943 FF. Exactly 16 configuration inputs/32 probe lines
+move to MMIO ownership; every other probe byte/parameter remains unchanged.
+Unrouted WNS regresses from −8.997 ns to **−12.580 ns synthesis / −12.116 ns optimized**.
+Complete service/matching software remain unfinished; no ABI-16 deployment,
+complete frontend/whole-design or routed-timing acceptance is established.
+Production remains ABI 15 and Stages 4–7 remain incomplete.
 
 ## Retained first-fault diagnostics
 

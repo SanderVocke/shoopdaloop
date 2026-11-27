@@ -1,0 +1,27 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 27 11:57:17 2026
+| Host         : fd5259a1dd1c running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file codec-optimized-utilization.rpt
+| Design       : fifo_config_service
+| Device       : 7z020clg400-2
+| Design State : Optimized
+----------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------+--------+------------+------------+---------+------+-----+--------+--------+------------+
+|       Instance      | Module | Total LUTs | Logic LUTs | LUTRAMs | SRLs | FFs | RAMB36 | RAMB18 | DSP Blocks |
++---------------------+--------+------------+------------+---------+------+-----+--------+--------+------------+
+| fifo_config_service |  (top) |        315 |        291 |      24 |    0 | 175 |      0 |      0 |          0 |
++---------------------+--------+------------+------------+---------+------+-----+--------+--------+------------+
+
+

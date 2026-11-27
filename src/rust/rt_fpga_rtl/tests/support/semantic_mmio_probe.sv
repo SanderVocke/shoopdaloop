@@ -45,6 +45,9 @@ module semantic_mmio_probe #(
     fifo_mmio #(.LOOPS(LOOPS)) mmio (
         .fault_sequence(diagnostic_sequence), .recovery_state(3'd0),
         .recovery_request(), .recovery_epoch(), .irq(), .abort_request(),
+        .service_live(), .service_valid(), .service_operation(), .service_index(), .service_read_index(), .service_word(),
+        .service_receipt(4'd0), .service_request_space(1'b0), .service_response_pending(1'b0),
+        .service_response_code(2'd0), .service_read_data(32'd0),
         .quantum_done(1'b0), .quantum_cycles(32'd0), .audio_xruns(32'd0),
         .first_fault_epoch(32'd0), .first_fault_cause(32'd0), .first_fault_op(32'd0),
         .first_fault_cycles(32'd0), .first_fault_control_cycles(32'd0), .first_fault_detail(32'd0),

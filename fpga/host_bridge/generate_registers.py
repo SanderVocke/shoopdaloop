@@ -65,13 +65,14 @@ def generate(check):
 def semantic_definitions():
     spec = json.loads((HERE / "semantic_registers.json").read_text())
     registers = {name: int(value, 16) for name, value in spec["registers"].items()}
-    if len(registers) != len(set(registers.values())) or any(
-            offset % 4 or not 0 <= offset < 4096 for offset in registers.values()):
-        raise ValueError("Overlapping, unaligned or out-of-range semantic register")
     constants = {name: int(value, 0) if isinstance(value, str) else value
                  for name, value in spec["constants"].items()}
-    if any(not 0 <= value <= 0xffffffff for value in constants.values()):
+    if any(not 0 <= value <= 0xffffffff for value in constants.values()) or constants["PAYLOAD_WORDS"] != 12:
         raise ValueError("Out-of-range semantic constant")
+    occupied = [offset + 4 * word for name, offset in registers.items()
+                for word in range(constants["PAYLOAD_WORDS"] if name in {"REQUEST_DATA", "RESPONSE_DATA"} else 1)]
+    if len(occupied) != len(set(occupied)) or any(offset % 4 or not 0 <= offset < 4096 for offset in occupied):
+        raise ValueError("Overlapping, unaligned or out-of-range semantic register")
     receipts = spec["receipts"]
     if len(receipts) != len(set(receipts.values())) or any(not 0 <= value <= 15 for value in receipts.values()):
         raise ValueError("Overlapping or out-of-range semantic receipt")
