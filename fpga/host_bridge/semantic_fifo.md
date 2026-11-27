@@ -402,6 +402,16 @@ request another reset after epoch change. Runtime quantum counters clear without
 advancing F and share the existing opportunity timer. IRQ reflects complete
 result/snapshot availability or terminal fault, never reader readiness.
 
+The shared Rust recovery client records pending intent before the request write.
+An uncertain write or follow-up read retains query-only authority, not permission
+to retry or reopen; failed/protocol-invalid outcomes stay terminal even if a later
+status claims completion. Requests/reopen remain bound to the mailbox incarnation;
+only correlated next-epoch reset completion advances that binding. Recreating the
+client from a stale mailbox cannot adopt or request the new epoch. Its default
+reopen remains exact ABI 15: this
+[software prerequisite](../../docs/fpga/command-fifo-implementation/reports/recovery-intent-369f5ae77/results.json)
+does not attach ABI 16, establish application Ready or retire continuing leases.
+
 The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
 approved profile capacity. The preparation subset below owns configuration and

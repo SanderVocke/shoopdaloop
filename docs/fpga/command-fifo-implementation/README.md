@@ -2479,3 +2479,57 @@ All Stage 5 checkboxes remain open; Stage 4 is partial, Stages 6–7 open and AB
 selected. No hardware/schema/runtime-owner changes, new synthesis/route/current
 fit, promotion, board work, push/PR or whole-goal completion follow. Binding
 resource/cycle/timing/safety requirements and final-budget agreement still apply.
+
+## Shared recovery-client intent/incarnation prerequisite — Stage 5 partial
+
+Before reusing the existing recovery owner for ABI-16 attachment, inspection and
+regression tests found three software authority gaps: a lost request/status ACK
+could discard pending intent, a later status could turn a terminal outcome into
+success, and a client recreated from a stale mailbox could adopt the new epoch.
+The same owner now records intent before the request write, permits only queries
+while that outcome is uncertain, and retains terminal failed/protocol-invalid
+state. It binds requests/reopen to its mailbox epoch and advances that binding
+only after the correlated next-epoch reset completion. No hardware controller,
+backend owner, timeout or automatic replay is added. Hardware reset-complete is
+not application Ready, semantic handoff or permission to reuse continuing leases.
+
+Five unit tests cover before/after-write and post-write-status errors, transient
+query errors, old/zero/wrong epochs, protocol-invalid/failed/late outcomes, stale
+mailbox recreation and refusal without reset effects. The actual legacy AXI
+pipeline case loses software acknowledgements after real B or status-R acceptance,
+waits for genuine epoch 1→2 reset completion, rejects both replay and stale
+mailbox adoption, and preserves zero completed audio quanta. It runs both error
+positions. The retained repeated-recovery test also passes: **7 targeted tests**.
+This is not an ABI-16 attachment, new held-DDR-drain, permanent-MMIO-stall or
+physical recovery proof. Existing actual-DDR/held-response suites pass separately.
+
+[Results and three exact Rust source hashes](reports/recovery-intent-369f5ae77/results.json)
+record final-source **307 Rust = 235 affected + 72 directed**, both 3,970-case
+kernel sources, four audio-I/O tests, **13 Python**, warnings/format/policy/
+coverage/generators. Fresh full Linux passes **3,589 (2 slow) / 11 skipped /
+404.637 s**, pinned nextest 0.9.116 and owned isolated 48 kHz/128-frame dummy JACK.
+Default application/worklet and optional `fpga-reference` Wasm builds, explicit
+host-library Wasm check and pinned Rust 1.99.1 ARM bare-metal library check pass.
+These are not browser-runtime, matched firmware/link/pair or physical proofs.
+All feature-sensitive builds and suites remain serialized.
+
+Both pre-fix regression failures are retained: the original run reproduces lost
+pending intent and late success; the second reproduces stale-mailbox adoption.
+Earlier partial gates are not final-source evidence. The final `target-v2`,
+`milestone-v2`, `v2-linux`, `wasm-v2` and `arm-v2` gates all pass. Reproduce narrowly:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test host_recovery --test recovery_pipeline -- --test-threads=1
+'
+```
+
+The default recovery reopen still requires **ABI 15**; no indiscriminate 15/16
+acceptance or production selection change is introduced. Exact ABI-16 attachment
+and bounded nonblocking group/result/snapshot pumping are next, followed by the
+trusted binding/preparation/lease and reference/Ready integration already listed.
+All Stage 5 checkboxes remain open. Stages 0–3 are complete, Stages 4–5 partial,
+Stages 6–7 open. No new hardware/schema change, synthesis/route/current-source fit,
+promotion, board work, push/PR, independent final audit or whole-goal completion.

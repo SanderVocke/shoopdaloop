@@ -1839,6 +1839,32 @@ Ready or CPU-control retirement is claimed. These are next; every Stage 5 checkb
 remains open. Stage 4 stays partial; Stages 6–7, fit/final budgets/timing/platform/
 physical qualification and delivery remain open. ABI 15 remains selected.
 
+**Shared recovery-client prerequisite (partial):** inspection before ABI-16
+transport reuse found that uncertain request acknowledgements lost pending
+software authority, terminal outcomes could later become success, and a recovery
+client recreated from a stale mailbox could adopt a newer epoch. The existing
+owner now records intent before the request write, retains query-only authority
+across uncertain write/status/epoch reads, and latches failed/protocol-invalid
+outcomes. Its mailbox incarnation changes only after the correlated next-epoch
+reset completion; stale recreation/reopen cannot request or adopt another reset.
+This extends the same software owner, not the hardware recovery controller.
+Reset-complete remains distinct from application Ready, handoff and lease reuse.
+
+Five unit tests and the new actual legacy-AXI recovery case pass, alongside the
+retained repeated-recovery test: **7 targeted tests**. The actual case loses
+software acknowledgements after real AXI acceptance and checks epoch 1→2 without
+a second reset or stale-mailbox adoption. It is not a permanent-MMIO-stall,
+ABI-16 device-attachment or new held-DDR-drain proof. Both pre-fix regression
+failures are retained. Final source-qualified gates pass **307 Rust = 235 affected
++ 72 directed**, **13 Python**, warnings/format/policy/coverage/generators, Linux
+**3,589 passed / 11 skipped / 404.637 s**, both Wasm profiles, explicit host-library
+Wasm and pinned ARM-library checks.
+[Evidence](docs/fpga/command-fifo-implementation/reports/recovery-intent-369f5ae77/results.json)
+records three Rust source hashes. ABI 15 remains selected; exact ABI-16 attachment,
+bounded MMIO pumping and all remaining Stage 5 work above are still pending.
+No checkbox, stage completion, hardware change, current fit, promotion, physical
+qualification or delivery is implied.
+
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 
 - [ ] Run continuous-audio differential tests through the full AXI/host path for

@@ -1,0 +1,105 @@
+{
+  "outcome": "PARTIAL_SHARED_RECOVERY_INTENT_EPOCH_TERMINAL_FIX_GATES_PASSED_ABI16_TRANSPORT_STILL_OPEN",
+  "source_base": "369f5ae7730c59e27b29c43054c0a52f4a5d5522",
+  "source_manifest": "sources.json",
+  "scope": "Extend the existing software recovery owner before reusing it for ABI-16 transport; no new hardware controller or backend owner",
+  "common_recovery_client_behavior_changed": true,
+  "production_rtl_schema_or_runtime_owner_selection_changed": false,
+  "recovery_client": {
+    "intent": "Record Pending(epoch) before the MMIO request write; uncertain write/status/epoch-read errors retain query-only authority,not replay or reopen",
+    "terminal": "Hardware failure,protocol-invalid post-request status or wrong completion epoch latches software failure; later status cannot become Ready",
+    "incarnation": "Bind requests/reopen to the mailbox epoch; only correlated next-epoch reset completion advances it; stale mailbox recreation cannot adopt/request another epoch",
+    "completion": "Hardware reset complete only,not application Ready,semantic handoff,continuing-lease reuse or cancellation",
+    "exact_default_reopen_abi": 15,
+    "new_hardware_controller_backend_owner_or_timeout": false
+  },
+  "verification": {
+    "new_unit_tests": 5,
+    "new_actual_legacy_axi_pipeline_test": 1,
+    "actual_axi_lost_ack_positions": 2,
+    "target_tests_including_retained_repeated_recovery": 7,
+    "affected_rust_tests": 235,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 307,
+    "retained_audio_io_tests": 4,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3589,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 404.637,
+      "nextest": "0.9.116",
+      "audio_fixture": "owned isolated48kHz/128frame dummy JACK"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "explicit_host_library_wasm_check": "passed",
+    "arm_library_check": {
+      "result": "passed",
+      "target": "armv7a-none-eabihf",
+      "rust": "1.99.1",
+      "warnings_denied": true,
+      "installed_toolchain_reused": true,
+      "matching_firmware_link_or_pair_proof": false
+    },
+    "builds_and_tests_serialized": true,
+    "actual_axi_scope": "Existing legacy ABI15 recovery pipeline,real B/status-R acceptance before injected software error,genuine epoch1-to2 reset completion,replay/stale-mailbox refusal,no synthetic audio quantum. Not new ABI16 attachment,permanent MMIO stall or held-DDR-drain proof; existing actual-DDR/held-response suites pass separately.",
+    "retained_expected_pre_fix_regressions": [
+      {
+        "gate": "stage5-recovery-intent-red",
+        "status": 101,
+        "passed": 2,
+        "failed": 2,
+        "cause": "Old client loses pending authority after uncertain ACK and permits later success after terminal status"
+      },
+      {
+        "gate": "stage5-recovery-intent-epoch-red",
+        "status": 101,
+        "passed": 4,
+        "failed": 1,
+        "cause": "Initial intent/terminal fix still permits stale mailbox to adopt new epoch; incarnation binding added"
+      }
+    ],
+    "earlier_partial_gates_are_not_final_source_evidence": true,
+    "final_source_local_gates": {
+      "target": "target-v2",
+      "milestone": "milestone-v2",
+      "linux": "v2-linux",
+      "wasm": "wasm-v2",
+      "arm": "arm-v2",
+      "precommit": "precommit"
+    }
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "last_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stage5_complete": false,
+    "stages6_to7_complete": false,
+    "exact_abi16_device_attachment": false,
+    "bounded_nonblocking_mmio_pump": false,
+    "trusted_lease_binding_owner": false,
+    "reference_cutoff_aligned": false,
+    "fresh_first_frame_ready_integration": false,
+    "matching_abi16_runtime_software": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false,
+    "independent_final_audit": false
+  },
+  "production_abi_selected": 15,
+  "reproduce_narrow": "nix develop --command bash -c 'export SHOOP_FPGA_SOURCE_ROOT=\"$PWD\"; RUSTFLAGS=\"-D warnings\" cargo test -p rt_fpga_rtl --features sim,rt-interface --test host_recovery --test recovery_pipeline -- --test-threads=1'",
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage5-recovery-intent-"
+}
