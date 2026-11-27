@@ -2,6 +2,8 @@
 use rt_fpga_rtl::{bits::Bits, model::Design, sim::Sim};
 use shoop_wasm_test_support::shoop_test;
 
+#[path = "support/config_drain.rs"]
+mod drain;
 #[path = "support/config_lifecycle.rs"]
 mod lifecycle;
 #[path = "support/config_media.rs"]
@@ -195,7 +197,7 @@ fn malformed_values_and_retired_operations_refuse_before_any_backend_effect() {
         assert_eq!(access(s, 2, 0, 1), 5);
         let mut cases = vec![];
         for op in [
-            0, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 0x1_0001, 0x1_0004, 0x1_0009,
+            0, 5, 6, 7, 8, 10, 11, 13, 14, 15, 16, 0x1_0001, 0x1_0004, 0x1_0009, 0x1_000c,
         ] {
             cases.push((request(op, 0, 0, [0; 5]), 1));
         }

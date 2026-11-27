@@ -1,0 +1,91 @@
+{
+  "outcome": "PARTIAL_PUBLIC_DRAIN_STOP_FUNCTIONAL_GATES_PASSED_NO_RESOURCE_MEASUREMENT",
+  "source_base": "00314720fe4963ad489585f255c799858e1d6389",
+  "source_manifest": "sources.json",
+  "scope": "Candidate ABI16 complete preparation/lifecycle hardware service map through existing owners; production ABI15, complete hostile lifecycle and matching trusted software pending",
+  "interface": {
+    "service_opcode": 12,
+    "payload": "all twelve words zero",
+    "reply": "all twelve words zero",
+    "internal_operation": 7,
+    "codec_phases": 7,
+    "additional_codec_state_bits": 0,
+    "additional_dispatchers_timers_transaction_trackers_backend_or_recovery_owners": 0,
+    "validation": "complete publication and all full-width/reserved checks before audio stop or backend effects",
+    "ordering": "drop existing enable flag; gate both loader valid and codec ready on registered disable plus whole processing idle; any already-accepted/same-edge quantum finishes first",
+    "backend": "existing private loader/accepted media owner, native FENCE7 with zero view/start/length/count; actual cache/DMA/metadata completion, copied locally without ARM readiness",
+    "not_authority_for": [
+      "cancellation",
+      "consumer handoff",
+      "whole-runtime retirement",
+      "continuing-lease reuse",
+      "application Ready"
+    ],
+    "stopped_lifetime": "reenable after an enabled lifetime stops refuses2 until safe runtime reset; idle drain does not create a quantum or new incarnation",
+    "fault": "code3 uncertainty/all-zero data, no rollback/cancellation/replay; explicit recovery still waits actual AXI retirement before reset",
+    "transport": "existing full-width epoch/per-half authority and global copied R/B ownership unchanged",
+    "profile": "complete candidate hardware service map now included in MMIO metadata; not matched trusted software, paced audio adapter or protected board scope; all geometry/probe bytes unchanged"
+  },
+  "verification": {
+    "codec_tests": 12,
+    "indexed_mmio_tests": 8,
+    "actual_mmio_tests": 16,
+    "affected_rust_tests": 219,
+    "directed_rust_tests_including_audio_io": 71,
+    "selected_rust_total": 290,
+    "retained_audio_io_tests": 4,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "new_codec_tests": 2,
+    "codec_reserved_single_bit_failures": 384,
+    "codec_halt_positions": 19,
+    "codec_coverage": "all14 incomplete prefixes; invalid payload cannot stop audio; local stop before withheld grant; idle is not fence completion; copied zero replies; refused reenable; backend error/reset/late callbacks/no replay",
+    "new_actual_tests": 2,
+    "actual_success": "real generated audio/SP/JP/media/cache/DMA/64bitAXI; all14 unpublished prefixes preserve frames; one loader grant only after registered stop and whole processing completion; held publicationB; real stalled dirty-writebackB/no early success; all32 upload words checked independently in AXI backing with no active transaction; copied tag104 across POP/reuse105; stopped frames remain fixed",
+    "actual_abort_recovery": "ABORT during accepted real dirty fence yields code3 uncertainty, cannot cancel B; explicit recovery waits actual B retirement; copied faultR and recoveryB survive epoch1->2; no replay/reenable; fresh idle drain cannot advance F0 or replace old fault",
+    "fixture_limits": "128 snapshot rows with reduced program/state/media fixture geometries; new checks are frame/ownership/backing, not a new PCM or all-admitted oracle; retained exact generated/I2S/playback/capture cases pass",
+    "linux": {
+      "passed": 3584,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 405.373,
+      "nextest": "0.9.116",
+      "audio": "owned isolated dummy JACK48k/128"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "builds_and_tests_serialized": true
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "latest_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "prechange_frontend_lut": 7943,
+    "prechange_frontend_ff": 6943,
+    "prechange_optimized_unrouted_wns_ns": -9.754,
+    "final_lut_ff_budgets_agreed": false,
+    "other_resource_cycle_profile_semantic_safety_requirements_unchanged": true
+  },
+  "acceptance": {
+    "drain_stop12_implemented": true,
+    "candidate_hardware_service_map_complete": true,
+    "stage4_complete": false,
+    "stages5_to7_complete": false,
+    "complete_hostile_lifecycle": false,
+    "matching_abi16_software": false,
+    "cpu_control_retired": false,
+    "protected_board_design": false,
+    "all_admitted_cycle_proof": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false
+  },
+  "reproduce_narrow": [
+    "nix develop --command cargo test -p rt_fpga_rtl --features sim --test config_service -- --test-threads=1",
+    "nix develop --command cargo test -p rt_fpga_testbench --features sim --test semantic_audio mmio_audio::drain -- --test-threads=1"
+  ],
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage4-drain-"
+}

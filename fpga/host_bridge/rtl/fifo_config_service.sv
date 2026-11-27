@@ -50,7 +50,7 @@ module fifo_config_service (
     assign response_pending=live && phase==REPLY;
     assign response_code=response_pending ? code : 2'd0;
     assign read_data=!response_pending ? 32'd0 : read_index==14 ? value
-        : code!=0 || config_operation==4 || config_operation==6 || read_index>=5 || (config_operation==2 && read_index!=0)
+        : code!=0 || config_operation==4 || config_operation>=6 || read_index>=5 || (config_operation==2 && read_index!=0)
         ? 32'd0 : config_operation==1 && read_index==4 ? {31'd0,value[0]} : value;
     assign audio_enable=live && !halt && audio_enabled;
     wire lifecycle_issue=live && !halt && phase==ISSUE && config_operation==6;
@@ -78,9 +78,10 @@ module fifo_config_service (
     assign config_media_read_ready=(media_accept && media_operation==2)
         || (live && !halt && config_operation==5 && config_space==6 && phase==REPLY && code==3);
     assign config_response_ready=live && !halt && config_operation!=6 && (phase==WAIT || phase==ISSUE);
-    wire known_operation=(value>=1 && value<=4) || value==9 || value==17;
+    wire known_operation=(value>=1 && value<=4) || value==9 || value==12 || value==17;
     wire bad_control=(value & (config_operation==3 ? 32'hfffffef8 : 32'hfffffefc))!=0;
-    wire bad_scan=config_operation==6 ? (cursor==2 ? value>1 : value!=0)
+    wire bad_scan=config_operation==7 ? value!=0
+        : config_operation==6 ? (cursor==2 ? value>1 : value!=0)
         : config_operation==5 ? ((cursor==2 && value[31:3]!=0)
             || (cursor==9 && (config_space==5 || config_space==6) && value>32)
             || (cursor>=10 && value!=0)) : config_operation==4 ? (cursor>=4 && value!=0)
@@ -105,6 +106,7 @@ module fifo_config_service (
             config_operation<=0; config_space<=0; config_write<=0; media_authorized<=0;
             audio_enabled<=0; audio_started<=0;
         end else begin
+            if (!halt && phase==ISSUE && config_operation==7) audio_enabled<=0;
             if (lifecycle_issue && !lifecycle_refused) begin
                 audio_enabled<=config_space[0]; audio_started<=audio_started || config_space[0];
             end
@@ -117,10 +119,11 @@ module fifo_config_service (
                 default: ;
             endcase
             case (phase)
-                OPCODE: begin config_operation<=value==17 ? 3'd5 : value==9 ? 3'd6 : value[2:0]; cursor<=2; phase<=SCAN; end
+                OPCODE: begin config_operation<=value==17 ? 3'd5 : value==9 ? 3'd6 : value==12 ? 3'd7 : value[2:0]; cursor<=2; phase<=SCAN; end
                 SCAN: begin
                     if (cursor==2) begin config_space<=value[2:0]; config_write<=value[8]; end
-                    if (config_operation==5) begin
+                    if (config_operation==7) working<=224'd0;
+                    else if (config_operation==5) begin
                         if (cursor>=3 && cursor<=9) working<={value,working[223:32]};
                     end else if (config_operation==4) begin
                         if (cursor==2) working<={192'd0,value};

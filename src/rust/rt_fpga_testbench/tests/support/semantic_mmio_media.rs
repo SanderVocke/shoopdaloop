@@ -9,7 +9,7 @@ use shoop_wasm_test_support::shoop_test;
 const OWNER: &str = "pipeline.execution.core.owner.owner";
 const LOADER: &str = "pipeline.execution.core.owner.loader.phase";
 
-fn payload(opcode: u32, view: u64, start: u64, length: u64, count: u32) -> [u32; 12] {
+pub(super) fn payload(opcode: u32, view: u64, start: u64, length: u64, count: u32) -> [u32; 12] {
     [
         opcode,
         view as u32,
@@ -25,11 +25,11 @@ fn payload(opcode: u32, view: u64, start: u64, length: u64, count: u32) -> [u32;
         0,
     ]
 }
-fn command(s: &mut Sim<'_>, args: [u32; 12], tag: u32) -> [u32; 12] {
+pub(super) fn command(s: &mut Sim<'_>, args: [u32; 12], tag: u32) -> [u32; 12] {
     start_request(s, SEMANTIC_SERVICE_MEDIA_COMMAND, &args, tag);
     finish_request(s, tag)
 }
-fn authorize(s: &mut Sim<'_>, tag: u32) {
+pub(super) fn authorize(s: &mut Sim<'_>, tag: u32) {
     for _ in 0..64 {
         write(s, REG_MEDIA_TAG, tag);
         let receipt = read(s, REG_MEDIA_RECEIPT);

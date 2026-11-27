@@ -9,7 +9,7 @@ use serde_json::json;
 use shoop_wasm_test_support::shoop_test;
 use std::{cell::RefCell, rc::Rc};
 
-fn paced_design(i2s: bool) -> Design {
+pub(super) fn paced_design(i2s: bool) -> Design {
     let root = rt_fpga_testbench::root();
     let mut d = design().parameters(&[("OUTPUT_PORTS", 2), ("I2S_AUDIO", u64::from(i2s))]);
     d.top = "fifo_audio_host_axi".into();
@@ -34,7 +34,7 @@ fn paced_design(i2s: bool) -> Design {
     }
     d
 }
-fn initialize(s: &mut Sim<'_>) {
+pub(super) fn initialize(s: &mut Sim<'_>) {
     s.model.set_all(&[("reset", 1), ("epoch", 1)]);
     s.idle(40);
     s.model.set("reset", 0);
@@ -45,7 +45,7 @@ fn initialize(s: &mut Sim<'_>) {
     assert_eq!(s.model.get("sync_frame"), 0);
     assert_eq!(read(s, REG_SNAPSHOT_READY), 1);
 }
-fn install(s: &mut Sim<'_>) {
+pub(super) fn install(s: &mut Sim<'_>) {
     for (address, instruction) in [
         json!({"kind":"process_input","port":0,"destination":0}),
         json!({"kind":"process_output","source":0,"port":0}),
@@ -71,7 +71,7 @@ fn install(s: &mut Sim<'_>) {
         "publication is not audio pacing"
     );
 }
-fn enable_hold(s: &mut Sim<'_>, tag: u32) {
+pub(super) fn enable_hold(s: &mut Sim<'_>, tag: u32) {
     write(s, REG_REQUEST_EPOCH, s.model.get("runtime_epoch") as u32);
     write(s, REG_REQUEST_OP, SEMANTIC_SERVICE_ENABLE_AUDIO);
     for index in 0..12 {

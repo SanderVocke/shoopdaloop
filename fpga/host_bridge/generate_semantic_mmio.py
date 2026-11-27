@@ -61,18 +61,19 @@ def generate():
             result += "    assign cfg_state=config_space[0];\n    assign cfg_loop=config_space[1];\n"
         else:
             result += f"    assign {prefix}_space=config_space[{1 if kind == 2 else 2}:0];\n"
-    for target, suffix, clear in [("ready", "ready", "store_cmd_ready"),
+    for target, suffix, clear in [("ready", "ready", "(config_operation!=7 || (!busy && !audio_enable)) && store_cmd_ready"),
                                   ("response_valid", "response_valid", "store_done"),
                                   ("response_error", "response_error", "(store_error_code!=0)")]:
         result += f"    assign config_{target}=config_operation==1 ? cfg_{suffix}\n"
         result += f"        : config_operation==2 ? audio_cfg_{suffix} : config_operation==3 ? store_cfg_{suffix} : {clear};\n"
-    result += "    assign store_cmd_valid=config_valid && (config_operation==3'd4 || config_operation==3'd5);\n"
-    result += "    assign store_cmd_opcode=config_operation==4 ? 4'd2 : {1'b0,config_space};\n"
-    result += "    assign store_cmd_view=config_media_data[63:0];\n"
-    result += "    assign store_cmd_start=config_operation==4 ? 64'd0 : config_media_data[127:64];\n"
-    result += "    assign store_cmd_length=config_operation==4 ? 64'd0 : config_media_data[191:128];\n"
-    result += "    assign store_cmd_count=config_operation==4 ? 32'd0 : config_media_data[223:192];\n"
-    result += "    assign store_response_ready=config_response_ready && (config_operation==3'd4 || config_operation==3'd5);\n"
+    result += "    assign store_cmd_valid=config_valid && (config_operation==3'd4 || config_operation==3'd5 || config_operation==3'd7)\n"
+    result += "        && (config_operation!=7 || (!busy && !audio_enable));\n"
+    result += "    assign store_cmd_opcode=config_operation==4 ? 4'd2 : config_operation==7 ? 4'd7 : {1'b0,config_space};\n"
+    result += "    assign store_cmd_view=config_operation==7 ? 64'd0 : config_media_data[63:0];\n"
+    result += "    assign store_cmd_start=(config_operation==4 || config_operation==7) ? 64'd0 : config_media_data[127:64];\n"
+    result += "    assign store_cmd_length=(config_operation==4 || config_operation==7) ? 64'd0 : config_media_data[191:128];\n"
+    result += "    assign store_cmd_count=(config_operation==4 || config_operation==7) ? 32'd0 : config_media_data[223:192];\n"
+    result += "    assign store_response_ready=config_response_ready && (config_operation==3'd4 || config_operation==3'd5 || config_operation==3'd7);\n"
     result += "    assign store_write_valid=config_media_write_valid;\n    assign store_write_data=config_media_write_data;\n"
     result += "    assign config_media_write_ready=store_write_ready;\n    assign config_media_read_valid=store_read_valid;\n"
     result += "    assign store_read_ready=config_media_read_ready;\n    assign config_media_read_data=store_read_data;\n"

@@ -12,11 +12,11 @@ BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
 The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
 retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
 are joined to the actual semantic/audio/media candidate, now with public
-CORE/AUDIO/STORE configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO, optional trace
+CORE/AUDIO/STORE configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO, DRAIN_STOP, optional trace
 and offline generated/I²S/watchdog adapters. The latest measured
 partial frontend is **7,943 LUT / 6,943 FF after standard optimization**, **57 LUT /
 57 FF below the previous targets**. That measurement predates CLEAR_VIEW/trace/
-bulk-media/ENABLE_AUDIO/audio adapters; these functional extensions have no new
+bulk-media/ENABLE_AUDIO/audio adapters/DRAIN_STOP; these functional extensions have no new
 resource/timing result or current-source fit claim.
 That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
 **−9.754 ns**, still failing, with worse aggregate setup violations. Production
@@ -1888,7 +1888,7 @@ wrong-order/duplicate fields refuse incomplete without advancing the cursor.
 Publication validates completeness/incarnation before reservation, then serial
 full-width/control/reserved checks precede any endpoint grant. This ordering
 matches the inspected existing submit sequence, not a claim that the ABI-15
-client already supports ABI 16. See the [contract](../../../fpga/host_bridge/semantic_fifo.md#configuration-service-subset).
+client already supports ABI 16. See the [contract](../../../fpga/host_bridge/semantic_fifo.md#preparation-and-lifecycle-service-map).
 
 One cursor, one selected RAM read/write and one 160-bit working register avoid
 wide validity masks or dissolved RAM. The backend response is captured without
@@ -2320,3 +2320,56 @@ is legitimate pending lifecycle scope, not retired along with CPU control 10/11 
 matched ABI-16 software/CPU retirement, full envelope/whole-design/route/platform/
 fault-parity, independent audit and delivery remain open. ABI 15 stays selected;
 Stages 4–7 remain incomplete. No physical qualification/push/PR/deployment follows.
+
+## DRAIN_STOP: accepted processing before the existing real media fence
+
+Legitimate service **12** now validates twelve reserved-zero payload words before
+any stop/backend effect. It drops the existing enable flag; the generated wrapper
+gates **both valid and ready** on registered disable and whole processing idle.
+This prevents a fence racing a quantum accepted at the stop edge. Accepted SP/JP
+work finishes; no cancellation, extra state bit, phase, timer, transaction tracker
+or second owner is added. Internal operation 7 uses the same record/result RAM,
+private loader and accepted media owner for native FENCE 7 with zero descriptor.
+Real cache/DMA/metadata completion is copied locally with twelve zero reply words,
+independent of ARM B/R/POP readiness.
+
+Success is this media fence, not consumer handoff, whole-runtime retirement,
+permission to free continuing leases, cancellation or application Ready. Re-enable
+after an enabled lifetime stops refuses 2 until safe runtime reset. Revised static
+installation still needs genuine retirement/safe reset, fresh incarnation and
+allocator. Errors/halt yield uncertainty 3, never rollback/replay. The candidate
+preparation/lifecycle hardware **map** is now complete; trusted matched software,
+complete hostile lifecycle and Stage 4 acceptance are not.
+
+Two codec tests cover all **384 reserved-bit failures**, all fourteen unpublished
+prefixes, stop before withheld endpoint grant, no idle-as-fence success, zero
+replies, refused re-enable, nineteen halt positions, backend error/reset/no replay.
+Two actual generated-audio/SP/JP/media/cache/DMA/64-bit-AXI tests check continuing
+frames at every prefix, exactly one correctly ordered loader grant, held publication
+B, a real stalled dirty-writeback B and no premature reply, then all 32 uploaded
+words in independent backing with no active external transaction. Copied tag 104
+survives POP/reuse tag 105 while stopped frames remain fixed. ABORT during the fence
+exposes uncertainty but cannot cancel its accepted B; explicit recovery waits for
+real retirement, retains copied fault R/recovery B through epoch 1→2, never
+replays/re-enables and permits an idle drain without manufacturing F. New checks
+are frame/ownership/backing tests, not a new PCM/full-envelope oracle; retained
+exact generated/I²S/playback/capture tests also pass.
+
+[Results/source hashes](reports/drain-stop-00314720f/results.json) record **290 Rust
+= 219 affected + 71 directed**, four retained audio-I/O suites, both 3,970-case
+kernel sources, workspace warnings/format/policy/coverage/generators and **13 Python
+tests**. Twelve codec/eight indexed/sixteen actual-MMIO cases pass. Linux passes
+**3,584 / 11 skipped / 405.373 s** with nextest 0.9.116/owned isolated dummy JACK;
+default app/worklet and optional-reference worklet Wasm builds pass. Builds/tests
+remain serialized. Local `stage4-drain-{smoke-v1,milestone,linux,wasm}` all pass.
+Narrow: `--test config_service` and `--test semantic_audio mmio_audio::drain` in
+the same Nix/simulation setup above.
+
+No new synthesis/route/current-source fit is claimed. The old **7,943/6,943/
+−9.754 ns** result predates CLEAR_VIEW/trace/bulk/enable/adapters/drain and still
+fails unrouted timing. Measurement metadata now marks the complete candidate
+service map, not matched trusted software, audio-adapter/protected-board scope or
+acceptance. Remaining hostile lifecycle, Stage 5 software/CPU-control retirement,
+full envelope/resources/final agreed budgets/routed timing/platform/fault parity,
+independent audit and delivery remain. ABI 15 stays selected; Stage 4 is partial
+and Stages 5–7 open. No board access/physical qualification/push/PR/deployment.

@@ -20,10 +20,11 @@ retained diagnostics/public recovery/ABORT and qualified audio/watchdog sideband
 on the actual semantic/audio/media pipeline, with the CORE/AUDIO/STORE public
 configuration subset. It is **7,943 LUT / 6,943 FF after standard optimization**,
 **57 LUT / 57 FF below the previous 8,000/7,000 targets**. Current functional source
-also joins public CLEAR_VIEW/bulk-media through the existing private loader/owner
-and a complete optional-trace reader through the existing immutable trace slot.
+also joins public CLEAR_VIEW/bulk-media/DRAIN_STOP through the existing private
+loader/owner, ENABLE_AUDIO/generated/I²S/watchdog adapters offline, and a complete
+optional-trace reader through the existing immutable trace slot.
 These functional extensions have no new resource/timing measurement. The figures
-above predate CLEAR_VIEW/trace/bulk-media/ENABLE_AUDIO/audio adapters and are not
+above predate CLEAR_VIEW/trace/bulk-media/ENABLE_AUDIO/audio adapters/DRAIN_STOP and are not
 current-source fit.
 That narrow margin no longer blocks functional integration of remaining
 preparation/lifecycle services and adapters. The latest readiness refinement
@@ -382,9 +383,9 @@ timing/physical qualification, final-head CI or delivery.
 
 ### Stage 4 — Implement the FPGA-owned consumer and return streams
 
-**Current priority:** complete DRAIN_STOP 12 and remaining hostile lifecycle
-correctness coverage, then the matched Stage 5 transports and CPU-control
-retirement. ENABLE_AUDIO/generated/I²S/watchdog adapters are joined offline, not
+**Current priority:** finish remaining hostile lifecycle correctness coverage,
+then the matched Stage 5 transports and CPU-control retirement. The candidate
+preparation/lifecycle service map now includes DRAIN_STOP 12. ENABLE_AUDIO/generated/I²S/watchdog adapters are joined offline, not
 promoted or physically qualified. Do not insert
 further area-only milestones ahead of required functionality solely because the
 previous LUT/FF targets have little headroom. Keep resource evidence honest;
@@ -1704,6 +1705,56 @@ DRAIN_STOP 12/complete hostile lifecycle, matched software/CPU-control retiremen
 full service-envelope/whole-design/route/platform/fault-parity gates, independent
 audit and delivery remain open. Production remains ABI 15; Stages 4–7 remain
 incomplete. No board access, physical qualification, push/PR or deployment follows.
+
+**DRAIN_STOP functional milestone:** legitimate service 12 validates all twelve
+zero payload words before effects. The codec drops audio enable, then the wrapper
+gates both loader valid and ready on registered disable plus whole processing
+idle. This preserves any already-accepted/same-edge quantum rather than cancelling
+it or issuing a fence ahead of its JP work. Internal operation 7 reuses the same
+seven phases, working record, reply RAM and private loader/accepted media owner;
+no state bit, timer, controller or transaction tracker is added. The native FENCE 7
+uses zero view/start/length/count and completes real cache/DMA/metadata work. Its
+reply is copied locally, independent of ARM readiness, with twelve zero words.
+
+- [x] Join candidate DRAIN_STOP 12 to registered audio stop, accepted-work completion
+  and the existing real media-fence owner, with full validation, copied replies
+  and actual DDR-retirement/fault tests. This subset does not complete Stage 4.
+
+Success means this media fence finished, not cancellation, consumer handoff,
+whole-runtime retirement, permission to reuse continuing leases or application
+Ready. A stopped enabled lifetime cannot re-enable until safe runtime reset.
+Revised static installation still requires genuine retirement/safe reset, fresh
+incarnation and allocator. Header/payload refusal has no stop/backend effect;
+halt/backend error gives code 3 uncertainty with no replay or inferred rollback.
+
+Two codec cases cover all **384 reserved single-bit failures**, fourteen incomplete
+prefixes, local stop before withheld grant, no idle-as-fence reply, all-zero data,
+failed re-enable, nineteen halt positions, backend error and reset/no replay.
+Two actual generated-audio/SP/JP/media/cache/DMA/AXI cases cover fourteen prefixes
+with continuing frames, one fence grant only after accepted processing finishes,
+held publication B, stalled real writeback B/no early success, all 32 uploaded words
+checked in independent backing memory, and copied tag 104 across POP/reuse 105.
+ABORT during the real fence yields uncertainty without cancellation; explicit
+recovery waits for actual B retirement, retains copied R/recovery B through epoch
+1→2, never replays/re-enables, and a fresh idle drain cannot manufacture F.
+These add frame/ownership/backing checks, not a new PCM or full-envelope oracle;
+the existing sample-exact generated/I²S/playback/capture regressions also pass.
+
+`stage4-drain-milestone` passes **219 affected + 71 directed = 290 Rust tests**,
+including four audio-I/O suites and both 3,970-case kernel sources, workspace
+warnings/format/policy/coverage/generators and **13 Python tests**. Twelve codec,
+eight indexed and sixteen actual-MMIO cases pass. Full Linux passes **3,584 /
+11 skipped / 405.373 s**, pinned nextest 0.9.116/owned isolated dummy JACK; both
+Wasm profiles pass. Builds/tests remain serialized. The measurement profile now
+truthfully marks the complete candidate preparation/lifecycle **map**, not matched
+trusted software, complete hostile lifecycle or protected-board integration.
+[Functional evidence](docs/fpga/command-fifo-implementation/reports/drain-stop-00314720f/results.json)
+records no new synthesis/route, current-source fit or admitted-cycle acceptance.
+
+Remaining hostile lifecycle, matched ABI-16 software/CPU-control retirement,
+full envelope/whole-design/route/platform/fault-parity gates, independent audit
+and delivery remain open. Production remains ABI 15; Stages 4–7 are incomplete.
+No physical authorization/qualification, push/PR or deployment follows.
 
 ### Stage 5 — Integrate ARM/reference transports and retire the old bridge
 

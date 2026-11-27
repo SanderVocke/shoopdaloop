@@ -359,18 +359,19 @@ module fifo_mmio_pipeline_axi #(
     assign store_cfg_write_data=config_data[159:0];
     assign store_cfg_space=config_space[2:0];
     assign config_ready=config_operation==1 ? cfg_ready
-        : config_operation==2 ? audio_cfg_ready : config_operation==3 ? store_cfg_ready : store_cmd_ready;
+        : config_operation==2 ? audio_cfg_ready : config_operation==3 ? store_cfg_ready : (config_operation!=7 || (!busy && !audio_enable)) && store_cmd_ready;
     assign config_response_valid=config_operation==1 ? cfg_response_valid
         : config_operation==2 ? audio_cfg_response_valid : config_operation==3 ? store_cfg_response_valid : store_done;
     assign config_response_error=config_operation==1 ? cfg_response_error
         : config_operation==2 ? audio_cfg_response_error : config_operation==3 ? store_cfg_response_error : (store_error_code!=0);
-    assign store_cmd_valid=config_valid && (config_operation==3'd4 || config_operation==3'd5);
-    assign store_cmd_opcode=config_operation==4 ? 4'd2 : {1'b0,config_space};
-    assign store_cmd_view=config_media_data[63:0];
-    assign store_cmd_start=config_operation==4 ? 64'd0 : config_media_data[127:64];
-    assign store_cmd_length=config_operation==4 ? 64'd0 : config_media_data[191:128];
-    assign store_cmd_count=config_operation==4 ? 32'd0 : config_media_data[223:192];
-    assign store_response_ready=config_response_ready && (config_operation==3'd4 || config_operation==3'd5);
+    assign store_cmd_valid=config_valid && (config_operation==3'd4 || config_operation==3'd5 || config_operation==3'd7)
+        && (config_operation!=7 || (!busy && !audio_enable));
+    assign store_cmd_opcode=config_operation==4 ? 4'd2 : config_operation==7 ? 4'd7 : {1'b0,config_space};
+    assign store_cmd_view=config_operation==7 ? 64'd0 : config_media_data[63:0];
+    assign store_cmd_start=(config_operation==4 || config_operation==7) ? 64'd0 : config_media_data[127:64];
+    assign store_cmd_length=(config_operation==4 || config_operation==7) ? 64'd0 : config_media_data[191:128];
+    assign store_cmd_count=(config_operation==4 || config_operation==7) ? 32'd0 : config_media_data[223:192];
+    assign store_response_ready=config_response_ready && (config_operation==3'd4 || config_operation==3'd5 || config_operation==3'd7);
     assign store_write_valid=config_media_write_valid;
     assign store_write_data=config_media_write_data;
     assign config_media_write_ready=store_write_ready;

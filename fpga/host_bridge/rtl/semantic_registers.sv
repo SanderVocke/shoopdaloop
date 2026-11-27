@@ -17,6 +17,7 @@ package semantic_registers;
     localparam logic [31:0] SEMANTIC_SERVICE_STORE_CONFIG = 32'h00000003;
     localparam logic [31:0] SEMANTIC_SERVICE_CLEAR_VIEW = 32'h00000004;
     localparam logic [31:0] SEMANTIC_SERVICE_ENABLE_AUDIO = 32'h00000009;
+    localparam logic [31:0] SEMANTIC_SERVICE_DRAIN_STOP = 32'h0000000c;
     localparam logic [31:0] SEMANTIC_SERVICE_MEDIA_COMMAND = 32'h00000011;
     localparam logic [31:0] SEMANTIC_TRACE_WORDS = 32'h0000000b;
     localparam logic [11:0] REG_ID = 12'h000;

@@ -8,10 +8,10 @@ integration gates. Historical ABI-15 staged patches are not this interface.
 Indexed AXI-Lite plus low-range discovery/retained diagnostics/public recovery/
 ABORT and qualified hardware fault sidebands are implemented as a verified subset,
 joined to the actual semantic audio/media candidate. Public CORE/AUDIO/STORE
-configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO and optional trace are now
-implemented, with existing generated/I²S/watchdog adapters joined offline. Complete
-lifecycle (including DRAIN_STOP 12), protected board hookup, ABI selection and
-matching software remain integration work.
+configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO, DRAIN_STOP and optional trace
+are implemented, with existing generated/I²S/watchdog adapters joined offline.
+The candidate service map is complete; full hostile lifecycle, protected board
+hookup, ABI selection and matching trusted software remain integration work.
 
 ## Ownership, profile and pacing
 
@@ -388,10 +388,10 @@ The bounded candidate advertises the approved 128 MiB arena; discovery rejects a
 zero or unrepresentable u32 extent rather than truncating 4 GiB. This changes no
 approved profile capacity. The preparation subset below owns configuration and
 media-command inputs privately. Optional trace uses the separate reader below;
-complete preparation/lifecycle service remains required, not a completed
-public endpoint.
+matched trusted software and complete hostile-lifecycle qualification remain
+required, not a production endpoint or Stage 4 completion.
 
-### Preparation-service subset
+### Preparation and lifecycle service map
 
 The actual wrapper enables `SERVICE_REGISTERS=1` on the same MMIO owner; standalone
 indexed MMIO defaults to 0. One private request/result slot accepts these opcodes:
@@ -403,6 +403,7 @@ indexed MMIO defaults to 0. One private request/result slot accepts these opcode
 | 3 STORE_CONFIG | Media metadata configuration, **not bulk media upload** | `0x107` | u32 address / 160 data bits |
 | 4 CLEAR_VIEW | Existing private media loader/owner, backend CLEAR 2 | No configuration control | u64 view in words 0–1; words 2–11 zero |
 | 9 ENABLE_AUDIO | Local one-way lifecycle, not a backend request | Full boolean 0/1 | Word 0 boolean; words 1–11 zero |
+| 12 DRAIN_STOP | Stop new audio, finish accepted processing, existing loader FENCE 7 | No configuration control | All twelve words zero |
 
 For configuration opcodes 1/2/3, payload word 0 contains low space bits and write bit 8; all other control bits
 are zero. Word 1 is address, words 2–6 little-endian data, words 7–11 reserved zero.
@@ -454,18 +455,18 @@ Matched software must serialize this lane, check incarnation around publication/
 response/POP, cancel stale software callbacks on reset and never replay uncertain
 operations or reuse their tags while authority is unresolved.
 
-Configuration/CLEAR 1/2/3/4, enable 9 and media 17 below are implemented. Media
-command/response/sample controls and the local enable lifetime belong to this
-service. DRAIN_STOP 12, complete hostile lifecycle and matched trusted software
-remain required; temporary refusals do not retire them. Do not import old CPU
-live-control/staged-patch operations to supply missing services.
+Configuration/CLEAR 1/2/3/4, enable 9, drain 12 and media 17 below are implemented
+through this same service. Media command/response/sample controls and the local
+enable lifetime belong to it. The hardware service map is complete, not matched
+trusted software, full hostile-lifecycle qualification or Stage 4 acceptance.
+Retired CPU live-control/staged-patch operations remain refused.
 
 ### Bulk-media preparation service
 
 Service **17 MEDIA_COMMAND** uses the same reserved slot and sequential publication.
 It does not reuse retired control opcodes 5–8, 10–11 or 13–16. DRAIN_STOP 12
-remains a legitimate pending lifecycle operation, not a retired CPU-control
-fallback. Payload fields are:
+is the legitimate lifecycle operation below, not a retired CPU-control fallback.
+Payload fields are:
 
 | Words | Meaning |
 | --- | --- |
@@ -554,8 +555,41 @@ halt only; explicit recovery alone drives existing serialized actual AXI retirem
 safe reset. Hardware recovery state 3 is not application Ready.
 
 This is offline integration, not protected board/physical or all-admitted timing
-acceptance. DRAIN_STOP 12 remains legitimate pending lifecycle scope; loader FENCE
-cannot substitute for semantic handoff or whole-runtime retirement.
+acceptance. Loader FENCE cannot substitute for semantic handoff or whole-runtime
+retirement.
+
+### Audio drain and stop
+
+Service **12 DRAIN_STOP** requires all twelve payload words zero. Complete
+publication and full validation precede any stop/backend effect. It drops the
+existing enable flag, then gates both loader request valid and codec-ready on
+**registered disable plus whole processing idle**. A quantum accepted at/before
+the stop edge therefore finishes before its fence; stop never cancels SP/JP work.
+The same private loader/accepted media owner runs native FENCE 7 with zero
+view/start/length/count. Its real cache/DMA/metadata completion is captured locally,
+not on ARM read/POP readiness. All twelve reply words are zero. Internal operation
+7 reuses the existing seven phases, 224-bit working register and reply RAM; no
+new state bit, elapsed timer, dispatcher, backend or recovery owner is introduced.
+
+Code 0 means this media fence completed, **not** consumer handoff, whole-runtime
+retirement, cancellation, lease-reuse authority or application Ready. It cannot
+complete/ACK a semantic group or snapshot. Already-accepted/queued work is not
+replayed or implicitly retired. After an enabled lifetime stops, enable 1 refuses
+2 until safe runtime reset; an idle drain itself does not create a quantum or a
+new incarnation. Revised static installation still requires genuine retirement/
+safe reset, fresh incarnation and allocator. Backend error/halt gives uncertainty
+3/all-zero data, not rollback or cancellation; explicit recovery alone obtains
+actual external retirement and resets the old owner. Old copied R/B survive it.
+
+Two codec cases cover every reserved bit, incomplete prefix, withheld grant,
+zero/late replies, nineteen halt positions, error/reset/no replay. Two real-path
+cases check prefix frame progress, strict processing-before-fence ordering, real
+stalled writeback B/no early success, all 32 samples in independent backing,
+copied tag across POP/reuse, one-way stop, ABORT uncertainty and B retirement before
+epoch 2 with R/B held. Fresh idle drain leaves F0 unchanged. Retained exact PCM/
+I²S/media regressions pass; these new tests are not full admitted-envelope proof.
+[The functional checkpoint](../../docs/fpga/command-fifo-implementation/reports/drain-stop-00314720f/results.json)
+records the complete candidate service map, not matching software or deployment.
 
 ### Optional trace reader
 

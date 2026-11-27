@@ -20,6 +20,7 @@ class SemanticRegistersTests(unittest.TestCase):
         self.assertEqual(spec["registers"]["SNAPSHOT_DATA"], "0x30c")
         self.assertEqual(spec["constants"]["SERVICE_MEDIA_COMMAND"], 17)
         self.assertEqual(spec["constants"]["SERVICE_ENABLE_AUDIO"], 9)
+        self.assertEqual(spec["constants"]["SERVICE_DRAIN_STOP"], 12)
         for name, address in {"MEDIA_STATUS": "0x400", "MEDIA_TAG": "0x404", "MEDIA_WRITE": "0x408",
                               "MEDIA_READ": "0x40c", "MEDIA_RECEIPT": "0x410"}.items():
             self.assertEqual(spec["registers"][name], address)
