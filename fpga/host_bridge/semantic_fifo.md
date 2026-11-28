@@ -302,11 +302,27 @@ incarnation-bound owner; it does not establish application Ready or a lease.
 includes an actual full-profile MMIO/semantic/media/AXI fixture with no rendering,
 not continuous-audio, protected-board or matched-firmware qualification.
 
-Reliable-result/latest-complete-snapshot readers and normal bank release remain
-pending; publication alone fills four reservations. Trusted binding/preparation/
-leases, reference cutoff alignment, callback/first-frame lifecycle and CPU-control
-retirement also remain Stage 5 work. Production still selects ABI 15; no hardware
-fit or physical qualification follows.
+The same device now copies reliable results in bounded steps (at most three
+ordered MMIO operations each), checks per-word receipts and validates the exact
+packet against the originally published identity/count. A complete local copy
+precedes the bank/incarnation/u64-sequence-qualified ACK; only a successful receipt
+and stable epoch release the wire reservation. One bounded local completion slot
+survives native reuse/caller stalls. Early result visibility before publication
+receipt and free-bank visibility before ACK receipt do not cause false accounting
+faults or premature reuse. Bus/protocol uncertainty quarantines without replay,
+false result delivery or semantic rollback. Decoded fenced observations still do
+not grant a lease/handoff or application Ready.
+[Result-copy evidence](../../docs/fpga/command-fifo-implementation/reports/results-926189609/results.json)
+includes a full-profile generated-audio/SP/JP/media/AXI case, stalled partial reads
+with both snapshot banks full, normal reuse and an error after consuming a real
+ACK B, followed by explicit shared recovery. It uses fixture-only unused-program
+preparation and does not qualify trusted leases, exact PCM, dirty/held-DDR fences,
+matched firmware, application Ready or protected-board acceptance.
+
+Latest-complete snapshot copying, trusted binding/preparation/leases, reference
+cutoff alignment, callback/first-frame lifecycle, matching runtime/firmware and
+CPU-control retirement remain Stage 5 work. All Stage 5 checkboxes remain open.
+Production still selects ABI 15; no hardware fit or physical qualification follows.
 
 ## MMIO allocation within the existing 4 KiB aperture
 

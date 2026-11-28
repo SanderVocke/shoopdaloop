@@ -1886,12 +1886,48 @@ held-DDR, matched firmware or application-Ready proof. Final gates pass **314 Ru
 checks, warnings/format/policy/coverage/generators. The initial duplicate test-memory
 registration failure is retained; its fixture was fixed without suppressing lint.
 [Evidence](docs/fpga/command-fifo-implementation/reports/publication-c525dd479/results.json)
-records seven Rust source hashes. Reliable result/latest-complete snapshot readers
-and normal bank release are next; publication alone fills four reservations.
-Trusted binding/preparation/leases, reference/Ready/runtime-owner integration and
-CPU-control retirement remain open. No Stage 5 checkbox is complete; Stages 4–5
-stay partial, Stages 6–7 open and production ABI 15 selected. No hardware change,
-current fit, promotion, physical qualification or delivery follows.
+records seven Rust source hashes. That publication-only checkpoint filled four
+reservations; reliable result copying and normal bank release now follow below.
+Snapshot readers, trusted binding/preparation/leases, reference/Ready/runtime-owner
+integration and CPU-control retirement remain open. No Stage 5 checkbox is complete;
+Stages 4–5 stay partial, Stages 6–7 open and production ABI 15 selected. No hardware
+change, current fit, promotion, physical qualification or delivery follows.
+
+**Reliable result copy and wire-bank release (partial):** the same candidate
+`semantic::Device` now pumps FIFO-correlated results with at most three ordered
+MMIO operations per step. It copies exactly `16 + original command count` words,
+checks each data receipt, validates the complete packet and stages a full
+incarnation/u64-sequence/bank-qualified ACK. Only confirmed ACK receipt plus a
+stable epoch releases the local wire reservation. A bounded local completion
+slot survives native bank reuse and caller stalls; it is not a handoff/lease or
+application-Ready capability. Publication and ACK receipt windows interleave
+without false accounting faults or premature reuse. Uncertain reads/ACKs retain
+quarantined authority without replay, false delivery or rollback claims.
+
+Four pure reader tests cover bounded copies/reuse, both receipt windows, every
+bus-error prefix before/after effects and epoch crossing, malformed/truncated/
+foreign/FIFO-invalid packets and refusals. A new actual full-profile generated-
+audio/MMIO/SP/JP/media/64-bit-AXI case runs normal and lost-ACK modes: installation
+is published before enable, the first real audio opportunity selects/renders it,
+and the result observes a genuine native fence. Pausing after three copied words
+still permits at least four further quanta with both snapshot banks full. Copied
+first-frame/revision fields survive native bank reuse; 16/32/2/1-command groups
+retain stale-header, value-refusal and deadline outcomes. An error after consuming
+the real ACK B response quarantines software without another ACK; explicit shared
+recovery reaches epoch 2, audio disabled. This uses a fixture-only unused-program
+preparation path, not the pending trusted loader/runtime owner. It is not exact
+PCM, dirty/held-DDR-fence, continuing-lease, matching-firmware or application-Ready
+qualification; retained tests cover other hardware paths separately.
+
+Final gates pass **12 transport tests**, **319 Rust = 247 affected + 72 directed**,
+**13 Python**, Linux **3,589 passed (2 slow) / 11 skipped / 405.144 s**, default and
+optional-reference Wasm builds, explicit host-library Wasm and pinned ARM-library
+checks, warnings/format/policy/coverage/generators. [Exact-source evidence](docs/fpga/command-fifo-implementation/reports/results-926189609/results.json)
+records seven Rust hashes. Latest-complete snapshot copying is next, then trusted
+bindings/preparation/leases, reference cutoff/callback/first-frame Ready and matched
+runtime/firmware integration before CPU-control retirement. All Stage 5 checkboxes
+remain open; no stage completion, hardware/schema change, fit, promotion, physical
+qualification or delivery is implied. Production remains ABI 15.
 
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 

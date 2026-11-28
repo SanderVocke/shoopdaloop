@@ -2588,10 +2588,73 @@ nix develop --command bash -c '
 '
 ```
 
-Next: correlated reliable-result/latest-complete-snapshot readers and normal bank
-release; publication alone fills four reservations. Trusted bindings/preparation/
-leases, reference cutoff, matched runtime/firmware, initial installation/real
-first-frame Ready and CPU-control retirement remain. All Stage 5 checkboxes are
-open; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. Production ABI 15
-remains selected. No hardware/schema change, new synthesis/route/current fit,
-promotion, physical work, push/PR or independent final acceptance is implied.
+That publication-only checkpoint filled four reservations; reliable-result
+copying and normal bank release now follow below. Latest-complete snapshot copying,
+trusted bindings/preparation/leases, reference cutoff, matched runtime/firmware,
+initial installation/real first-frame Ready and CPU-control retirement remain.
+All Stage 5 checkboxes are open; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7
+open. Production ABI 15 remains selected. No hardware/schema change, new synthesis/
+route/current fit, promotion, physical work, push/PR or independent final acceptance
+is implied.
+
+## Reliable result copy and wire-bank release — Stage 5 partial
+
+The same `semantic::Device` now copies and validates reliable results in FIFO
+order, then acknowledges their exact bank/incarnation/u64 sequence. Every step
+uses at most **three ordered MMIO operations**. Copy length comes from the original
+published command count, not an unchecked returned length; every data receipt is
+checked. Full packet validation precedes ACK. Successful ACK receipt plus a stable
+epoch releases only the wire reservation. One bounded local completion slot
+survives native reuse and caller stalls; it does not mint `FencedSwitch`, resource
+ownership, continuing-lease reuse or application Ready. Fault-retained banks are
+not assumed to publish complete diagnostic packets.
+
+Result visibility before the PUBLISH receipt is pumped and native free-bank
+visibility before ACK receipt are handled without false accounting failures or
+premature reuse. Bus/protocol errors retain quarantined authority without replay,
+false delivery or semantic rollback. The caller may stop taking completions;
+finite local/native reservations affect admission/readback, never audio pacing.
+
+Four pure tests exercise complete 1/16/32-command copies and repeated bank reuse,
+both receipt windows, every bus-operation error prefix before/after effects and
+epoch crossing, malformed/foreign/FIFO-invalid/truncated packets and refusals.
+A new actual full-profile **generated-audio/MMIO/SP/JP/media/64-bit-AXI** test runs
+normal and lost-ACK modes. Fixture-only public configuration prepares a genuinely
+unused direct-stereo program. Installation is published before enable; a real
+audio opportunity selects/renders it and the copied result observes a genuine
+native fence. Pausing after three copied words permits at least four more quanta
+while both snapshots are full. The first result's F=0/revision 0→1 fields remain
+unchanged after native reuse; later 16/32/2/1-command groups preserve stale-header,
+value-refusal and deadline outcomes. An injected software error after the real
+ACK B is consumed leaves one ACK only and no delivered result; explicit shared
+recovery reaches epoch 2 with audio disabled. This is not the pending trusted
+loader/runtime owner, exact-PCM oracle, dirty/held-DDR-fence, continuing-lease,
+matching-firmware, application-Ready or physical proof. Retained hardware tests
+cover other paths separately; no subset is whole-runtime acceptance.
+
+[Results/seven exact Rust hashes](reports/results-926189609/results.json):
+**12 transport tests**, **319 Rust = 247 affected + 72 directed**, both 3,970-case
+kernel sources, four audio-I/O tests and **13 Python** pass. Fresh Linux **3,589
+passed (2 slow) / 11 skipped / 405.144 s** uses pinned nextest 0.9.116 and owned
+isolated 48 kHz/128-frame dummy JACK. Default application/worklet and optional
+`fpga-reference` worklet Wasm builds, explicit host-library Wasm and installed
+pinned Rust 1.99.1 ARM-library checks pass. The ARM check is not firmware/link/pair
+proof. Warnings/format/policy/coverage/generators pass; feature-sensitive builds and
+subprocess suites remain serialized.
+
+Local gates: `stage5-results-{target-v2,milestone,linux,wasm,arm,precommit}`. Narrow:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_transport -- --test-threads=1
+'
+```
+
+Latest-complete snapshot copying is next. Trusted bindings/preparation/leases,
+reference cutoff/callback cancellation, fresh-first-frame Ready, matched runtime/
+firmware and CPU-control retirement remain. All Stage 5 checkboxes remain open;
+Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15.
+No RTL/schema change, new synthesis/route/current-source fit, promotion, physical
+qualification, push/PR or independent final audit is implied.

@@ -2,6 +2,8 @@
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 #[path = "support/semantic_transport_axi.rs"]
 mod axi;
+#[path = "support/semantic_transport_results.rs"]
+mod results;
 use rt_fpga_rtl::host::{
     Contract, Error, Mailbox, RecoveryState, RegisterBus,
     semantic::{
@@ -22,6 +24,10 @@ struct State {
     ops: Vec<Op>,
     words: [Vec<u32>; 4],
     states: [u32; 4],
+    results: [Vec<u32>; 4],
+    result_bank: usize,
+    result_cursor: usize,
+    acknowledgements: usize,
     bank: usize,
     admitted: Vec<(usize, Vec<u32>)>,
     fail: Option<(usize, bool)>,
@@ -75,6 +81,10 @@ impl Bus {
             ops: Vec::new(),
             words: std::array::from_fn(|_| Vec::new()),
             states: [0; 4],
+            results: std::array::from_fn(|_| Vec::new()),
+            result_bank: 0,
+            result_cursor: 0,
+            acknowledgements: 0,
             bank: 0,
             admitted: Vec::new(),
             fail: None,
@@ -113,6 +123,11 @@ impl State {
         self.registers.insert(REG_LAST_ADMITTED_HIGH, 0);
         self.states = [0; 4];
         self.words.iter_mut().for_each(Vec::clear);
+        self.results.iter_mut().for_each(Vec::clear);
+        self.result_bank = 0;
+        self.result_cursor = 0;
+        self.registers.insert(REG_RESULT_RECEIPT, 0);
+        self.registers.remove(&REG_RESULT_READY);
     }
 }
 impl RegisterBus for Bus {
@@ -128,6 +143,25 @@ impl RegisterBus for Bus {
                     .fold(0, |m, (i, v)| m | (u32::from(*v == 0) << i))
             }),
             REG_COMMAND_RECEIPT => s.forced_receipt.unwrap_or(0),
+            REG_RESULT_READY => s.registers.get(&register).copied().unwrap_or_else(|| {
+                (0..4)
+                    .filter(|&bank| s.states[bank] >= 2)
+                    .min_by_key(|&bank| {
+                        u64::from(s.words[bank][4]) | (u64::from(s.words[bank][5]) << 32)
+                    })
+                    .map_or(0, |bank| if s.states[bank] == 5 { 1 << bank } else { 0 })
+            }),
+            REG_RESULT_DATA => {
+                let bank = s.result_bank;
+                let cursor = s.result_cursor;
+                if let Some(value) = s.results[bank].get(cursor).copied() {
+                    s.result_cursor += 1;
+                    value
+                } else {
+                    s.registers.insert(REG_RESULT_RECEIPT, RECEIPT_UNAVAILABLE);
+                    0
+                }
+            }
             _ => *s.registers.get(&register).unwrap_or(&0),
         };
         if fail { Err(99) } else { Ok(value) }
@@ -163,6 +197,36 @@ impl RegisterBus for Bus {
                     s.states[bank] = 2;
                     s.registers.insert(REG_LAST_ADMITTED_LOW, words[4]);
                     s.registers.insert(REG_NEXT_SEQUENCE_LOW, words[4] + 1);
+                }
+            }
+            REG_RESULT_BANK => {
+                s.result_bank = value as usize;
+                s.result_cursor = 0;
+            }
+            REG_RESULT_REWIND => {
+                assert_eq!(value, 1);
+                s.result_cursor = 0;
+            }
+            REG_RESULT_ACK_LOW | REG_RESULT_ACK_HIGH | REG_RESULT_ACK_EPOCH => {
+                s.registers.insert(register, value);
+            }
+            REG_RESULT_ACK => {
+                assert_eq!(value, 1);
+                let bank = s.result_bank;
+                let sequence = u64::from(s.registers[&REG_RESULT_ACK_LOW])
+                    | (u64::from(s.registers[&REG_RESULT_ACK_HIGH]) << 32);
+                let original = &s.words[bank];
+                if s.registers[&REG_RESULT_ACK_EPOCH] != s.registers[&REG_EPOCH] {
+                    s.registers.insert(REG_RESULT_RECEIPT, RECEIPT_EPOCH);
+                } else {
+                    assert_eq!(s.states[bank], 5);
+                    assert_eq!(
+                        sequence,
+                        u64::from(original[4]) | (u64::from(original[5]) << 32)
+                    );
+                    s.acknowledgements += 1;
+                    s.states[bank] = 0;
+                    s.results[bank].fill(0xdead_beef);
                 }
             }
             REG_RECOVERY_REQUEST => {

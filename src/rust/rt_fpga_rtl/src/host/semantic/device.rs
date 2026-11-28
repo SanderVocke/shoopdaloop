@@ -1,6 +1,9 @@
-use super::{GroupIdentity, GroupPacket};
+use super::{GroupIdentity, GroupPacket, GroupResult};
+mod result_reader;
 use crate::host::semantic_registers::*;
 use crate::host::{Contract, Error, Geometry, Mailbox, Recovery, RecoveryState, RegisterBus};
+use result_reader::Reader;
+pub use result_reader::{MAX_RESULT_BUS_OPS, ResultStep};
 
 pub const MAX_PUBLICATION_BUS_OPS: usize = 3;
 
@@ -37,6 +40,8 @@ struct Publication {
 pub struct Device<B> {
     mailbox: Mailbox<B>,
     pending: Option<Publication>,
+    result: Option<Reader>,
+    completed: Option<GroupResult>,
     published: [Option<GroupIdentity>; SEMANTIC_GROUP_BANKS as usize],
     next: u64,
     halted: bool,
@@ -106,6 +111,8 @@ impl<B: RegisterBus> Device<B> {
         Ok(Self {
             mailbox,
             pending: None,
+            result: None,
+            completed: None,
             published: [None; 4],
             next: 1,
             halted: false,
@@ -182,9 +189,22 @@ impl<B: RegisterBus> Device<B> {
                 pending.phase = Phase::Space;
             }
             Phase::Space => {
-                let mask = self.mailbox.read(REG_FREE_BANKS)?;
+                let mut mask = self.mailbox.read(REG_FREE_BANKS)?;
                 if mask & !15 != 0 {
                     return Err(Error::UnexpectedResponse);
+                }
+                for bank in 0..self.published.len() {
+                    if mask & (1 << bank) != 0 && self.published[bank].is_some() {
+                        if self
+                            .result
+                            .as_ref()
+                            .is_some_and(|reader| reader.ack_in_flight(bank))
+                        {
+                            mask &= !(1 << bank);
+                        } else {
+                            return Err(Error::UnexpectedResponse);
+                        }
+                    }
                 }
                 if mask == 0 {
                     pending.phase = Phase::Health;

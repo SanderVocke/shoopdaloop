@@ -19,6 +19,8 @@ use std::{
 #[path = "host_axi.rs"]
 mod host_axi;
 use host_axi::Axi;
+#[path = "semantic_transport_paced.rs"]
+mod paced;
 
 #[derive(Clone)]
 struct Count<B> {
