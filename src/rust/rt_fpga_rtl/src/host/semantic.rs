@@ -1,6 +1,7 @@
 //! Candidate ABI-16 wire codecs and bounded transport, without resource-ownership authority.
 mod command;
 mod device;
+mod preparation;
 mod result;
 mod snapshot;
 
@@ -10,6 +11,7 @@ pub use device::{
     PublicationStep, ResultStep, SNAPSHOT_COPY_WORDS, SnapshotBuffers, SnapshotDevice,
     SnapshotStep,
 };
+pub use preparation::{Preparation, PreparationStep};
 pub use result::{GroupResult, ResultHeader, SwitchOutcome};
 pub use snapshot::{ObservationRow, Snapshot, SnapshotFormat, SnapshotHeader, SnapshotPhase};
 

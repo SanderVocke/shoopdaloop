@@ -225,6 +225,7 @@ impl<'a> Plan<'a> {
             if l.composite.is_some() {
                 self.bindings.push(LoopBinding {
                     id: l.id,
+                    initial_gain_bits: Some(1.0_f32.to_bits()),
                     gain: None,
                     view: None,
                     meter: None,
@@ -292,6 +293,7 @@ impl<'a> Plan<'a> {
             }
             self.bindings.push(LoopBinding {
                 id: l.id,
+                initial_gain_bits: Some(l.gain.to_bits()),
                 gain: Some(gain),
                 view: first_view,
                 meter: None,

@@ -21,10 +21,29 @@ impl<'a> RtlTarget<'a> {
         logical: &LogicalStateProgram,
         layout: rt_fpga_compiler::loading::Layout,
     ) -> Result<ProgramImage, CompileError> {
+        self.image(logical, layout, false)
+    }
+    #[cfg(feature = "rt-interface")]
+    pub fn build_semantic_image(
+        &self,
+        logical: &LogicalStateProgram,
+        layout: rt_fpga_compiler::loading::Layout,
+    ) -> Result<ProgramImage, CompileError> {
+        if self.state_base != 0 {
+            return Err(CompileError::InvalidProgram);
+        }
+        self.image(logical, layout, true)
+    }
+    fn image(
+        &self,
+        logical: &LogicalStateProgram,
+        layout: rt_fpga_compiler::loading::Layout,
+        whole_sync_prefix: bool,
+    ) -> Result<ProgramImage, CompileError> {
         if self.capacities.instructions > 32768 {
             return Err(CompileError::Capacity(Resource::Instructions));
         }
-        let compiled = self.build(&layout.relocate(logical)?)?;
+        let compiled = self.lower(&layout.relocate(logical)?, true, true, whole_sync_prefix)?;
         let initializers = layout
             .new_values()
             .map(|(_, address)| {
@@ -46,6 +65,8 @@ impl<'a> RtlTarget<'a> {
             compiled,
             initializers,
             new_loops,
+            #[cfg(feature = "rt-interface")]
+            whole_sync_prefix,
         })
     }
     pub fn new(capacities: [u64; 7], loop_slots: u32, media_views: &'a [u64]) -> Self {
@@ -77,6 +98,7 @@ impl<'a> RtlTarget<'a> {
 }
 pub struct Binding {
     pub id: Identity,
+    pub initial_gain_bits: Option<u32>,
     pub gain: Option<u16>,
     pub view: Option<u16>,
     pub meter: Option<u16>,
@@ -90,6 +112,8 @@ pub struct ProgramImage {
     pub compiled: CompiledProgram,
     pub initializers: Vec<(u16, Bits)>,
     pub new_loops: Vec<LoopImage>,
+    #[cfg(feature = "rt-interface")]
+    pub(crate) whole_sync_prefix: bool,
 }
 pub struct CompiledProgram {
     pub instructions: Vec<Bits>,
@@ -354,6 +378,15 @@ impl RtlTarget<'_> {
         logical: &LogicalStateProgram,
         merge_output: bool,
         interleave: bool,
+    ) -> Result<CompiledProgram, CompileError> {
+        self.lower(logical, merge_output, interleave, false)
+    }
+    fn lower(
+        &self,
+        logical: &LogicalStateProgram,
+        merge_output: bool,
+        interleave: bool,
+        whole_sync_prefix: bool,
     ) -> Result<CompiledProgram, CompileError> {
         logical.validate(self.limits())?;
         if usize::from(self.state_base) + logical.initial_state.len()
@@ -641,12 +674,19 @@ impl RtlTarget<'_> {
             let slot = schedule.slot(instruction, &state);
             work[slot].push(encode(instruction)?);
         }
-        let mut work = work.into_iter();
         let mut instructions = Vec::with_capacity(sync_count + logical.work_pass.len());
-        append_work(&mut instructions, work.next().unwrap(), interleave);
-        for (sync, work) in sync_instructions.into_iter().zip(work) {
-            instructions.extend(sync);
-            append_work(&mut instructions, work, interleave);
+        if whole_sync_prefix {
+            instructions.extend(sync_instructions.into_iter().flatten());
+            for slot in work {
+                append_work(&mut instructions, slot, interleave);
+            }
+        } else {
+            let mut work = work.into_iter();
+            append_work(&mut instructions, work.next().unwrap(), interleave);
+            for (sync, work) in sync_instructions.into_iter().zip(work) {
+                instructions.extend(sync);
+                append_work(&mut instructions, work, interleave);
+            }
         }
         if instructions.len() > self.limits().instructions as usize {
             return Err(CompileError::Capacity(Resource::Instructions));
@@ -686,6 +726,7 @@ impl RtlTarget<'_> {
             .map(|b| {
                 Ok(Binding {
                     id: b.id,
+                    initial_gain_bits: b.initial_gain_bits,
                     gain: b.gain.map(|a| self.address(a)).transpose()?,
                     view: b.view.map(|a| self.address(a)).transpose()?,
                     meter: b.meter.map(operand).transpose()?,

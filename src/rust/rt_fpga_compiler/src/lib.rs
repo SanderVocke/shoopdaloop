@@ -251,6 +251,8 @@ pub struct StateBinding {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopBinding {
     pub id: Identity,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub initial_gain_bits: Option<u32>,
     pub gain: Option<u32>,
     pub view: Option<u32>,
     pub meter: Option<u32>,
@@ -930,6 +932,25 @@ impl LogicalStateProgram {
             }
         }
         for binding in &self.bindings {
+            if let Some(bits) = binding.initial_gain_bits {
+                let gain = f32::from_bits(bits);
+                if !gain.is_finite() {
+                    return Err(InvalidProgram);
+                }
+                if let Some(address) = binding.gain {
+                    let value = (f64::from(gain) * f64::from(1 << 24)) as i32;
+                    if *state(address)?
+                        != InitialValue::Ramp(Ramp {
+                            start: value,
+                            target: value,
+                            duration: 0,
+                            elapsed: 0,
+                        })
+                    {
+                        return Err(InvalidProgram);
+                    }
+                }
+            }
             if let Some(address) = binding.gain {
                 if !matches!(state(address)?, InitialValue::Ramp(_)) {
                     return Err(InvalidProgram);

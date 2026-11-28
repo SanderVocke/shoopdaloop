@@ -345,6 +345,28 @@ lifecycle, matching firmware and CPU-control retirement remain Stage 5 work.
 All Stage 5 checkboxes remain open. Production still selects ABI 15; no hardware
 fit, application Ready, lease reuse or physical qualification follows.
 
+The compiler now carries optional `initial_gain_bits` in logical bindings before
+fixed conversion, with finite/consistent-ramp validation. Graph primitives preserve
+their original bits; gainless composites use the reference's unity observation.
+Older hand-built component recipes may omit it, but new-loop ABI-16 preparation
+refuses missing original metadata. `build_semantic_image` explicitly lowers the
+whole sync prefix before JP work while preserving existing job order; ordinary
+component lowering is unchanged. `semantic::Preparation` reuses `Upload`, validates
+the frozen geometry/prefix/initializer shape, appends observation initialization
+only for allocator-marked new loops and provides identity-qualified immutable
+physical targets. It performs no MMIO and allocates nothing during iteration.
+
+**A preparation recipe is not a lease or delivery proof.** Public layout/fresh
+flags are not trusted allocation authority. The existing runtime owner must still
+correlate its allocator/incarnation, permit only genuinely unused/inactive/retired
+resources, pump services without pacing audio, and retain predecessors through
+genuine matched fences. No continuing-state initializer, snapshot-derived plan,
+new backend/controller, trusted raw service API or `FencedSwitch` is introduced.
+[Preparation evidence](../../docs/fpga/command-fifo-implementation/reports/preparation-recipe-82848d048/results.json)
+covers pure recipe checks and full-profile hardware-paced original-float/bound-gain
+interop through a serial unused-resource fixture, not that pending trusted owner,
+matched runtime/firmware, application Ready or physical qualification.
+
 ## MMIO allocation within the existing 4 KiB aperture
 
 Discovery/geometry, retained fault record, recovery and service registers through

@@ -2725,3 +2725,83 @@ CPU-control retirement. All Stage 5 checkboxes remain open; Stages 0–3 complet
 Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15. No new RTL/schema,
 synthesis/route/current-source fit, promotion, physical work, push/PR or independent
 final audit is implied.
+
+## Immutable preparation recipes — Stage 5 partial
+
+The allocator/session audit confirmed that `ProgramImage::writes` excludes
+continuing state and that `ProgramSession` retains its predecessor through a
+matched fence. Two lowering gaps are now addressed without a new device owner:
+
+- Logical `LoopBinding::initial_gain_bits` retains original primitive gain bits
+  before Q8.24 conversion. Gainless composites retain the reference's unity
+  observation. Supplied bits must be finite and consistent with the immutable
+  initial ramp. Optional/default metadata keeps older hand-built component
+  recipes valid; ABI-16 preparation of new loops refuses missing metadata instead
+  of reconstructing f32 from fixed memory. Continuing gain is never initialized
+  from a replacement's recipe.
+- `RtlTarget::build_semantic_image` uses the existing scheduler but emits every SP
+  sync visit/inline schedule row before JP work. Relative job order is preserved.
+  Ordinary component/ABI-15 lowering keeps its dependency interleaver.
+
+Feature-gated `semantic::Preparation` consumes the image, validates the frozen
+Q32/chunk32/128-loop/state/buffer/history/port/queue geometry, explicit sync-prefix
+shape and binding/fresh-initializer shape. It reuses existing `Upload` steps, then
+appends exactly three observation words for each allocator-marked new loop:
+original finite gain bits, zero pulse and zero validity/failure state. Its
+identity-qualified target lookup copies physical identity/gain address/source
+flags, never execution state. Construction allocates on the control side;
+iteration allocates nothing. **Advancing a recipe is not successful delivery.**
+
+This is an immutable recipe, **not trusted lease authority**. Public layout/fresh
+flags are not proof of an eligible allocation. The existing runtime owner must
+still correlate its allocator and incarnation, enforce inactive/unused/genuinely
+retired resources, pump the existing service lane nonblockingly, and retain old
+resources until genuine matched ownership completion. No raw ABI-16 mailbox,
+second controller/backend, semantic CPU planner, trusted loader API or new
+`FencedSwitch` is exposed. Legacy runtime/control selection remains unchanged.
+
+Four pure tests cover original bits (including lost fixed precision and negative
+zero), nonfinite/inconsistent/missing metadata, explicit whole-prefix lowering
+with unchanged job order, old/new allocation separation, generation/source-aware
+bindings and thirteen malformed artifact mutations. Allocator publish/complete in
+that test is bookkeeping only, not a native fence. A new full frozen-profile
+`fifo_audio_host_axi` generated-audio/MMIO/SP/JP/media/64-bit-AXI case serially
+issues a recipe for two genuinely unused fixture loops, installs before enabling,
+reads original bits from a settled F0/revision-1 snapshot, applies a recipe-bound
+gain command and observes its new original bits in a later native image. Audio
+continues with no xrun/fault. The serial fixture is not the pending trusted lease
+API/nonblocking preparation owner, logical snapshot API, matched firmware,
+application Ready, exact-PCM, dirty/held-DDR fence or all-admitted-envelope proof.
+
+[Results/eleven exact Rust hashes](reports/preparation-recipe-82848d048/results.json):
+**22 targeted tests = 4 preparation + 18 transport**, **329 Rust = 257 affected +
+72 directed**, both 3,970-case kernel sources/four audio-I/O tests, **13 Python**,
+Linux **3,589 passed (2 slow) / 11 skipped / 403.569 s** with pinned nextest 0.9.116
+and an owned isolated 48 kHz/128-frame dummy JACK. Both default/optional-reference
+Wasm builds, explicit host-library Wasm, installed pinned Rust 1.99.1 ARM-library
+check, workspace warning build, formatting, policy, coverage and generators pass.
+All feature-sensitive builds/subprocess suites were serialized. Wasm/library checks
+are not browser runtime, firmware/link/pair or physical proof.
+
+Local prefix `stage5-preparation-recipe-`: final `axi-v2,milestone,linux,wasm,arm,
+precommit` gates are zero. `target-v1=101` retains a compiler reference/value
+comparison typo; `axi-v1=101` retains a test calling `code` instead of `codes`.
+Both were corrected without weakening assertions or profile. `target-v2=0`
+proved the four pure cases before the native case was added; final `axi-v2=0`
+includes all 22. Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_preparation --test semantic_transport -- --test-threads=1
+'
+```
+
+Next: trusted allocator/incarnation-bound preparation and lease ownership through
+the same service/device owner, then reference cutoff, callback/fresh-first-frame
+Ready, matching runtime/firmware and CPU-control retirement. **All Stage 5 boxes
+remain open**; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. Production
+ABI 15/restart protocol 53 remains selected. No new hardware/schema, dependency,
+synthesis/route/current-source fit, promotion, physical work, push/PR or final
+independent implementation/verification/delivery acceptance is implied.

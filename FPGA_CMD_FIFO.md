@@ -1972,6 +1972,50 @@ owner, callback/fresh-first-frame Ready and CPU-control retirement are next.
 production ABI 15 selected. No new hardware/schema, fit, promotion, physical work
 or delivery is implied.
 
+**Immutable preparation recipe (partial):** the logical compiler now retains an
+optional original f32 gain bit pattern before Q8.24 conversion. Graph lowering
+supplies it for primitive controls (including negative zero); gainless composites
+retain the reference's unity observation. Validation rejects nonfinite or
+inconsistent supplied gain/ramp recipes. Legacy hand-built component programs may
+omit the metadata, but ABI-16 new-loop preparation refuses missing metadata rather
+than reconstructing it from fixed-point memory.
+
+`RtlTarget::build_semantic_image` explicitly emits the complete SP sync prefix,
+including inline schedule rows, before JP work. It reuses the existing dependency
+scheduler and preserves job order; ordinary component/ABI-15 lowering retains its
+interleaving. Feature-gated `semantic::Preparation` consumes the immutable image,
+checks the frozen packet geometry/prefix/binding/initializer shape, reuses `Upload`
+steps and appends three observation words only for allocator-marked new loops.
+Its identity-qualified target lookup is state-independent. Continuing state,
+loop records and observations receive no initialization recipe. Iteration allocates
+nothing, but **recipe advancement is not device delivery**. The artifact is not a
+lease: caller-provided layouts/fresh flags must still be checked against the
+runtime owner's allocator, incarnation, uploads and genuine ownership fences.
+No second backend, MMIO/recovery owner or trusted loader API is introduced.
+
+Four pure tests cover original gain bits, invalid/missing metadata, whole-prefix
+lowering with unchanged job order, continuing/fresh recipe separation, binding
+identity/source flags and malformed artifacts. A new full-profile generated-audio/
+MMIO/SP/JP/media/64-bit-AXI case serially prepares two genuinely unused fixture
+loops, publishes installation before enable, observes original gain bits in a
+settled F0/revision-1 image, then applies a recipe-bound gain command and observes
+its new original bits. The fixture's raw service sender is **not** the pending
+trusted lease API, nonblocking preparation pump, matched runtime/firmware,
+application Ready, exact-PCM/dirty-held-DDR or all-admitted-envelope proof.
+
+[Exact-source evidence](docs/fpga/command-fifo-implementation/reports/preparation-recipe-82848d048/results.json)
+records eleven Rust hashes. Final gates pass **22 targeted tests** (4 preparation
++ 18 transport), **329 Rust = 257 affected + 72 directed**, **13 Python**, Linux
+**3,589 passed (2 slow) / 11 skipped / 403.569 s**, both Wasm profiles, explicit
+host-library Wasm, pinned ARM-library and warnings/format/policy/coverage/generator
+checks. The two compile-time iteration failures are retained. Trusted allocation/
+preparation/lease ownership and its bounded service pump remain next, followed by
+reference/runtime/callback/fresh-first-frame Ready, firmware and CPU-control
+retirement. **Every Stage 5 checkbox remains open**; Stages 0–3 complete,
+Stages 4–5 partial, Stages 6–7 open, production ABI 15 selected. No new hardware
+register schema, synthesis/route/current-source fit, promotion, physical work,
+push/PR or independent final acceptance is implied.
+
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 
 - [ ] Run continuous-audio differential tests through the full AXI/host path for

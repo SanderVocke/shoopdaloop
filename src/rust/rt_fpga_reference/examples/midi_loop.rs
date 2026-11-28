@@ -32,6 +32,7 @@ fn main() {
         }],
         bindings: vec![rt_fpga_compiler::LoopBinding {
             id: logical_id,
+            initial_gain_bits: None,
             gain: None,
             view: None,
             meter: None,
