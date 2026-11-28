@@ -48,6 +48,7 @@ pub fn mono_loops(quantum: u32, count: u32) -> LogicalStateProgram {
         ]);
         bindings.push(LoopBinding {
             id: id(i),
+            initial_gain_bits: None,
             gain: Some(i),
             view: Some(view),
             meter: Some(output),
@@ -165,6 +166,7 @@ pub fn sync_smoothing(quantum: u32) -> LogicalStateProgram {
         }],
         bindings: vec![LoopBinding {
             id,
+            initial_gain_bits: None,
             gain: Some(1),
             view: None,
             meter: Some(2),

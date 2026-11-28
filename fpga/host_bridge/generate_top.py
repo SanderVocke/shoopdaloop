@@ -10,6 +10,9 @@ HERE = Path(__file__).resolve().parent
 AXI = HERE.parent / "axi_memory"
 sys.path.insert(0, str(AXI))
 from generate_tops import header
+from generate_semantic import generate as semantic_audio
+from generate_semantic_media import generate as semantic_media
+from generate_semantic_mmio import generate as semantic_mmio, generate_audio as semantic_audio_host
 
 
 def generate():
@@ -101,7 +104,7 @@ def generate():
     text += "    assign host_abort = mailbox_abort || recovery_quiesce;\n"
     text += "    host_recovery recovery (.clk(clk), .reset(reset), .seed_epoch(epoch),\n"
     text += "        .request(recovery_request), .state(recovery_status), .epoch(runtime_epoch),\n"
-    text += "        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset),\n"
+    text += "        .quiesce(recovery_quiesce), .datapath_reset(recovery_reset), .bus_fault(1'b0),\n"
     text += "        .quiescent(!busy && !state_busy && !jobs_busy && !store_busy && !reclaim_active\n"
     text += "            && queued_jobs == 0 && !m_axi_awvalid && !m_axi_arvalid && !m_axi_wvalid),\n"
     text += "        .write_start(m_axi_awvalid && m_axi_awready), .write_done(m_axi_bvalid && m_axi_bready),\n"
@@ -138,7 +141,9 @@ def generate():
     native_wrapper += ",\n        ".join(f".{name}({name})" for name in native_ports)
     native_wrapper += "\n    );\nendmodule\n"
     return {"host_pipeline_axi.sv": text, "host_pipeline_bd.v": wrapper,
-            "native_audio_bd.v": native_wrapper}
+            "native_audio_bd.v": native_wrapper, "fifo_audio_pipeline.sv": semantic_audio(),
+            "fifo_media_audio_pipeline.sv": semantic_media(),
+            "fifo_mmio_pipeline_axi.sv": semantic_mmio(), "fifo_audio_host_axi.sv": semantic_audio_host()}
 
 
 if __name__ == "__main__":

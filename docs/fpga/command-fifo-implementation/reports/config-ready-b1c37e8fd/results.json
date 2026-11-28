@@ -1,0 +1,328 @@
+{
+  "outcome": "PARTIAL_READINESS_REFINEMENT_WITHIN_FRONTEND_CEILINGS_TIMING_UNCLOSED",
+  "source_base": "b1c37e8fdbb6290722b948d9515103a0e50219ef",
+  "working_tree_snapshot": true,
+  "scope": "Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort, configuration service and qualified safety sidebands; no complete preparation/media/lifecycle/trace service, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately",
+  "deployed_abi": 15,
+  "candidate_semantic_abi": 16,
+  "indexed_mmio_included": true,
+  "low_range_discovery_recovery_included": true,
+  "low_range_service_included": true,
+  "configuration_service_only": true,
+  "complete_preparation_service_included": false,
+  "abort_mmio_included": true,
+  "qualified_fault_sidebands_included": true,
+  "mmio_epoch_reset_coupled": true,
+  "audio_adapter_included": false,
+  "protected_board_included": false,
+  "runner_status": 0,
+  "synthesis_completed": true,
+  "standard_optimization_completed": true,
+  "route_performed": false,
+  "excluded_paths": {
+    "audio_execution": "dut/pipeline/execution/core/pipeline/execution",
+    "media_store": "dut/pipeline/execution/core/media",
+    "axi_backend": "dut/pipeline/execution/memory_endpoint",
+    "program_backend": "dut/pipeline/execution/ddr_program.program_bus"
+  },
+  "variants": {
+    "synthesis": {
+      "component": {
+        "lut": 31624,
+        "logic_lut": 31266,
+        "lutram": 358,
+        "srl": 0,
+        "ff": 21832,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10623,
+          "logic_lut": 10623,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11425,
+          "logic_lut": 11421,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1534,
+          "logic_lut": 1534,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 919,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7948,
+        "logic_lut": 7594,
+        "lutram": 354,
+        "srl": 0,
+        "ff": 6943,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1763,
+        "logic_lut": 1763,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1936,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 1030,
+        "logic_lut": 1030,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 388,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "configuration_service": {
+        "lut": 396,
+        "logic_lut": 372,
+        "lutram": 24,
+        "srl": 0,
+        "ff": 175,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -10.218,
+        "tns_ns": -61105.797,
+        "setup_failing_endpoints": 12143,
+        "setup_total_endpoints": 71252,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 71252
+      }
+    },
+    "default-opt": {
+      "component": {
+        "lut": 31518,
+        "logic_lut": 31160,
+        "lutram": 358,
+        "srl": 0,
+        "ff": 21804,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10620,
+          "logic_lut": 10620,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11410,
+          "logic_lut": 11406,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1451,
+          "logic_lut": 1451,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 891,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7943,
+        "logic_lut": 7589,
+        "lutram": 354,
+        "srl": 0,
+        "ff": 6943,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1763,
+        "logic_lut": 1763,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1936,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 1030,
+        "logic_lut": 1030,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 388,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "configuration_service": {
+        "lut": 395,
+        "logic_lut": 371,
+        "lutram": 24,
+        "srl": 0,
+        "ff": 175,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -9.754,
+        "tns_ns": -58656.453,
+        "setup_failing_endpoints": 12143,
+        "setup_total_endpoints": 71196,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 71196
+      }
+    }
+  },
+  "optimized_frontend_change_from_previous": {
+    "lut": 0,
+    "ff": 0
+  },
+  "optimized_component_change_from_previous": {
+    "lut": -3,
+    "ff": 0
+  },
+  "current_ceilings": {
+    "frontend_lut": 8000,
+    "frontend_ff": 7000,
+    "kernel_lut": 2500,
+    "kernel_ff": 2500,
+    "kernel_dsp": 0,
+    "whole_lut": 32000,
+    "whole_ff": 24000,
+    "whole_ramb36_equivalents": 100,
+    "whole_dsp": 4,
+    "command_cycles": 4096,
+    "snapshot_cycles": 8192,
+    "quantum_cycles": 60000
+  },
+  "remaining_partial_frontend_headroom": {
+    "lut": 57,
+    "ff": 57
+  },
+  "timing_comparison": {
+    "previous_optimized": {
+      "wns_ns": -12.115,
+      "tns_ns": -54692.207,
+      "setup_failing_endpoints": 11182,
+      "setup_total_endpoints": 71196,
+      "whs_ns": 0.183,
+      "ths_ns": 0.0,
+      "hold_failing_endpoints": 0,
+      "hold_total_endpoints": 71196
+    },
+    "worst_slack_change_ns": 2.361,
+    "aggregate_setup_violations_improved": false,
+    "current_worst_logic_levels": 35,
+    "current_worst_data_delay_ns": 19.204,
+    "current_worst_destination": "dut/pipeline/execution/core/pipeline/execution/state_engine/state_memory/memory_reg_0/WEBWE[0]"
+  },
+  "gates": {
+    "partial_frontend_area_within_current_limits": true,
+    "kernel_area_within_limits": true,
+    "complete_frontend_accepted": false,
+    "protected_whole_design_accepted": false,
+    "routed_timing_accepted": false,
+    "all_admitted_quantum_budget_proven": false
+  },
+  "native_messages": {
+    "synthesis_errors": 0,
+    "synthesis_critical_warnings": 0,
+    "synthesis_warnings": 217,
+    "overall_errors": 0,
+    "overall_critical_warnings": 0
+  },
+  "local_artifact_sha256": {
+    "console.log": "92ac12439a02f4cbc66e8ef1bbe95a5bf02b51add7ca6960738f1e40c7cffba2",
+    "build/component-synthesis.dcp": "09d1f27927d4ed5d6aa0934522fdebb40962815fdd95763f2a2ac0615230380f",
+    "build/component-optimized.dcp": "ab90448d0c458aa832ab575d68be5dd28454b5af7a9b685e9dc6293909a969ff"
+  },
+  "verification": {
+    "affected_package_rust_tests": 209,
+    "directed_component_rust_tests": 58,
+    "selected_rust_tests": 267,
+    "readiness_configurations": 8,
+    "actual_mmio_tests": 7,
+    "standalone_mmio_tests": 7,
+    "standalone_config_tests": 3,
+    "offline_python_tests": 12,
+    "full_linux_passed": 3584,
+    "full_linux_skipped": 11,
+    "full_linux_seconds": 400.699,
+    "default_wasm_builds_passed": true,
+    "fpga_reference_worklet_wasm_build_passed": true,
+    "physical_tests_performed": false
+  },
+  "notes": [
+    "Only cfg_valid is removed from two dual-region cfg_ready terms; actual cfg_accept/valid/grants, single-region/admission/port/fault masks, phases and widths are unchanged.",
+    "valid&&(idle||valid&&eligible) equals valid&&(idle||eligible); ready may assert without valid but cannot grant or mutate state.",
+    "Eight standalone-SP/audio-core x one/two-region x local/DDR variants check all four internal grant probes, full129bit/64bit RAM fingerprints, no callbacks/backend traffic/F advance under valid0, and accepted real four-beat DDR payload/response under valid1.",
+    "Default State driver retains busy/cfg_ready exclusion; explicit dual-region loading driver retains run/job exclusion, ready-valid and queue bounds. Its prior universal cfg_ready exclusion was inapplicable to background writes; no production mask changed.",
+    "Before-fix-v1/v2 were129bit fixture construction failures; corrected before-fix-v3 fails genuine readiness0vs1. First narrow run exposes the driver guard; narrow-v2 and broad pass.",
+    "Three saved LUTs are wholly inside excluded audio execution, NOT frontend margin. Frontend remains7943/6943 and57LUT/57FF headroom.",
+    "Public profile bytes, complete metadata and timing Tcl equal previous checkpoint; all65 native source hashes match current files.",
+    "Worst unrouted WNS improves2.361ns to-9.754ns but aggregate TNS and failing endpoints worsen;35level path now ends at real SP state RAM write enable. No exception, delayed fault gate or routed closure.",
+    "Only configuration1/2/3 subset; all remaining services/adapters/software/retirement, timing/envelope/platform/delivery gates remain. ABI15 selected; no physical work/push/PR/completion."
+  ]
+}

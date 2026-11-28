@@ -1,7 +1,8 @@
 // Self-contained 48 kHz test source in the fabric clock domain.
 module host_generated_audio #(
     parameter [31:0] CORE_CLOCK_HZ = 32'd100000000,
-    parameter integer QUANTUM = 32
+    parameter integer QUANTUM = 32,
+    parameter integer WATCHDOG_CYCLES = (CORE_CLOCK_HZ/48000)*QUANTUM+1
 ) (
     input wire clk,
     input wire reset,
@@ -12,6 +13,7 @@ module host_generated_audio #(
     input wire quantum_done,
     input wire process_fault,
     output wire audio_fault,
+    output wire watchdog_fault,
     input wire sample_input_read,
     input wire [31:0] sample_input_address,
     output wire [31:0] sample_input_data,
@@ -46,10 +48,11 @@ module host_generated_audio #(
     wire [31:0] process_epoch, played_quanta, discarded_quanta, input_losses, rx_high_water, tx_high_water;
     wire [3:0] recovery_reason;
     wire busy;
+    assign watchdog_fault = audio_fault && recovery_reason == 2;
     wire unused_diagnostics = &{1'b0, audio_frame, session_frame, process_sequence, process_epoch, failure_sequence,
         recovery_reason, played_quanta, discarded_quanta, input_losses, rx_high_water, tx_high_water, busy};
 
-    audio_io #(.Q(QUANTUM), .INPUTS(1), .OUTPUTS(2), .WATCHDOG_CYCLES((CORE_CLOCK_HZ/RATE)*QUANTUM+1)) io (
+    audio_io #(.Q(QUANTUM), .INPUTS(1), .OUTPUTS(2), .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) io (
         .clk(clk), .audio_clk(clk), .reset(reset), .session_reset(1'b0), .enable(enable), .epoch(epoch),
         .frame_tick(frame_tick), .frame_prepare(frame_prepare), .rx_samples(generated_sample),
         .tx_samples(tx_samples), .tx_valid(tx_valid), .audio_frame(audio_frame), .session_frame(session_frame),

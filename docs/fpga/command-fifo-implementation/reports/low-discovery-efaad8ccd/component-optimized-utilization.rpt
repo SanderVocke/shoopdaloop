@@ -1,0 +1,138 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 27 08:39:05 2026
+| Host         : 1ad39e445a6d running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file component-optimized-utilization.rpt
+| Design       : semantic_profile
+| Device       : 7z020clg400-2
+| Design State : Optimized
+--------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------------------+------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+|                 Instance                |               Module               | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------------------------+------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+| semantic_profile                        |                              (top) |      30884 |      30550 |     334 |    0 | 21654 |     59 |      7 |          4 |
+|   (semantic_profile)                    |                              (top) |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
+|   dut                                   |             fifo_mmio_pipeline_axi |      30884 |      30550 |     334 |    0 | 21654 |     59 |      7 |          4 |
+|     (dut)                               |             fifo_mmio_pipeline_axi |          8 |          8 |       0 |    0 |     0 |      0 |      0 |          0 |
+|     mmio                                |                          fifo_mmio |        938 |        938 |       0 |    0 |   419 |      0 |      0 |          0 |
+|     pipeline                            |         fifo_recovery_pipeline_axi |      29938 |      29604 |     334 |    0 | 21235 |     59 |      7 |          4 |
+|       (pipeline)                        |         fifo_recovery_pipeline_axi |         30 |         30 |       0 |    0 |     0 |      0 |      0 |          0 |
+|       execution                         |      fifo_media_audio_pipeline_axi |      29709 |      29375 |     334 |    0 | 20790 |     59 |      7 |          4 |
+|         (execution)                     |      fifo_media_audio_pipeline_axi |         23 |         23 |       0 |    0 |     0 |      0 |      0 |          0 |
+|         core                            |          fifo_media_audio_pipeline |      28141 |      27807 |     334 |    0 | 19896 |     59 |      7 |          4 |
+|           (core)                        |          fifo_media_audio_pipeline |          6 |          6 |       0 |    0 |     0 |      0 |      0 |          0 |
+|           delay                         |                       memory_delay |          5 |          5 |       0 |    0 |     1 |      0 |      0 |          0 |
+|           media                         |                        media_store |      11410 |      11406 |       4 |    0 |  8022 |      8 |      4 |          0 |
+|             (media)                     |                        media_store |       4258 |       4258 |       0 |    0 |  2972 |      0 |      0 |          0 |
+|             descriptors                 |                          media_ram |          0 |          0 |       0 |    0 |     0 |      2 |      1 |          0 |
+|             metadata                    |                     media_metadata |       5039 |       5035 |       4 |    0 |  3672 |      4 |      3 |          0 |
+|               (metadata)                |                     media_metadata |       4253 |       4249 |       4 |    0 |  2802 |      0 |      0 |          0 |
+|               banks[0].cache            |                     metadata_cache |        388 |        388 |       0 |    0 |   413 |      0 |      1 |          0 |
+|                 (banks[0].cache)        |                     metadata_cache |        388 |        388 |       0 |    0 |   413 |      0 |      0 |          0 |
+|                 data_ram                |          media_ram__parameterized0 |          0 |          0 |       0 |    0 |     0 |      0 |      1 |          0 |
+|               banks[1].cache            |     metadata_cache__parameterized0 |        228 |        228 |       0 |    0 |   266 |      0 |      1 |          0 |
+|                 (banks[1].cache)        |     metadata_cache__parameterized0 |        228 |        228 |       0 |    0 |   266 |      0 |      0 |          0 |
+|                 data_ram                |          media_ram__parameterized1 |          0 |          0 |       0 |    0 |     0 |      0 |      1 |          0 |
+|               banks[2].cache            |     metadata_cache__parameterized1 |        170 |        170 |       0 |    0 |   191 |      0 |      1 |          0 |
+|                 (banks[2].cache)        |     metadata_cache__parameterized1 |        170 |        170 |       0 |    0 |   191 |      0 |      0 |          0 |
+|                 data_ram                |          media_ram__parameterized2 |          0 |          0 |       0 |    0 |     0 |      0 |      1 |          0 |
+|               roots                     |          media_ram__parameterized3 |          0 |          0 |       0 |    0 |     0 |      4 |      0 |          0 |
+|             reclaimer                   |                    media_reclaimer |        415 |        415 |       0 |    0 |   366 |      0 |      0 |          0 |
+|             resolver                    |            media_prefetch_resolver |        536 |        536 |       0 |    0 |   476 |      0 |      0 |          0 |
+|             sample_memory               |                       chunk_memory |       1162 |       1162 |       0 |    0 |   536 |      2 |      0 |          0 |
+|               (sample_memory)           |                       chunk_memory |       1122 |       1122 |       0 |    0 |   536 |      0 |      0 |          0 |
+|               demand_any_select         |                  chunk_priority__5 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (demand_any_select)     |                  chunk_priority__5 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             | chunk_priority__parameterized0__10 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              | chunk_priority__parameterized0__11 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               demand_forward_select     |                  chunk_priority__4 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (demand_forward_select) |                  chunk_priority__4 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             |  chunk_priority__parameterized0__8 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              |  chunk_priority__parameterized0__9 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               flush_any_select          |                     chunk_priority |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (flush_any_select)      |                     chunk_priority |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             |     chunk_priority__parameterized0 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              |  chunk_priority__parameterized0__1 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               flush_forward_select      |                  chunk_priority__9 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (flush_forward_select)  |                  chunk_priority__9 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             | chunk_priority__parameterized0__18 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              | chunk_priority__parameterized0__19 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               read_any_select           |                  chunk_priority__3 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (read_any_select)       |                  chunk_priority__3 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             |  chunk_priority__parameterized0__6 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              |  chunk_priority__parameterized0__7 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               read_forward_select       |                  chunk_priority__2 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (read_forward_select)   |                  chunk_priority__2 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             |  chunk_priority__parameterized0__4 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              |  chunk_priority__parameterized0__5 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               read_free_select          |                  chunk_priority__1 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (read_free_select)      |                  chunk_priority__1 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             |  chunk_priority__parameterized0__2 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              |  chunk_priority__parameterized0__3 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               read_ram                  |                       chunk_ram__1 |          0 |          0 |       0 |    0 |     0 |      1 |      0 |          0 |
+|               write_any_select          |                  chunk_priority__8 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (write_any_select)      |                  chunk_priority__8 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             | chunk_priority__parameterized0__16 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              | chunk_priority__parameterized0__17 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               write_forward_select      |                  chunk_priority__7 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (write_forward_select)  |                  chunk_priority__7 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             | chunk_priority__parameterized0__14 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              | chunk_priority__parameterized0__15 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               write_free_select         |                  chunk_priority__6 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 (write_free_select)     |                  chunk_priority__6 |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.high             | chunk_priority__parameterized0__12 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|                 branch.low              | chunk_priority__parameterized0__13 |          1 |          1 |       0 |    0 |     0 |      0 |      0 |          0 |
+|               write_ram                 |                          chunk_ram |          0 |          0 |       0 |    0 |     0 |      1 |      0 |          0 |
+|           owner                         |                 fifo_media_arbiter |        558 |        486 |      72 |    0 |   393 |      0 |      0 |          0 |
+|             (owner)                     |                 fifo_media_arbiter |        266 |        266 |       0 |    0 |   100 |      0 |      0 |          0 |
+|             loader                      |                  fifo_media_loader |        292 |        220 |      72 |    0 |   293 |      0 |      0 |          0 |
+|           pipeline                      |                fifo_audio_pipeline |      16162 |      15904 |     258 |    0 | 11480 |     51 |      3 |          4 |
+|             (pipeline)                  |                fifo_audio_pipeline |        395 |        395 |       0 |    0 |   137 |      0 |      0 |          0 |
+|             consumer                    |                fifo_group_consumer |       3741 |       3741 |       0 |    0 |  3940 |      2 |      1 |          0 |
+|               (consumer)                |                fifo_group_consumer |       1130 |       1130 |       0 |    0 |  1385 |      0 |      0 |          0 |
+|               banks                     |                   fifo_group_banks |       1016 |       1016 |       0 |    0 |   623 |      2 |      1 |          0 |
+|               kernel                    |                   fifo_edit_kernel |       1595 |       1595 |       0 |    0 |  1932 |      0 |      0 |          0 |
+|             execution                   |                     audio_pipeline |      10623 |      10623 |       0 |    0 |  5945 |     33 |      2 |          4 |
+|               (execution)               |                     audio_pipeline |        377 |        377 |       0 |    0 |   407 |      0 |      0 |          0 |
+|               read_intents              |                        sp_job_fifo |         33 |         33 |       0 |    0 |   226 |      5 |      1 |          0 |
+|                 (read_intents)          |                        sp_job_fifo |         33 |         33 |       0 |    0 |   226 |      0 |      0 |          0 |
+|                 storage                 |                             sp_ram |          0 |          0 |       0 |    0 |     0 |      5 |      1 |          0 |
+|               sample_engine             |                      job_processor |       5159 |       5159 |       0 |    0 |  2780 |     18 |      0 |          4 |
+|                 (sample_engine)         |                      job_processor |       5024 |       5024 |       0 |    0 |  2611 |      0 |      0 |          4 |
+|                 divide                  |                         jp_divider |        135 |        135 |       0 |    0 |   169 |      0 |      0 |          0 |
+|                 scratch_memory          |                      jp_sample_ram |          0 |          0 |       0 |    0 |     0 |     16 |      0 |          0 |
+|                 smoothing_memory        |             sp_ram__parameterized3 |          0 |          0 |       0 |    0 |     0 |      2 |      0 |          0 |
+|               state_engine              |                    state_processor |       5054 |       5054 |       0 |    0 |  2532 |     10 |      1 |          0 |
+|                 (state_engine)          |                    state_processor |        545 |        545 |       0 |    0 |    10 |      0 |      0 |          0 |
+|                 buffered_jobs.jobs      |        sp_job_fifo__parameterized0 |         32 |         32 |       0 |    0 |   286 |      4 |      0 |          0 |
+|                   (buffered_jobs.jobs)  |        sp_job_fifo__parameterized0 |         32 |         32 |       0 |    0 |   286 |      0 |      0 |          0 |
+|                   storage               |             sp_ram__parameterized0 |          0 |          0 |       0 |    0 |     0 |      4 |      0 |          0 |
+|                 ddr_program.prefetch    |                sp_program_prefetch |        186 |        186 |       0 |    0 |   287 |      0 |      1 |          0 |
+|                 engine                  |                          sp_engine |       4291 |       4291 |       0 |    0 |  1949 |      0 |      0 |          0 |
+|                 loop_memory             |             sp_ram__parameterized2 |          0 |          0 |       0 |    0 |     0 |      4 |      0 |          0 |
+|                 state_memory            |             sp_ram__parameterized1 |          0 |          0 |       0 |    0 |     0 |      2 |      0 |          0 |
+|             observations                |                  fifo_observations |        605 |        347 |     258 |    0 |   615 |      0 |      0 |          0 |
+|             snapshots                   |                     fifo_snapshots |        798 |        798 |       0 |    0 |   843 |     16 |      0 |          0 |
+|         ddr_program.program_bus         |                    program_axi_mux |         94 |         94 |       0 |    0 |     3 |      0 |      0 |          0 |
+|         memory_endpoint                 |                         shared_axi |       1451 |       1451 |       0 |    0 |   891 |      0 |      0 |          0 |
+|           scheduler                     |                      axi_burst_mux |        199 |        199 |       0 |    0 |    63 |      0 |      0 |          0 |
+|             (scheduler)                 |                      axi_burst_mux |         88 |         88 |       0 |    0 |     3 |      0 |      0 |          0 |
+|             endpoint                    |                         axi_master |        111 |        111 |       0 |    0 |    60 |      0 |      0 |          0 |
+|           stream_0.transfer             |                          chunk_dma |        607 |        607 |       0 |    0 |   399 |      0 |      0 |          0 |
+|           stream_1.transfer             |          chunk_dma__parameterized0 |        645 |        645 |       0 |    0 |   429 |      0 |      0 |          0 |
+|       recovery                          |                      host_recovery |        174 |        174 |       0 |    0 |   101 |      0 |      0 |          0 |
+|       retained_fault                    |                  host_fault_record |         25 |         25 |       0 |    0 |   344 |      0 |      0 |          0 |
++-----------------------------------------+------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+
+

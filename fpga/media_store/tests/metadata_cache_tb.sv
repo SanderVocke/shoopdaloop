@@ -126,6 +126,7 @@ module metadata_cache_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
         .memory_response_error(memory_meta_response_error),
         .memory_read_data(memory_meta_read_data));
     shared_axi #(.DATA_WIDTH(DATA_WIDTH)) transport (
+        .quiesce(1'b0), .quiescent(), .drain_fault(),
         .arena_base(64'h01000000),.arena_bytes(64'd32768),.sample_bytes(64'd16384),.physical_base(32'h01000000),.*);
     axi_direct_memory #(.DATA_WIDTH(DATA_WIDTH),.WORDS(8192)) ram (.*);
 endmodule

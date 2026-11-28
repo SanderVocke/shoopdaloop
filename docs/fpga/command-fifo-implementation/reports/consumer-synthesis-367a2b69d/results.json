@@ -1,0 +1,50 @@
+{
+  "scope": "Partial bank/consumer/kernel frontend only; no MMIO, snapshots, local SP observation storage, loader arbitration, SP/JP, PS/DDR or board",
+  "source_commit": "367a2b69d555eb9a4f9208fb213912a9ce5917b7",
+  "vivado": "2021.1 SW Build 3247384",
+  "launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "routed": false,
+  "board_accessed": false,
+  "production_path_changed": false,
+  "acceptance_complete": false,
+  "synthesis": {
+    "packed_lut": 4015,
+    "ff": 3891,
+    "ramb36": 2,
+    "ramb18": 1,
+    "ramb36_equivalents": 2.5,
+    "dsp": 0,
+    "raw_lut_primitives_not_packed_area": 4929,
+    "port_bits": 1518
+  },
+  "hierarchy": {
+    "consumer_only": { "packed_lut": 1176, "ff": 1323 },
+    "banks": { "packed_lut": 1009, "ff": 623, "ramb36": 2, "ramb18": 1 },
+    "kernel": { "packed_lut": 1830, "ff": 1945, "dsp": 0, "ramb36": 0, "ramb18": 0 }
+  },
+  "unrouted_estimated_timing": {
+    "wns_ns": -2.074,
+    "tns_ns": -237.136,
+    "setup_failing_endpoints": 743,
+    "whs_ns": 0.246,
+    "hold_failing_endpoints": 0,
+    "total_endpoints": 11084,
+    "critical_path": "pending_group_reg[5] to banks/state_reg[0][0], 24 logic levels",
+    "qualification": "Timing is not closed. Unplaced/unrouted estimate without HD.CLK_SRC; not the required protected whole-design routed timing proof."
+  },
+  "resource_headroom_not_acceptance": {
+    "lut_to_6000": 1985,
+    "ff_to_7000": 3109,
+    "qualification": "Remaining frontend blocks are absent and unmeasured; this does not show that the completed replacement fits."
+  },
+  "evidence": {
+    "local_run": "work/cmd-fifo-investigation/vivado-consumer-v2",
+    "status": 0,
+    "complete": "passed",
+    "failed_startup_attempt": "vivado-consumer-v1 stopped at an incorrect launcher pin before synthesis; retained locally, not passing evidence",
+    "profile": { "loops": 128, "states": 512, "instructions": 1024, "buffers": 512 }
+  }
+}

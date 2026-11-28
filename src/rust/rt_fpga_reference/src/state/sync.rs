@@ -4,7 +4,7 @@ use crate::{
     transitions::*,
 };
 use alloc::vec::Vec;
-use rt_fpga_compiler::{loading::FutureSwitch, SpanMode};
+use rt_fpga_compiler::SpanMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -62,8 +62,6 @@ pub struct LoopSlot {
     #[cfg_attr(feature = "serde", serde(default))]
     composite_wrap: bool,
     #[cfg_attr(feature = "serde", serde(default))]
-    composite_handoff: bool,
-    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) composite_wait: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) authored_recording: bool,
@@ -87,7 +85,6 @@ impl LoopSlot {
             composite_previous: None,
             composite_snapshot: None,
             composite_wrap: false,
-            composite_handoff: false,
             composite_wait: false,
             authored_recording: false,
             mode_plan,
@@ -109,9 +106,6 @@ pub struct Resolution {
 
 pub(crate) struct LoopMemory {
     pub plan: TransitionPlan,
-    pub(crate) program_changed: bool,
-    pub(crate) restart_candidate: Option<FutureSwitch>,
-    pub(crate) restart_ready: bool,
     pub slots: Vec<Option<LoopSlot>>,
     pub frame: u64,
     pub events: Vec<Event>,
@@ -146,9 +140,6 @@ impl LoopMemory {
         Self {
             projected_pulses,
             plan,
-            program_changed: false,
-            restart_candidate: None,
-            restart_ready: false,
             slots,
             frame: 0,
             events,
@@ -218,7 +209,6 @@ impl LoopMemory {
             self.run(instructions, quantum, false)
                 .map_err(crate::Error::Transition)?;
         }
-        self.program_changed = false;
         Ok(())
     }
     fn run(
@@ -262,7 +252,6 @@ impl LoopMemory {
             .frame
             .checked_add(u64::from(quantum))
             .ok_or(TransitionError::Exhausted)?;
-        self.restart_ready = false;
         self.events.clear();
         self.resolutions.clear();
         self.advance_mode_plans(instructions)?;
@@ -367,10 +356,7 @@ impl LoopMemory {
         } in instructions
         {
             let state = self.slot(id)?.state;
-            let source = self
-                .previous_source(id)?
-                .unwrap_or(sync_source)
-                .filter(|s| *s != id);
+            let source = sync_source.filter(|s| *s != id);
             let source_pulse = source.is_some_and(|s| self.projected_pulses[s.slot as usize]);
             let wraps = state.at_end()
                 && (!state.repeat_sync
@@ -417,75 +403,27 @@ impl LoopMemory {
         }
         Ok(())
     }
-    fn previous_source(&self, id: LoopId) -> Result<Option<Option<LoopId>>, TransitionError> {
-        let Some(source) = self
-            .restart_candidate
-            .filter(|cut| cut.target.slot == id.slot && cut.target.generation == id.generation)
-            .and_then(FutureSwitch::previous_source)
-        else {
-            return Ok(None);
-        };
-        let source = source
-            .map(|slot| {
-                self.slots
-                    .get(slot as usize)
-                    .and_then(Option::as_ref)
-                    .map(|slot| slot.state.id)
-                    .ok_or(TransitionError::InvalidId)
-            })
-            .transpose()?;
-        Ok(Some(source))
-    }
-
     fn process_loop(
         &mut self,
         id: LoopId,
-        new_source: Option<LoopId>,
+        source: Option<LoopId>,
         quantum: u32,
         allow_authored_recording: bool,
     ) -> Result<(), TransitionError> {
         let clock = self.composite_clock(id);
         let composite = clock.is_some();
-        let program_changed = self.program_changed;
         let slot = self.slot_mut(id)?;
         slot.pulse_this_quantum = false;
         slot.pulse_pending = false;
         slot.pulse_masked = false;
         slot.protected = None;
         slot.composite_previous = slot.render.plays().then_some(slot.render.position);
-        slot.composite_handoff =
-            program_changed && clock.is_some() && slot.state.at_end() && !slot.composite_wait;
         slot.composite_snapshot = None;
         slot.composite_wrap = false;
         if !self.slot(id)?.mode_plan {
             self.apply_due(id, true)?;
         }
         self.apply_composite_parents(id, allow_authored_recording)?;
-        let previous_source = self.previous_source(id)?;
-        let mut source = previous_source.unwrap_or(new_source);
-        if previous_source.is_some() {
-            let slot = self.slot(id)?;
-            let waiting_on_old_clock = if let Some(source) = source.filter(|source| *source != id) {
-                let source = self.slot(source)?;
-                slot.state.repeat_sync
-                    && source.state.mode == Mode::Playing
-                    && !source.pulse_this_quantum
-            } else {
-                false
-            };
-            let ready = slot.state.mode == Mode::Stopped
-                || (slot.state.mode == Mode::Playing
-                    && !slot.planned.iter().flatten().any(|plan| plan.on_pulse)
-                    && ((slot.state.position == 0 && slot.composite_snapshot.is_some())
-                        || (slot.state.at_end()
-                            && (clock.is_some_and(|clock| clock.explicit)
-                                || !waiting_on_old_clock))));
-            if ready {
-                self.restart_ready = true;
-                self.clear_mode_plan(id, 3)?;
-                source = new_source;
-            }
-        }
         if !composite {
             self.natural_boundary(id, source)?;
         }
@@ -522,17 +460,6 @@ impl LoopMemory {
                     self.natural_boundary(id, source)?;
                 }
             }
-        }
-        if previous_source.is_none()
-            && self.restart_candidate.is_some_and(|cut| {
-                cut.target.slot == id.slot && cut.target.generation == id.generation
-            })
-        {
-            let slot = self.slot(id)?;
-            self.restart_ready = slot.state.mode == Mode::Stopped
-                || (slot.state.mode == Mode::Playing
-                    && slot.state.position == 0
-                    && (slot.composite_snapshot.is_some() || slot.composite_wrap));
         }
         let slot = self.slot_mut(id)?;
         slot.render = render(slot.state);
@@ -602,35 +529,14 @@ impl LoopMemory {
                     .get(index)
                     .filter(|span| u64::from(span.start) <= position)
             }
-            let conditional = self.restart_candidate.is_some_and(|cut| {
-                cut.target.slot == binding.parent.slot
-                    && cut.target.generation == binding.parent.generation
-            }) && !binding.previous_spans.is_empty();
-            let before = if conditional {
-                &binding.previous_spans
-            } else {
-                &binding.spans
-            };
-            let after = if conditional && !self.restart_ready {
-                before
-            } else {
-                &binding.spans
-            };
-            let prior = match binding
-                .previous_span_at_wrap
-                .filter(|_| parent.composite_handoff && !conditional)
-            {
-                Some(rt_fpga_compiler::PreviousSpan::Active(mode)) => Some(mode),
-                Some(rt_fpga_compiler::PreviousSpan::Idle) => None,
-                None => parent
-                    .composite_previous
-                    .and_then(|pos| span_at(before, pos))
-                    .map(|span| span.mode),
-            };
+            let prior = parent
+                .composite_previous
+                .and_then(|pos| span_at(&binding.spans, pos))
+                .map(|span| span.mode);
             let desired = parent
                 .render
                 .plays()
-                .then(|| span_at(after, parent.render.position))
+                .then(|| span_at(&binding.spans, parent.render.position))
                 .flatten();
             let wrap = parent.composite_wrap;
             let needs_entry = clock.is_some_and(|c| {

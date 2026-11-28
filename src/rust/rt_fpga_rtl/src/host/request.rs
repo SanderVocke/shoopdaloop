@@ -169,20 +169,6 @@ impl Request {
         )
     }
 
-    #[cfg(feature = "rt-interface")]
-    pub fn switch_at_resolved_position(
-        expected: u64,
-        program: shoop_rt_protocol::immediate::SwitchProgram,
-        cut: rt_fpga_compiler::loading::FutureSwitch,
-    ) -> Self {
-        debug_assert!(cut.target.slot < 4096 && cut.before != 0);
-        let mut request = Self::switch_program(expected, program);
-        request.words[4] |= cut.target.slot << 1;
-        request.words[5] |= cut.before << 16;
-        request.words[6] |= cut.before & 0xffff0000;
-        request
-    }
-
     pub fn capture_snapshot(loop_slots: u32) -> Self {
         Self::new(OP_CAPTURE_SNAPSHOT, &[loop_slots])
     }

@@ -127,7 +127,11 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     let rtl = root.join("fpga/host_bridge/rtl");
     let compiled = Design::new(
         "host_mailbox",
-        vec![rtl.join("host_registers.sv"), rtl.join("host_mailbox.sv")],
+        vec![
+            rtl.join("host_registers.sv"),
+            rtl.join("host_fault_record.sv"),
+            rtl.join("host_mailbox.sv"),
+        ],
     )
     .build(&root.join("work/host-mailbox"))
     .unwrap();
@@ -319,6 +323,13 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
             send(OP_CORE_CONFIG, &args, RESULT_OK);
         }
     }
+    for (word, bits) in [(4, 1..32), (5, 16..32), (6, 16..32)] {
+        for bit in bits {
+            let mut args = [0, 0, 1, 0, 0, 3, 0, 1, 3, 1];
+            args[word] |= 1_u32 << bit;
+            send(OP_SWITCH_PROGRAM, &args, RESULT_INVALID);
+        }
+    }
     let first = send(
         OP_SWITCH_PROGRAM,
         &[0, 0, 1, 0, 0, 3, 0, 1, 3, 1],
@@ -437,7 +448,7 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
 
 #[cfg(feature = "rt-interface")]
 #[shoop_test(no_wasm = "Uses Marlin and the actual FPGA AXI bridge")]
-fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_mailbox() {
+fn recorded_take_survives_primitive_switches_and_refused_composite_replacement() {
     use rt_fpga_compiler::{
         CompileContext, Identity, ProgramLimits, compile_composites, compile_with_chunk_frames,
         loading::Allocator,
@@ -450,9 +461,7 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
         },
         target::RtlTarget,
     };
-    use shoop_rt_protocol::immediate::{
-        Code, IterationTransition, SwitchProgram, TransitionMode, TransitionPlan,
-    };
+    use shoop_rt_protocol::immediate::{Code, SwitchProgram, TransitionMode, TransitionPlan};
 
     fn timeout() -> impl FnMut() -> bool {
         let mut remaining = 10000;
@@ -678,30 +687,45 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
     parent.strip = None;
     parent.sync_source = Some(silent.id);
     parent.repeat_sync = true;
-    let parent_id = parent.id;
     graph.loops.push(parent);
     let quantum = u64::from(limits.quantum);
-    for (revision, iterations) in [(3, 2), (4, 5)] {
+    for kind in [CompositeKind::Regular, CompositeKind::Explicit] {
         graph.loops[2].composite = Some(CompositeView {
-            kind: CompositeKind::Regular,
-            version: revision - 2,
+            kind,
+            version: 1,
             unit_frames: quantum,
-            iterations,
+            iterations: 2,
             sample_rate: 48_000,
             quantum: limits.quantum,
             spans: vec![CompositeSpan {
                 target: identity,
                 start: 0,
-                end: if revision == 3 { 2 } else { 3 },
+                end: 2,
                 occurrence_start: 0,
                 ordinal: 0,
                 mode: LoopMode::Playing,
             }]
             .into(),
         });
+        let before = send(session.client(), Request::capture_snapshot(0));
         let program = compile_composites(&graph, context, 32).unwrap();
-        let layout = allocator.stage(&program).unwrap();
-        let parent = layout.loop_id(parent_id).unwrap();
+        assert!(matches!(
+            allocator.stage(&program),
+            Err(rt_fpga_compiler::loading::LoadError::Compile(
+                rt_fpga_compiler::CompileError::Unsupported {
+                    feature: rt_fpga_compiler::Feature::Composite,
+                    ..
+                }
+            ))
+        ));
+        assert!(allocator.pending().is_none());
+        assert_eq!(allocator.revision(), 2);
+
+        let mut separate = Allocator::new(limits);
+        let mut layout = separate.stage(&program).unwrap();
+        layout.expected = 2;
+        layout.revision = 3;
+        layout.region = 1 - session.active().unwrap().layout.region;
         let media = layout.media_views(&program);
         let image = RtlTarget {
             capacities: limits,
@@ -710,184 +734,30 @@ fn recorded_take_and_composite_clock_survive_graph_switches_over_the_hardware_ma
         }
         .build_image(&program, layout)
         .unwrap();
-        let requested = stage(&mut session, Upload::new(image, limits.instructions));
-        allocator.publish(revision).unwrap();
-        let (active, retired) = session.activate(requested, timeout()).unwrap();
-        assert_eq!(active.frame, (if revision == 3 { 6 } else { 10 }) * quantum);
-        assert_eq!(retired.unwrap().image.layout.revision, revision - 1);
-        allocator.complete(revision).unwrap();
-        if revision == 3 {
-            let mut window = ControlWindow::begin(session.client(), revision, timeout()).unwrap();
-            let play = TransitionPlan {
-                now: Some(TransitionMode::Playing),
-                ..Default::default()
-            };
-            assert_eq!(
-                window.apply_transition(parent, None, None, play),
-                Ok(Code::Applied)
-            );
-            window.release().unwrap();
-            for _ in 0..4 {
-                send(session.client(), Request::run_quantum());
-            }
-        } else {
-            let edited = graph.loops[2].composite.as_mut().unwrap();
-            edited.version += 1;
-            edited.spans.to_mut()[0].end = iterations;
-            let future = compile_composites(&graph, context, 32).unwrap();
-            for revision in [5, 6] {
-                let layout = allocator.stage(&future).unwrap();
-                let media = layout.media_views(&future);
-                let image = RtlTarget {
-                    capacities: limits,
-                    media_views: &media,
-                    state_base: 0,
-                }
-                .build_image(&future, layout)
-                .unwrap();
-                let replacement = stage(&mut session, Upload::new(image, limits.instructions));
-                allocator.publish(revision).unwrap();
-                if revision == 5 {
-                    assert!(matches!(
-                        session.activate(replacement, timeout()),
-                        Err(Error::Rejected(RESULT_REJECTED))
-                    ));
-                    send(session.client(), Request::run_quantum());
-                    let capture = send(session.client(), Request::capture_loop(parent.slot));
-                    let state = send(session.client(), Request::read_snapshot(capture[0], 0, 4));
-                    assert_eq!((state[1] >> 1) & 3, 1);
-                    assert_eq!(u64::from(state[4]) | (u64::from(state[5]) << 32), quantum);
-                    assert_eq!(
-                        u64::from(state[6]) | (u64::from(state[7]) << 32),
-                        iterations * quantum
-                    );
-                    let passes = send(session.client(), Request::read_snapshot(capture[0], 5, 1));
-                    assert_eq!(passes[..2], [2, 0]);
-                }
-                let (active, retired) = session.activate(replacement, timeout()).unwrap();
-                assert_eq!(active.frame, 11 * quantum);
-                assert_eq!(retired.unwrap().image.layout.revision, revision - 1);
-                allocator.complete(revision).unwrap();
-            }
-        }
-    }
-
-    let voice = session.active().unwrap().layout.loop_id(identity).unwrap();
-    graph.loops.pop();
-    let program = compile_composites(&graph, context, 32).unwrap();
-    let layout = allocator
-        .stage_with_composite_retirement(&program, true)
-        .unwrap();
-    let departing = layout.retiring_composite().unwrap();
-    let media = layout.media_views(&program);
-    let image = RtlTarget {
-        capacities: limits,
-        media_views: &media,
-        state_base: 0,
-    }
-    .build_image(&program, layout)
-    .unwrap();
-    let requested = stage(&mut session, Upload::new(image, limits.instructions));
-    allocator.publish(7).unwrap();
-    let mut window = ControlWindow::begin(session.client(), 6, timeout()).unwrap();
-    assert_eq!(
-        window.prepare_composite_retirement(departing),
-        Ok(Code::Scheduled)
-    );
-    window.release().unwrap();
-    send(session.client(), Request::run_quantum());
-    let capture = send(session.client(), Request::capture_loop(voice.slot));
-    let state = send(session.client(), Request::read_snapshot(capture[0], 0, 1));
-    assert_eq!((state[1] >> 1) & 3, 0);
-    let (active, retired) = session.activate(requested, timeout()).unwrap();
-    assert_eq!(
-        active,
-        ActiveProgram {
-            frame: 12 * quantum,
-            revision: 7
-        }
-    );
-    assert_eq!(retired.unwrap().image.layout.revision, 6);
-    allocator.complete(7).unwrap();
-
-    let span = |target, start, end| CompositeSpan {
-        target,
-        start,
-        end,
-        occurrence_start: start,
-        ordinal: 0,
-        mode: LoopMode::Playing,
-    };
-    let mut child = graph.loops[0].clone();
-    child.id = parent_id;
-    child.strip = None;
-    child.composite = Some(CompositeView {
-        kind: CompositeKind::Regular,
-        version: 1,
-        unit_frames: quantum,
-        iterations: 16,
-        sample_rate: 48_000,
-        quantum: limits.quantum,
-        spans: vec![span(identity, 4, 7)].into(),
-    });
-    let mut outer = child.clone();
-    outer.id.slot = 3;
-    let outer_id = outer.id;
-    outer.composite.as_mut().unwrap().spans = vec![span(child.id, 0, 16)].into();
-    graph.loops.extend([child, outer]);
-    let compile_and_stage =
-        |graph: &rt_fpga_compiler::shoop_graph::Graph,
-         allocator: &mut Allocator,
-         session: &mut ProgramSession<Axi<'_, '_>>| {
-            let program = compile_composites(graph, context, 32).unwrap();
-            let layout = allocator.stage(&program).unwrap();
-            let media = layout.media_views(&program);
-            let image = RtlTarget {
-                capacities: limits,
-                media_views: &media,
-                state_base: 0,
-            }
-            .build_image(&program, layout)
-            .unwrap();
-            let requested = stage(session, Upload::new(image, limits.instructions));
-            allocator.publish(requested.revision).unwrap();
-            requested
-        };
-    let requested = compile_and_stage(&graph, &mut allocator, &mut session);
-    session.activate(requested, timeout()).unwrap();
-    allocator.complete(8).unwrap();
-    let outer = session.active().unwrap().layout.loop_id(outer_id).unwrap();
-    let plan = graph.loops[2].composite.as_mut().unwrap();
-    plan.version += 1;
-    plan.spans.to_mut()[0] = span(identity, 8, 11);
-    let requested = compile_and_stage(&graph, &mut allocator, &mut session);
-    let cut = session.staged().unwrap().layout.future_switch().unwrap();
-    assert_eq!(cut.before, 3 * limits.quantum);
-    for (index, (iteration, seek, version)) in [(5, false, 8), (1, true, 9)].into_iter().enumerate()
-    {
-        let mut window = ControlWindow::begin(session.client(), 8, timeout()).unwrap();
-        let frame = window.frame();
-        assert_eq!(
-            window.apply_iteration(
-                outer,
-                IterationTransition {
-                    iteration,
-                    seek,
-                    retrigger: false
-                }
-            ),
-            Ok(Code::Applied)
+        assert!(
+            session
+                .stage(Upload::new(image, limits.instructions))
+                .is_err()
         );
-        window.arm_future_switch(requested, cut).unwrap();
-        window.release().unwrap();
-        let completed = send(session.client(), Request::run_quantum());
-        assert_eq!(completed[3..5], [version, 0]);
-        if index == 1 {
-            let retired = session
-                .accept_future_switch(requested, u64::from(version), frame)
-                .unwrap();
-            assert_eq!(retired.unwrap().image.layout.revision, 8);
-            allocator.complete(9).unwrap();
+        assert!(session.staged().is_none());
+        assert_eq!(session.active().unwrap().layout.revision, 2);
+        let after = send(session.client(), Request::capture_snapshot(0));
+        assert_eq!(after[1..5], before[1..5]);
+        for reference in take.chunks(limits.quantum as usize) {
+            send(session.client(), Request::run_quantum());
+            for port in 0..2 {
+                for (index, &sample) in reference.iter().enumerate() {
+                    let actual = send(
+                        session.client(),
+                        Request::output_sample(port * limits.quantum + index as u32),
+                    );
+                    assert_eq!(actual[0] as i32, sample / 2);
+                }
+            }
         }
+        let after = send(session.client(), Request::capture_snapshot(0));
+        let frame = |data: [u32; HOST_PAYLOAD_WORDS]| u64::from(data[1]) | u64::from(data[2]) << 32;
+        assert_eq!(frame(after), frame(before) + 3 * quantum);
+        assert_eq!(after[3..5], [2, 0]);
     }
 }

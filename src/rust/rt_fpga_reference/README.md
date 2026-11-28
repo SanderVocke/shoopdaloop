@@ -156,6 +156,17 @@ Completion waits for the memory fence and never follows merely from a snapshot
 showing the new revision. See [the implementation notes](../../../docs/fpga/live-loading.md)
 and [the loading contract](../../../LOADING_DESIGN.md).
 
+Initial static composite programs and their transport/iteration/repeat controls
+remain supported. Live replacement refuses when either active or candidate has
+composites, including introduction/removal and child edits, even while stopped.
+Quiesced replacement requires a real ownership fence or safe reset and a fresh
+runtime incarnation/allocator; there is no cut search, preview or automatic retry.
+Primitive-only replacement retains state continuity. Optional worklet
+`fpga-reference` shares this scope; CPU-native/default-browser editing does not.
+The [ABI-16 contract](../../../fpga/host_bridge/semantic_fifo.md) specifies the
+pending one-group-per-quantum and hardware snapshot-phase alignment; it is not
+implemented by this documentation change.
+
 The endpoint handles `Hello`/`Goodbye`, immediate command groups and snapshot
 observation, push/pull configuration and pull requests. It intentionally ignores
 legacy `Request`, `Resync` and `Bulk` messages, advertises no legacy capabilities,
@@ -166,7 +177,8 @@ the response unread. Snapshot transfers copy one complete publication before
 chunking it, so later processor publications cannot change an in-flight reply.
 
 Supported commands are `LoopGain`, `Transition` (stop/play/record, including
-`now` and two future steps), and `ClearPlannedTransitions`. Unsupported operations
+`now` and two future steps), `ClearPlannedTransitions`, `LoopRepeatSync` and static
+composite `LoopIteration`. Unsupported operations
 produce `Unsupported` responses. Groups validate configuration/deadline first;
 commands then execute in order and report individual outcomes. A command failure
 does not roll back earlier commands or suppress later commands. `Scheduled` means
@@ -181,8 +193,9 @@ already recording, and scheduled playback preserves an already playing cursor.
 The earlier sequence-arbitrated plan API remains available for the existing RTL
 component fixtures; both profiles share the same two physical plan slots.
 
-One call processes an integral number of quanta. The command publication cutoff
-is taken once at callback entry. Responses use the first processing frame;
+Until the semantic FIFO service alignment in Stage 5, one call processes an
+integral number of quanta and the legacy command publication cutoff is taken
+once at callback entry. Responses use the first processing frame;
 commands published during processing wait for the following callback. Response
 space is reserved at submission and released when consumed. SP's first settled
 state is published before JP runs; later quanta in the same callback do not replace

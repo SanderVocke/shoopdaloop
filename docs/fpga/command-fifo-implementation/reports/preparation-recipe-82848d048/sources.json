@@ -1,0 +1,13 @@
+{
+  "src/rust/rt_fpga_compiler/src/graph/plan.rs": "908c0b2ff21def095728f534218876454bd06682f535f07e25ebd1273039f3ec",
+  "src/rust/rt_fpga_compiler/src/lib.rs": "73829b554b0857681af86ef8247f6a41245b72c7f9414b57d707732b22504608",
+  "src/rust/rt_fpga_compiler/tests/support/programs.rs": "27967a1a278e24308aefa86e75cc2a7f0c7c49bcd02eb1df6ced1ad069ccf61d",
+  "src/rust/rt_fpga_reference/examples/midi_loop.rs": "9fc96d76500ffb6c1265258a062c6b5a9b40b014abf94f235995df74db4f6f58",
+  "src/rust/rt_fpga_reference/tests/support/midi_session.rs": "88845766a60f6a029614ab74cc0d777e5c211235dfe9c11fb1d68ab641749dd6",
+  "src/rust/rt_fpga_rtl/src/host/semantic.rs": "c06b63a3a49955d0dee7cdd0c592472e175280a2dec3672a94cd9d9a0b16280d",
+  "src/rust/rt_fpga_rtl/src/host/semantic/preparation.rs": "57d0fce96338ba32ff5d2688c9c10d5c982f37514392bb8ed0ce08aaf27b0617",
+  "src/rust/rt_fpga_rtl/src/target.rs": "a74793be46f8459d8319251cec6e15fcda52f99878864c8259f5d4ff61ffa38f",
+  "src/rust/rt_fpga_rtl/tests/semantic_preparation.rs": "2d5e71b9c7d1e281a4c5f87aabd19ff5f169a395c83c88cf51b934cb2afdcec8",
+  "src/rust/rt_fpga_rtl/tests/support/semantic_transport_paced.rs": "710a76f9bb68556080afbfdb5db18f75e652fb3c9edf3fae6d93cfb868d42c6a",
+  "src/rust/rt_fpga_rtl/tests/support/semantic_transport_preparation.rs": "5156572adb65f07cba2b86a7c7b5f855150ca0e8d0bba897fffc76b2c92f54dd"
+}

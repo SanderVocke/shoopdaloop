@@ -1,0 +1,99 @@
+{
+  "outcome": "PARTIAL_BOUNDED_RELIABLE_RESULT_COPY_AND_QUALIFIED_BANK_RELEASE_GATES_PASSED_SNAPSHOT_RUNTIME_PENDING",
+  "source_base": "926189609ea629e1331d69274965d79beb67ddd9",
+  "source_manifest": "sources.json",
+  "scope": "Reliable wire-result copying/validation/ACK within the same candidate Device/RegisterBus owner; no trusted resource/semantic ownership or application-Ready authority",
+  "transport": {
+    "reliable_result_reader_implemented": true,
+    "normal_result_bank_release_implemented": true,
+    "max_mmio_operations_per_step": 3,
+    "correlation": "FIFO head,original epoch/u64sequence/count,known bank; no unchecked packet length or ARM semantic decisions",
+    "copy": "Exact16+count words,per-DATA receipt,strict complete GroupResult decode before qualified ACK; no assumption fault-retained banks publish complete packets",
+    "release": "Bank/incarnation/u64sequence-qualified ACK then receipt and stable epoch; only wire reservation released,not leases or semantic resources",
+    "local_completion_slots": 1,
+    "caller_stalls_or_native_bank_reuse_cannot_change_copied_result": true,
+    "interleaving": "Defer matching pre-publication-receipt ready visibility; exclude native-free/local-pending-ACK bank until confirmed; no false accounting failure or premature reuse",
+    "uncertainty": "Preserve quarantine on bus/protocol error,including ACK after-effects; no ACK/workload replay,false result delivery or semantic rollback",
+    "no_space_or_execution_poll_loop_or_cpu_frame_resolution": true,
+    "recovery": "Existing consuming typed exact-version/incarnation-bound owner; hardware resetcomplete is not appReady or lease retirement",
+    "latest_complete_snapshot_reader_implemented": false
+  },
+  "verification": {
+    "new_pure_reader_tests": 4,
+    "new_actual_paced_test": 1,
+    "actual_paced_modes": [
+      "normal",
+      "lost_real_ACK_B"
+    ],
+    "transport_target_total_including_retained_tests": 12,
+    "affected_rust_tests": 247,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 319,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "retained_audio_io_tests": 4,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3589,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 405.144,
+      "nextest": "0.9.116",
+      "audio_fixture": "owned isolated48kHz/128frame dummy JACK"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "explicit_host_library_wasm_check": "passed",
+    "arm_library_check": {
+      "result": "passed",
+      "target": "armv7a-none-eabihf",
+      "rust": "1.99.1",
+      "warnings_denied": true,
+      "installed_toolchain_reused": true,
+      "matching_firmware_link_or_pair_proof": false
+    },
+    "builds_and_tests_serialized": true,
+    "pure_scope": "Bounded1/16/32command-result copies/repeated reuse,both publication/ACK receipt windows,every result bus-operation prefix before/after effects and epoch crossing,malformed/foreign/FIFO-invalid/truncated packets/refusals,no replay or false delivery",
+    "actual_scope": "Actual frozen full-profile generated-audio/MMIO/SP/JP/media/64-bitAXI. Fixture-only public config prepares genuinely unused direct-stereo program; install published before enable; real audio first selection/render/native fence. After3copiedwords300000clock ARM stall allows>=4quanta with both snapshots full. Native reuse preserves oldF0/revision0-to1 result.16/32/2/1command groups retain stale-header/value/deadline outcomes. Real ACK B consumed then error99 causes quarantine,no second ACK,explicit shared recoveryE1-to2/audio disabled. No exactPCM oracle,dirty/held-DDR-fence,continuing-lease,trusted preparation/runtime owner,matched firmware,appReady or physical proof; retained hardware suites pass separately.",
+    "preliminary_target_gate": "target-v1 passed11 before paced case; not final-source proof",
+    "final_source_local_gates": [
+      "target-v2",
+      "milestone",
+      "linux",
+      "wasm",
+      "arm",
+      "precommit"
+    ]
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "last_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stage5_complete": false,
+    "stages6_to7_complete": false,
+    "complete_group_result_snapshot_transport": false,
+    "latest_complete_snapshot_reader": false,
+    "trusted_lease_binding_owner": false,
+    "reference_cutoff_aligned": false,
+    "fresh_first_frame_ready_integration": false,
+    "matching_abi16_runtime_software": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false,
+    "independent_final_audit": false
+  },
+  "production_abi_selected": 15,
+  "production_rtl_schema_or_runtime_owner_selection_changed": false,
+  "reproduce_narrow": "nix develop --command bash -c 'export SHOOP_FPGA_SOURCE_ROOT=\"$PWD\"; RUSTFLAGS=\"-D warnings\" cargo test -p rt_fpga_rtl --features sim,rt-interface --test semantic_transport -- --test-threads=1'",
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage5-results-"
+}

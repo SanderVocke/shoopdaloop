@@ -8,6 +8,8 @@ resources/builtins/*.png binary
 resources/builtins/**/*.png binary
 platforms/zynq7000/patches/*.patch -whitespace
 docs/hardware/zturn-v2/**/*.rpt -whitespace
+docs/fpga/command-fifo-investigation/reports/*.rpt -whitespace
+docs/fpga/command-fifo-implementation/reports/**/*.rpt -whitespace
 docs/hardware/zturn-v2/**/*.patch -whitespace
 docs/hardware/zturn-v2/**/*-uart.txt -whitespace
 docs/hardware/zturn-v2/**/factory-boot-hashes.txt whitespace=cr-at-eol

@@ -1,0 +1,8 @@
+Vivado2021.1/xc7z020clg400-2/100MHz/unchanged full Q32/128loop/512state-buffer-view profile.
+Reply-data mux moved into existing capture/shift cone; no state/record/width/cycle/handshake reduction.
+Runner0/completepassed; zero errors/critical warnings,217 synthesis warnings.
+Partial frontend synth7948LUT/6943FF; opt7943LUT/6943FF, saving47LUT/noFF, headroom57LUT/57FF.
+Opt partial component31521LUT/21804FF; kernel1763/1936/noDSP;62.5RAMB36-equivalents/four existingDSPs.
+Unrouted WNS-12.579ns synthesis/-12.115ns optimized effectively unchanged. No route/complete frontend/protected whole acceptance.
+266selectedRust/12Python/Linux3584passed11skipped/default and optional-referenceWasm builds pass, not physical qualification.
+Only configuration1/2/3 subset; full services/adapters/software/retirement and Stages4-7 remain. ABI15 selected; no deployment/push/PR.

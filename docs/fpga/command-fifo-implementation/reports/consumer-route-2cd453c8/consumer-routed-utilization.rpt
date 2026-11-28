@@ -1,0 +1,31 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Thu Nov 26 04:18:31 2026
+| Host         : b3fdfa31e11f running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file consumer-routed-utilization.rpt
+| Design       : fifo_group_consumer
+| Device       : 7z020clg400-2
+| Design State : Routed
+----------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-------------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+|         Instance        |      Module      | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++-------------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+| fifo_group_consumer     |            (top) |       4016 |       4016 |       0 |    0 | 3891 |      2 |      1 |          0 |
+|   (fifo_group_consumer) |            (top) |       1192 |       1192 |       0 |    0 | 1323 |      0 |      0 |          0 |
+|   banks                 | fifo_group_banks |       1002 |       1002 |       0 |    0 |  623 |      2 |      1 |          0 |
+|   kernel                | fifo_edit_kernel |       1822 |       1822 |       0 |    0 | 1945 |      0 |      0 |          0 |
++-------------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

@@ -1,0 +1,9 @@
+Vivado2021.1/xc7z020clg400-2/100MHz/fixed Q32/128 loops/512 state-buffer-view profile.
+Runner0/completepassed; zero errors/critical warnings,217 synthesis warnings.
+Configuration-only public service1/2/3; complete media/lifecycle/trace, adapter and software remain absent.
+Partial frontend synthesis7995LUT/6943FF; optimized7990LUT/6943FF. Current8000/7000 leaves10LUT/57FF optimized.
+Optimized partial component31568LUT/21804FF; kernel1763LUT/1936FF/noDSP;62.5RAMB36-equivalents/four existingDSPs.
+Unrouted WNS regresses to-12.580ns synthesis/-12.116ns optimized from-8.997ns. No route or complete/whole-design acceptance.
+266selected Rust tests/12Python/Linux3584passed11skipped/default and optional-referenceWasm builds pass. No physical qualification.
+16 configuration inputs move to MMIO ownership; no geometry/capacity/clock/constraint reduction.
+Production remains ABI15; Stages4-7 incomplete. No new physical permission/push/PR/deployment.

@@ -1,0 +1,7 @@
+Vivado 2021.1 / xc7z020clg400-2 / 100 MHz / fixed Q32, 128 loops, 512 state/buffer/view rows.
+Runner 0 / complete passed; zero synthesis errors / critical warnings, 217 warnings.
+Partial frontend with discovery/recovery/ABORT and qualified safety sidebands: synthesis 7481 LUT / 6799 FF; optimized 7477 LUT / 6799 FF.
+Current frontend ceilings 8000 / 7000; remaining 523 LUT / 201 FF. Optimized partial component 31055 LUT / 21660 FF.
+Kernel 1763 LUT / 1936 FF / no DSP; component 62.5 RAMB36-equivalents / four existing DSPs.
+Unrouted WNS -9.142 ns for synthesis and optimization, worsened from -5.017 ns optimized. No route or whole-design acceptance.
+ABI 15 remains selected. Preparation/service, external audio/watchdog adapter, matching software and Stages 4-7 remain incomplete.

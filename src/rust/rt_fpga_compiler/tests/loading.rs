@@ -2,12 +2,15 @@
 mod composite;
 #[path = "support/mono.rs"]
 mod mono;
-use rt_fpga_compiler::{compile, CompileContext};
+use rt_fpga_compiler::CompileContext;
 use rt_fpga_compiler::{loading::*, *};
 use shoop_wasm_test_support::shoop_test;
 
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    compile(
+    graph_with_chunks(ids, 1)
+}
+fn graph_with_chunks(ids: &[u32], chunk_frames: u32) -> LogicalStateProgram {
+    compile_with_chunk_frames(
         &mono::session(
             &(ids
                 .iter()
@@ -28,6 +31,7 @@ fn graph(ids: &[u32]) -> LogicalStateProgram {
             quantum: 16,
             limits: Default::default(),
         },
+        chunk_frames,
     )
     .unwrap()
 }
@@ -38,6 +42,90 @@ fn limits() -> ProgramLimits {
         history_slots: 32,
         ..Default::default()
     }
+}
+
+#[shoop_test]
+fn canonical_witness_rejects_unowned_foreign_and_tampered_allocation_recipes() {
+    let (mut allocator, verifier) = Allocator::with_verifier(limits());
+    let layout = allocator.stage(&graph(&[0, 1])).unwrap();
+    assert_eq!(verifier.verify_transition(None, &layout), Ok(()));
+    assert_eq!(verifier.verify_transition(None, &layout.clone()), Ok(()));
+    let mut unowned = Allocator::new(limits());
+    assert_eq!(
+        verifier.verify_transition(None, &unowned.stage(&graph(&[0, 1])).unwrap()),
+        Err(LoadError::IncompatibleState)
+    );
+    let (mut foreign, other) = Allocator::with_verifier(limits());
+    let foreign_layout = foreign.stage(&graph(&[0, 1])).unwrap();
+    assert_eq!(
+        verifier.verify_transition(None, &foreign_layout),
+        Err(LoadError::IncompatibleState)
+    );
+    assert_eq!(
+        other.verify_transition(None, &layout),
+        Err(LoadError::IncompatibleState)
+    );
+    for mutation in 0..10 {
+        let mut changed = layout.clone();
+        match mutation {
+            0 => changed.expected += 1,
+            1 => changed.revision += 1,
+            2 => changed.region ^= 1,
+            3 => changed.loops[0].logical.slot += 1,
+            4 => changed.loops[0].logical.generation += 1,
+            5 => changed.loops[0].physical.slot += 1,
+            6 => changed.loops[0].physical.generation += 1,
+            7 => changed.loops[0].fresh = !changed.loops[0].fresh,
+            8 => changed.loops[0].sync_source = Some(changed.loops[1].logical),
+            _ => changed.loops.reverse(),
+        }
+        assert_eq!(
+            verifier.verify_transition(None, &changed),
+            Err(LoadError::IncompatibleState),
+            "mutation {mutation}"
+        );
+    }
+    assert_eq!(verifier.verify_transition(None, &layout), Ok(()));
+}
+
+#[shoop_test]
+fn allocation_witness_binds_the_exact_predecessor_but_never_claims_a_device_fence() {
+    let (mut allocator, verifier) = Allocator::with_verifier(limits());
+    let first = allocator.stage(&graph(&[0, 1])).unwrap();
+    allocator.publish(first.revision).unwrap();
+    allocator.complete(first.revision).unwrap();
+    let second = allocator.stage(&graph(&[1, 2])).unwrap();
+    assert_eq!(
+        verifier.verify_transition(None, &second),
+        Err(LoadError::StaleRevision)
+    );
+    assert_eq!(verifier.verify_transition(Some(&first), &second), Ok(()));
+    let mut changed = first.clone();
+    changed.loops[0].fresh = false;
+    assert_eq!(
+        verifier.verify_transition(Some(&changed), &second),
+        Err(LoadError::IncompatibleState)
+    );
+    allocator.publish(second.revision).unwrap();
+    allocator.complete(second.revision).unwrap();
+    let third = allocator.stage(&graph(&[1, 3])).unwrap();
+    assert_eq!(
+        verifier.verify_transition(Some(&first), &third),
+        Err(LoadError::StaleRevision)
+    );
+    assert_eq!(verifier.verify_transition(Some(&second), &third), Ok(()));
+    assert_eq!(
+        verifier.verify_transition(Some(&first), &first),
+        Err(LoadError::StaleRevision)
+    );
+    allocator.cancel(third.revision).unwrap();
+    // Provenance is not pending/cancellation/fence authority. The runtime owns that lifecycle.
+    assert_eq!(verifier.verify_transition(Some(&second), &third), Ok(()));
+    let (_, fresh_domain) = Allocator::with_verifier(limits());
+    assert_eq!(
+        fresh_domain.verify_transition(Some(&second), &third),
+        Err(LoadError::IncompatibleState)
+    );
 }
 
 #[shoop_test]
@@ -222,146 +310,101 @@ fn staging_requires_explicit_state_ownership_without_inference() {
     assert_eq!(valid.loops[0].physical.generation, 1);
 }
 
-#[shoop_test]
-fn dropping_a_child_at_the_end_of_a_pass_uses_one_optional_instruction_row() {
-    use rt_fpga_compiler::shoop_graph::CompositeKind;
-
-    for kind in [CompositeKind::Regular, CompositeKind::Explicit] {
-        check_ending_row_budget(kind);
-    }
-}
-
-fn check_ending_row_budget(kind: rt_fpga_compiler::shoop_graph::CompositeKind) {
-    use rt_fpga_compiler::shoop_graph::CompositeKind;
-
-    let mut graph = composite::arbitration_graph();
-    graph.loops[1].composite.as_mut().unwrap().kind = kind;
-    let context = CompileContext {
+fn composite_context() -> CompileContext {
+    CompileContext {
         quantum: 16,
         limits: ProgramLimits {
             loop_slots: 8,
             ..limits()
         },
-    };
-    let before = compile_composites(&graph, context, 16).unwrap();
-    let replacement = graph.loops[0].id;
-    let edited = graph.loops[1].composite.as_mut().unwrap();
-    edited.version = 2;
-    let dropped = edited.spans[0].target;
-    edited.spans.to_mut()[0].target = replacement;
-    let after = compile_composites(&graph, context, 16).unwrap();
-    let used = (1..64)
-        .find(|&instructions| {
-            after
-                .validate_logical(ProgramLimits {
-                    instructions,
-                    ..context.limits
-                })
-                .is_ok()
-        })
-        .unwrap();
+    }
+}
 
-    for extra in [0, 1] {
-        let capacity = ProgramLimits {
-            instructions: used + extra,
-            ..context.limits
-        };
-        let mut allocator = Allocator::new(capacity);
-        let first = allocator.stage(&before).unwrap();
+#[shoop_test]
+fn empty_child_schedules_cannot_encode_retirement_rows() {
+    let context = composite_context();
+    let mut program = compile_composites(&composite::arbitration_graph(), context, 16).unwrap();
+    program.composites[0].children[0].spans.clear();
+    assert_eq!(
+        program.validate_logical(context.limits),
+        Err(CompileError::InvalidProgram)
+    );
+    let mut allocator = Allocator::new(context.limits);
+    assert!(matches!(
+        allocator.stage(&program),
+        Err(LoadError::Compile(CompileError::InvalidProgram))
+    ));
+    assert!(allocator.current().is_none());
+    assert!(allocator.pending().is_none());
+    let valid = compile_composites(&composite::arbitration_graph(), context, 16).unwrap();
+    assert_eq!(allocator.stage(&valid).unwrap().revision, 1);
+}
+
+fn assert_composite_refusal(allocator: &mut Allocator, program: &LogicalStateProgram) {
+    let current = format!("{:?}", allocator.current());
+    let revision = allocator.revision();
+    let result = allocator.stage(program);
+    assert!(
+        matches!(
+            result,
+            Err(LoadError::Compile(CompileError::Unsupported {
+                feature: Feature::Composite,
+                ..
+            }))
+        ),
+        "{result:?}"
+    );
+    assert!(allocator.pending().is_none());
+    assert_eq!(allocator.revision(), revision);
+    assert_eq!(format!("{:?}", allocator.current()), current);
+}
+
+#[shoop_test]
+fn active_or_candidate_composites_refuse_live_replacement_before_reserving_state() {
+    use rt_fpga_compiler::shoop_graph::CompositeKind;
+    for kind in [CompositeKind::Regular, CompositeKind::Explicit] {
+        let context = composite_context();
+        let mut graph = composite::arbitration_graph();
+        graph.loops[1].composite.as_mut().unwrap().kind = kind;
+        let initial = compile_composites(&graph, context, 16).unwrap();
+        let primitive = graph_with_chunks(&[1000], 16);
+        let mut allocator = Allocator::new(context.limits);
+        let first = allocator.stage(&primitive).unwrap();
         allocator.publish(first.revision).unwrap();
         allocator.complete(first.revision).unwrap();
-        let next = allocator.stage(&after).unwrap();
-        let cut = &next.composite_cuts()[0];
-        assert_eq!(
-            cut.allow_restart,
-            extra == 1 && kind == CompositeKind::Regular
-        );
-        assert_eq!(
-            cut.finish_at_boundary,
-            extra == 1 && kind == CompositeKind::Explicit
-        );
-        assert_eq!(cut.reconcile_ending, extra == 1);
-        assert!(!cut.preserves_transport_at_finish(true));
-        let bound = next.relocate(&after).unwrap();
-        bound.validate(capacity).unwrap();
-        let child = next.loop_id(dropped).unwrap();
-        assert_eq!(
-            bound
-                .composite_parents(child)
-                .filter(|(_, child)| child.spans.is_empty())
-                .count(),
-            extra as usize
-        );
+        assert_composite_refusal(&mut allocator, &initial);
+        assert_composite_refusal(&mut allocator, &initial);
+        let next = allocator.stage(&graph_with_chunks(&[2000], 16)).unwrap();
+        assert_eq!(next.revision, first.revision + 1);
+        assert_eq!(next.loops[0].physical.generation, 1);
+
+        let mut allocator = Allocator::new(context.limits);
+        let first = allocator.stage(&initial).unwrap();
+        assert!(first.has_composites());
+        first
+            .relocate(&initial)
+            .unwrap()
+            .validate(context.limits)
+            .unwrap();
+        allocator.publish(first.revision).unwrap();
+        allocator.complete(first.revision).unwrap();
+        assert_composite_refusal(&mut allocator, &initial);
+        assert_composite_refusal(&mut allocator, &primitive);
+        graph.loops[1].composite.as_mut().unwrap().version += 1;
+        let target = graph.loops[0].id;
+        graph.loops[1].composite.as_mut().unwrap().spans.to_mut()[0].target = target;
+        let edited = compile_composites(&graph, context, 16).unwrap();
+        assert_composite_refusal(&mut allocator, &edited);
+        graph.loops[0].gain = 0.5;
+        let child_edit = compile_composites(&graph, context, 16).unwrap();
+        assert_composite_refusal(&mut allocator, &child_edit);
     }
 }
 
 #[shoop_test]
-fn guarded_clock_change_counts_the_outgoing_spans_against_the_program_limit() {
-    let mut graph = composite::arbitration_graph();
-    let context = CompileContext {
-        quantum: 16,
-        limits: ProgramLimits {
-            loop_slots: 8,
-            ..limits()
-        },
-    };
-    let before = compile_composites(&graph, context, 16).unwrap();
-    let new_source = graph.loops[0].id;
-    graph.loops[1].sync_source = Some(new_source);
-    let changed = graph.loops[1].composite.as_mut().unwrap();
-    changed.version = 2;
-    let span = &mut changed.spans.to_mut()[0];
-    span.start = 1;
-    span.occurrence_start = 1;
-    let after = compile_composites(&graph, context, 16).unwrap();
-    let used = (1..64)
-        .find(|&instructions| {
-            after
-                .validate_logical(ProgramLimits {
-                    instructions,
-                    ..context.limits
-                })
-                .is_ok()
-        })
-        .unwrap();
-
-    for extra in [0, 1] {
-        let limits = ProgramLimits {
-            instructions: used + extra,
-            ..context.limits
-        };
-        let mut allocator = Allocator::new(limits);
-        let old = allocator.stage(&before).unwrap();
-        allocator.publish(old.revision).unwrap();
-        allocator.complete(old.revision).unwrap();
-        let image = allocator.stage(&after).unwrap();
-        if extra == 0 {
-            assert_eq!(image.future_switch(), None);
-            assert!(image.composite_cuts()[0].waits_for_boundary(16, 64, false, false));
-        } else {
-            let cut = image.future_switch().unwrap();
-            assert!(cut.at_restart());
-            assert_eq!(cut.previous_source(), Some(None));
-        }
-        let bound = image.relocate(&after).unwrap();
-        bound.validate(limits).unwrap();
-        assert_eq!(
-            bound
-                .composites
-                .iter()
-                .flat_map(|schedule| &schedule.children)
-                .map(|child| child.previous_spans.len())
-                .sum::<usize>(),
-            extra as usize,
-        );
-    }
-}
-
-#[shoop_test]
-fn replacing_a_future_nested_branch_checks_its_ancestors_for_transport() {
+fn nested_child_and_clock_edits_are_not_hidden_live_switches() {
     use composite::timing_loop;
-    use rt_fpga_compiler::shoop_graph::{CompositeKind, Graph};
-
+    use rt_fpga_compiler::shoop_graph::Graph;
     let mut graph = Graph {
         loops: vec![
             timing_loop(1, 0, &[]),
@@ -374,49 +417,52 @@ fn replacing_a_future_nested_branch_checks_its_ancestors_for_transport() {
         ],
         ..Default::default()
     };
-    let context = CompileContext {
-        quantum: 16,
-        limits: ProgramLimits {
-            loop_slots: 8,
-            ..limits()
-        },
-    };
-    let before = compile_composites(&graph, context, 16).unwrap();
+    let context = composite_context();
+    let initial = compile_composites(&graph, context, 16).unwrap();
     let mut allocator = Allocator::new(context.limits);
-    let first = allocator.stage(&before).unwrap();
+    let first = allocator.stage(&initial).unwrap();
     allocator.publish(first.revision).unwrap();
     allocator.complete(first.revision).unwrap();
     let replacement = graph.loops[3].id;
     let edited = graph.loops[4].composite.as_mut().unwrap();
     edited.version += 1;
     edited.spans.to_mut()[1].target = replacement;
-    let after = compile_composites(&graph, context, 16).unwrap();
-    let second = allocator.stage(&after).unwrap();
-    assert!(
-        second.future_switch().is_none(),
-        "replacing a child changes sync relations"
+    assert_composite_refusal(
+        &mut allocator,
+        &compile_composites(&graph, context, 16).unwrap(),
     );
-    let [cut] = second.composite_cuts() else {
-        panic!("expected a cut for only the edited composite");
-    };
-    assert_eq!(cut.future_before, Some(80));
-    let parent = first.loop_id(graph.loops[5].id).unwrap();
-    let grandparent = first.loop_id(graph.loops[6].id).unwrap();
-    assert_eq!(cut.parent_guards, [parent, grandparent]);
+    graph.loops.push(timing_loop(8, 0, &[]));
+    graph.loops[4].sync_source = Some(graph.loops[7].id);
+    assert_composite_refusal(
+        &mut allocator,
+        &compile_composites(&graph, context, 16).unwrap(),
+    );
+}
 
-    let ready = |pending| {
-        cut.playback_ready(16, 128, false, |id| {
-            Ok::<_, ()>((pending != Some(id)).then_some(ClockState {
-                kind: Some(CompositeKind::Regular),
-                playing: true,
-                at_end: false,
-                repeat_sync: false,
-            }))
-        })
-        .unwrap()
-    };
-    assert!(cut.allows_playing(16, 128, ready(None), false));
-    for ancestor in [parent, grandparent] {
-        assert!(cut.waits_for_boundary(16, 128, ready(Some(ancestor)), false));
+#[shoop_test]
+fn a_fresh_execution_incarnation_can_install_a_revised_static_composite() {
+    let context = composite_context();
+    let mut graph = composite::arbitration_graph();
+    for version in [1, 2] {
+        graph.loops[1].composite.as_mut().unwrap().version = version;
+        let program = compile_composites(&graph, context, 16).unwrap();
+        let mut allocator = Allocator::new(context.limits);
+        let layout = allocator.stage(&program).unwrap();
+        assert_eq!((layout.expected, layout.revision), (0, 1));
+        assert_eq!(layout.new_loops().count(), program.loops.len());
+        assert_eq!(
+            layout
+                .composite_schedule(graph.loops[1].id)
+                .unwrap()
+                .version,
+            version
+        );
+        layout
+            .relocate(&program)
+            .unwrap()
+            .validate(context.limits)
+            .unwrap();
+        allocator.publish(layout.revision).unwrap();
+        allocator.complete(layout.revision).unwrap();
     }
 }

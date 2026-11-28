@@ -225,6 +225,7 @@ impl<'a> Plan<'a> {
             if l.composite.is_some() {
                 self.bindings.push(LoopBinding {
                     id: l.id,
+                    initial_gain_bits: Some(1.0_f32.to_bits()),
                     gain: None,
                     view: None,
                     meter: None,
@@ -292,6 +293,7 @@ impl<'a> Plan<'a> {
             }
             self.bindings.push(LoopBinding {
                 id: l.id,
+                initial_gain_bits: Some(l.gain.to_bits()),
                 gain: Some(gain),
                 view: first_view,
                 meter: None,
@@ -653,12 +655,7 @@ pub(super) fn lower(
             }
             parents.entry(id).or_default().push(l.id);
             spans.sort_by_key(|span| span.start);
-            schedule.children.push(CompositeChild {
-                id,
-                spans,
-                previous_span_at_wrap: None,
-                previous_spans: Vec::new(),
-            });
+            schedule.children.push(CompositeChild { id, spans });
         }
         composites.push(schedule);
     }

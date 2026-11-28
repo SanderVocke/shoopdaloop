@@ -1,0 +1,97 @@
+{
+  "outcome": "PARTIAL_ORIGINAL_GAIN_AND_WHOLE_SYNC_PREPARATION_RECIPE_GATES_PASSED_TRUSTED_LEASE_OWNER_PENDING",
+  "source_base": "82848d048974f786a43dda77034ea3c6d9f29f89",
+  "source_manifest": "sources.json",
+  "scope": "Immutable lowering/preparation artifacts and state-independent target recipe,not resource eligibility/device delivery/matched runtime or application-Ready authority",
+  "preparation": {
+    "original_gain_recipe_preserved_before_fixed": true,
+    "whole_sync_lowering_implemented": true,
+    "immutable_preparation_artifact_implemented": true,
+    "gain": "Optional/default logicalLoopBinding.initial_gain_bits preserved into RTL binding; graph primitives retain originalfinitef32bits beforeQ8.24; gainlesscomposites referenceunity. Supplied nonfinite/inconsistent initialramp metadata refuses; legacyhand-builtNone staysvalid,butABI16newloopmetadataNone refuses,neverFixed-to-f32 reconstruction",
+    "lowering": "Explicit RtlTarget.build_semantic_image reusesexisting dependency scheduler,wholeSPsync+inline schedule prefix beforeJP,relativejobs preserved; ordinarycomponent/ABI15mode unchanged; zero statebase required",
+    "artifact": "semantic::Preparation consumes image,reuses existingUpload,validates frozenQ32/chunk32/128loops/state-buffer-history512/1in2out/admittedqueue512/region/revision/prefix/binding/initializer shape; appends3observationu64 words onlyallocator-markednewloops; identity-qualified target givesphysicalidentity/gainaddress/self-sourceflags",
+    "allocation_per_step": false,
+    "performs_mmio": false,
+    "authority": "Recipe advancement is NOT delivery; publicLayout/freshflags NOT trustedleases; runtimeowner stillmustcorrelateprivateAllocator/incarnation/uploadcompletion/realownershipfences. No continuinginitialization/snapshotplanning/secondbackend/recoverycontroller/trustedrawserviceAPI/FencedSwitch authority"
+  },
+  "verification": {
+    "new_pure_preparation_tests": 4,
+    "new_actual_paced_test": 1,
+    "target_total_including_retained_transport_tests": 22,
+    "transport_tests": 18,
+    "affected_rust_tests": 257,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 329,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "retained_audio_io_tests": 4,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3589,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 403.569,
+      "nextest": "0.9.116",
+      "audio_fixture": "owned isolated48kHz/128frame dummyJACK"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "explicit_host_library_wasm_check": "passed",
+    "arm_library_check": {
+      "result": "passed",
+      "target": "armv7a-none-eabihf",
+      "rust": "1.99.1",
+      "warnings_denied": true,
+      "installed_toolchain_reused": true,
+      "matching_firmware_link_or_pair_proof": false
+    },
+    "builds_and_tests_serialized": true,
+    "pure_scope": "Originalbits/lostfixedprecision/negativezero/nonfinite-inconsistent-missing metadata; wholeprefix/unchangedjoborder vslegacy; continuingstate/loop/observationrecipe exclusion/newphysicalslot2 whileoldslotsretained; fullidentity/sourceflags;13malformedartifact mutations. Allocator publish+complete calls bookkeepingONLY,notnativefence proof",
+    "actual_scope": "Newfullfrozenprofile fifo_audio_host_axi/generatedaudio/MMIO/SP/JP/media/64-bitAXI test serially issuesrecipefor2genuinelyunusedfixtureloops logical41gen5/101gen6 ->physical0/1gen1; noF/quanta duringprep; orderedinstallationBEFOREenable; realaudiofirstF0/rev1/fencedwireobservation thenwhole128rowsnapshotoriginal0.12345679/-0.0gainbits/zerofailpulse. Recipe-boundgainApplied lateroriginalbitsobservedat/afterattemptF,xrun0/fault0. SERIAL FIXTURE IS NOT trustedleaseAPI/nonblockingpreparationpump/logicalsnapshotAPI/continuingprimitivehandoff/matchedFW/appReady/exactPCM/dirty-heldDDR/all-admitted orphysicalproof",
+    "retained_failures": {
+      "target-v1": "101 compiler &InitialValue vsInitialValue comparison,dereferencefixed",
+      "axi-v1": "101 test usedGroupResult.code instead of codes,APIcallfixed"
+    },
+    "preliminary_gate": "target-v2=0/4pure beforeactualcase; finalaxi-v2=0/22 includesactualinterop",
+    "final_source_local_gates": [
+      "axi-v2",
+      "milestone",
+      "linux",
+      "wasm",
+      "arm",
+      "precommit"
+    ]
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "last_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stage5_complete": false,
+    "stages6_to7_complete": false,
+    "logical_response_snapshot_api_runtime_integration": false,
+    "trusted_lease_binding_preparation_owner": false,
+    "bounded_same_owner_preparation_service_pump": false,
+    "reference_cutoff_aligned": false,
+    "fresh_first_frame_ready_integration": false,
+    "matching_abi16_runtime_firmware": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false,
+    "independent_final_audit": false
+  },
+  "production_abi_selected": 15,
+  "restart_protocol_selected": 53,
+  "hardware_register_schema_dependencies_or_runtime_owner_selection_changed": false,
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage5-preparation-recipe-",
+  "reproduce_narrow": "nix develop --command bash -c 'export SHOOP_FPGA_SOURCE_ROOT=\"$PWD\"; RUSTFLAGS=\"-D warnings\" cargo test -p rt_fpga_rtl --features sim,rt-interface --test semantic_preparation --test semantic_transport -- --test-threads=1'"
+}

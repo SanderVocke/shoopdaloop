@@ -626,6 +626,232 @@ fn compiled_playback_queues_before_a_later_sync_and_rejects_a_stale_render_stamp
     assert_eq!(sim.model.get("run_ready"), 0);
 }
 
+fn inline_source(driver: &mut State, sim: &mut Sim<'_>, slot: u16, source: Option<u16>) {
+    let mut instruction = Bits::zero(96);
+    instruction
+        .set(0, 8, 12)
+        .set(8, 16, u64::from(slot))
+        .set(24, 32, 7)
+        .set(56, 16, u64::from(source.unwrap_or(u16::MAX)))
+        .set(72, 16, 1);
+    driver
+        .image
+        .configure(sim, false, u64::from(slot), Some(&instruction), false);
+}
+
+#[shoop_test]
+fn inline_source_changes_clear_old_plans_once_before_scanning_and_cache_the_new_identity() {
+    let depths = [16, 1, 16];
+    let mut design = suites::state::design(depths);
+    design.parameters.insert("LOOP_DEPTH".into(), "16".into());
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/source-changes"))
+        .unwrap();
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10000, 0)]);
+    let mut driver = State::new(&mut sim, depths, 53);
+    for (old, new, cached_generation, absolute_mask) in [
+        (None, None, 0, 0),
+        (Some(0), Some(0), 7, 0),
+        (Some(0), Some(1), 7, 0),
+        (Some(0), None, 7, 0),
+        (Some(0), Some(2), 7, 0),
+        (None, Some(0), 0, 0),
+        (Some(2), None, 7, 0),
+        (Some(2), Some(2), 7, 0),
+        (Some(2), Some(2), 8, 0),
+        (Some(0), Some(0), 8, 0),
+        (Some(0), Some(0), 7, 1),
+        (Some(0), Some(1), 7, 1),
+        (Some(0), None, 7, 1),
+        (Some(0), Some(2), 7, 1),
+        (Some(0), Some(0), 8, 1),
+        (Some(0), Some(1), 7, 2),
+        (Some(0), Some(2), 7, 2),
+        (Some(0), Some(1), 7, 3),
+    ] {
+        let changed = old != new || (new.is_some() && cached_generation != 7);
+        let self_pulse = changed && (new.is_none() || new == Some(2));
+        let specs = vec![
+            spec(0, 64, None, false),
+            spec(1, 64, None, false),
+            spec(2, 64, old, false),
+        ];
+        let plan = TransitionPlan::compile(
+            PlanDescription {
+                quantum: 32,
+                loops: specs.clone(),
+            },
+            TransitionLimits {
+                loop_slots: 16,
+                events: 32,
+            },
+        )
+        .unwrap();
+        let state = StateProcessor::with_loops(plan, vec![]);
+        let case = suites::state::case(
+            specs
+                .iter()
+                .map(|spec| json!({"kind":"process_loop","loop_id":spec.id}))
+                .collect(),
+            vec![],
+            16,
+            Some(0),
+            32,
+        );
+        driver.load(&mut sim, &case);
+        sim.model.set("sync_event_ready", 1);
+        for spec in &specs {
+            let mut slot = *state.loop_state(spec.id).unwrap();
+            if changed && new == Some(spec.id.slot) && spec.id.slot != 2 {
+                slot.state.mode = Mode::Playing;
+                slot.state.position = 64;
+            }
+            write_words(
+                &mut driver.image,
+                &mut sim,
+                spec.id.slot,
+                &image(&slot, spec, None),
+                0,
+                16,
+            );
+            inline_source(
+                &mut driver,
+                &mut sim,
+                spec.id.slot as u16,
+                if spec.id.slot == 2 {
+                    new.map(|s| s as u16)
+                } else {
+                    None
+                },
+            );
+        }
+        let mut slot = *state.loop_state(id(2)).unwrap();
+        if self_pulse {
+            slot.state.mode = Mode::Playing;
+            slot.state.position = 64;
+        }
+        slot.planned = [Operation::Record, Operation::Stop].map(|operation| {
+            let absolute = absolute_mask & if operation == Operation::Record { 1 } else { 2 } != 0;
+            Some(PlannedTransition {
+                sequence: if operation == Operation::Record { 1 } else { 2 },
+                operation,
+                on_pulse: !absolute,
+                effective: if absolute { 128 } else { 0 },
+                remaining_ticks: u64::from(operation != Operation::Record),
+            })
+        });
+        let mut initial = image(&slot, &specs[2], None);
+        initial.set(64, 32, cached_generation);
+        write_words(&mut driver.image, &mut sim, 2, &initial, 0, 16);
+        assert_eq!(run_rtl(&mut driver, &mut sim, 3), 0);
+        let actual = read_loop(&mut driver.image, &mut sim, 2);
+        for (offset, retained) in [
+            (96, absolute_mask & 1 != 0 || !changed),
+            (101, absolute_mask & 2 != 0 || !changed),
+        ] {
+            assert_eq!(
+                actual.get(offset, 1),
+                u64::from(retained),
+                "{old:?} -> {new:?}, gen={cached_generation}, absolute={absolute_mask}"
+            );
+        }
+        for word in 10..16 {
+            assert_eq!(actual.get(word * 64, 64), initial.get(word * 64, 64));
+        }
+        assert_eq!(actual.get(36, 1), u64::from(new.is_some()));
+        assert_eq!(actual.get(37, 16), u64::from(new.unwrap_or(0)));
+        assert_eq!(actual.get(64, 32), if new.is_some() { 7 } else { 0 });
+        assert_eq!(actual.get(33, 2), u64::from(self_pulse));
+        assert_eq!(actual.get(7 * 64, 64), 0);
+        assert_eq!(sim.model.get("sync_frame"), 32);
+        write_plans(&mut driver.image, &mut sim, 2, &initial);
+        assert_eq!(run_rtl(&mut driver, &mut sim, 3), 0);
+        let next = read_loop(&mut driver.image, &mut sim, 2);
+        assert_eq!(next.get(96, 1), 1);
+        assert_eq!(next.get(101, 1), 1);
+        assert_eq!(sim.model.get("sync_frame"), 64);
+    }
+}
+
+#[shoop_test]
+fn all_128_inline_source_changes_invalidate_in_the_existing_sp_pass() {
+    let depths = [128, 1, 32];
+    let mut design = suites::state::design(depths);
+    design.parameters.insert("LOOP_DEPTH".into(), "128".into());
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/source-changes-128"))
+        .unwrap();
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10000, 0)]);
+    let mut driver = State::new(&mut sim, depths, 54);
+    let specs: Vec<_> = (0..128).map(|slot| spec(slot, 128, None, false)).collect();
+    let plan = TransitionPlan::compile(
+        PlanDescription {
+            quantum: 32,
+            loops: specs.clone(),
+        },
+        TransitionLimits {
+            loop_slots: 128,
+            events: 512,
+        },
+    )
+    .unwrap();
+    let state = StateProcessor::with_loops(plan, vec![]);
+    let case = suites::state::case(
+        specs
+            .iter()
+            .map(|spec| json!({"kind":"process_loop","loop_id":spec.id}))
+            .collect(),
+        vec![],
+        32,
+        Some(0),
+        32,
+    );
+    driver.load(&mut sim, &case);
+    sim.model.set("sync_event_ready", 1);
+    for spec in &specs {
+        let mut slot = *state.loop_state(spec.id).unwrap();
+        slot.state.mode = Mode::Playing;
+        slot.state.position = 128;
+        slot.planned = [Operation::Record, Operation::Stop].map(|operation| {
+            Some(PlannedTransition {
+                sequence: if operation == Operation::Record { 1 } else { 2 },
+                operation,
+                on_pulse: true,
+                effective: 0,
+                remaining_ticks: 0,
+            })
+        });
+        write_words(
+            &mut driver.image,
+            &mut sim,
+            spec.id.slot,
+            &image(&slot, spec, None),
+            0,
+            16,
+        );
+        inline_source(
+            &mut driver,
+            &mut sim,
+            spec.id.slot as u16,
+            Some(spec.id.slot as u16),
+        );
+    }
+    assert_eq!(run_rtl(&mut driver, &mut sim, 128), 0);
+    println!("SOURCE_CHANGE_SP_CYCLES {}", driver.run_cycles);
+    for spec in &specs {
+        let row = read_loop(&mut driver.image, &mut sim, spec.id.slot);
+        assert_eq!(row.get(96, 1) | row.get(101, 1), 0);
+        assert_eq!(row.get(33, 2), 1);
+        assert_eq!(row.get(36, 1), 1);
+        assert_eq!(row.get(37, 16), u64::from(spec.id.slot));
+        assert_eq!(row.get(64, 32), 7);
+        assert_eq!(row.get(2 * 64, 64), 32);
+        assert_eq!(row.get(7 * 64, 64), 0);
+    }
+    assert_eq!(sim.model.get("sync_frame"), 32);
+    assert!(driver.drain(&mut sim).is_empty());
+}
+
 struct ScratchMemory;
 impl rt_fpga_reference::jobs::Memory for ScratchMemory {
     fn read(

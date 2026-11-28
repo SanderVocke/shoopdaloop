@@ -106,6 +106,7 @@ module media_metadata_tb #(
         .memory_read_data(memory_meta_read_data));
     initial if (LINE_WORDS != 16) $fatal(1,"Metadata page width is sixteen words");
     shared_axi #(.DATA_WIDTH(DATA_WIDTH)) transport (
+        .quiesce(1'b0), .quiescent(), .drain_fault(),
         .arena_base(64'h01000000),.arena_bytes(64'(TEST_WORDS)*4),.sample_bytes(64'(TEST_SLOTS)*4),.physical_base(32'h01000000),.*);
     axi_direct_memory #(.DATA_WIDTH(DATA_WIDTH),.WORDS(TEST_WORDS)) ram (.*);
 endmodule

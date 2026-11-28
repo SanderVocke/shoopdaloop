@@ -28,32 +28,17 @@ pub enum SpanMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PreviousSpan {
-    Idle,
-    Active(SpanMode),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FrameSpan {
     pub start: u32,
     pub end: u32,
     pub mode: SpanMode,
 }
 
-const MAX_PREVIOUS_SPANS: usize = (1 << 13) - 1;
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CompositeChild {
     pub id: Identity,
     pub spans: Vec<FrameSpan>,
-    /// Previous ownership at the boundary where this image first takes over.
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub previous_span_at_wrap: Option<PreviousSpan>,
-    /// The outgoing schedule for a child affected by a guarded restart.
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub previous_spans: Vec<FrameSpan>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -266,6 +251,8 @@ pub struct StateBinding {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopBinding {
     pub id: Identity,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub initial_gain_bits: Option<u32>,
     pub gain: Option<u32>,
     pub view: Option<u32>,
     pub meter: Option<u32>,
@@ -368,7 +355,7 @@ impl LogicalStateProgram {
                 .composites
                 .iter()
                 .flat_map(|schedule| &schedule.children)
-                .map(|child| 1 + (child.spans.len() + child.previous_spans.len()) as u64)
+                .map(|child| 1 + child.spans.len() as u64)
                 .sum::<u64>()
     }
 
@@ -406,14 +393,6 @@ impl LogicalStateProgram {
             .composites
             .windows(2)
             .any(|pair| (!pair[0].explicit, pair[0].id) >= (!pair[1].explicit, pair[1].id))
-        {
-            return Err(CompileError::InvalidProgram);
-        }
-        if self
-            .composites
-            .iter()
-            .flat_map(|schedule| &schedule.children)
-            .any(|child| child.previous_span_at_wrap.is_some() || !child.previous_spans.is_empty())
         {
             return Err(CompileError::InvalidProgram);
         }
@@ -598,30 +577,24 @@ impl LogicalStateProgram {
             for child in &schedule.children {
                 if !local_children.insert(child.id)
                     || !self.sync_pass[parent_position + 1..].contains(&child.id)
-                    || child.previous_spans.len() > MAX_PREVIOUS_SPANS
-                    || (child.spans.is_empty() && !child.previous_spans.is_empty())
-                    || (child.spans.is_empty()
-                        && !matches!(child.previous_span_at_wrap, Some(PreviousSpan::Active(_))))
+                    || child.spans.is_empty()
                 {
                     return Err(InvalidProgram);
                 }
-                for (spans, previous) in [(&child.spans, false), (&child.previous_spans, true)] {
-                    let mut previous_end = 0;
-                    for span in spans {
-                        if span.start < previous_end
-                            || span.start >= span.end
-                            || span.start % schedule.unit_frames != 0
-                            || span.end % schedule.unit_frames != 0
-                            || (!schedule.explicit && span.mode != SpanMode::Play)
-                            || (previous && span.mode == SpanMode::Record)
-                            || u64::from(span.end) > parent.length
-                        {
-                            return Err(InvalidProgram);
-                        }
-                        previous_end = span.end;
-                        if span.mode == SpanMode::Record {
-                            authors.insert(child.id);
-                        }
+                let mut previous_end = 0;
+                for span in &child.spans {
+                    if span.start < previous_end
+                        || span.start >= span.end
+                        || span.start % schedule.unit_frames != 0
+                        || span.end % schedule.unit_frames != 0
+                        || (!schedule.explicit && span.mode != SpanMode::Play)
+                        || u64::from(span.end) > parent.length
+                    {
+                        return Err(InvalidProgram);
+                    }
+                    previous_end = span.end;
+                    if span.mode == SpanMode::Record {
+                        authors.insert(child.id);
                     }
                 }
             }
@@ -959,6 +932,25 @@ impl LogicalStateProgram {
             }
         }
         for binding in &self.bindings {
+            if let Some(bits) = binding.initial_gain_bits {
+                let gain = f32::from_bits(bits);
+                if !gain.is_finite() {
+                    return Err(InvalidProgram);
+                }
+                if let Some(address) = binding.gain {
+                    let value = (f64::from(gain) * f64::from(1 << 24)) as i32;
+                    if *state(address)?
+                        != InitialValue::Ramp(Ramp {
+                            start: value,
+                            target: value,
+                            duration: 0,
+                            elapsed: 0,
+                        })
+                    {
+                        return Err(InvalidProgram);
+                    }
+                }
+            }
             if let Some(address) = binding.gain {
                 if !matches!(state(address)?, InitialValue::Ramp(_)) {
                     return Err(InvalidProgram);

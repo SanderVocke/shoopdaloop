@@ -1,0 +1,58 @@
+{
+  "scope": "Partial bank/consumer/kernel OOC route only; no MMIO, snapshots, local SP observation storage, loader arbitration, SP/JP, PS/DDR or board",
+  "source_base_commit": "9454647c0c980cabb0d768795d0cb017de3a1de6",
+  "working_tree_snapshot": true,
+  "consumer_sha256": "2cd453c84440c35b225411d64c92390bcf0c56090ac80967450ddd535921dea7",
+  "vivado": "2021.1 SW Build 3247384",
+  "launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "routed": true,
+  "board_accessed": false,
+  "production_path_changed": false,
+  "acceptance_complete": false,
+  "synthesis": { "packed_lut": 4041, "ff": 3891, "ramb36": 2, "ramb18": 1, "dsp": 0 },
+  "synthesis_estimated_timing": { "wns_ns": 0.585, "whs_ns": 0.246, "setup_failing_endpoints": 0, "hold_failing_endpoints": 0 },
+  "routed_resources": { "packed_lut": 4016, "ff": 3891, "ramb36": 2, "ramb18": 1, "ramb36_equivalents": 2.5, "dsp": 0 },
+  "routed_hierarchy": {
+    "consumer_only": { "packed_lut": 1192, "ff": 1323 },
+    "banks": { "packed_lut": 1002, "ff": 623, "ramb36": 2, "ramb18": 1 },
+    "kernel": { "packed_lut": 1822, "ff": 1945, "ramb36": 0, "ramb18": 0, "dsp": 0 }
+  },
+  "routed_timing": {
+    "wns_ns": 0.178,
+    "whs_ns": 0.159,
+    "tns_ns": 0.0,
+    "ths_ns": 0.0,
+    "setup_failing_endpoints": 0,
+    "hold_failing_endpoints": 0,
+    "total_endpoints": 11084,
+    "critical_path": "banks/last_admitted_reg[59] to banks/result_written_reg[2][5]/CE",
+    "qualification": "OOC ports are unanchored and HD.CLK_SRC is not set. No matching protected whole-design timing or 60000-cycle quantum proof."
+  },
+  "implementation": {
+    "unrouted_nets": 0,
+    "partially_routed_nets": 0,
+    "failed_nets": 0,
+    "critical_warnings": 0,
+    "errors": 0,
+    "drc": "One expected OOC ZPS7-1 PS7-block-required warning"
+  },
+  "regression": {
+    "affected_package_rust_tests": 180,
+    "bank_tests": 4,
+    "group_tests": 9,
+    "kernel_tests": 2,
+    "cases_per_kernel_test": 3970,
+    "worst_measured_group_cycles": 3783,
+    "cycle_scope": "Boundary-to-render handshake with one-cycle granted local RAM; synthetic fences, no SP/JP/DDR"
+  },
+  "evidence": {
+    "local_run": "work/cmd-fifo-investigation/vivado-consumer-v5",
+    "status": 0,
+    "complete": "passed",
+    "previous_runs": "v3 synthesized the same RTL; v4 routed identically but report_drc emitted a missing-IP-catalog critical warning. v5 mounts the existing verified catalog read-only and has no critical warnings or errors.",
+    "profile": { "loops": 128, "states": 512, "instructions": 1024, "buffers": 512 }
+  }
+}

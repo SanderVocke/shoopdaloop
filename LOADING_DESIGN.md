@@ -2,9 +2,12 @@
 
 ## Purpose and scope
 
-This document specifies the agreed loading design for the Rust FPGA reference,
-Marlin RTL simulation, and a future ARM/FPGA implementation. It describes the
-intended architecture; live loading is not implemented by this document.
+This document specifies the loading contract for the Rust FPGA reference,
+Marlin RTL simulation and ARM/FPGA profile. Implementations and qualification are
+tracked separately in [the implementation notes](docs/fpga/live-loading.md).
+The replacement hardware frontend is specified by the
+[ABI-16 semantic FIFO contract](fpga/host_bridge/semantic_fifo.md); its production
+integration remains in Stages 4–5 of [the plan](FPGA_CMD_FIFO.md).
 
 The priorities are simplicity, low hardware resource usage, and safe switching
 when the compiler and ARM-side loader are correctly implemented. The execution
@@ -23,6 +26,24 @@ The design has:
 There is no FPGA configuration bank, graph interpreter, image unpacker, allocator,
 relocation engine, or graph-level reference counter. Sync and mode-transition
 processing remain instructions executed by the SP.
+
+### Reduced composite profile
+
+Initial static-composite installation, nested/shared schedules, transport,
+iteration/seek and ordinary controls remain supported. Live replacement is
+primitive-only: if either the current or candidate program contains composites,
+refuse before allocation or active-state mutation, including child edits,
+introduction/removal and unrelated edits while a composite is installed.
+The result is `GraphCompositeUnsupported`. There is no cut search, conditional
+preview, outgoing schedule, automatic stop or retry-at-restart path.
+
+A stopped transport still owns its state. Composite replacement requires an
+explicit lifecycle that retires the old execution owner, obtains the real memory
+ownership fence or safe reset, then establishes a fresh runtime incarnation and
+allocator for initial installation. It is not a stopped in-place switch. Do not
+infer ownership from a snapshot, SP idle or a timeout. Native CPU/default-browser
+functionality is unaffected; the optional `fpga-reference` worklet shares this
+reduced compiler/reference profile.
 
 ## Trust boundary and safety guarantees
 
@@ -290,10 +311,13 @@ handoff; it must never be converted into an early success acknowledgement.
 
 ## Commands, plans, and snapshots
 
-Execution takes a fixed command-publication cutoff at each eligible quantum
-boundary and consumes complete groups in FIFO order. Commands before a switch
-use the old revision; commands following the switch must use the new revision.
-A stale command is refused even if its addressed loop happens to survive.
+The semantic FIFO contract takes a fixed command-publication cutoff at each
+eligible quantum boundary and attempts at most one complete group, in FIFO order.
+Later groups wait and test deadlines at their actual attempt frame. This is an
+explicit service-policy alignment required of the reference during integration,
+not the legacy drain-at-cutoff behavior. Commands before a switch use the old
+revision; commands following the switch must use the new revision. A stale command
+is refused even if its addressed loop happens to survive.
 
 Normally the switch occupies its own complete command group. When explicit
 state commands must occur at precisely the switch boundary, place those commands
@@ -305,13 +329,21 @@ There is no promise of rollback across commands if a runtime fault occurs. ARM
 must keep command addressing tied to the correct current or pending binding map
 rather than whichever compilation most recently finished.
 
-Future transition plans and pulse countdowns carry over with continuing state.
-If changing a sync source requires cancelling those plans, control must issue an
-explicit SP clear-plans command before the switch, ordered at the same boundary.
-The clear and switch use the complete group described above. Snapshot
-observations alone cannot prove that plans will remain empty.
-There is no initialization write or implicit state-reset prologue for carried
-processors. Other explicit live-state changes use the same command discipline.
+Future transition plans and pulse countdowns carry over with continuing state
+unless the sync-source operand changes. The prepared profile already invalidates
+old-source plans on such a switch. The semantic FIFO implements that behavior in
+the first SP visit under the new operand, before scheduled-plan/pulse processing,
+using execution-owned last-source fields. It is not an ARM state patch or a fresh
+initializer. An explicit clear command before a last switch remains supported.
+
+This refines the earlier explicit-clear implementation rule: expanding a switch
+into 128 clear commands would exceed the approved 32-command group and, at the
+measured 65 cycles per kernel clear, the 4,096-cycle command budget. The bounded SP
+operand-change check preserves the existing prepared-reference behavior without
+another scheduler or graph registry. See the ABI contract's source-change rule
+and required broad-source-change tests. Snapshot observations cannot prove that
+plans will remain empty. Other explicit live-state changes use the same ordered
+command discipline; there is no general state-reset prologue for carried state.
 
 Snapshots contain copied values, instance generations, and the executing
 configuration revision. Announce the new configuration before publishing its

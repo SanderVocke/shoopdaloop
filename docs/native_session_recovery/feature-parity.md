@@ -171,6 +171,19 @@ provenance. The remaining OPEN rows retain their existing scopes.
 
 ## Preserved evidence and retirement record
 
+- The explicitly approved [FPGA command-FIFO plan](../../FPGA_CMD_FIFO.md)
+  retires composite **live program replacement** in the FPGA compiler/reference,
+  ARM and Marlin profiles only. Pre-retirement evidence is preserved at commit
+  `35a3357ce` in `shoop_rt_host_marlin/tests/graph_compiler.rs`,
+  `rt_fpga_rtl/tests/host_mailbox.rs` and the compiler/reference loading tests.
+  Replacement tests retain static transport/iteration/seek, authored recording,
+  nested monitoring, shared one-shot re-entry and primitive-only live switching,
+  and assert refusal of composite introduction/removal and child edits without
+  losing recorded playback. Merely stopping transport does not authorize a live
+  replacement. P03/P17 CPU-native and default browser behavior and their fixtures
+  are unchanged; the optional worklet `fpga-reference` profile shares the reduced
+  FPGA implementation and is not that independent CPU/browser backend.
+
 - The temporary fixed JACK startup bank is superseded by dynamic session-owned
   track/audio-bus publication. CLI, settings, profile fields and host setup messages
   for that bank are removed. Profiles containing the obsolete fields are rejected;

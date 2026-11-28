@@ -81,9 +81,10 @@ module host_mailbox #(
     reg [31:0] event_tag;
     reg [31:0] completed_quanta, peak_quantum_cycles;
     reg [31:0] submission_result;
-    reg [31:0] record_epoch, record_cause, record_tag, record_op;
-    reg [31:0] record_cycles, record_control_cycles, record_detail;
-    reg [63:0] record_revision, record_frame;
+    wire [31:0] record_epoch, record_cause, record_op;
+    wire [31:0] record_cycles, record_control_cycles, record_detail;
+    wire [63:0] record_sequence, record_revision, record_frame;
+    wire [31:0] record_tag = record_sequence[31:0];
 
     wire session_live = epoch != 0 && epoch == live_epoch && !reset;
     wire request_space = session_live && !fault && !command_pending;
@@ -109,29 +110,15 @@ module host_mailbox #(
     assign irq = session_live && (response_pending || event_pending || fault);
     assign sync_event_ready = session_live;
 
-    always @(posedge clk) begin
-        if (reset) begin
-            record_epoch <= 0;
-            record_cause <= 0;
-            record_tag <= 0;
-            record_op <= 0;
-            record_cycles <= 0;
-            record_control_cycles <= 0;
-            record_detail <= 0;
-            record_revision <= 0;
-            record_frame <= 0;
-        end else if (fault && fault_epoch != 0 && record_epoch != fault_epoch) begin
-            record_epoch <= fault_epoch;
-            record_cause <= fault_cause;
-            record_tag <= fault_tag;
-            record_op <= fault_op;
-            record_cycles <= fault_cycles;
-            record_control_cycles <= fault_control_cycles;
-            record_detail <= fault_detail;
-            record_revision <= fault_revision;
-            record_frame <= fault_frame;
-        end
-    end
+    host_fault_record first_fault (
+        .clk(clk), .reset(reset), .capture(fault), .epoch(fault_epoch),
+        .cause(fault_cause), .operation(fault_op), .cycles(fault_cycles),
+        .control_cycles(fault_control_cycles), .detail(fault_detail),
+        .sequence_value({32'b0,fault_tag}), .revision(fault_revision), .frame(fault_frame),
+        .record_epoch(record_epoch), .record_cause(record_cause), .record_op(record_op),
+        .record_cycles(record_cycles), .record_control_cycles(record_control_cycles), .record_detail(record_detail),
+        .record_sequence(record_sequence), .record_revision(record_revision), .record_frame(record_frame)
+    );
 
     always @(posedge clk) begin
         if (!session_live) begin

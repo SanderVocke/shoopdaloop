@@ -101,6 +101,17 @@ fn select(
     image: &ProgramImage,
     frame: u64,
 ) {
+    select_with_boundary(s, bridge, control, execution, image, frame, "run_valid");
+}
+fn select_with_boundary(
+    s: &mut Sim<'_>,
+    bridge: &mut Commands,
+    control: &mut rt::Control,
+    execution: &mut rt::Execution,
+    image: &ProgramImage,
+    frame: u64,
+    signal: &str,
+) {
     control
         .commands
         .push(
@@ -117,7 +128,7 @@ fn select(
         image.layout.expected,
         "publication must not pace processing"
     );
-    s.model.set("run_valid", 1);
+    s.model.set(signal, 1);
     for _ in 0..10000 {
         s.idle(1);
         bridge.selected(&mut s.model);
@@ -126,7 +137,8 @@ fn select(
         }
     }
     assert_eq!(s.model.get("active_revision"), image.layout.revision);
-    s.model.set("run_valid", 0);
+    s.model.set(signal, 0);
+    assert_eq!(s.model.get("sync_frame"), frame);
 }
 fn acknowledge(
     s: &mut Sim<'_>,
@@ -190,6 +202,8 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     s.model.set_all(&[
         ("sync_event_ready", 1),
         ("handoff_complete", 1),
+        ("switch_boundary", 0),
+        ("local_valid", 0),
         ("switch_valid", 0),
         ("switch_response_ready", 0),
     ]);
@@ -248,7 +262,15 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     let (mut control, mut execution) = rt::channel(8, 2, 128).unwrap();
     let mut bridge = Commands::default();
     allocator.publish(a.revision).unwrap();
-    select(&mut s, &mut bridge, &mut control, &mut execution, &image, 0);
+    select_with_boundary(
+        &mut s,
+        &mut bridge,
+        &mut control,
+        &mut execution,
+        &image,
+        0,
+        "switch_boundary",
+    );
     acknowledge(&mut s, &mut bridge, &mut control, &mut execution, 0);
     allocator.complete(a.revision).unwrap();
     let mut jobs = JobProcessor::with_history_slots(16, 16, 16);
@@ -290,24 +312,36 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     let mut rust_image = rust.build_image(&next, b.clone()).unwrap();
     s.model.set("handoff_complete", 0);
     allocator.publish(b.revision).unwrap();
-    select(
+    select_with_boundary(
         &mut s,
         &mut bridge,
         &mut control,
         &mut execution,
         &next_image,
         96,
+        "switch_boundary",
     );
     s.idle(20);
     assert_eq!(s.model.get("switch_response_valid"), 0);
     assert!(control.commands.response().is_none());
     assert!(allocator.stage(&logical).is_err());
     assert_eq!(allocator.current().unwrap().revision, a.revision);
-    s.model.set("handoff_complete", 1);
-    s.until(100, "handoff", |m| m.get("switch_response_valid") != 0);
     p.switch_image(&mut rust_image).unwrap();
     parameters(&mut d, &next_image);
-    for tick in 6..11 {
+    assert_eq!(
+        s.model.get("run_ready"),
+        1,
+        "a pending handoff must not hold rendering"
+    );
+    for tick in 6..9 {
+        quantum(&mut d, &mut s, &mut p, &mut jobs, &mut media, tick);
+        assert_eq!(s.model.get("switch_response_valid"), 0);
+        assert!(control.commands.response().is_none());
+        assert_eq!(allocator.current().unwrap().revision, a.revision);
+    }
+    s.model.set("handoff_complete", 1);
+    s.until(100, "handoff", |m| m.get("switch_response_valid") != 0);
+    for tick in 9..11 {
         quantum(&mut d, &mut s, &mut p, &mut jobs, &mut media, tick);
     }
     assert_eq!(

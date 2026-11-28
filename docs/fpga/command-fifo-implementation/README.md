@@ -1,0 +1,2953 @@
+# Semantic command FIFO implementation milestones
+
+The authoritative scope, approval and acceptance criteria are in
+[`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md). The isolated kernel measurements
+remain historical evidence in the [investigation report](../command-fifo-investigation/README.md).
+
+**Current gate: Stages 4–5 integration, not complete fit.** Stages 0–3 are complete;
+Stages 4–7 are not. The user's **functional-first area amendment** now treats
+kernel/frontend/whole-design LUT/FF figures as interim reference targets, not
+stop/go ceilings; final numerical budgets need explicit Stage 6 agreement.
+BRAM/DSP, profile, semantics, safety, cycle and timing requirements remain.
+The earlier frontend target was **8,000 LUT / 7,000 FF**. Indexed MMIO, low-range discovery/
+retained diagnostics/public recovery/ABORT and qualified audio/watchdog sidebands
+are joined to the actual semantic/audio/media candidate, now with public
+CORE/AUDIO/STORE configuration, CLEAR_VIEW, bulk-media, ENABLE_AUDIO, DRAIN_STOP, optional trace
+and offline generated/I²S/watchdog adapters. The latest measured
+partial frontend is **7,943 LUT / 6,943 FF after standard optimization**, **57 LUT /
+57 FF below the previous targets**. That measurement predates CLEAR_VIEW/trace/
+bulk-media/ENABLE_AUDIO/audio adapters/DRAIN_STOP; these functional extensions have no new
+resource/timing result or current-source fit claim.
+That narrow margin no longer blocks required functional service/adapter integration. Latest worst unrouted WNS is
+**−9.754 ns**, still failing, with worse aggregate setup violations. Production
+still selects ABI 15. The original stop and repair evidence remain historical records;
+the amendment is recorded in [`FPGA_CMD_FIFO.md`](../../../FPGA_CMD_FIFO.md#user-approved-frontend-lut-amendment).
+
+## Stage 3: Rust/profile removal and regression milestone (`8972960cc`)
+
+**This is not completion of Stage 3 or implementation of the production FIFO.**
+The commit introducing this record removes compiler/reference/ARM/Marlin
+composite live-switch preparation, future-cut retries and restart migration.
+Compiler admission refuses replacements when either current or candidate layout
+contains composites, before reserving physical resources. Reference execution,
+hardware `ProgramSession` and Marlin switching independently refuse such edits.
+Initial static installation and primitive-only replacement remain supported.
+Stopping a composite is not an ownership handoff or permission to replace it.
+
+The reduced-profile tests cover active/candidate composites, introduction/removal,
+child edits and otherwise unrelated edits while a composite is installed.
+They preserve recorded playback and runtime controls after refusal. Retained
+behavior includes authored recording, nested monitoring, shared nested one-shot
+re-entry, regular/explicit transport and seek, and primitive recording/playback
+across fenced program changes. Native/default-browser implementation and tests
+are not retired; the optional worklet `fpga-reference` shares the reduced profile.
+Pre-retirement source provenance is recorded in the
+[native feature-parity ledger](../../native_session_recovery/feature-parity.md#preserved-evidence-and-retirement-record).
+
+### Verification
+
+All commands ran through `nix develop --command …` on Linux.
+
+- Warning-denying workspace build, formatting, test-attribute policy and host
+  register/top generator checks pass.
+- All five affected packages pass with their simulation/RT-interface/RTL features
+  enabled: **165 Rust tests**, including the kernel test's **3,970 differential
+  cases**. The generated cases are included in that test, not 3,970 additional
+  Rust tests.
+- Full Linux suite: **3,583 passed / 11 skipped**, **395.151 s** reported runtime,
+  with nextest **0.9.116**, CI profile and an isolated 48 kHz/128-frame dummy JACK
+  server. `SHOOP_ALLOW_MISSING_BACKENDS=1` was enabled; this is not qualification
+  of physical host audio devices.
+- Default application/worklet Wasm builds and the worklet's optional
+  `fpga-reference` Wasm build pass. These are compile checks, not browser runtime
+  or physical-output qualification.
+
+Affected-package reproduction:
+
+```sh
+nix develop --command cargo test \
+  -p rt_fpga_compiler -p rt_fpga_reference -p rt_fpga_rtl \
+  -p shoop_rt_host_reference -p shoop_rt_host_marlin \
+  --features rt_fpga_reference/rt-interface,rt_fpga_rtl/sim,rt_fpga_rtl/rt-interface,shoop_rt_host_reference/rtl,shoop_rt_host_marlin/sim \
+  -- --test-threads=4
+```
+
+The complete workspace and Wasm commands follow `.agents/info/test.md`; use its
+nextest 0.9.116 requirement. The reused local runner binary's SHA256 is
+`d8d3f176f6f9fa2b21edc8a899c99876275d00dd91235a845980ef5ffe35ac58`.
+Local verification logs/status files are under `work/cmd-fifo-investigation/`:
+`stage3-rust-milestone`, `stage3-linux`, and `stage3-wasm`.
+
+### Interruptions and remaining limits
+
+The first affected-package run exposed a trace-test harness that discarded an
+early switch completion while waiting for snapshot configuration. It now retains
+that response, waits with a deadline and verifies both switch and control
+completions; it does not require an artificial response ordering.
+
+An initial full Linux run with nextest 0.9.143 timed out after 1,200 seconds in
+`native_dummy_supports_dynamic_multichannel_and_zero_bus_states`. Host debugger
+attachment was refused by ptrace policy; no privilege change was attempted.
+The orphaned test and the run's dummy JACK server were cleaned up. Twenty isolated
+runs with documented nextest 0.9.116 passed, followed by the complete passing run.
+The interrupted log is retained as `stage3-linux-timeout.log`. This does **not**
+establish that the runner version caused the hang or erase the interrupted run.
+No unrelated native implementation change was made.
+
+At this Rust/profile milestone, RTL preview/handoff controllers, ports and packed
+outgoing-span metadata still needed removal; the next section records that work.
+The FIFO ABI, capability/lifecycle documentation and production consumer/transport
+remained unfinished. There was no new integrated resource/timing measurement,
+protected route result, physical test, push or PR.
+
+## Stage 3: RTL/controller and packed-metadata removal milestone
+
+The SP, pipeline and all intervening media/MIDI/AXI/host wrappers no longer expose
+or implement the future-switch, conditional-preview, paired-source restart or
+outgoing-span handoff paths. The Marlin adapter's former zero tie is removed with
+the port. Ordinary static-composite wrap, pulse, iteration/seek, scheduled controls
+and primitive replacement with its real memory-completion fence remain.
+
+Compiler `PreviousSpan` and previous/outgoing-span fields, counts, validation and
+RTL-target encodings are removed. Composite children require actual current
+spans; an empty schedule cannot stand in for a retiring parent. The SP rejects
+obsolete child instruction flags and parent-header metadata instead of retaining
+a hidden interpretation for them.
+
+The old switch-guard payload fields are reserved and must be zero. Hardware-mailbox
+tests exercise **63 individual reserved bits**, including every bit of the retired
+guard, and require `RESULT_INVALID`. A normal switch then succeeds at the original
+frame/revision. This prevents a legacy guarded request from silently becoming an
+immediate replacement. Valid retained-profile encodings keep those bits zero.
+This milestone does not introduce or deploy the replacement semantic FIFO ABI.
+
+### Fresh verification
+
+All commands again ran through `nix develop --command …` on Linux.
+
+- **166 Rust tests pass** across the same five affected packages and feature
+  matrix shown above. This includes all public static/shared/nested composite,
+  primitive replacement, memory-fence, fault and ownership tests, the new empty
+  child rejection, hardware-mailbox reserved-field cases and the kernel test's
+  **3,970 differential cases**. Changed RTL models were freshly compiled.
+- Full Linux suite with pinned nextest **0.9.116**: **3,584 passed / 11 skipped**,
+  **401.681 s** reported runtime. The CI profile, isolated dummy JACK server and
+  missing-backend allowance are unchanged; this is not physical audio evidence.
+- Default application/worklet and optional `fpga-reference` Wasm builds pass;
+  these remain compile checks, not browser-runtime qualification.
+- Warning-denying workspace build, formatting, test-policy and generated AXI/host
+  wrapper/register checks pass. A scoped production RTL/Rust/adapter source audit
+  finds no remaining retired controller/type/field names.
+
+Local evidence:
+
+- `work/cmd-fifo-investigation/stage3-rtl-removal.{sh,log,status}`
+- `work/cmd-fifo-investigation/rtl-milestone/run-linux.sh`
+- `work/cmd-fifo-investigation/rtl-milestone/stage3-{linux,wasm}.{log,status}`
+- `work/cmd-fifo-investigation/rtl-milestone/stage3-jack.log`
+
+All three status files are zero. The earlier Rust/profile logs and interrupted
+run remain separate historical evidence; the new pass does not establish the
+cause of the earlier timeout.
+
+### Remaining limits
+
+At this RTL-removal milestone Stage 3 was **not complete**: ABI, capability and
+lifecycle documentation still needed freezing. The following milestone closes
+that work, not production integration.
+
+## Stage 3 complete: reduced profile and ABI-16 contract freeze
+
+The [ABI contract](../../../fpga/host_bridge/semantic_fifo.md) specifies four
+complete command/result bank pairs, 32-command groups, fixed-cutoff one-group
+service, actual-attempt header/deadline checks, per-command results, FIFO reliable
+completion visibility, delayed real fencing, independent coherent snapshots and
+reset/identity fencing. Local original-gain/failure/pulse observations remove the
+need for an ARM response/event reader to maintain snapshot metadata. Their
+new-lease initialization remains a loader operation, never continuing-state
+restoration. The semantic target requires a complete sync prefix before capture
+and audio work, distinct from standalone instruction interleaving.
+
+The source-change implementation rule is refined with explicit evidence: 128
+kernel clears at 65 cycles each cannot fit either the 32-command group or
+4,096-cycle phase. An execution-owned first-SP-visit source comparison preserves
+the prepared reference's existing invalidation behavior. Implementation and
+integrated ordering/bounds tests remain future work; no ceiling or acceptance
+criterion was weakened.
+
+Architecture, loading, opcode/manual and crate usage docs now describe initial
+static composites, primitive-only live replacement, early refusal when active or
+candidate contains composites, and the explicit quiesced/new-incarnation lifecycle.
+Capability comments distinguish supported-profile replacement and cancellation
+of unpublished preparation. CPU-native/default-browser behavior remains separate.
+**ABI 16 is specified, not implemented or deployed.** The generated schema and
+legacy bridge remain ABI 15 pending Stages 4–5.
+
+### Fresh gates
+
+`work/cmd-fifo-investigation/stage3-contract-verified.{log,status}` records:
+
+- **166 affected-package Rust tests**, with the same full simulation/RT-interface
+  feature matrix above, including the **3,970-case** kernel differential.
+- **12 directed component tests**: eight graph tests, two target-lowering tests
+  and two timing tests. This is **178 Rust tests** in this invocation, not 178
+  plus the generated differential cases.
+- Warning-denying workspace build, formatting, test-policy, historical coverage
+  guard and AXI/host generator checks pass. Retired-name and modified-Markdown
+  local-link audits pass separately.
+
+No fresh complete Linux/Wasm run is claimed for this documentation/test-harness
+checkpoint; the production removal code retains the preceding milestone's full
+Linux/Wasm results. No production semantic FIFO, new integrated resource/timing
+measurement, physical test, push or PR is claimed.
+
+### Broader component audit and unresolved baseline differences
+
+DRAMsim3 was built through the documented pinned builder. Component runs select
+`SHOOP_FPGA_SOURCE_ROOT` explicitly and use the Z-turn x32 DRAM configuration,
+except the native timing unit whose fixed x16 geometry/accounting now explicitly
+selects its x16 fixture rather than accidentally inheriting an environment override.
+
+Six failing cases reproduced at untouched production base `ff6c09551`:
+
+- Three graph assertions counted inline schedule rows as executable loop visits.
+  Corrected checks retain separate exact instruction-capacity accounting.
+- A graph job comparison assumed a total order for independent work. Normalized
+  comparisons retain exact payloads, producer-before-consumer/single-writer
+  checks and shared-media access order. Negative cases cover unsafe reordering,
+  duplicate writes, capture starts, histories, ports, changed payloads and loss.
+- A target-capacity fixture omitted a media binding and assumed streaming RTL
+  FIFO depth was a total-job batch limit. The repaired test isolates bindings,
+  retains the logical batch-budget refusal and tests actual streaming behavior.
+- The geometry-specific timing case expected x16 values while inheriting x32.
+
+An early comparison reused a Cargo target across worktrees and an intermediate
+run resolved the baseline's compile-time source root. It is not current-RTL
+verification. Relevant artifacts were cleaned, current libraries rebuilt and
+current runs explicitly select the current root. Later baseline comparisons use
+an isolated Cargo target directory. The pinned native DRAM library is shared only
+as a generated dependency; baseline source is not edited.
+
+The broad invocation hit the tool's **1,200 s** limit during `pipeline`, after its
+completed targets passed. No orphan remained. A subsequent pipeline attempt found
+the interrupted model cache without its shared library; preserving/rebuilding that
+specific cache produced a passing pipeline run. Bounded follow-ups completed the
+remaining targets. Across the 75 component cases, **73 pass and two fail**; this
+is not a claim of an uninterrupted or fully passing package invocation.
+
+Both remaining failures reproduce at the production base with the same inputs:
+`rust_state_matches_rtl_all_opcodes_partial_failures_and_record_inputs` differs on
+preflight queue refusal versus partial SP effects;
+`rust_jobs_match_rtl_samples_buffers_ramps_smoothing_and_failures` differs on
+streamed job tails retained after JP failure. Their strict assertions remain
+unchanged. Resolution is explicit Stage 6 work, without dropping fault coverage.
+
+Additional local evidence under `work/cmd-fifo-investigation/`:
+
+- `stage3-testbench`, `stage3-testbench-with-dramsim`, `stage3-dramsim-build`
+- `stage3-pre-removal-graph-compiler`, `stage3-component-graphs`,
+  `stage3-component-graphs-current`
+- `stage3-components-final` (interrupted), `stage3-component-pipeline` (cache
+  failure), `stage3-component-pipeline-rebuilt` (pass)
+- `stage3-component-tail` (reference failures), `stage3-component-focused-final`
+  (remaining target/timing fixture failures)
+- `stage3-pre-removal-reference`, `stage3-pre-removal-targets-timing`
+- `stage3-contract-gates`, `stage3-contract-final-gates` (intermediate fixture
+  repair failures), `stage3-contract-verified` (final directed/affected pass)
+
+Logs/statuses are retained separately; later passing cases do not erase failures,
+prove a cause for unrelated historical timeouts or satisfy the final all-green gate.
+
+## Stage 4 in progress: standalone kernel and packet banks
+
+The production-source `fpga/host_bridge/rtl/fifo_edit_kernel.sv` starts byte-identical
+to the frozen prototype (SHA256
+`bacf1224ab4cbaaa9f3f4bc3c033dac8b4d9e7c23222a0e58421d43483ada68f`).
+The prototype remains frozen. The common harness now runs **two Rust tests**, each
+with **3,970 differential cases**, against their independently selected sources.
+It writes separate `kernel-cycles.json` and `production-kernel-cycles.json` reports
+under `work/cmd-fifo-investigation/`. The production source is not yet on the audio
+path. Work-cycle results remain 73 transition, 65 clear/repeat, 35 gain and 99
+iteration/seek, excluding packet decode/turnover. No new synthesis is claimed.
+
+`fifo_group_banks.sv` provides four paired input/result banks with BRAM packet
+storage, sequential fill/completeness checks, immutable admitted data, exact
+publication sequences, independent execution/release cursors and reserved reply
+capacity. Only the oldest complete reliable result is visible or releasable.
+A waiting synthetic fence retains its bank without blocking later ordinary
+execution. Epoch/sequence-qualified completions and ACKs prevent freeing a new
+occupant. Result production writes codes then header; incomplete completion fails
+closed. No packet RAM reset or full-record shadow banks are introduced.
+
+Four standalone bank tests cover partial publication at every word of a full
+32-command packet, partial strobes, malformed/incomplete/gapped publication,
+unread/full result banks, payload immutability, FIFO result visibility, duplicate
+and stale acknowledgements, delayed fence identity/reset ABA, same-clock
+publication/take ordering and incomplete-result failure. These are component
+signals and synthetic completions, not real DMA-fence or continuous-audio evidence.
+Sequence-exhaustion and additional hostile races remain integration-validation work.
+
+`work/cmd-fifo-investigation/stage4-component-milestone.{log,status}` records **six
+passing Rust tests** (the generated cases are inside the two kernel tests), a
+warning-denying workspace build, formatting, test-policy and generator checks.
+Earlier narrow logs are `stage4-kernel-bootstrap` and `stage4-bank-tests`.
+
+At this initial checkpoint the boundary consumer, actual RAM arbitration,
+MMIO ABI-16 schema/bridge, snapshots, local effects and firmware/reference
+integration were still pending. The next milestone below connects the standalone
+consumer, not the production audio/MMIO path.
+
+### Standalone boundary consumer
+
+`fifo_group_consumer.sv` connects the bank store and shared kernel. Its explicit
+processing-opportunity handshake latches a publication cutoff and actual attempt
+F, consumes at most one group, preflights all switch positions before executing
+anything, and releases a render handshake without ARM acknowledgement. Header
+stale/deadline/placement priority and per-command refusals remain separate; later
+commands observe preceding writes. State-independent value checks precede target
+lookup. No scheduler, graph lookup or per-command full-row shadows are introduced.
+
+Selection updates immutable run parameters together. The selected group's final
+result word is withheld until an epoch/sequence-qualified synthetic fence. Other
+groups run while it waits; the reliable result head cannot be bypassed. A small
+arbitrator lets the earlier fence finish while a later group writes its result.
+Headers capture attempt F/revisions before any later group. Gain update outputs
+retain original finite f32 bits rather than reconstructing them from fixed point.
+Local read/write and fence errors halt/fail closed and retain ownership, including
+an error delivered at selection itself; they are not safe `CannotApply` replies.
+
+Eight consumer tests cover 36 mixed repeated-target oracle scenarios; all 400
+partial-fill positions with independent processing opportunities; cutoff,
+inclusive deadline and header priority; full/unread results; profile refusals;
+delayed fence/reset identities; value-before-binding refusals; original gain bits;
+RAM/zero-latency fence faults; and concurrent fence/result writes.
+
+| Component scenario | Boundary-to-render cycles at one-cycle local RAM service |
+| --- | ---: |
+| 16-target arming, skip 0 or 1 | 1,494 |
+| 32-target arming, skip 0 or 1 | 2,950 |
+| 32 iteration/seek commands | 3,782 |
+| Same maximal group with a preceding fence finalizer competing for result RAM | 3,783 |
+
+These include packet decode, turnover and result production, not only sums of
+kernel invocations. The peak counter matches measured handshake elapsed cycles.
+Both maxima are below 4,096, but this is **not** a proof of SP/JP, DDR, continuous
+audio, real DMA fencing or the 60,000-cycle total quantum envelope.
+
+Fresh `stage4-consumer-milestone.{log,status}` passes **179 Rust tests** across the
+five affected simulation/RT-interface packages, including two kernel tests with
+3,970 cases each, four bank tests and eight consumer tests. Workspace warnings,
+formatting, test-policy, coverage and generators pass. Narrow evidence is
+`stage4-consumer-{tests,races}` and `production-{group,fence-race}-cycles.json` under
+`work/cmd-fifo-investigation/`. `stage4-consumer-tests-width-failure` retains the
+initial 4-bit/8-bit comparison warning and consequent missing-model failures;
+explicit width extension fixes it. It is not passing evidence or a timing breach.
+
+Actual audio/SP/JP, real JP/cache/DMA fencing, loader/RAM arbitration, settled
+snapshot/local SP observation storage, ABI-16 MMIO and firmware/reference
+integration remain pending. The probe's configuration access is test-only, not a
+production control fallback. Generated hardware remains ABI 15 with the legacy
+CPU bridge. No fresh Linux/Wasm, integrated resource/route, physical qualification,
+production semantic FIFO acceptance or delivery is claimed by this checkpoint.
+
+### Initial partial consumer synthesis — negative timing retained
+
+The offline Vivado 2021.1/3247384 measurement at source `367a2b69d` targets
+`xc7z020clg400-2`, 100 MHz, 1 ns I/O delays. It includes only banks, consumer and
+kernel, not the remaining MMIO/snapshot/observation/arbitration frontend or existing
+execution/persistent storage. [Results/provenance and checksums](reports/consumer-synthesis-367a2b69d/results.json)
+freeze the source/runner/Tcl hashes and native reports.
+
+| Synthesis hierarchy | Packed LUTs | FFs | RAMB36 | RAMB18 | DSP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Partial frontend total | 4,015 | 3,891 | 2 | 1 | 0 |
+| Consumer control only | 1,176 | 1,323 | 0 | 0 | 0 |
+| Paired banks | 1,009 | 623 | 2 | 1 | 0 |
+| Kernel leaf | 1,830 | 1,945 | 0 | 0 | 0 |
+
+Use packed utilization, not the 4,929 raw LUT-primitive count. There are 1,518
+observable port bits. The kernel remains within its 2,500 LUT/FF ceilings; the
+partial total leaves 1,985 LUTs / 3,109 FFs against the *complete* frontend ceiling,
+but absent blocks have not been counted and no net whole-design saving is claimed.
+
+**The unrouted timing estimate fails:** WNS **−2.074 ns**, TNS −237.136 ns,
+743/11,084 setup endpoints failing; estimated WHS +0.246 ns. The worst path is
+pending-group to bank state/completion/fault control, 24 logic levels. This is
+unplaced/unrouted without `HD.CLK_SRC`, not protected whole-design routed closure.
+This identified the control-path timing issue addressed by the next milestone;
+it was not a pass, Fmax claim or reason to relax routed setup/hold requirements.
+
+Local `vivado-consumer-v2` has status 0 and `complete.txt=passed`; this means the
+measurement completed, **not** that timing acceptance passed. `v1` stopped at the
+launcher guard before synthesis: an incorrect pin from compacted notes was
+replaced by the approved archive's actual launcher SHA
+`2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505`.
+The failed startup remains local evidence; no historical archive was changed.
+The tool image is pinned/offline with `--pull=never` and no board access.
+
+Reproduce into a fresh directory with:
+
+```sh
+nix develop --command python3 fpga/host_bridge/measure_semantic.py \
+  work/semantic-consumer-measurement-NEW --run
+```
+
+`--route` optionally performs OOC implementation; no route was performed for this
+checkpoint. A component route would still not replace the matching protected
+whole-design route/total-quantum gate.
+
+### Result-arbitration timing fix and partial OOC route
+
+Address/data arbitration now depends only on the selected local finalizer, not
+live fault-validity gating. Live qualified faults still immediately suppress RAM,
+render, selection and result effects. This removes the handoff-match → indexed
+result-address decode → write-ready → completion dependency without adding a
+register, service cycle, controller or shadow row. The same constraints improve
+synthesis-estimated WNS from −2.074 to **+0.585 ns**, 24 to 14 logic levels, for
+26 additional synthesis LUTs and unchanged FFs. The original negative evidence
+above is retained rather than overwritten.
+
+The ninth consumer test exercises a matching fault and stale epoch/sequence faults
+at simultaneous finalizer/main-writer arbitration. Matching faults retain both
+banks and prevent rendering/result visibility; stale faults do not interfere with
+legitimate completion. All **180 affected-package tests** pass, including nine
+group/four bank/two 3,970-case kernel tests. Workspace warning-denying build,
+formatting, policy/coverage and generators pass. Evidence:
+`work/cmd-fifo-investigation/stage4-timing-{arbitration-tests,fault-races,milestone}`.
+All prior cycle values, including the 3,783-cycle concurrent-fence maximum, remain
+unchanged; the RAM/fence/audio scope has not expanded.
+
+[Native OOC reports and provenance](reports/consumer-route-2cd453c8/results.json)
+freeze consumer SHA256 `2cd453c84440c35b225411d64c92390bcf0c56090ac80967450ddd535921dea7`:
+
+| Partial frontend | Packed LUTs | FFs | RAMB36 | RAMB18 | DSP | WNS ns | WHS ns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Synthesis | 4,041 | 3,891 | 2 | 1 | 0 | +0.585 (estimated) | +0.246 (estimated) |
+| OOC route | 4,016 | 3,891 | 2 | 1 | 0 | +0.178 | +0.159 |
+
+The routed kernel leaf is 1,822 LUTs / 1,945 FFs / no BRAM or DSP. There are zero
+failing setup/hold endpoints (11,084 endpoints), failed/unrouted/partially routed
+nets, critical warnings or errors. Only expected OOC `ZPS7-1` PS7-required DRC
+warning remains. Missing `HD.CLK_SRC`, unanchored OOC ports and absent full-system
+loads/clock skew prevent interpreting this as board-level timing closure. No
+whole-design resource saving or 60,000-cycle total quantum bound is established.
+Remaining frontend budget is only apparent headroom: 1,984 LUTs / 3,109 FFs, with
+MMIO/snapshot/observations/arbitration still unmeasured. Stage 4 remains open.
+
+`vivado-consumer-v3` synthesized the same RTL; `v4` routed with identical numbers
+but emitted a missing-IP-catalog critical warning during DRC reporting. `v5`
+mounts the existing verified Vivado 2021.1 catalog read-only and has no such
+warning. Catalog PS7 component SHA is validated and recorded; no download or
+board access occurred. Reproduce this component route in a fresh directory:
+
+```sh
+nix develop --command python3 fpga/host_bridge/measure_semantic.py \
+  work/semantic-consumer-route-NEW --run --route \
+  --catalog work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip
+```
+
+Generated firmware/RTL still advertise ABI 15. Actual processing/audio, real
+JP/cache/DMA fences, MMIO, local observations/snapshots and remaining Stages 4–7
+are not delivered by this component milestone. No new full Linux/Wasm, protected
+whole-design route, physical qualification, push/PR or final-head CI is claimed.
+
+### Execution-owned SP source-change invalidation
+
+The production SP compares each inline sync source against the source-valid,
+physical slot and generation already stored in its packed loop record. It clears
+old-source pulse-plan validity before the plan scan, then writes the new source
+identity with ordinary SP writeback. A validated external source supplies its
+current generation; self and no-source cases use the corresponding canonical
+identity. The same operand on later visits does not clear newly armed plans.
+There is no new registry, RAM, per-loop controller, SP phase or ARM patch sequence.
+Legacy non-inline instructions keep their existing source validation.
+
+Source-bound pulse plans are distinct from frame-absolute plans. The latter
+survive source changes, matching the prepared reference's `clear_mode_plan`.
+An initial implementation incorrectly used the general primitive clear rule;
+`live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads`
+caught loss of its scheduled seek and changed samples. The SP now invalidates
+only pulse plans. That failed run remains
+`stage4-source-milestone-absolute-plan-failure.{log,status}`, not a baseline issue
+or passing evidence. The production kernel/general clear operation is unchanged.
+
+Two added sync tests cover **18** combinations of source introduction/removal,
+external/self/unchanged operands, stale cached external/self generations, either
+or both frame-absolute slots, newly armed plans on the next visit, and all **128**
+slots changing no-source to self. Ready pulse plans and natural wraps check that
+invalidation precedes scheduled execution; payloads remain unchanged. The broad
+case takes **9,991 simulated SP cycles** with local loop RAM, Q32 and all 128 loops
+wrapping, no audio work and an always-ready event sink. This is an observed SP
+workload, **not** command-phase/snapshot timing or an integrated quantum bound.
+It adds no command records; real command/selection/SP ordering remains pending.
+
+Fresh `work/cmd-fifo-investigation/stage4-source-milestone.{log,status}` passes:
+
+- **180 affected-package tests**, including both independently sourced kernel
+  differentials, banks/consumer races and public static/primitive-switch tests.
+- **22 directed component tests**: graph compiler 8, loading 4, SP sync 8,
+  standalone state 1 and smoothing 1. Total **202 Rust tests** in this gate.
+- Warning-denying workspace build, formatting, test-policy, historical coverage
+  guard and AXI/host register/top generator checks.
+
+Narrow logs are `stage4-source-{tests,pre-scan,absolute-plans}`. The first fixture
+run is retained separately as `stage4-source-tests-fixtures`: it omitted the small
+model's loop depth and supplied fewer than the reference's four event slots per
+loop. Those configuration failures preceded the passing strengthened tests.
+
+Reproduce the directed portion through Nix with the current RTL root and pinned
+DRAMsim3 library built as documented in the testbench README:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  export SHOOP_DRAMSIM3_CONFIG="$PWD/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test sync --test graph_compiler --test loading --test state --test smoothing \
+    -- --nocapture --test-threads=2
+'
+```
+
+Generated hardware remains ABI 15; the consumer is still not connected to the
+actual audio/SP/JP and memory fence chain. Loader arbitration, independent
+snapshots/local effects, reference/firmware transport changes and all final gates
+remain open. There is no fresh resource/route, complete Linux/Wasm, physical,
+CI/review or delivery claim for this milestone.
+
+### Internal SP RAM service independent of program-loader ownership
+
+The SP now has a separate internal loop/state access port into its existing RAMs.
+Accepted reads/writes receive a one-cycle response independent of the DDR-program
+loader's busy and response signals. Internal requests take priority over new
+loader requests; an SP run request or active execution takes priority over this
+port. Range checks prevent invalid writes, writes return zero data, and reset
+invalidates pending responses without resetting RAM or introducing a shadow copy.
+This is not an ARM-accessible live-state interface. The current audio wrapper ties
+it off until the semantic consumer/capture controller is connected.
+
+`execution_ram_has_one_cycle_service_and_priority_even_with_a_stalled_program_loader`
+executes 512 accesses across local-program and DDR-program models. It checks both
+RAMs, all 129 state bits, invalid-address refusal/nonmutation, held ordinary
+configuration requests, an indefinitely unaccepted program upload, processing
+request priority and reset. It checks one-cycle response timing explicitly.
+
+Fresh `work/cmd-fifo-investigation/stage4-local-ram-milestone.{log,status}` passes
+**203 Rust tests**: the unchanged 180 affected-package matrix plus 23 directed
+component tests (the preceding 22 and the new internal-port test). Warning-denying
+workspace build, formatting, policy/coverage and AXI/host generators pass. Narrow
+`stage4-local-ram-tests` passes; earlier `-api-failure` and `-settle-failure` logs
+retain a wide-bit test setter type error and a missing combinational evaluation
+before a priority assertion. Neither is passing evidence or a resource breach.
+
+The existing SP run-admission gates still depend on loader activity, and audio
+handoff/media-store readiness still gates rendering. Those production paths have
+not yet been replaced. No consumer/SP/audio integration, held-upload audio-progress
+proof, ABI-16 deployment, new resource/route or total-quantum bound is claimed by
+this internal-port milestone. Snapshots/local effects and Stages 5–7 remain open.
+
+### Dual-region SP admission independent of program-upload ownership
+
+With two program regions, SP run admission no longer waits for program-loader busy
+or its response pulse. The prefetch controller preserves an in-flight configuration
+transfer across an SP restart, retaining its payload and separately reporting its
+result. The next active-program fetch can still require actual DDR service; this
+change does not turn an indefinitely stalled memory system into bounded successful
+rendering. Single-region configurations retain their existing upload/admission
+protection. The one-cycle local-config response condition is unchanged.
+
+The new regression first fails at the original admission gate; its log/status
+remain `work/cmd-fifo-investigation/stage4-admission-before-fix`. The fixed test
+holds a DDR upload request unaccepted, explicitly runs three empty SP quanta and
+checks frames 32/64/96, then completes the upload and verifies all three payload
+words plus padding. A fourth quantum starts on the configuration-response cycle.
+The same test verifies single-region admission remains blocked through that cycle,
+then resumes normally. Upload/request/response activity alone does not advance
+frames. These are empty SP runs, not audio/sample or nonempty-fetch qualification.
+
+Fresh `stage4-admission-milestone.{log,status}` passes **204 Rust tests**: the same
+180 affected-package tests plus 24 directed components (local RAM/admission 2,
+graph compiler 8, loading 4, sync 8, state 1, smoothing 1). Workspace warnings,
+formatting, policy/coverage and AXI/host generators pass. Narrow evidence is
+`stage4-admission-tests`; all logs are under `work/cmd-fifo-investigation/`.
+
+The semantic consumer is still not connected to the new internal RAM port.
+Audio handoff/media-store readiness gates, settled snapshots/local observations,
+ABI-16 MMIO/reference/firmware integration and final acceptance remain unfinished.
+There is no fresh resource/route, full Linux/Wasm, physical or delivery claim.
+
+### Actual-RAM/audio component connection
+
+`fpga/host_bridge/generate_semantic.py` produces `rtl/fifo_audio_pipeline.sv`,
+joining the production banks/consumer/kernel to the actual audio core, SP loop/state
+RAM and JP. `generate_top.py --check` now checks it too. This wrapper always uses
+two program regions/live selection and enforces at most 128 physical loop slots;
+there is no alternate CPU semantic controller in it. The legacy host/media top
+has not switched to this module and still advertises ABI 15.
+
+The audio core exposes its internal RAM port only while the whole core is idle,
+with processing admission taking priority. Selection can use a distinct pre-run
+boundary hook without advancing processing time. Pending handoff does not gate
+ordinary core rendering. The existing live-loading differential test now renders
+three sample-accurate quanta while its completion is withheld, retaining exact
+ramps/history/absolute plans, first-frame identity and unreleased allocator state.
+The original admission assertion failure is retained in
+`stage4-audio-handoff-before-fix`; `stage4-audio-handoff-tests` passes.
+
+The semantic wrapper requires epoch/sequence-qualified fence events. Successful
+events are accepted only once the core requests its handoff; mismatched events do
+not acknowledge the core or consumer, while qualified errors remain faults.
+Selection refusals drain the core response independently of the reliable reader.
+SP events are accepted locally without an ARM-ready input and exported as strobes;
+mandatory metadata accumulation and settled snapshots are still pending.
+
+`production_consumer_edits_execution_ram_and_renders_while_results_and_handoff_wait`
+executes the new module with actual SP/JP and RAM, not the earlier array probe:
+
+- Initial selection is a semantic group, not a direct switch/config restoration.
+- A gain group changes the same quantum's exact samples and emits original f32
+  metadata. A 32-command group arms actual loop rows; all have Recording mode,
+  capture counter 32 and common SP frame stamp 64 after the quantum.
+- Four reserved results remain unread behind a withheld first fence while later
+  ordinary groups and empty opportunities render. Continuous refused host requests
+  and result reads do not prevent another complete quantum.
+- A wrong-sequence success and a stale-epoch failure cannot release or fault the
+  current handoff; rendering continues through the stale failure. Matching test
+  completion later reveals the original frame-0 result, then ordered later replies.
+- Uploads, publication, result reads and acknowledgements do not advance the frame.
+
+The graph is 32 sync visits followed by input/gain/output; it has **no media
+recording jobs, cache/DMA/DDR or snapshot work**. Its arm command phase is **2,950
+cycles** with the real local port. Six boundary-to-core-done costs are **2,138,
+2,174, 5,129, 2,180, 2,233 and 2,180 cycles**. These are a limited local-service
+workload, not the all-admitted-graph 60,000-cycle acceptance or physical audio.
+Fence completion is test-controlled, not real memory-ownership qualification.
+
+`stage4-semantic-audio-tests` records the initial connection;
+`stage4-semantic-audio-fence-identity` adds qualified/stale fence evidence and cycle
+output. Fresh `stage4-audio-integration-milestone.{log,status}` passes **205 Rust
+tests = 180 affected-package + 25 directed** (graph 8, loading 4, local RAM 2,
+semantic audio 1, smoothing 1, state 1, sync 8), plus workspace warnings, formatting,
+policy/coverage and generators. Final `stage4-audio-integration-precommit` verifies
+the normal top generator hook, workspace warnings/formatting/policy and independently
+counts results/checks local Markdown links. Logs are under `work/cmd-fifo-investigation/`.
+
+Real media/cache/DMA fence hookup, media-store admission independence, in-flight
+fault/reset integration, observation storage/snapshots and ABI-16/reference/firmware
+integration remain open. No fresh complete resource/route, full Linux/Wasm,
+physical, push or PR evidence is claimed.
+
+### Private media-service staging and ownership prerequisites
+
+Source inspection exposed two dependencies that cannot be fixed by deleting a
+single admission condition. `media_store.sv`'s `SAMPLE_DATA` phase waits for client
+write-valid/read-ready; an ARM-stalled upload/download could therefore retain the
+shared store after SP admission. `media_audio_pipeline.sv` routes data/done by
+current pipeline-busy state, which would misroute a background operation if a new
+quantum were allowed to start during it. Neither dependency is acceptable in the
+final path. Whole-chunk staging and an explicit accepted-operation owner address
+them without changing the approved semantics or ceilings.
+
+`fifo_media_loader.sv` has one private <=32-word bidirectional chunk bank and a
+reserved response. APPEND acquires no store service until all words are buffered;
+READ copies all returned words before waiting for ARM readback/ACK. Acknowledging
+the response early cannot release unread data. Header/body remain immutable while
+committed. Invalid chunk sizes refuse before backend mutation; empty reads are
+valid; short successful transfers and memory faults latch a fault without replay.
+Safe reset invalidates cursors/results without resetting the data RAM. Large user
+transfers still require state-independent chunk lowering in the Stage 5 adapter;
+this private granularity is not a new public capability restriction.
+
+`fifo_media_arbiter.sv` prioritizes execution and a pending fence over new background
+store admission. Once accepted, the job/loader/fence owner controls data and done
+routing regardless of later processing-busy changes. It captures fence epoch and
+sequence on the actual backend request handshake, preserves them until completion
+and does not reissue while the original request stays asserted. Fence failures
+remain faults, not reliable success or automatic retry. The final wrapper must
+bind this backend to the actual sample-cache/metadata-cache/AXI fence chain.
+
+Five new Rust tests verify all private upload prefixes, stalled/full private
+readback, closing-cycle data plus completion, invalid/empty/short/fault/reset
+behavior, retained loader ownership while new processing requests arrive, later
+job service with loader results unread, and latched fence identity/no duplicate
+issue. The backend in these tests is **synthetic**: they do not prove real memory
+ownership or actual rendering while media work is stalled.
+
+`stage4-media-loader-tests` records three staging tests;
+`stage4-media-ownership-tests` passes all five. Fresh
+`stage4-private-media-milestone.{log,status}` passes **210 selected Rust tests =
+185 affected-package + 25 directed**, warning-denying workspace build, formatting,
+policy/coverage and generators. Logs are under `work/cmd-fifo-investigation/`.
+
+At that checkpoint the units were not connected to a semantic media wrapper or
+the legacy host top. The following milestone connects the media component; it does
+not switch the deployed host/MMIO path.
+
+### Real media/cache/AXI component connection
+
+`fpga/host_bridge/generate_semantic_media.py` derives the production
+`fifo_media_audio_pipeline.sv` wiring from the audio/media interfaces. It combines
+the actual semantic consumer/SP/JP, private loader bank, owner arbiter and media
+store. `fpga/axi_memory/generate_tops.py` adds
+`fifo_media_audio_pipeline_axi.sv`, including the fixed two-region program arena
+and existing shared AXI machinery. Normal host/AXI generator drift checks cover
+both new outputs; the old generated tops remain unchanged.
+
+The real fence path is now connected: drain prior JP/read-hint ownership, issue
+media-store FENCE, flush sample-cache DMA, drain each metadata-cache bank, and wait
+for the actual memory/AXI completion. Completion carries the tuple captured at
+backend acceptance. Core selection, SP idle, later graph revisions and ARM
+readiness cannot manufacture it. Store request/data/completion routing uses the
+latched operation owner even when a new quantum starts during loader work.
+
+Rendering's ready/busy/done no longer depend on store busy, ARM loader command
+valid, private result ACK or read consumption. New configuration accesses lose to
+processing admission; audio/store configuration waits outside the processing
+window. Inactive SP program configuration retains its independent dual-region
+service. Mandatory local event/gain/failure storage and snapshots are still absent.
+
+`real_media_fences_and_private_loader_streams_do_not_own_audio_admission` in
+`tests/semantic_audio.rs` runs one word-memory fixture and a 64-bit AXI fixture with
+fixed-latency memory/random ready-valid stalls, plus an AXI error fixture. Healthy
+fixtures each check **41 quanta**:
+
+- All 32 partial upload prefixes render without acquiring the actual store.
+- Complete uploads no longer need ARM data; unread replies retain only a private
+  bank. New processing can start during the accepted loader transaction.
+- A real dirty sample-cache writeback response is withheld across rendering and a
+  later gain group. The selected switch remains pending, reliable visibility stays
+  blocked, and continuous refused FIFO traffic/result reads do not block admission.
+- Releasing memory responses completes the real sample/metadata fence; ordered
+  reliable replies retain the original selection frame and identity.
+- Buffered READ data survives rendering and an early response ACK without holding
+  backend service or releasing unread payload.
+- Actual JP playback returns the original ramp-scaled samples; actual JP capture
+  appends 32 new samples. A subsequent primitive switch/fence persists both sets in
+  the independent backing memory (64 exact words), followed by exact suffix readback.
+
+The AXI failure fixture injects a simulated memory error after the held writeback
+response. It checks persistent memory fault, no successful fenced result, refused
+ACK, no further run admission/replay and unchanged frame **1152**. This is not yet
+first-fault MMIO/always-on recovery or in-flight reset/ABA qualification.
+
+The small graph measures **289–499 boundary-to-done cycles**, command peak **91**;
+word and AXI healthy traces match. The earlier 32-target actual-RAM test still
+measures command peak **2950**. None establishes all-admitted-graph 60,000-cycle,
+snapshot 8,192-cycle or complete frontend/whole-design resource acceptance.
+
+Fresh `stage4-real-media-milestone-final.{log,status}` passes **211 selected Rust tests =
+185 affected-package + 26 directed**, workspace `-D warnings`, formatting,
+policy/coverage and generators/Python checks. `stage4-real-media-{jp,axi,fault}-tests`
+retain the directed traces, and `stage4-real-media-tests-{initial-fault,read-length}`
+retain invalid READ-length fixture failures; zero logical length legitimately
+returns `InvalidView`. All logs remain under `work/cmd-fifo-investigation/`.
+
+The legacy host/media/MMIO deployment still uses ABI 15. New components are not
+advertised as ABI 16; software/reference/firmware integration and CPU-control
+retirement remain Stage 5 work. Local observations/settled snapshots, complete
+fault/reset/recovery integration, final cycle/resources/protected routing and
+Stages 6–7 remain open. No fresh full Linux/Wasm, physical or delivery claim is made.
+
+### Standalone local observations and nonfatal optional trace
+
+`fpga/host_bridge/rtl/fifo_observations.sv` implements the specified small per-slot
+observational fields in indexed distributed RAM: original f32 gain, saturating
+u32 scheduled-failure count, u64 pulse frame and validity. It consumes the existing
+SP encoding (kind 2 pulse; kind 3/outcome 3 scheduled failure) and successful gain
+strobes without a ready handshake. Independent gain/pulse/failure fields can
+update together; this is not a duplicate execution record, source of planning or
+new generation/graph registry.
+
+Mandatory updates take priority over the one-cycle private metadata reader and
+loader configuration. Initializers match the three-u64 snapshot order and reject
+nonfinite gain, nonzero failure/pulse/validity or unused data bits and out-of-range
+addresses. Full-width checks prevent truncation aliasing. The trusted adapter—not
+a new FPGA allocator—must restrict these writes to unused leases. Reset invalidates
+stream/control state without resetting the RAM; every member of a fresh incarnation
+must be initialized before publication, not restored from observations.
+
+A separate one-record optional trace captures epoch/revision alongside the event.
+The held tuple cannot be relabelled by later revision/incarnation inputs. Full trace
+storage drops optional records with a saturating u64 loss count and never blocks
+local effects or generates an audio fault. Same-cycle consumption/replacement is
+supported. Invalid required source addresses/nonfinite gain strobes fail closed;
+legitimate trace overflow and rejected loader initializers do not.
+
+`rt_fpga_rtl/tests/observations.rs` has three tests: all 128 rows with concurrent
+updates/blocked loaders/readers and 512 undrained events; real-width u32/u64
+saturation; and invalid initialization, address aliases, reset and source faults.
+Saturation fixtures use the existing simulation probe facility for near-limit
+values, without adding production counter-restoration ports or smaller counters.
+The initial optimized-away trace-loss probe alias failure is retained in
+`stage4-observation-tests-probe-alias`; the corrected probe targets the real register.
+
+Fresh `stage4-observation-milestone-final.{log,status}` passes **214 selected Rust
+tests = 188 affected-package + 26 directed**, warning-denying workspace build,
+formatting, policy/coverage and generators. Local logs are under
+`work/cmd-fifo-investigation/`.
+
+At this checkpoint the module was not connected to the consumer/SP or CORE_CONFIG
+space 3. The following milestone adds that connection; it does not change the
+ABI-15 deployment or establish fresh integrated resource or physical qualification.
+
+### Connected actual SP/gain observations and new-lease configuration
+
+The generated `fifo_audio_pipeline` now connects actual SP events and successful
+consumer gain strobes to retained observations. Required accumulation has no ARM
+or trace-ready dependency. The private metadata reader, optional trace record and
+loss/identity fields propagate through the real word-memory and AXI media wrappers.
+
+Configuration space 3 (`cfg_state && cfg_loop`) routes to the three-u64 initializer.
+One outstanding configuration latches its response owner; subsequent request flags
+cannot redirect a copied metadata response into the program/state path. This small
+configuration reservation does not participate in processing admission. The real
+trusted ARM unused-lease API/schema selection still belongs to Stage 5; these
+component interfaces are not advertised as deployed ABI 16.
+
+`actual_sp_observations_survive_full_trace_readers_and_primitive_selection` uses
+real SP/JP and execution RAM, not injected event strobes. Eleven quanta verify:
+
+- Valid frame-zero and continuing self/external pulses; one failed empty scheduled
+  Play accumulates once and is not lost when the trace is full.
+- Original subnormal f32 gain bits survive a zero fixed-point encoding and affect
+  samples in the command's quantum.
+- Configuration/private-reader pressure, unread results and delayed first selection
+  fencing do not stop processing or advance its frame independently.
+- Continuing gain/failure observations survive primitive selection without
+  reinitialization. A held revision-1 trace stays labelled 1 while revision 2 runs;
+  optional losses reach 33 without an audio fault.
+- Configuration responses retain the accepted source when live request flags change.
+
+The real word/AXI fixtures also read original gain from the connected metadata
+port while actual dirty-cache/DMA fences and private ARM responses are stalled.
+Their backing-memory/playback/capture/fence-failure assertions remain intact.
+
+The first media connection exposed immediate observation fault feeding back through
+SP abort into event-valid qualification (`UNOPTFLAT`). Immediate fault still gates
+the semantic consumer; media-enabled SP abort now uses the already-retained fault
+bit. No warning suppression or new per-slot shadow was introduced. Unit tests check
+immediate versus latched status. Complete in-flight/non-media abort, recovery and
+reset/epoch integration remain open, not qualified by this wiring repair.
+
+`stage4-observation-hookup-milestone.{log,status}` passes **215 selected Rust tests
+= 188 affected-package + 27 directed**, warning-denying workspace build, formatting,
+policy/coverage, generators and Python compilation. Directed logs are
+`stage4-observation-hookup-{initial,tests,retained-abort}`; initial unused-helper and
+feedback failures remain separate. Local evidence is under
+`work/cmd-fifo-investigation/`.
+
+Small-graph boundary-to-done costs are 443–533 cycles, command peak 91; the existing
+32-target actual-RAM peak stays 2,950. These do not establish the all-admitted total
+quantum, snapshot or resource/route bounds. Whole-sync settled capture and two
+snapshot banks, complete recovery/reset, ABI-16 host/firmware/reference integration,
+full platform/delivery gates and independent final audit still remain. No new full
+Linux/Wasm, physical or delivery qualification is claimed.
+
+### Whole-sync settled capture boundary
+
+A parameter-gated SP capture phase now separates the complete sync prefix from
+all audio work. The semantic component fixes it enabled; standalone/legacy defaults
+preserve their existing independent-work interleaver. In the strict profile, work
+encountered before all declared sync visits is a program fault before emitting that
+work. Composite schedule rows remain data belonging to their sync visit, not extra
+scheduler passes.
+
+The capture frame is latched render F, not the next counter already advanced to
+F+Q. Every loop has its processed stamp/render cursor settled before the gate opens.
+Zero-sync and empty programs also reach the gate, with no independent frame advance
+from reads or polling. This is a normal processing gate, not the still-pending
+explicit initial-snapshot publication.
+
+Actual execution RAM grants private one-cycle reads during this phase while SP
+stays busy. Writes through that port return an error without mutation. Loader
+loop/state writes cannot modify the view; semantic configuration admission is
+also excluded. SP resumes before generating audio jobs only after the internal
+capture service releases. At this checkpoint that service releases in one clock;
+the semantic component does not expose an ARM-controlled capture-ready input.
+
+`settled_capture.rs` has three directed tests: all 128 records over two frames,
+zero-sync/empty programs, and strict-prefix refusal versus legacy interleaving.
+They check raw render/stamp/next-cursor distinctions, recording render-length
+projection, frozen ramp state, no JP writes while held, read-only access under
+loader pressure and exact final samples. The 128-row raw read phase is 4,096 clocks;
+metadata/header/packet writes are not yet included. The original failed fixture
+counted clear-output writes as final samples; that negative log is retained and
+corrected expectations keep the strict no-JP-write capture assertion.
+
+`stage4-settled-gate-milestone.{log,status}` passes **218 selected Rust tests = 188
+affected-package + 30 directed**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. Directed evidence is
+`stage4-settled-gate-tests`; `stage4-settled-gate-tests-output-fixture` is the retained
+failure. Semantic quanta gain one hardware clock; the actual-RAM command peak stays
+2,950. No fresh resource/route, all-admitted quantum or full platform claim follows.
+
+At the `58b14e85c` gate checkpoint, packet storage/publication and acknowledgements
+were still absent. The standalone producer below now supplies them; actual gate
+hookup, root initial capture, integrated qualification, complete recovery and
+Stages 5–7 remain open.
+
+### Standalone complete-snapshot producer and banks
+
+`fpga/host_bridge/rtl/fifo_snapshots.sv` has two immutable packet banks and one
+sequential producer, no scheduler or graph registry. It supports 1–128 physical
+rows: 16 raw u64 loop words followed by original gain/failure count, pulse frame
+and validity. The eight-u64 header is written last, with magic word zero last of
+all; only subsequent complete publication makes a bank readable. The maximum is
+19,520 bytes per packet / 39,040 bytes total payload storage, not a measured BRAM
+count. RAM is not reset. Header epoch/F/revision/quantum/initial-or-settled phase
+are latched before copying; changes to live inputs cannot relabel a packet.
+
+A full pair skips the complete attempt immediately. Sequence advances per enabled
+capture opportunity even when capacity causes a skip, cumulative capacity loss saturates at
+u64 max and later headers expose gaps. Sequence exhaustion disables further
+attempts/publication instead of wrapping or holding the capture gate. No reader
+service is needed to finish a capture or release back to execution.
+
+One-cycle indexed u32 reads copy the requested half-word, independently of writer
+progress or subsequent bank release/reuse. An ACK must match incarnation, bank and
+sequence; either complete bank may be released. Duplicate/old ACKs are idempotently
+refused, wrong-epoch/future/not-ready ACKs do not free storage. Capacity is sampled
+before a simultaneous ACK, so a full pair still skips that opportunity. A held
+capture request does not turn the newly freed slot into an automatic retry.
+
+Reset/epoch change invalidates both banks and prevents an already-held old capture
+from restarting in the new incarnation. In-flight RAM/metadata response errors,
+a lost capture-valid gate or deadline cannot expose a partial packet. The retained
+internal fault blocks further capture until reset. Actual pipeline fault input
+also preempts publication on the would-be commit edge. Old complete packets may
+remain readable for diagnosis; faulted ACKs do not free them. These are component
+properties, not qualification of the complete always-on recovery/AXI drain path.
+
+`snapshots.rs` has five directed Rust tests:
+
+- Every word of both full 128-row packets, continuously denied partial reads,
+  initial/settled phases, captured identity and exact original metadata bits.
+- Full-bank loss, immutable earlier headers, skipped sequence gaps, delayed and
+  out-of-order ACKs, reused-bank and wrong-authority refusals.
+- Actual u64 counter saturation/exhaustion using existing simulation force probes,
+  not reduced production widths or restoration ports.
+- Memory/metadata errors, missing request/response service, lost capture gate and
+  same-edge pipeline fault: eight failure/stall fixtures without partial success.
+- Completed and in-flight epoch invalidation, copied response across simultaneous
+  read/ACK/reuse, and conservative same-edge full-bank ACK with no held-request replay.
+
+For 128 rows and one-cycle synthetic private RAM/metadata service, entry-to-ready
+is **4,618 clocks**; peak **4,619 includes entry and the ready handoff**. The fixed
+8,192 watchdog budget reserves both turnover clocks, and stall fixtures report
+exactly 8,192 at timeout. The initial small-profile elaboration failed on oversized
+RAM array indices; sized indices retain independent full-width bounds checks.
+No warning suppression, alias acceptance or budget increase was used.
+
+`stage4-snapshot-milestone.{log,status}` passes **223 selected Rust tests = 193
+affected-package + 30 directed**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. `stage4-snapshot-tests-final` is passing
+narrow evidence; `stage4-snapshot-tests-index-width` retains the initial failure.
+
+At `e883a1d13` the producer was standalone. The following milestone connects
+normal capture; root initial-capture admission and complete recovery remain open.
+The synthetic result alone was not integrated 8,192/60,000-cycle or resource/
+protected-route qualification. ABI/MMIO deployment remains 15.
+
+### Actual settled-snapshot integration
+
+The semantic generator now instantiates the producer. It owns capture-ready and
+actual loop-RAM reads while the entire sync prefix is settled; the kernel owns the
+same port outside capture. The capture side is read-only. No ARM-controlled ready
+input reaches this gate. Snapshot metadata requests outrank diagnostic requests;
+a registered accepted-reader tag routes the next-cycle response by its owner,
+not the current mux selector. A diagnostic grant just before capture therefore
+still completes correctly, while internal metadata cannot leak as its response.
+Configuration admission remains excluded during capture. Snapshot packets expose
+independent read/ACK/status ports through real word-media and shared-AXI components.
+
+Quantum is latched at render admission, and header F is SP's latched render frame.
+The 128-row fixture changes live quantum to 7 during capture but still receives a
+Q32 packet and exact 32-frame output. All 128 stamps match F=0 before any JP writes;
+render/next cursors and recording render-length projection are distinct. Every raw
+word is compared with actual loop RAM. Attempted loader writes during capture
+cannot alter it. Pre-gate diagnostic response ownership is explicitly checked.
+
+The next packet retains original f32 bits 1 after a successful subnormal gain maps
+to Q8.24 zero. Two unread full packets remain immutable while subsequent quanta
+render, with per-attempt sequence gaps and skipped-publication counts. A qualified
+ACK permits a later complete F192 packet; duplicate/wrong-epoch ACKs cannot free
+it. An older packet remains exact. The first program's ownership completion is
+still withheld throughout: snapshot publication/ACK is not a handoff fence.
+
+Actual 128-row capture is **4,619 clocks**, including entry and ready handoff.
+Seven directed fixture quanta take **[12644, 12680, 7973, 7973, 7973, 7973, 12590]**
+clocks with exact samples. This qualifies this connected local-RAM capture case,
+not all-admitted 60,000-cycle, service-envelope or resource/timing acceptance.
+The separate actual-RAM 32-target command peak remains 2,950. Its six quanta now
+cost **[3301, 3337, 5131, 2182, 2235, 2182]** with capture/full-bank skips included.
+
+The existing two-loop observation test also verifies packet pulse validity at
+frame zero, cumulative scheduled failure, subnormal bits and immutable producing
+revision across primitive selection. Existing word/AXI media fixtures free one
+snapshot bank and read the new 0.5 original gain/selected revision while actual
+dirty-cache/DMA fencing and an ARM return remain stalled. Rendering, exact
+playback/capture, independently checked backing memory and real AXI fence-error
+assertions remain; healthy 41-quantum fixtures take 291–501 clocks each. Selected
+revision in a complete snapshot still does not expose reliable fenced success.
+
+Snapshot's retained fault joins immediate consumer suppression and media-enabled
+abort. This does not qualify complete non-media/in-flight abort or always-on
+recovery/AXI-drain/first-fault integration. Root initial capture is still tied off
+(normal packets are phase 1); the standalone phase-0 test is not root admission.
+
+`stage4-snapshot-hookup-milestone.{log,status}` passes **224 selected Rust tests =
+193 affected-package + 31 directed**, workspace warnings, formatting, policy/
+coverage, generators and Python compilation. `stage4-snapshot-hookup-128-tests`
+is passing narrow evidence. The initial `-packets-tests`/`-128-diagnostic` failures
+retain an F128 fixture clip overrun: extending its clip keeps the seven distinct
+cursor trajectories valid without changing production guards or assertions.
+
+At `734356826` root initial capture and complete fault/reset/recovery remained
+open. The next milestone adds initial capture; ABI/MMIO deployment stays 15.
+
+### Root initial capture without processing time
+
+A once-per-reset startup owner now uses the same snapshot producer and private
+RAM/metadata service before any processing opportunity. With a known audio-owned
+quantum and a reset-latched nonzero incarnation, it publishes phase 0, F=0,
+revision 0. It never asks SP to run or consumes a semantic group to produce this
+packet. Configuration cannot mutate its held view. Startup release waits only for
+bounded hardware capture and local gate cleanup, never ARM reads or ACKs.
+
+The initial revision has no graph members. Physical rows can retain old data,
+valid-looking flags and prior observations: ARM bindings determine membership,
+not these raw fields. Ignore unused rows before interpreting observations. There
+is no blanket RAM clearing, FPGA allocator or snapshot restoration. The trusted
+loader must initialize each new lease before publishing an installation.
+
+`initial_capture_has_no_frame_or_reader_dependency_and_reset_preserves_only_raw_rows`
+uses all 128 physical rows. While audio geometry is not yet supplied, a pending
+first opportunity cannot advance frame 0. After Q32 is known, startup takes
+**4,622 clocks**; the producer reports **4,619**, including its entry and ready
+handoff. Throughout copying, frame/revision/group-attempt counters remain 0,
+no normal settled gate or JP output appears, and configuration is not admitted.
+A partial unpublished group never becomes executable. No snapshot reader or ACK
+is supplied before startup release.
+
+Three exact-silence quanta at F0/32/64 take **[4662, 45, 45] clocks** with the
+initial packet left unread. The first settled packet is independent phase 1/F0;
+subsequent full-bank opportunities advance sequence/loss without delaying audio.
+The immutable initial packet remains F0/revision 0 while processing reaches F96.
+Initial publication consumes sequence 1; normal captures start at 2. Existing
+fixture expectations advance accordingly, without resetting or reusing identity.
+
+The idle reset portion deliberately retains initialized-but-unpublished raw loop
+and gain data. Epoch 0 flushes control and blocks startup. Changing epoch to 2
+without reset cannot fabricate readiness/publication while command-bank identity
+is still unlatched. Reset then latches epoch 2; another **4,622-clock** initial
+capture copies retained raw data as nonmembers of revision 0. Old epoch-1 ACKs
+cannot release its bank even with the same sequence 1. A matching release does
+not process time; a subsequent exact F0 quantum costs 4,662 clocks. This is an
+idle local-component reset test, not qualification of in-flight media/AXI drain,
+always-on recovery, retained first faults or safe ownership reuse.
+
+`stage4-initial-capture-tests.{log,status}` passes the final directed test.
+`-tests-owner-declaration` retains the duplicate auto/manual wire declaration
+failure; `-tests-epoch-sequence` retains the epoch-only startup/bank mismatch that
+led to reset-qualified startup. Earlier `-tests-pre-epoch-guard`/`-audio-tests`
+passes predate that final guard. Final `stage4-initial-capture-milestone` passes
+**225 selected Rust tests = 193 affected-package + 32 directed**, workspace
+warnings, formatting, policy/coverage, generators and Python compilation. Existing
+normal 128-row, original metadata, full readers, exact samples, primitive/fence,
+word/AXI backing-memory and memory-fault tests still pass; their cycle costs are
+unchanged.
+
+At `9c021b241`, complete execution fault-stop and always-on recovery remained open.
+The next milestone adds generic execution stop; ABI/MMIO deployment stays 15.
+
+### Generic latched execution fault-stop
+
+Audio and JP now have a generic `abort_run` input independent of media enable.
+Each latches the stop until reset. Semantic execution drives it from pipeline
+failure, retained consumer/observation/snapshot faults and reported core errors.
+The observation source is its retained abort bit: this does not reintroduce an
+immediate-fault/event-valid combinational loop. The current legacy media and
+job-stream wrappers tie the new input low; standalone default error sequencing
+is not silently changed.
+
+On assertion, new run/switch admission, SP writes/emission, sample reads/output,
+scratch/output RAM writes, smoothing commit and new job/media/hint issue stop
+before the clock edge. The serial SP/JP path cannot consume more queued work.
+Unissued read-hint control is flushed, not the RAM holding execution or media.
+A pulse remains terminal, so dropping the fault input cannot resume work or
+accept another run. New handoff requests are suppressed; already-accepted store/
+cache/DMA operations retain their backend ownership. SP still waits for an
+accepted external loop response rather than fabricating retirement. An active
+local run reports error 8/stage 3 after SP/JP control stops; abort while idle
+blocks admission without inventing a completed processing frame.
+
+`nonmedia_fault_stop_suppresses_same_edge_writes_and_never_rolls_back_or_resumes`
+uses actual execution RAM, SP, JP and snapshots. Seven injection points are state
+start, loop writeback, settled gate entry, partial snapshot copy, input read,
+gain streaming and a nonzero output write. Observation-only probes fingerprint
+all 16 loop words, sixteen 129-bit state records, 128 scratch words, four 128-bit
+smoothing histories and validity. Fault assertion masks the same-edge writes;
+the exact pre-edge data remains after a 100-clock traffic attack, without
+rollback or post-fault mutation. No production restore or injection API is added.
+
+In these inline/local, non-media fixtures local control retires within **two
+clocks**. Already-advanced frame stays 32; earlier state/loop stops stay at 0.
+The attempt is not replayed. A held run opportunity, writes, commands and fake
+fence success cannot restart it, advance frame/sequence or publish fenced success.
+A partial packet stays unreadable even if its RAM contains an older header;
+complete F0/revision-1 packets remain immutable diagnostic reads, with ACK
+receipt 3 preserving the faulted bank. This is not a memory-fence assertion.
+
+`stage4-nonmedia-stop-tests.{log,status}` passes the original seven-point test;
+final `stage4-nonmedia-stop-milestone` also includes the post-fault packet/ACK
+assertions. `stage4-nonmedia-stop-legacy` separately passes existing core and
+legacy pipeline regressions. The final gate passes **228 selected Rust tests =
+193 affected-package + 35 directed**, workspace warnings, formatting, policy/
+coverage, generators and Python compilation. Normal 128-row, initial, exact
+samples, local 32-target commands and actual word/AXI media/fence/failure tests
+remain green with unchanged cycles (command peak 2,950, producer peak 4,619).
+
+Local SP/JP idle does **not** retire an accepted store operation, DMA, loop-read
+or external MIDI owner. Their actual response/drain or safe isolation/reset is
+still required; neither RAM nor backend/AXI controllers are reset by fault-stop.
+At `b4b9790cb`, always-on drain/reset/first-fault integration remained open. The
+following milestone adds actual AXI isolation and epoch-qualified runtime reset,
+not a successful completion for discarded internal operations.
+
+### Actual AXI isolation, safe drain and fresh runtime epoch
+
+The shared AXI transport already has one serial burst owner. Its master now has
+terminal `quiesce`, `quiescent` and retained `drain_fault` interfaces. Quiesce cuts
+new command acceptance and cancels CHECK-stage commands with no presented header.
+It does not withdraw AW, W or AR already exposed, including independent W-before-AW.
+Once quiescing, the master stays isolated until reset even if the input drops.
+
+An active write still requires every original data beat and actual B response.
+Missing payload cannot be padded, skipped or called complete. Active reads drain
+all actual beats through RLAST even with upstream read-ready low; B likewise drains
+without upstream completion-ready. Read/completion callbacks are suppressed during
+isolation: no abandoned client receives fabricated success. DMA/cache client state
+may remain internally busy; safe reset discards it only after external AXI ownership
+is actually retired. Neither local SP idle nor an internal operation's busy flag is
+the bus-retirement proof. This is a runtime-retirement/reset protocol, **not** a
+successful primitive-program or media fence.
+
+Unexpected/early/duplicate B, unexpected R, wrong IDs and wrong RLAST retain a
+protocol/accounting fault. It blocks new commands and forbids quiescent even if
+raw inputs subsequently disappear. Legal error responses remain normal error
+responses, not unsafe bus accounting. Legacy word/chunk/media wrappers tie quiesce
+low; semantic AXI exposes it and drives execution fault-stop from quiesce/protocol
+fault. The existing AXI/media/metadata/ownership tests still pass.
+
+The new generated `fifo_recovery_pipeline_axi` wraps real semantic/media/shared
+AXI with the existing always-on recovery controller outside runtime reset. A
+trusted request must match current nonzero epoch. Quiesce stops SP/JP effects while
+AXI continues draining. Zero actual AW/B and AR/RLAST credits, master quiescence
+and two quiet clocks precede the sole epoch increment and runtime reset. Defaults
+remain 100,000,000 timeout clocks and 128 reset clocks. Reset flushes all old
+controller/client identities; raw RAM is not cleared or treated as a continuing
+lease. Unexpected B/R during reset are checked outside the reset domain and fail
+closed. Unsafe accounting or timeout stays Failed, even after late bus retirement;
+there is no automatic retry or successful fence. A held old request cannot match
+the new incarnation. The legacy host/MMIO component still selects ABI 15.
+
+Recovery state 3 is **hardware reset complete**, not application/backend Ready.
+Stage 5 must still require fresh hardware startup, lease/session and first frame,
+and preserve lost-ACK status queries rather than replay. At `82b78edbc`, the wrapper
+still lacked the always-on first-fault record and ABI-16 MMIO/ARM adapter. The next
+milestone adds the record, not deployment.
+
+`axi_drain.rs` adds four directed tests. Across both 32- and 64-bit buses they check
+608 write prefix/AW-W order cases and 272 read-prefix cases, zero consumer readiness,
+terminal pulses, unpresented-header cancellation, missing payload and protocol
+errors. No alternate transaction controller, shadow payload or production injection
+API was added.
+
+`recovery_drains_real_aw_w_and_ddr_fetches_before_flushing_old_runtime_identities`
+uses actual 64-bit shared AXI, program upload/prefetch, SP/JP, execution RAM and
+packet banks. Held AW, W and DDR fetch AR each prevent reset/epoch change under
+run/command pressure. On release, actual bus completion precedes epoch 2/reset;
+old fills, queued work and selected-but-unfenced work are not replayed. A fresh
+empty revision-0/F0 packet appears without reading/ACKing the old initial packet.
+Raw marker `0xfedc_ba98_7654_3210`, valid-looking loop flags and original 0.5 gain
+persist only as nonmembers. Stale requests/ACKs cannot acquire/release epoch-2 banks.
+The first fresh quantum remains empty at revision 0, rather than executing old work.
+
+`recovery_timeout_protocol_fault_and_unsolicited_reset_responses_never_report_ready`
+checks idle unsolicited B, B/R during reset and an accepted AW with stalled W.
+The fixture uses 4,096 timeout/4 reset clocks, not enlarged production budgets.
+A late WLAST/B can make AXI quiescent after timeout, but recovery remains Failed,
+epoch unchanged, run-ready low and frame 0. A reset-edge protocol fault freezes the
+already-incremented epoch without ever reaching hardware Ready or permitting reuse.
+
+`stage4-axi-recovery-milestone.{log,status}` passes **246 selected Rust tests =
+197 affected-package + 49 directed**, workspace warnings, formatting, policy/coverage,
+generators and Python compilation. `stage4-axi-recovery-legacy` independently passes
+12 AXI/media/metadata/ownership tests. Narrow logs are `stage4-axi-drain-tests` and
+`stage4-axi-recovery-{tests,races}`. Failed `-tests-until-api` (unit-returning
+`Sim::until`) and `-races-write-gap` remain separate; the latter fixture now waits
+for actual B readiness after all payload beats, not a temporary WVALID gap.
+
+Normal exact samples and command/capture cycles remain unchanged, including the
+2,950-cycle actual 32-target command peak and 4,619-cycle 128-row producer peak.
+At this AXI-drain checkpoint, retained first-fault wiring and broader hostile
+lifecycle/internal SP/JP error parity remained open. The deployed ABI stayed **15**;
+no whole-design, platform or delivery pass followed from those selected tests.
+
+## Retained first-fault diagnostics outside runtime reset
+
+`host_fault_record.sv` is the small shared recorder used by the existing mailbox
+and new semantic recovery wrapper. It atomically stores the complete 64-bit group
+sequence, revision/F and legacy cause/counter/detail fields. Same-epoch ABORT and
+later faults cannot overwrite the first record. Epoch zero/older events cannot
+replace a newer record; epoch advance without a fault does nothing. Only global
+reset clears it, not child runtime reset. The legacy mailbox zero-extends its
+32-bit tag, preserving ABI-15 register meanings and read-race checks.
+
+The consumer reports a qualified first-fault event rather than requiring a reader
+to infer its owner from current selection. A delayed fence error or blocked
+selected fence-result writer names the pending group's original frame/sequence,
+even while a later F32 command finishes. Stale epoch/sequence callbacks do not
+fault or relabel it. A header-refused group has no decoded opcode; it cannot copy
+one left in the previous command packet. No new controller, transaction tracker,
+per-loop execution copy, restoration API or ARM-ready signal was introduced.
+
+Semantic audio latches F at the actual opportunity handshake and counts active
+local clocks with u32 saturation. With no group, a fault uses active audio F, not
+SP's next-frame counter; an idle fault uses the next opportunity. Counters are
+context, not a successful-render latency bound. A fence-owned event has zero
+command counter rather than borrowing a competing group's duration. The real
+media wrapper adds its memory cause. The always-on parent captures actual faults
+or accepted recovery (`ABORT|RECOVERY`), suppressing reset/quiesce-generated aborts
+that would otherwise mislabel the new epoch. The existing first cause wins.
+
+`first_fault.rs` checks every retained field at full 32/64-bit width, including
+nonzero sequence high bits, same/older-epoch immutability, zero epochs, non-event
+epoch changes and whole-device reset. `semantic_groups.rs` extends the existing
+fault/finalizer race with owner/frame/opcode checks, stale-callback rejection, a
+pipeline fault during a selected result write and previous-opcode exclusion on
+header refusal. Both WaitingFence retention and explicit failed-fence retention
+remain unreleasable, with no successful result after a fault.
+
+`first_fault_keeps_audio_owned_frame_group_context_and_original_cause_through_reset`
+uses the actual semantic/media/shared-AXI recovery component. Command and settled
+capture faults record epoch-1 F0/cause 64 even after SP reaches 32; recovery, fresh
+initial capture, stale submissions and a fresh quantum do not erase/relabel that
+record or require a reader. A genuine epoch-2 idle fault records F32 and replaces
+it. Existing real held-AW/W/DDR-fetch and recovery failure fixtures also assert
+that drain/reset, unsolicited reset responses and late completions preserve the
+original record rather than manufacturing an epoch-2 cause.
+
+Final `stage4-first-fault-milestone.{log,status}` passes **248 selected Rust tests =
+198 affected-package + 50 directed**, warning-denying workspace build, formatting,
+test-policy/coverage, generators and Python compilation. Narrow logs are
+`stage4-first-fault-{tests,identity,header-context,finalizer-context}`. Earlier
+passing milestones before header/finalizer attribution remain separately named.
+`-milestone-header-result-order` retains the fixture's non-head result-read error;
+`-finalizer-context-bank-state` retains its incorrect assumption that a pipeline
+fault must convert an old WaitingFence bank into an explicit failed-fence state.
+Corrected checks retain FIFO release, terminal ownership and no-success assertions.
+The finalizer narrow run uses both `sim,rt-interface`; an earlier `sim`-only filter
+ran zero cases and is not independent narrow evidence.
+
+The [ABI-16 contract](../../../fpga/host_bridge/semantic_fifo.md) reserves the full
+sequence-high diagnostic register; the schema/MMIO/ARM implementation still selects
+ABI **15**. This milestone is not public deployment, a whole-design resource/route
+or all-admitted quantum proof, fresh full Linux/Wasm, physical or delivery
+qualification. Broader lifecycle, the two production-base reference differences
+and Stages 5–7 remain. Normal exact samples, 2,950-cycle actual 32-target command
+peak, 4,619-cycle capture and 4,622-cycle initial startup remain unchanged.
+
+## Resource gate: measured breach and implementation stop
+
+The broader [Q32 component evidence](reports/pipeline-synthesis-9b8cd12c8/results.json)
+is a **failure of the approved resource gate**, not acceptance or deployment.
+`measure_semantic.py --pipeline` freezes the production semantic/media/recovery
+RTL, a generated fixed-audio profile, exact source hashes and tool configuration.
+The profile uses 128 loops, 512 state rows/buffers/views, 1,024 instructions/jobs,
+DDR program storage, 32-frame chunks, 124 MiB sample slots and the board's
+128 MiB PL arena. Vivado 2021.1 synthesized it out of context for
+`xc7z020clg400-2` at 100 MHz. It excludes public MMIO, the audio adapter, PS/DDR,
+thermal protection and protected whole-board integration.
+
+| Synthesized scope | Packed LUT | FF | RAMB36-equivalent | DSP |
+| --- | ---: | ---: | ---: | ---: |
+| Entire component before the excluded integration | 85,056 | 37,785 | 62.5 | 4 |
+| Existing SP/JP and execution RAM | 10,626 | 5,945 | 34 | 4 |
+| Existing media store | 11,388 | 8,024 | 10 | 0 |
+| Existing AXI endpoint and DDR program mux | 1,628 | 922 | 0 | 0 |
+| Remaining new frontend/glue before MMIO | **61,414** | **22,894** | 18.5 | 0 |
+| Kernel, included in frontend | 1,824 | 1,940 | 0 | 0 |
+| Local observations, included in frontend | **55,372** | **17,127** | **0** | 0 |
+
+The kernel satisfies its 2,500-LUT/2,500-FF/no-DSP ceiling. The frontend exceeds
+6,000 LUT / 7,000 FF, and this incomplete component already exceeds the protected
+whole-design 32,000-LUT / 24,000-FF ceiling. Observations' four arrays were
+explicitly dissolved into registers, not RAM. That is the dominant measured
+mapping failure, not a proven complete root-cause analysis or permission to
+change observation semantics. Even treating the entire observations block as
+zero area would leave 6,042 frontend/glue LUTs before MMIO. A RAM-oriented repair
+alone is not yet demonstrated sufficient.
+
+Native packed hierarchical utilization supplies the table; raw primitive LUT
+counts are different and are not used as packed area. Synthesis completed with
+zero errors/critical warnings. The runner then failed a mistaken expected media
+instance path and returned **1**, without a complete marker. Its raw partition
+output was therefore not used; the packed table reconciles the actual media,
+execution, AXI and program-mux hierarchy. Tooling paths were corrected afterward,
+without modifying/resynthesizing production RTL or relabeling this run successful.
+The archive preserves original Tcl, generated profile, frozen Python tooling,
+provenance, native reports, the array-mapping/synthesis outcome and checksums.
+Preparation failures in local `vivado-pipeline-9b8cd12c8-v1/v2/v3` retain native
+package-order, unresolved `BUFFERS`, and guarded SP-macro width failures; none
+produced usable synthesized area. Version 4 produced the area above.
+
+Synthesis-only timing estimates are WNS **−4.584 ns**, TNS −5,906.748 ns with
+6,166 / 100,611 failing setup endpoints, and WHS +0.183 ns. No routing was
+attempted and no routed slack, cycle-envelope, board or final-delivery claim
+follows. The latest 248-test result remains functional evidence for unchanged
+production RTL, not fit proof; no fresh full Linux/Wasm or physical test ran.
+
+`stage4-resource-stop-precommit.{log,status}` passes **three offline Python
+tooling tests**, Python compilation, register/top/AXI generator checks, all ten
+archive checksums, documentation links and whitespace checks. It verifies that
+current production RTL matches every measured RTL hash, the corrected tooling
+still emits the byte-identical measured profile, the original consumer-only Tcl
+is unchanged, and packed frontend accounting reconciles with native hierarchy.
+These are record/tooling checks, not additional Rust functional or fit tests.
+
+**Implementation was stopped at `c6ddb7652` pending user direction**, as required
+for an actual ceiling breach. The user subsequently requested “try to fix the
+area problem,” authorizing the bounded area repair recorded below. That direction
+does not change any numerical limit, profile or semantic requirement. No profile reduction, raised ceiling, CPU fallback, ABI-16
+selection, board access, push/PR or delivery is implied. The deployed interface
+remains ABI 15 and Stages 4–7 remain incomplete.
+
+## Area repair: real RAM ports and sequential working records
+
+[New evidence](reports/area-repair-c6ddb7652/results.json) preserves the original
+failed measurement and compares three subsequent variants with the same
+Q32/128-loop/512-state-buffer-view/full-media profile. This is a **partial repair,
+not a resource acceptance pass**.
+
+Vivado identified multiple write ports in each observation array. Runtime updates
+and trusted initialization were mutually exclusive in the protocol, but separate
+indexed assignments prevented RAM inference. Each field now has one explicitly
+selected address and one write assignment. Required updates still outrank reads
+and configuration; gain and SP updates can affect different banks/rows together.
+No RAM reset, continuing-state restoration, extra response cycle or reader gating
+was added. All original f32, pulse-valid/frame, saturation and optional-trace
+semantics remain. The added test exercises all 128 rows with cross-row gain/failure
+updates, denied configuration, accepted diagnostic reads, read-before-write
+initialization and preservation of the other fields between initialization words.
+
+The complete 12-word command packet shifts only on command-read responses. The
+kernel's single 16-word record shifts only on successful read/write responses,
+with a fixed-head write-data output. This replaces variable wide register muxes;
+it does not add a planner, duplicated record, state or cycle. Frozen prototype
+source/evidence remain unchanged.
+
+| Phase | Component LUT / FF | Frontend LUT / FF | Observation LUT / FF |
+| --- | ---: | ---: | ---: |
+| Original failed synthesis | 85,056 / 37,785 | 61,414 / 22,894 | 55,372 / 17,127 |
+| Explicit observation RAM ports | 30,322 / 21,268 | 6,643 / 6,379 | 605 / 615 |
+| Plus sequential working records | 30,027 / 21,263 | 6,348 / 6,374 | 605 / 615 |
+| Same checkpoint, standard `opt_design` | 29,923 / 21,235 | **6,345 / 6,374** | 605 / 615 |
+
+The 16,512 observation data FFs become **258 LUTRAMs**, included in the frontend
+LUT total rather than excluded from accounting. The kernel is **1,595 LUT /
+1,932 FF / no DSP**, within its ceiling. Component storage stays at 59 RAMB36 +
+7 RAMB18 = 62.5 equivalents with four existing DSPs. No capacity/profile reduction
+or limit increase was used. Native packed hierarchy, not raw LUT primitive counts,
+reconciles frontend versus existing execution/media/AXI/program backend in every
+variant. Source hashes, changed RTL snapshots, the identical generated profile,
+Tcl/provenance, native reports and 23 checksums accompany the results.
+
+`stage4-area-repair-milestone.{log,status}` passes **249 selected Rust tests =
+199 affected-package + 50 directed**, warning-denying workspace build, formatting,
+test-policy/coverage, generators and the three offline measurement-tool tests.
+The two kernel tests each retain **3,970 differential cases** and their original
+73/65/35/99-cycle successful paths. All nine group tests pass; maximum synthetic
+iteration/fence arbitration stays **3,783 clocks**. Actual SP/JP, initial/128-row
+snapshots, local observations, word/AXI media fences, stop/reset and retained
+first-fault fixtures are included. No tests/oracle assertions were weakened.
+
+Local narrow logs are `stage4-area-observation-ports-tests` and
+`stage4-area-streaming-record-tests`. Synthesis runs are
+`vivado-area-{observation-ports,streaming-record}-v1`; both complete successfully
+with zero errors/critical warnings. `vivado-area-streaming-record-opt-v2` opens
+the exact synthesized checkpoint and runs standard optimization, without placement
+or routing. Its initial `-opt-v1` used `read_checkpoint` without opening a design;
+that failure remains separate and supplied no usable optimization result.
+
+**Historical area outcome:** at this milestone the partial frontend was **345 LUT
+over the then-approved 6,000**. The archived results and original ceilings remain
+unchanged; the repair did not retroactively pass that gate.
+
+**Subsequent user-approved amendment:** after `90b5c26b3`, the user confirmed
+raising only the frontend LUT limit to **8,000**. Frontend FF remains 7,000;
+whole-design 32,000 LUT / 24,000 FF, RAM/DSP, cycle, profile and routed-timing
+requirements are unchanged. The partial frontend's 6,345 LUT now leaves **1,655 LUT
+before public MMIO/integration**; no further reduction is required merely to clear
+the old 6,000-LUT ceiling. This is not complete frontend or whole-design acceptance.
+
+**Remaining:** the partial component being below 32,000 LUT / 24,000 FF does not
+prove the protected whole design fits. Unrouted estimates still fail setup
+(streaming synthesis WNS −5.475 ns; default optimization −5.015 ns), so no routed
+timing acceptance follows. Public MMIO, full integration/quantum bounds, the two
+baseline fault-path differences, fresh full Linux/Wasm/platform gates, physical
+authorization and delivery remain open. ABI deployment remains 15. The amendment
+is documentation-only and supplies no new simulation, synthesis or route result.
+
+## Candidate indexed AXI-Lite MMIO component (`a07b89b06`)
+
+[`fifo_mmio.sv`](../../../fpga/host_bridge/rtl/fifo_mmio.sv) now implements the
+ABI-16 indexed range **0x150–0x32c**: discovery of semantic capabilities/limits,
+full-width live counters, retained fault sequence high, command filling/publication,
+FIFO reliable-result reads/releases and independently selected snapshot reads/ACKs.
+The matching candidate map is generated from
+[`semantic_registers.json`](../../../fpga/host_bridge/semantic_registers.json)
+to SV and Rust, separately from the unchanged deployed ABI-15 register schema.
+Stream data registers each occupy one u32 word, not a legacy 12-word window.
+Three Python tests check generated definitions, invalid maps/constants/receipts
+and the unchanged legacy version.
+
+**This is a component, not the complete public endpoint or an ABI promotion.**
+The 0x000–0x14c discovery/geometry, loader/service, recovery and retained-record
+range is not yet joined to it. The actual semantic audio/media/recovery wrapper,
+matching ARM/reference adapter and Stage 5 CPU-control retirement remain pending.
+The sequence-high input must be the qualified always-on retained recorder's full
+sequence, not the consumer's live attempted-group diagnostic. No default native,
+browser, deployed FPGA or audio pacing path selects this component yet.
+
+Transport/ownership properties:
+
+- Capture AW and W independently. Neither half alone issues a backend request;
+  accepted payload/address/strobes cannot be relabeled by later bus inputs.
+- Record per-half current-incarnation authority and invalidate it across runtime
+  reset/epoch changes. Pairing an old half with a new one completes safely with
+  epoch receipt 2 and no new-runtime mutation. Epoch change alone cannot make the
+  reset-latched command banks accept publication.
+- Keep global AXI reset separate from runtime reset. Runtime reset clears private
+  selection/cursors/ACK staging and refuses pending old callbacks, but does not
+  drop or rewrite an already copied RDATA/BRESP. It does not manufacture successful
+  execution, memory retirement or an ownership fence.
+- Use one independently outstanding read and write. Packet data copies into the
+  response register; RREADY/BREADY never hold RAM, execution or snapshot capacity.
+  ACK/reuse and rendering continue while the old response remains unread.
+- Do not advance failed/out-of-range reads, wrap a cursor, truncate invalid bank
+  selections, or let a previously accepted read advance a newly selected/rewound
+  cursor. Unavailable data returns zero/receipt 5, not a copied arbitrary RAM word.
+- Preserve OKAY plus receipts for semantic full/epoch/fault/old/unavailable/
+  incomplete refusals, including partial packet-data strobes. Malformed register
+  accesses retain SLVERR. ACK completion outranks a simultaneous read-status
+  update of the same receipt, so an epoch refusal cannot become accepted.
+
+[`semantic_mmio.rs`](../../../src/rust/rt_fpga_rtl/tests/semantic_mmio.rs) has
+**seven passing tests**, using actual paired banks/consumer/kernel/snapshot engine
+and synthetic local RAM. They check:
+
+1. All **400 packet-word prefixes**, incomplete/partial-strobe invisibility,
+   32-command execution while the publish B response is held, complete results,
+   cursor exhaustion, discovery/counters and malformed versus semantic refusals.
+2. Both AW/W reset orders; already copied R/B held across epoch change/reset;
+   private staging reset and epoch-only refusal without processing time advance.
+3. Reset between accepted packet/fill request and copied response: no dropped AXI
+   owner or new-incarnation effect; abandoned callbacks return epoch refusals.
+4. FIFO/non-head visibility behind a selected-but-unfenced switch, select/rewind
+   races, qualified synthetic fence completion, ACK/reuse and three later groups
+   rendering while old RDATA remains held. This fixture's fence is not real DMA.
+5. Faulted diagnostic reads remain available while new admission and result/
+   snapshot ACKs refuse with fault receipts and no architectural AXI error.
+6. Concurrent result and snapshot data reads cannot hide refused ACK receipts;
+   successful ACKs can free storage while the accepted read completes its copy.
+7. Both snapshot banks/full-bank skip, held initial-header read across ACK/reuse,
+   stale/wrong-epoch ACKs, all **4,880 u32 words / 128 rows** and no read-cursor alias.
+
+`stage4-semantic-mmio-milestone.{log,status}` passes **256 selected Rust tests =
+206 affected-package + 50 directed**. This includes both 3,970-case kernel oracles,
+all nine group cases and existing actual SP/JP, 128-row/initial snapshots, real
+media/AXI fences and stop/recovery/retained-fault regressions. Warning-denying
+workspace build, formatting, policy/coverage and AXI/host/register generators pass,
+as do **six offline Python tests** (three schema, three measurement). There is no
+fresh full Linux/Wasm, whole-design route or physical qualification.
+
+Retained failed evidence is explicit:
+
+- `stage4-semantic-mmio-tests-v1` has two invalid fixtures attempting another AR
+  while intentionally holding RVALID. Write-only attack helpers defer receipt
+  reads and keep both the original copied-response and backpressure assertions.
+- `stage4-semantic-mmio-tests-v2` passes the original four cases, before adding
+  further race/reset/fault tests; it is not the final seven-test gate.
+- `stage4-semantic-mmio-ack-read-race-v1` reproduces a **real receipt bug**: accepted
+  read status 0 overwrote epoch-refused ACK status 2 on the same clock. ACK-response
+  priority fixes it without extra states or cycles; the regression remains.
+- `stage4-semantic-mmio-tests-v3` passes six directed cases. The complete milestone
+  includes the seventh faulted-MMIO case and the broader 256-test matrix.
+
+Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim \
+    --test semantic_mmio -- --test-threads=1
+'
+nix develop --command python3 fpga/host_bridge/test_semantic_registers.py
+nix develop --command python3 fpga/host_bridge/generate_registers.py --check
+```
+
+**At this component-only checkpoint:** actual audio/media/recovery hookup and a
+fresh cost measurement including MMIO remained open. The following milestone
+records those steps; the complete low-range service/public endpoint and matching
+software still remain incomplete.
+
+## Actual indexed-MMIO/audio/recovery hookup and fresh partial resources
+
+`generate_semantic_mmio.py` generates `rtl/fifo_mmio_pipeline_axi.sv`, also covered
+by the normal `generate_top.py --check`. The wrapper joins indexed AXI-Lite to the
+actual semantic SP/JP/RAM, observation/snapshot producer, private media owner,
+shared AXI and always-on recovery. It introduces no controller or shadow owner:
+MMIO drives the existing private packet/ACK/read wires directly.
+
+Critical domain bindings are explicit:
+
+- Transport reset is global reset, not runtime reset; held RDATA/BRESP survive
+  safe runtime reset until ARM consumes them.
+- Local authority receives the actual recovery-owned runtime reset/incarnation,
+  not the initial seed epoch or a synthetic host pulse.
+- `FAULT_SEQUENCE_HIGH` receives `first_fault_sequence` from the qualified retained
+  recorder, not the consumer's live attempted group.
+- Private preparation/configuration and recovery-request inputs are still external
+  integration ports. They are **not** a complete 0x000–0x14c public service map.
+  The production native/browser/deployed FPGA/audio-pacing path is not promoted.
+
+### Actual-path verification
+
+Two new tests in `tests/support/semantic_mmio_audio.rs`, included by the existing
+`semantic_audio` target, use the real 64-bit AXI/media/recovery pipeline and DDR
+program storage, with 128 snapshot rows:
+
+- ACK/reuse of a snapshot bank while its old copied sequence word remains held in
+  RDATA; three exact silent quanta continue, both banks fill, and the next whole
+  opportunity skips without faulting. Readers/preparation do not advance time.
+- Initial selection and sample-accurate input/gain/output rendering while publish
+  B remains held; successful reliable completion comes through the actual
+  JP/cache/metadata/DMA fence, not a test-controlled callback.
+- ACK/reuse of the reliable bank with an old sequence word held in RDATA; a complete
+  32-command repeated-target gain group executes at one boundary, with all 32
+  original-f32 strobes, exact half-gain samples and copied-result immutability.
+- Every one of **4,880 u32 words** in a coherent actual 128-row snapshot is read
+  through indexed MMIO; original gain, epoch/F/revision/sequence/skip identity and
+  cursor exhaustion remain checked.
+- Actual-width counter probes seed a high u64 group identity without adding a
+  production restoration API. A genuine fault retains it. A held real DDR upload
+  AW prevents reset/epoch advance; actual external retirement then permits reset
+  and fresh local capture even with ARM R/B held. Retained sequence-high remains
+  correct after live diagnostic sequence becomes zero, until a genuine newer-epoch
+  fault. Stale admission/ACK cannot acquire or release fresh ownership.
+
+Small-fixture quantum costs are **[4662, 4662, 45, 4962, 6641] clocks**, command
+peak **1734**, snapshot peak **4619**. These are not all-admitted service/60,000-cycle
+bounds. The older dirty-writeback, unread-loader, failed-fence, 32-target, static
+composite, snapshot, stop/reset and qualified-fault assertions remain in the fresh
+broader gate.
+
+### Fresh fixed-profile measurement
+
+[Native reports, frozen inputs and results](reports/mmio-hookup-a07b89b06/results.json)
+use the same approved Q32/128-loop/512-state-buffer-view profile, 124 MiB sample
+arena, Vivado 2021.1, `xc7z020clg400-2`, 100 MHz and 1 ns I/O delays. This working-tree
+snapshot is based on `a07b89b06`; its complete source manifest and new generated
+wrapper are preserved, with **15 checksummed files**. The verified existing catalog
+is mounted read-only; no tool download or board access occurred.
+
+| Variant | Partial component LUT / FF | Frontend including indexed MMIO LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 30,664 / 21,616 | 6,985 / 6,727 |
+| Standard `opt_design` | 30,560 / 21,588 | **6,982 / 6,727** |
+
+The MMIO leaf is **638 LUT / 353 FF**. Kernel remains **1595 LUT / 1932 FF / no
+DSP**; component storage remains **62.5 RAMB36-equivalents** and four existing
+DSPs. Packed LUT totals include LUTRAM. Only the same four disjoint existing
+execution/media/AXI/program subtrees are excluded, now beneath `dut/pipeline`;
+raw primitive partitions are not packed LUT area. Synthesis primitive totals and
+post-optimization partitions are labeled separately.
+
+Synthesis and optimization complete with **zero errors/critical warnings**,
+runner status **0** and a complete marker. Synthesis reports 217 other warnings.
+Unrouted WNS is **−5.481 ns synthesis / −5.017 ns optimized**, WHS **+0.183 ns**.
+No place/route or protected-board result is supplied. The remaining **1018 LUT /
+273 FF** frontend margin does not increase or prove the independent whole-design
+budget. The endpoint still lacks the low-range service and matching software;
+this is **not** complete frontend acceptance.
+
+The new opt-in `--pipeline --mmio` freezes this composition, loads the semantic
+package first, performs standard optimization and checks the nested accounting
+boundaries. Without that option the historical consumer Tcl/default pipeline probe
+remain byte-identical. Offline regressions cover both modes and reject `--mmio`
+without `--pipeline` before creating output.
+
+### Milestone gates and reproduction
+
+- **258 selected Rust tests = 206 affected-package + 52 directed**, including both
+  3,970-case kernel oracles and the two new actual-MMIO tests.
+- **11 offline Python tests**, generator drift, coverage/test policy, formatting and
+  warning-denying workspace build pass.
+- Fresh full Linux: **3584 passed / 11 skipped**, nextest **0.9.116**, **406.205 s**,
+  isolated 48 kHz/128-frame dummy JACK and `SHOOP_ALLOW_MISSING_BACKENDS=1`.
+- Default application/worklet Wasm and optional `fpga-reference` worklet Wasm builds
+  pass. These are compile/dummy-host checks, not browser-runtime or physical-output
+  qualification. The two known standalone FPGA fault differentials remain Stage 6
+  work, not erased by these passing feature selections.
+
+Local logs/status: `stage4-mmio-hookup-{tests-v1,tooling-v1,milestone,measure-v1,export,linux,wasm}`
+under `work/cmd-fifo-investigation/`. Both new directed cases and the new synthesis
+run passed on their first attempt; no interrupted/failed run is relabeled.
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test semantic_audio mmio_audio -- --test-threads=1
+'
+nix develop --command python3 fpga/host_bridge/test_semantic_mmio.py
+nix develop --command python3 fpga/host_bridge/test_measure_semantic.py
+nix develop --command python3 fpga/host_bridge/measure_semantic.py \
+  work/cmd-fifo-investigation/vivado-mmio-hookup-rerun --pipeline --mmio --run \
+  --catalog work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip
+```
+
+Use a fresh output directory; historical reports/ceilings/outcomes remain unchanged.
+**Remaining:** complete 0x000–0x14c discovery/preparation/service/recovery/diagnostic
+MMIO, source-specific external audio/watchdog hookup, matching ARM/reference
+transports and CPU-control retirement, full admitted-service/lifecycle/route/board
+acceptance, the two baseline fault differences, and Stage 7 delivery/audit. Stages
+4–7 remain open; ABI 15 stays selected. No physical authorization, push/PR or
+whole-plan completion follows from this checkpoint.
+
+## Lower discovery, retained diagnostics and public recovery
+
+This historical checkpoint precedes the qualified safety milestone below; its
+resource figures and unmapped-ABORT boundary are retained as measured.
+
+The existing `fifo_mmio` AXI-Lite owner now supports a `SYSTEM_REGISTERS` subset,
+enabled by the generated actual-pipeline wrapper and disabled in the indexed-only
+component fixture. It adds:
+
+- Discovery/geometry 0x000–0x03c, including identity `0x53484f50` and version 16.
+  Candidate definitions independently mirror the legacy addresses, not its retired
+  operation table. The existing 512-job admission cap is preserved even with
+  larger backend storage. The bounded candidate defaults to 128 MiB; a zero or
+  unrepresentable u32 arena extent is rejected instead of truncating 4 GiB to zero.
+- Saturating completed-quantum and peak-quantum clocks, plus trusted hardware
+  audio-xrun readback at 0x104–0x10c. Peak timing reuses the existing opportunity
+  counter and includes the accepted-boundary clock; no second elapsed-time tracker
+  or CPU-driven processing gate was added. Counters clear on actual runtime reset.
+- Recovery discovery/status/request at 0x114–0x11c and safety submission receipt
+  at 0x120. MMIO owns private wires directly to the existing recovery controller.
+  Complete current-epoch requests accept only in states 0/3. Old epoch/AXI halves
+  refuse with OKAY/2, busy or failed state with OKAY/5, malformed strobes with
+  SLVERR. Receipt 0 means accepted request, never successful fence or application
+  Ready; state 3 means hardware reset complete. Query status after a lost ACK,
+  rather than destructively replaying a request.
+- Retained fault fields 0x124–0x14c from the same qualified always-on record as
+  sequence-high 0x174. Runtime epoch and fault epoch may legitimately differ.
+  Runtime reset preserves accepted safety receipts and copied AXI R/B, but poisons
+  incomplete old halves so they cannot initiate another reset in a new epoch.
+- IRQ for complete result/snapshot availability or terminal fault. Its consumers,
+  held responses and lower-register reads never control audio admission.
+
+No second AXI owner, recovery machine, state allocator or live-state control
+fallback was introduced. Preparation/configuration interfaces remain private
+integration ports. **Preparation/loader/service/optional-trace MMIO and 0x110 ABORT
+are not implemented.** ABORT and actual external audio/watchdog events still need
+source-qualified cause routing; this checkpoint does not flatten them to generic
+pipeline faults. Production remains ABI 15, not this incomplete candidate.
+
+### Actual-path tests and compatibility
+
+The actual-pipeline module now has three indexed-MMIO tests. The original exact
+rendering, 32 gains at one boundary, coherent 4,880-u32 snapshot and held-copy/
+ACK/reuse test remains. The full-width first-fault test now requests recovery
+through MMIO, holds that B and old fault R through actual DDR retirement/reset,
+and compares every lower retained field against the saved ten-field record.
+
+The new case verifies geometry, IRQ and exact completed/peak clock telemetry,
+wrong-epoch and busy recovery refusals, malformed strobes, and both AW-first and
+W-first incomplete recovery writes crossing actual reset. It holds a copied low
+EPOCH=1 read while hardware reaches epoch 2, then pairs the old half with a new
+one carrying epoch 2: the write returns receipt 2 and cannot replay recovery.
+Fresh startup proceeds despite the incomplete write/held read. Original fault
+cause/epoch/frame remain truthful and runtime counters clear without advancing F.
+
+Fresh `stage4-low-discovery-milestone-v2` passes **259 Rust tests = 206 affected
+packages + 53 directed**, both 3,970-case kernel oracles, warnings/formatting,
+policy/coverage, all generators and **12 offline Python tests**. Full Linux
+`stage4-low-discovery-linux-v2` passes **3,584 / 11 skipped** in **404.162 s** with
+nextest 0.9.116 and an owned isolated 48 kHz/128-frame dummy JACK server. Default
+application/worklet and optional-reference worklet Wasm builds pass. These are
+not browser-runtime or physical-output qualification.
+
+The first broad run caught wrong new test indices in the ten-field saved record
+(opcode 6 versus tag 66). All assertions remain after correcting the mapping; no
+RTL change was needed. The first concurrent Linux/default-workspace build used a
+mismatched host fixture rejecting `test_signal`. A freshly rebuilt matching host
+and sequential full rerun pass without host changes. Both failed logs/statuses
+remain preserved, not relabeled as successful gates. Do not concurrently replace
+native fixture binaries while nextest is executing them.
+
+### Fresh partial resources
+
+[Native reports and 19 checksummed files](reports/low-discovery-efaad8ccd/results.json)
+freeze the working-tree source snapshot based on `efaad8ccd`, including changed
+MMIO RTL, wrapper, generated definitions, schema/generators, profile and Tcl.
+Default consumer Tcl and the earlier non-MMIO pipeline probe remain unchanged.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 30,988 / 21,682 | 7,309 / 6,793 |
+| Standard `opt_design` | 30,884 / 21,654 | **7,306 / 6,793** |
+
+The MMIO leaf is **938 LUT / 419 FF**. Kernel remains **1,595 LUT / 1,932 FF /
+no DSP**; component storage remains **62.5 RAMB36-equivalents** and four existing
+DSPs. Packed hierarchy includes LUTRAM and excludes only the same four disjoint
+existing execution/media/AXI/program boundaries. Standard optimization completes,
+runner 0/complete marker pass, with zero native errors/critical warnings and 217
+synthesis warnings. Unrouted WNS is **−5.481 ns synthesis / −5.017 ns optimized**.
+No placement/route or complete frontend/protected whole-design acceptance follows.
+
+Current frontend margin is **694 LUT / 207 FF**. Remaining preparation/service/
+abort and board integration must fit that margin and independent whole-design
+ceilings, without changing profile or acceptance criteria. Matching ABI-16 ARM/
+reference software, CPU-control retirement, source-specific audio/watchdog hookup,
+full admitted-service/lifecycle/route/platform qualification, the two baseline
+fault differentials and Stage 7 delivery/audit remain. Stages 4–7 are incomplete;
+no ABI promotion, physical authorization, push/PR or overall completion is claimed.
+
+Reproduce narrow tests/measurement with the preceding commands and a fresh
+measurement output directory. Local evidence is `stage4-low-discovery-` logs:
+`tests-v1`, `tooling-v1`, `milestone-v2`, `measure-v1`, `export-v1`, `linux-v2`,
+`wasm` and `precommit`. Failed first broad/Linux runs retain their unsuffixed names.
+
+## Qualified ABORT/audio/watchdog safety routing
+
+This checkpoint precedes the reset-owned epoch refinement below; its measured
+resource/timing results remain historical.
+
+The existing MMIO owner now decodes **0x110 ABORT** with complete full-strobe,
+current-epoch AW/W authority and data equal to the epoch. A single half has no
+effect; malformed strobes return SLVERR, wrong epoch/old halves return OKAY/2.
+Receipt 0 accepts local halt only: it neither retires backend ownership nor reports
+fence success, safe reset or application Ready. The same existing sticky halt and
+same-edge side-effect masks apply. Only explicit recovery requests engage the
+actual serial AXI drain/reset controller; ABORT does not cancel or fabricate beats.
+
+Trusted `audio_fault`/`watchdog_fault` hardware inputs join the actual pipeline,
+not an ARM-mutated source register. Their flags remain **2/32**, ABORT remains
+**16**, and independent simultaneous generic pipeline faults retain **64**. The
+shared wrapper's qualified cause input defaults to generic 64 when zero, preserving
+existing callers; internal fault flags and AXI quiesce/drain qualification remain.
+No second owner/controller, elapsed timer, shadow record or CPU live-state fallback
+was introduced. Physical adapter/source integration remains incomplete.
+
+### Lifecycle verification
+
+Four actual-MMIO tests pass, including the existing exact render/32-command/
+4,880-u32 snapshot and full-width retained-record cases. The reset-crossing-half
+case now checks both recovery and ABORT, both AW-first/W-first, refusing stale
+pairs even when their data equals the fresh epoch. They cannot abort that runtime.
+
+The new test checks five source combinations: ABORT 16, audio 2, watchdog 32,
+audio+watchdog 34 and generic+watchdog 96. It renders while an ABORT AW is incomplete,
+checks malformed/stale refusal, captures the actual cause on the first event,
+and proves local halt leaves a real DDR AW owned with no reset. Later generic
+faults cannot relabel the record. Explicit recovery drains the original write;
+old cause RDATA and recovery BRESP survive reset/initial capture. Epoch advance
+alone retains the old record; a genuine epoch-2 watchdog event replaces it without
+relabeling already copied cause RDATA.
+
+First narrow/backtrace runs failed because the new fixture queried nonexistent
+`sample_output_valid`. Correcting it to actual `sample_output_write` retains the
+same-edge assertion, without RTL changes. Both failed logs remain. Fresh broad
+`stage4-qualified-safety-milestone` passes **260 Rust = 206 affected + 54 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped** in **404.838 s**, pinned
+nextest 0.9.116 with owned isolated dummy JACK; default application/worklet and
+optional-reference worklet Wasm builds pass. Native fixture builds and Linux tests
+were sequential with a fresh matching host. No physical/browser-runtime test ran.
+
+### Fresh partial resource checkpoint
+
+[Native reports and 25 checksummed files](reports/qualified-safety-d6faa5c77/results.json)
+freeze the `d6faa5c77`-based working-tree source, changed RTL/generators, profile and
+Tcl. Historical archives remain unchanged. The non-MMIO default profile now ties
+the new cause input to zero; tests remove only that one binding and byte-compare
+all remaining probe geometry/I/O and the consumer Tcl to historical evidence.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,160 / 21,688 | 7,481 / 6,799 |
+| Standard `opt_design` | 31,055 / 21,660 | **7,477 / 6,799** |
+
+MMIO is **964 LUT / 419 FF**; unchanged kernel source maps to **1,763 LUT / 1,936 FF /
+no DSP**. The component uses 62.5 RAMB36-equivalents and four existing DSPs. Packed
+hierarchy includes LUTRAM, subtracting only the same four disjoint existing backend
+boundaries. Runner 0/complete marker pass, zero native errors/critical warnings,
+217 synthesis warnings. **Unrouted WNS worsened from −5.017 to −9.142 ns** for both
+new variants; no place/route or complete frontend/protected whole-design acceptance.
+
+Remaining frontend margin is **523 LUT / 201 FF**. Preparation/loader/service/
+optional-trace MMIO, external audio/watchdog adapter integration, matched ABI-16
+ARM/reference transports, CPU-control retirement, admitted-service/lifecycle/
+whole-design/route/platform acceptance, the two baseline fault differentials and
+Stage 7 delivery/audit remain. Stages 4–7 are incomplete; ABI 15 stays selected.
+No new physical authorization, push/PR or overall completion is claimed.
+
+Reproduce with the preceding narrow commands and a fresh `--pipeline --mmio`
+measurement directory. Local gates use prefix `stage4-qualified-safety-`:
+`tooling-v1`, `test-v2`, `measure-v1`, `milestone`, `wasm`, `linux`, `export`,
+`precommit`. Failed `tests-v1`/`test-backtrace` logs/statuses remain preserved.
+
+## Reset-owned epoch authority: margin before loader buffering
+
+Only the actual wrapper now selects `EPOCH_RESET_COUPLED=1`. The existing
+always-on recovery controller latches runtime epoch at global reset and advances
+it only while asserting actual safe runtime reset. MMIO can use that existing
+authority instead of retaining another 32-bit tracker/comparator. Standalone MMIO
+keeps default 0, including independent epoch-change invalidation; coupled mode is
+not valid for an independently changing epoch source. No controller, epoch width,
+startup capture/authority gate or acceptance criterion is reduced.
+
+Runtime reset still poisons incomplete halves and callbacks, clears local cursors/
+ACK authority and preserves global AXI transport ownership. Old copied RDATA and
+BRESP remain stable; actual banks/capture still latch the real reset-qualified
+incarnation. No reader, ACK or boot-seed change can release startup or advance F.
+
+### Verification and fresh resources
+
+A fifth actual-MMIO test changes the boot seed from 1 to 99 while the real runtime
+remains epoch 1. Seed-99 ABORT/recovery refuse; a real epoch-1 group executes with
+its publication B held. It observes every clock around the actual epoch 1→2
+transition and requires reset asserted at that transition, holding EPOCH=1 RDATA
+and recovery B through initial capture/startup. Then a global reset with seed zero
+proves a later seed-99 change alone cannot release startup. A genuine global reset
+latches 99. The prior four actual-path and seven standalone cases retain all
+assertions for generic epoch changes, old halves, callbacks and copied responses.
+
+[Native evidence and 16 checksummed files](reports/coupled-epoch-519455096/results.json)
+freeze the `519455096`-based source snapshot, changed RTL/generator, profile and
+reports. The public MMIO profile is byte-identical to the preceding qualified-safety
+probe; default non-MMIO/consumer guards remain unchanged. No I/O/capacity/clock/
+constraint/profile reduction or historical evidence rewrite occurred.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,140 / 21,656 | 7,461 / 6,767 |
+| Standard `opt_design` | 31,035 / 21,628 | **7,457 / 6,767** |
+
+MMIO is **944 LUT / 387 FF**: saving **20 LUT / 32 FF**, leaving **543 LUT / 233 FF**.
+Kernel remains 1,763 LUT / 1,936 FF / no DSP; component storage remains 62.5 RAMB36-
+equivalents/four existing DSPs. Packed hierarchy includes LUTRAM and subtracts only
+the same four disjoint existing backends. Runner 0/complete marker pass, zero
+errors/critical warnings, 217 synthesis warnings. Unrouted WNS improves from −9.142
+to **−8.997 ns**, still unclosed and worse than older −5.017 ns. No route or complete
+frontend/protected whole-design acceptance is supplied.
+
+Fresh `stage4-coupled-epoch-milestone` passes **261 Rust = 206 affected + 55 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped** in **405.239 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and optional-reference
+worklet Wasm builds pass. Fixture builds and full Linux tests ran sequentially;
+these are not physical or browser-runtime gates.
+
+At this epoch-refinement checkpoint no public preparation/loader/service/optional-
+trace lane was added: its buffered storage was next under the measured margin. External audio/watchdog adapter,
+matching ABI-16 software/CPU-control retirement, full admitted-service/whole-design/
+route/platform acceptance, the two baseline fault differences and Stage 7 delivery/
+audit remain. Stages 4–7 are incomplete, ABI 15 stays selected, and no push/PR,
+physical authorization, deployment or overall completion is claimed.
+
+Local gates use prefix `stage4-coupled-epoch-`: `tooling-v1`, `tests-v1`, `measure-v1`,
+`milestone`, `wasm`, `linux`, `export`, `precommit`. Measurement reproduction still
+requires a fresh output directory and the verified existing Vivado image/catalog.
+
+## Configuration-only public service: actual CORE/AUDIO/STORE ownership
+
+The existing MMIO transaction owner now optionally enables `SERVICE_REGISTERS=1`
+on the actual candidate. CORE_CONFIG 1, AUDIO_CONFIG 2 and STORE_CONFIG 3 route to
+the real SP, JP and metadata configuration endpoints; their 16 input signals become
+private MMIO-owned wires. Backend outputs remain observable. Bulk media command/
+data ports are still separate integration seams. No legacy dispatcher, second
+transport/recovery owner, CPU semantic planner or continuing-state initializer is
+introduced. Matched ABI-16 software and trusted unused-lease APIs remain Stage 5.
+
+A single 16-u32 distributed RAM holds the private request and paired result.
+Epoch, full opcode and all twelve zero-padded payload words are written in order,
+then a nonzero tag publishes once. Rewriting epoch restarts an unpublished fill;
+wrong-order/duplicate fields refuse incomplete without advancing the cursor.
+Publication validates completeness/incarnation before reservation, then serial
+full-width/control/reserved checks precede any endpoint grant. This ordering
+matches the inspected existing submit sequence, not a claim that the ABI-15
+client already supports ABI 16. See the [contract](../../../fpga/host_bridge/semantic_fifo.md#preparation-and-lifecycle-service-map).
+
+One cursor, one selected RAM read/write and one 160-bit working register avoid
+wide validity masks or dissolved RAM. The backend response is captured without
+ARM readiness and copied into private RAM over five clocks. Unread replies retain
+only this lane, not the backend or semantic results/snapshots. STATUS bits 0/1
+report request space/response pending; IRQ includes complete service replies.
+Matching POP releases storage, while accepted RDATA remains immutable through
+POP/reuse. Shared RAM read arbitration can defer AR during POP; it does not gate
+processing. Runtime reset flushes local service authority, preserves global copied
+R/B and poisons incomplete old halves. Halt/uncertainty never becomes a fake
+cancellation, retirement or successful memory-ownership fence.
+
+### Codec preflight evidence, not integrated fit arithmetic
+
+All four native standalone experiments are preserved in the
+[new archive](reports/config-mmio-606ce161b/results.json), including sources,
+Tcl/provenance and optimized utilization/timing. None is full frontend acceptance.
+
+| Standalone design | Optimized LUT / FF | LUTRAM | Unrouted WNS ns |
+| --- | ---: | ---: | ---: |
+| Five distributed fields | 548 / 89 | 120 | +2.164 |
+| Serial validation, multiple RAM reads | 522 / 701 | 0 | +2.596 |
+| One selected RAM read | 360 / 221 | 24 | +2.029 |
+| Cursor and tag in RAM, selected read/write | 315 / 175 | 24 | +1.210 |
+
+The multiple-read variant's RAM dissolved into FFs despite its attribute; selecting
+one address restored inference. The final cursor replaces the field mask/tag
+register without reducing data width or permitted configuration payloads. Nominal
+leaf cost versus prior margin was preflight only; fresh native subtraction below
+establishes the integrated partial area.
+
+### Public real-path verification
+
+Three standalone codec, seven indexed-MMIO and seven actual-MMIO cases pass.
+The actual tests now initialize unused observations and upload programs through
+public requests, rather than exposed configuration inputs. Held-DDR cases start
+requests without waiting for intentionally stalled backend completion. All
+existing sample/fence/128-row/retained-fault/boot-seed assertions remain.
+
+Two additional actual tests verify every unpublished request prefix with unchanged
+gain and continuing audio, full 32-bit scratch/full 160-bit metadata readback,
+held publication B, unread replies, held RDATA across POP/reuse and continued
+rendering. Both old-half orders cross real DDR drain/reset with a service word
+already copied into RDATA; the fresh epoch refuses the old pair without starting
+an epoch fill, and initial capture needs no reader. Retired operation 16 and a
+backend refusal expose failure/zero data without replay or audio fault.
+
+The first lifecycle run incorrectly treated audio space 3 as readable history;
+it is write-only history invalidation. Fixtures now use readable scratch space 2,
+while explicitly retaining space-3 read refusal/zero-data/continued-render checks.
+Failed `stage4-config-mmio-lifecycle-v1` remains evidence. No RTL workaround or
+weakened assertion was needed.
+
+Fresh `stage4-config-mmio-milestone` passes **266 Rust = 209 affected + 57 directed**,
+including both 3,970-case kernel oracles, warnings/formatting/policy/coverage,
+generators and **12 Python tests**. Full Linux passes **3,584 / 11 skipped** in
+**405.917 s**, nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and
+optional-reference worklet Wasm builds pass. Builds/tests ran sequentially with
+a matching host fixture. These are not physical or browser-runtime qualification.
+
+### Fresh integrated partial resource checkpoint
+
+[Native reports and 40 checksummed files](reports/config-mmio-606ce161b/results.json)
+freeze `606ce161b` plus the exact measured source. All 65 native source hashes match
+current measured files. The separately checked register generator reproduces the
+frozen map and validates all twelve words of both data windows for overlap/range.
+The probe changes only by removing the 16 configuration input declarations and
+16 bindings now owned internally. A strict byte check excludes exactly those
+32 lines; every other byte/parameter remains identical. No profile/capacity/clock/
+delay reduction or historical evidence rewrite occurred.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,674 / 21,832 | 7,995 / 6,943 |
+| Standard `opt_design` | 31,568 / 21,804 | **7,990 / 6,943** |
+
+Packed hierarchy includes LUTRAM and subtracts only the same four disjoint existing
+execution/media/AXI/program backends. MMIO is **1,030 LUT / 388 FF**; service is
+**315 LUT / 175 FF**, including 24 LUTRAM. Kernel remains **1,763 LUT / 1,936 FF /
+no DSP**; storage remains 62.5 RAMB36-equivalents/four existing DSPs. Runner 0 and
+complete marker pass, zero errors/critical warnings, 217 synthesis warnings.
+**Unrouted WNS regressed from −8.997 ns to −12.580 ns synthesis / −12.116 ns
+optimized.** No placement/route or complete frontend/protected whole-design gate
+passes. Only **10 LUT / 57 FF** remain after optimization (5 LUT / 57 FF synthesis).
+Remaining integration must fit unchanged limits; an actual breach returns to the
+user rather than silently raising limits or reducing scope.
+
+**This is configuration-only:** STORE_CONFIG is metadata, not bulk media upload.
+Other legitimate preparation/media/lifecycle/optional-trace services remain
+required, not retired by this subset's refusals. External audio/watchdog adapter,
+matched ABI-16 ARM/reference transports, CPU-control retirement, full admitted-
+service/whole-design/route/platform qualification, both baseline fault differences
+and Stage 7 delivery/independent audit remain. Stages 4–7 are incomplete, production
+stays ABI 15, and no physical permission/push/PR/deployment/completion is claimed.
+
+Reproduce narrow cases through Nix:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim \
+    --test semantic_mmio --test config_service -- --test-threads=1
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test semantic_audio mmio_audio -- --test-threads=1
+'
+```
+
+Measurement still uses a fresh `--pipeline --mmio` output directory and the verified
+existing image/catalog. Local prefix `stage4-config-mmio-` has `tests-v1`, `tooling-v1`,
+`lifecycle-v2`, `measure-v1`, `milestone`, `wasm`, `linux`, `export` and `precommit`;
+failed lifecycle-v1 is retained. Earlier standalone logs use `stage4-config-codec-`.
+
+## Reply-data mux sharing: 47-LUT area-only refinement
+
+Only the existing reply-data selector moves from the wrapper into the codec's
+capture/shift cone, allowing synthesis to share adjacent mux logic across the
+former hierarchy boundary. The same 160-bit working register captures raw
+129/32/160-bit CORE/AUDIO/STORE data, with unchanged states/cycles/widths,
+handshakes, error masking and copied-response ownership. No new controller,
+record, queue or soft CPU is introduced. The synthetic endpoint now drives
+three distinct replies, retaining exact source/unused/error-data and halt/reset
+assertions. Seven indexed and seven actual-MMIO cases retain all assertions.
+
+[Native reports and 16 checksummed files](reports/reply-mux-b21d0925a/results.json)
+freeze the `b21d0925a`-based source. All 65 native source hashes match measured
+files. Public probe bytes and complete profile metadata equal the preceding
+configuration checkpoint, with no I/O/capacity/clock/constraint reduction.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,627 / 21,832 | 7,948 / 6,943 |
+| Standard `opt_design` | 31,521 / 21,804 | **7,943 / 6,943** |
+
+The root loses 127 LUT and codec gains 80 LUT (now **395 LUT / 175 FF**), saving
+**47 LUT / no FF**, not the larger preflight hypothesis. Current headroom is
+**57 LUT / 57 FF** optimized (52 LUT / 57 FF synthesis). MMIO remains 1,030 LUT /
+388 FF, kernel 1,763 LUT / 1,936 FF / no DSP. Packed accounting includes LUTRAM
+and excludes only the same four disjoint existing backends. Storage remains
+62.5 RAMB36-equivalents/four existing DSPs; runner 0/complete marker pass, zero
+errors/critical warnings, 217 synthesis warnings.
+
+**Unrouted WNS −12.579 ns synthesis / −12.115 ns optimized is effectively
+unchanged**, not timing closure. The current worst estimate is a 40-level path
+from MMIO ABORT qualification through SP/observation/consumer faults, service halt
+and real SP configuration readiness into the service cursor. It must be repaired
+without false timing exceptions or weakening same-edge effect suppression.
+No route, complete frontend or protected whole-design acceptance is established.
+
+`stage4-config-reply-mux-milestone` passes **266 Rust = 209 affected + 57 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped**, **403.944 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK. Default application/worklet and optional
+reference worklet Wasm builds pass. Builds/tests remain sequential; no physical
+or browser-runtime qualification follows.
+
+This still implements only configuration 1/2/3. Remaining preparation/media/
+lifecycle/trace services, external adapters, matching software/CPU bridge retirement,
+admitted-service/whole-design/route/platform gates, both baseline fault differences
+and final delivery/independent audit remain. Production stays ABI 15; Stages 4–7
+remain incomplete. No push/PR/deployment/new physical permission is implied.
+Local prefix `stage4-config-reply-mux-` contains `tests-v1`, `measure-v1`,
+`milestone`, `wasm`, `linux`, `export`, `precommit`; the previous archive stays
+immutable. Reproduction uses the same narrow/full-profile commands above.
+
+## Valid-independent readiness: acceptance preserved, timing still unclosed
+
+Two dual-region background-write `cfg_ready` expressions no longer depend on
+requester `cfg_valid`. Actual acceptance remains valid-and-ready:
+`valid && (idle || valid && eligible) == valid && (idle || eligible)`.
+Ready without valid cannot grant, mutate RAM or create a callback. Actual child
+valid/grants, local/processing priority, single-region protection, capture and
+same-edge halt masks stay unchanged. No registers/states/widths or accepted-
+transaction cycles change; no timing exception is added.
+
+The new regression runs **eight configurations**: standalone SP/audio core ×
+one/two regions × local/DDR program memory. It checks four internal grant probes,
+129/64-bit RAM fingerprints, no backend request/response/frame advance under
+valid 0, capture exclusion, then valid-1 acceptance/original four-beat DDR payload/
+completion. All seven indexed and seven actual-MMIO cases remain green, including
+same-edge safety and reset ownership. First fixture attempts supplied a 160-bit
+value to a 129-bit port; corrected before-fix-v3 then fails actual readiness 0 vs 1.
+The initial surrounding run exposed a default driver's inapplicable busy/ready
+exclusion on dual-region loading. Its explicit loading variant retains run/job
+exclusions, payload protocol and bounds; default/single-region guards and all
+actual-effect assertions stay intact. Failed logs remain retained.
+
+[Native reports and 18 checksummed files](reports/config-ready-b1c37e8fd/results.json)
+freeze source based on `b1c37e8fd`, including changed RTL and regression/driver.
+All 65 native source hashes match; public profile bytes, complete metadata and
+Tcl constraints equal the preceding checkpoint. No I/O/profile/capacity reduction.
+
+| Variant | Partial component LUT / FF | Replacement frontend LUT / FF |
+| --- | ---: | ---: |
+| Synthesis | 31,624 / 21,832 | 7,948 / 6,943 |
+| Standard `opt_design` | 31,518 / 21,804 | **7,943 / 6,943** |
+
+Only **three LUT in excluded execution** are saved; frontend margin remains
+**57 LUT / 57 FF**, not 60 LUT. Packed LUTRAM/four disjoint exclusions are unchanged.
+MMIO 1,030/388, codec 395/175, kernel 1,763/1,936/no DSP, 62.5 RAMB36-equivalents/
+four existing DSPs remain. Runner 0/complete marker pass, zero errors/critical
+warnings, 217 synthesis warnings.
+
+Worst unrouted WNS improves 2.361 ns to **−10.218 ns synthesis / −9.754 ns
+optimized**. **Aggregate TNS worsens to −58,656.453 ns / 12,143 failing setup
+endpoints**. The new worst path has 35 levels/19.204 ns estimated data delay,
+MMIO ABORT through faults/service valid into actual SP state-RAM write enable.
+There is still no route, complete frontend/protected whole-design acceptance,
+nonnegative timing or admitted-quantum proof. Do not weaken same-edge suppression
+or hide the remaining path with timing exceptions.
+
+`stage4-config-ready-milestone` passes **267 Rust = 209 affected + 58 directed**,
+both 3,970-case kernel oracles, warnings/formatting/policy/coverage, generators and
+**12 Python tests**. Full Linux passes **3,584 / 11 skipped**, **400.699 s**, pinned
+nextest 0.9.116/owned isolated dummy JACK. Default app/worklet and optional-reference
+worklet Wasm builds pass. All ran sequentially, not physical/browser-runtime proof.
+
+Only configuration 1/2/3 is joined. All remaining preparation/media/lifecycle/
+trace services, external adapters, matched software/CPU bridge retirement,
+admitted-envelope/whole-design/route/platform gates, two baseline fault differences
+and delivery/independent audit remain. ABI 15 stays selected; Stages 4–7 remain
+incomplete. No push/PR/deployment/new physical permission is implied. Local prefix
+`stage4-config-ready-` contains before-fix-v1/v2/v3, tests-v1, narrow/narrow-v2,
+measure-v1, milestone, wasm, linux, export and precommit logs; historical archives
+are unchanged. Same narrow/full-profile reproduction commands apply.
+
+## Public CLEAR_VIEW: functional subset, not complete preparation or measured fit
+
+The same reserved private service slot now accepts opcode 4. Payload words 0–1
+carry a full u64 view; words 2–11 must be zero. After complete publication and
+validation, the existing private loader and accepted-operation owner execute
+backend CLEAR 2. No second dispatcher, backend owner, working record or processing
+gate is added. The shared 160-bit record carries the view; local response-ready
+consumes the completion without ARM service. All twelve reply data words are zero,
+not stale metadata. Clear is not a program fence, rollback/cancellation or a grant
+to modify a continuing lease; the trusted Stage 5 API still must enforce ownership.
+
+Seven media-command/response-ready inputs become private, in addition to the
+sixteen existing configuration controls. Sample-data ports remain integration
+seams until complete public bulk preparation is implemented. The profile test
+allows exactly these seven additional declarations/bindings to disappear, with
+all other probe bytes/geometry unchanged. Full private 32-word staging and other
+legitimate media/lifecycle/trace operations remain required, not retired features.
+
+Four codec, seven indexed and eight actual-MMIO cases pass. The new actual case
+clears an unused empty range-view, renders silent quanta at every unpublished
+prefix and with B/R held, verifies locally consumed completion before ARM reads,
+reuses the lane with copied RDATA held, rejects u64 aliasing/reserved fields, and
+checks RPCs do not advance F. Codec coverage adds all ten reserved words and
+eighteen halt positions through validation/issue/wait, late replies and reset/no
+replay. The empty-view fixture does not establish nonempty clear/fence or complete
+hostile-lifecycle qualification.
+
+[Functional evidence and source hashes](reports/clear-view-8d60ec301/results.json)
+record **269 Rust tests = 210 affected + 59 directed**, both 3,970-case kernel
+oracles, warning-denying workspace build, formatting, policy/coverage, generators
+and **12 Python tests**. Full Linux passes **3,584 / 11 skipped**, **405.368 s**,
+pinned nextest 0.9.116/owned isolated dummy JACK. Default application/worklet and
+optional-reference worklet Wasm builds pass. Builds/tests ran sequentially.
+Local prefix `work/cmd-fifo-investigation/stage4-clear-view-` contains codec-v1,
+narrow-v1, milestone, wasm and linux logs/statuses; all passed. Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim \
+    --test config_service --test semantic_mmio -- --test-threads=1
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_testbench --features sim \
+    --test semantic_audio mmio_audio -- --test-threads=1
+'
+```
+
+Under the functional-first amendment this small service extension has no new
+synthesis/route measurement. The previous **7,943 LUT / 6,943 FF / −9.754 ns** are
+pre-change partial evidence, not measured CLEAR_VIEW fit, complete frontend or
+protected whole-design acceptance. Final agreed LUT/FF budgets and unchanged
+BRAM/DSP/profile/cycle/routed-timing requirements remain. Bulk/lifecycle/trace,
+external adapters, matched software/CPU retirement, full admitted service,
+platform/fault-parity and delivery/independent audit remain open. ABI 15 stays
+selected; Stages 4–7 remain incomplete. No physical/browser-runtime qualification,
+physical authorization, push/PR or deployment follows.
+
+## Public optional trace: complete copied reads without mandatory backpressure
+
+The existing immutable event slot now feeds a public reader in the same MMIO
+owner. Read-only status/loss/receipt occupy 0x480–0x48c; the eleven-u32 aperture at
+0x490–0x4b8 returns captured epoch, producing u64 revision and the raw 256-bit SP
+event. One four-bit cursor requires a complete ordered prefix; only its final AR
+may release the source. The existing global RDATA register owns that accepted
+word across source consume/replacement or runtime reset. No second record, owner,
+publication counter or processing gate is added. Trace-ready is private; optional
+trace adds no IRQ dependency or effect on reliable result/snapshot reservations.
+
+Header reads may rewind the held record. Empty/epoch/wrong-order reads return
+OKAY/zero plus receipts 5/2/7; malformed accesses use SLVERR. Faulted final reads
+copy data but refuse release with receipt 3. Reset clears partial-read authority,
+not copied global R/B. A repeated final read cannot consume a replacement without
+its whole prefix. Matching software serializes whole records, checks incarnation
+and cancels stale read callbacks. The existing live saturating u64 loss counter
+is read high-low-high plus epoch; it is not a captured packet field. Full readers
+cause nonfatal loss only, never mandatory-effect backpressure or audio pacing.
+These reads/consumption are not a program/cache/DMA fence or application Ready.
+
+The new standalone test covers all twelve reset-prefix positions, disabled and
+malformed accesses, ordering/rewind, full-width data/revision/loss, source reuse
+with R held, stale final reads and faulted retention. The new actual SP/JP/media/
+AXI test renders exact samples at each partial prefix and with R held; mandatory
+pulse F/validity keep updating while losses rise and the old trace stays immutable.
+It reads a replacement and retains copied trace R/public recovery B through real
+safe reset. Existing snapshot/semantic/service/fence/safety tests remain intact.
+
+[Functional results and source hashes](reports/trace-mmio-abff6a9af/results.json)
+record **271 Rust = 211 affected + 60 directed**, both 3,970-case kernel oracles,
+warning-denying build, formatting/policy/coverage/generators and **12 Python tests**.
+Eight indexed/nine actual-MMIO tests pass. Full pinned-nextest Linux passes
+**3,584 / 11 skipped**, **405.651 s**, owned isolated dummy JACK; default app/worklet
+and optional-reference Wasm builds pass. All builds/tests were serialized, not
+physical or browser-runtime qualification. Local prefix `stage4-trace-` includes
+smoke-v1, tests-v1, actual-v1, milestone, wasm and linux logs/statuses, all passed.
+The narrow reproduction above now includes both new trace cases.
+
+The default standalone interface remains disabled/unmapped; the actual wrapper
+enables it. The profile guard permits exactly the extra trace-ready input and
+binding to become private, retaining all other bytes/geometry. There is no new
+synthesis/route or measured fit; **7,943 LUT / 6,943 FF / −9.754 ns** remain older
+pre-CLEAR_VIEW/trace results. Bulk preparation/media/lifecycle, external adapters,
+matched software/CPU-control retirement, full envelope/area/route/platform/fault-
+parity and delivery/independent audit remain open. Production is still ABI 15;
+Stages 4–7 remain incomplete. No physical authorization, push/PR or deployment.
+
+## Public bulk media: one descriptor and the existing private loader bank
+
+Service **17 MEDIA_COMMAND** fills the required media preparation path without
+reviving retired CPU opcodes. Payload carries full backend opcode 0–7, u64 view/
+start/length, u32 count and four reserved-zero words. APPEND/READ count is at most
+32. Full validation precedes grant; existing native geometry checks remain. The
+single working record grows **160→224 bits**, not a second record; configuration/
+CLEAR formats, 16-u32 RAM, seven phases and five-clock reply copy are unchanged.
+The trusted Stage 5 API still must enforce inactive/unused/retired lease ownership.
+
+Status/tag/write/read/receipt at 0x400–0x410 use one authorization bit against the
+existing reserved request tag. No second payload bank, backend owner, dispatcher,
+publication counter or processing gate is added. APPEND descriptor acceptance
+reserves the private fill lane, but only the whole body can acquire the store.
+READ copies its complete result before ARM service; accepted AR consumes into
+existing global RDATA without waiting for RREADY. POP refuses 7 while private data
+remains. Completed error prefixes discard locally; validation refusal cannot drain
+unrelated data. Backend view/empty/read count are copied into the same reply RAM,
+with zero padding/error data. Halt preserves uncertainty, not rollback/cancel or
+retirement. A loader FENCE never substitutes for the consumer's qualified handoff.
+Runtime reset clears local tag/data authority while old global R/B stay immutable;
+old AW/W halves cannot mutate the new incarnation. Polls/data/POP do not advance F.
+
+Four new codec cases test all backend descriptors at full width, tag/data gates,
+reserved/alias/count refusal, retired-error discard, nineteen halt positions and
+a refused media tag not redirecting another configuration's RAM address. Two new
+actual store/cache/DMA/64-bit-AXI cases test every fourteen-word header and 32-word
+body prefix with exact silent quanta, held publication/data B, unread reply/data,
+malformed accesses without consumption, zero counts, all operations, real dirty
+fence stalling and all 32 samples in independent backing memory. A copied final R
+survives POP/reuse while the new source holds a different word. Nonempty public
+CLEAR_VIEW and both reset-crossing media-half orders are covered. Genuine external
+retirement precedes epoch 1→2 and the old copied bulk word survives reset. This
+is not a new authored-JP/all-admitted envelope or physical qualification; retained
+actual JP/playback/capture and semantic/snapshot/fault regressions also pass.
+
+[Results/source hashes](reports/bulk-media-69cb80a00/results.json) record
+**277 Rust = 215 affected + 62 directed**, both 3,970-case kernel oracles,
+warning-denying workspace build, format/policy/coverage/generators and **12 Python
+tests**. Eight codec/eight indexed/eleven actual-MMIO tests pass. Full Linux passes
+**3,584 / 11 skipped**, **405.549 s**, pinned nextest 0.9.116/owned isolated dummy
+JACK; default app/worklet and optional-reference worklet Wasm builds pass. Builds/
+tests ran sequentially. Local prefix `stage4-bulk-`: smoke-v1, actual-v1/v2,
+milestone, wasm and linux logs/statuses pass. The narrow commands above include
+the new actual cases; `--test config_service` runs the codec cases.
+
+The profile guard permits only three additional data-input declarations/bindings
+to become private: 26 configuration/media inputs plus trace-ready, all other probe
+bytes/geometry unchanged. There is no new synthesis/route or current-source fit;
+**7,943 LUT / 6,943 FF / −9.754 ns** remain pre-CLEAR_VIEW/trace/bulk-media values.
+At this checkpoint lifecycle/ENABLE_AUDIO 9, external adapters and remaining
+acceptance were open; the following milestone joins enable and pacing offline.
+ABI 15 stays selected; no physical authorization, push/PR or deployment follows.
+
+## ENABLE_AUDIO and existing generated/I²S/watchdog adapters
+
+Service **9** now carries a full 0/1 plus eleven reserved-zero words through the
+same private lane, seven phases and reply RAM, with two local enable/started bits.
+It never issues a backend request or waits for backend/ARM readiness. Replies are
+all zero. Duplicate enable is idempotent. Disable is one-way until safe runtime
+reset: it stops new admissions, not accepted work, and grants no retirement/fence/
+application-Ready authority. Halt masks enable immediately through the existing
+sticky runtime owner; reset clears local lifetime/half/callback authority, not
+accepted global R/B. Malformed/aliases refuse before any effect.
+
+Initial installation must be published by the trusted Stage 5 API before enabling;
+selection/rendering then happen at the first real audio-owned F. Requiring prior
+selection would need a fake startup quantum or second scheduler. Hardware does
+not use service delivery/readback as a quantum. Generated `fifo_audio_host_axi.sv`
+privatizes run shape/opportunities and sample streams, reuses existing generated/
+I²S audio_io banks/clocks/ready/done, and adds no dispatcher/backend/recovery owner.
+Candidate drivers bind the existing watchdog to **60,000 clocks**, retaining reason
+2 as qualified cause **32** (other audio faults 2); legacy defaults stay unchanged.
+Only explicit recovery invokes the existing genuine AXI retirement/reset path.
+
+Two codec cases test every header prefix/reserved bit/boolean and opcode alias,
+zero replies despite stale backend responses, one-way/reset, unread results and
+twenty halt positions. Three new actual cases test exact generated stereo with
+B/R held, unread semantic/snapshot returns and copied tag 71 across POP/reuse with
+tag 72; disable while accepted SP/JP work remains live; asynchronous I²S ADC→SP/JP→
+DAC with 48 final PCM words; actual stalled DDR AR triggering watchdog 32 without
+automatic recovery; and both old-half orders through real retirement/reset with
+copied cause R held. Fresh epoch-2 enable is explicit; state 3 is not app Ready.
+
+[Results/source hashes](reports/lifecycle-audio-ba97f98e6/results.json) record
+**286 Rust = 217 affected + 69 directed**, including four retained audio-I/O tests,
+both 3,970-case kernel sources, warnings/format/policy/coverage/generators and
+**13 Python tests**. Ten codec/eight indexed/fourteen actual-MMIO cases pass. Full
+Linux passes **3,584 / 11 skipped / 405.643 s**, pinned nextest 0.9.116/owned isolated
+dummy JACK; both Wasm profiles pass. Builds/tests remain serialized. Local logs
+`stage4-lifecycle-{smoke-v2,actual-v1,milestone,linux,wasm}` pass. Smoke-v1's mistaken
+probe-token count (3 on two lines, not 2) is retained as a fixture failure.
+
+The profile guard permits only the added enable declaration/binding beyond prior
+private inputs; all other geometry/probe bytes remain. No synthesis/route/current-
+source fit or full admitted-envelope proof is claimed. Earlier **7,943/6,943/
+−9.754 ns** figures predate CLEAR_VIEW/trace/bulk/enable/adapters. DRAIN_STOP **12**
+is legitimate pending lifecycle scope, not retired along with CPU control 10/11 or
+13–16; the contract corrects the earlier overbroad range. Complete hostile lifecycle,
+matched ABI-16 software/CPU retirement, full envelope/whole-design/route/platform/
+fault-parity, independent audit and delivery remain open. ABI 15 stays selected;
+Stages 4–7 remain incomplete. No physical qualification/push/PR/deployment follows.
+
+## DRAIN_STOP: accepted processing before the existing real media fence
+
+Legitimate service **12** now validates twelve reserved-zero payload words before
+any stop/backend effect. It drops the existing enable flag; the generated wrapper
+gates **both valid and ready** on registered disable and whole processing idle.
+This prevents a fence racing a quantum accepted at the stop edge. Accepted SP/JP
+work finishes; no cancellation, extra state bit, phase, timer, transaction tracker
+or second owner is added. Internal operation 7 uses the same record/result RAM,
+private loader and accepted media owner for native FENCE 7 with zero descriptor.
+Real cache/DMA/metadata completion is copied locally with twelve zero reply words,
+independent of ARM B/R/POP readiness.
+
+Success is this media fence, not consumer handoff, whole-runtime retirement,
+permission to free continuing leases, cancellation or application Ready. Re-enable
+after an enabled lifetime stops refuses 2 until safe runtime reset. Revised static
+installation still needs genuine retirement/safe reset, fresh incarnation and
+allocator. Errors/halt yield uncertainty 3, never rollback/replay. The candidate
+preparation/lifecycle hardware **map** is now complete; trusted matched software,
+complete hostile lifecycle and Stage 4 acceptance are not.
+
+Two codec tests cover all **384 reserved-bit failures**, all fourteen unpublished
+prefixes, stop before withheld endpoint grant, no idle-as-fence success, zero
+replies, refused re-enable, nineteen halt positions, backend error/reset/no replay.
+Two actual generated-audio/SP/JP/media/cache/DMA/64-bit-AXI tests check continuing
+frames at every prefix, exactly one correctly ordered loader grant, held publication
+B, a real stalled dirty-writeback B and no premature reply, then all 32 uploaded
+words in independent backing with no active external transaction. Copied tag 104
+survives POP/reuse tag 105 while stopped frames remain fixed. ABORT during the fence
+exposes uncertainty but cannot cancel its accepted B; explicit recovery waits for
+real retirement, retains copied fault R/recovery B through epoch 1→2, never
+replays/re-enables and permits an idle drain without manufacturing F. New checks
+are frame/ownership/backing tests, not a new PCM/full-envelope oracle; retained
+exact generated/I²S/playback/capture tests also pass.
+
+[Results/source hashes](reports/drain-stop-00314720f/results.json) record **290 Rust
+= 219 affected + 71 directed**, four retained audio-I/O suites, both 3,970-case
+kernel sources, workspace warnings/format/policy/coverage/generators and **13 Python
+tests**. Twelve codec/eight indexed/sixteen actual-MMIO cases pass. Linux passes
+**3,584 / 11 skipped / 405.373 s** with nextest 0.9.116/owned isolated dummy JACK;
+default app/worklet and optional-reference worklet Wasm builds pass. Builds/tests
+remain serialized. Local `stage4-drain-{smoke-v1,milestone,linux,wasm}` all pass.
+Narrow: `--test config_service` and `--test semantic_audio mmio_audio::drain` in
+the same Nix/simulation setup above.
+
+No new synthesis/route/current-source fit is claimed. The old **7,943/6,943/
+−9.754 ns** result predates CLEAR_VIEW/trace/bulk/enable/adapters/drain and still
+fails unrouted timing. Measurement metadata now marks the complete candidate
+service map, not matched trusted software, audio-adapter/protected-board scope or
+acceptance. Remaining hostile lifecycle, Stage 5 software/CPU-control retirement,
+full envelope/resources/final agreed budgets/routed timing/platform/fault parity,
+independent audit and delivery remain. ABI 15 stays selected; Stage 4 is partial
+and Stages 5–7 open. No board access/physical qualification/push/PR/deployment.
+
+## Hardware-paced full return streams and real-retirement recovery
+
+One new native test, `full_results_and_snapshots_never_pace_stereo_and_recovery_never_needs_their_readers`,
+uses the unchanged actual generated-audio/SP/JP/media/64-bit-AXI root. Initial switch
+plus three stateless-refusal groups fill all four reliable reservations; each bank
+is checked complete, with FIFO-head-only read visibility and both snapshot banks
+full. A fifth reservation refuses normally without consuming sequence 5. While
+its B and an old copied result R are held, the existing PCM oracle checks **128
+additional exact stereo frames**; rendering and skip counts continue without any
+result/snapshot ACK, new admission, fault or xrun.
+
+The same fixture then holds a real accepted program DDR read. Explicit ABORT/
+recovery waits for real RLAST retirement, not reader consumption or local idle.
+Copied old result R/recovery B survive epoch 1→2. All four old reservations flush;
+new initial revision-0/F0/sequence-1 capture completes with R/B still held. The full
+sixteen-word fresh header is checked after releasing the copies. There is no
+automatic replay/enable, inferred graph membership or application-Ready claim.
+This direct-input/stereo fixture is not every graph, optional-trace overflow or
+all-admitted cycle qualification; those and matched software remain separate.
+
+[Evidence](reports/paced-full-d668fc02a/results.json): **291 Rust = 219 affected +
+72 directed**, including four audio-I/O suites and both 3,970-case kernel sources;
+workspace warnings/format/policy/coverage/generators and **13 Python tests** pass.
+Only one native test file changes outside docs/evidence; no production RTL,
+runtime or schema changes. Full Linux/Wasm are **not rerun** for this test-only
+delta. The most recent runtime-qualified `d668fc02a` gates remain historical:
+3,584 passed/11 skipped/405.373 s and both Wasm profiles, not fresh-head results.
+Local `stage4-paced-full-{target-v1,milestone,precommit,final-check}` gates pass.
+Reproduce the new case with the standard Nix/simulation setup and
+`--test semantic_audio mmio_audio::paced::full_results_and_snapshots`.
+
+No new resource/timing/current-source fit or physical qualification is claimed.
+Next is matched Stage 5 packet/result/snapshot transport and trusted lease/binding
+APIs, then CPU-control retirement only after replacement/parity gates. Stage 4
+remains partial, Stages 5–7 open and ABI 15 selected; full envelope/fit/final-budget
+agreement/routed timing/platform/fault-parity/audit/delivery gates remain.
+
+## ABI-16 Rust wire codecs — first Stage 5 software subset
+
+`rt_fpga_rtl::host::semantic`, behind the existing `rt-interface` feature, now
+encodes complete groups into a bounded 400-u32 array and decodes correlated
+results/borrowed snapshots without allocation, MMIO or execution-state reads.
+The default ABI-15 mailbox and runtime owner are unchanged. These are wire codecs,
+not a device transport, allocator, lease or ownership-handoff capability.
+
+- Width-checked immutable targets and all five ordinary semantic argument layouts
+  retain full generation/iteration/gain bits. Nonfinite gain becomes an ordered
+  `InvalidValue` record before unavailable binding. Original finite f32 metadata,
+  including signed zero, subnormals and saturation cases, is not reconstructed
+  from fixed point. Refused switches retain kind 5 and their result position.
+- Groups preserve every record and independent graph/topology/deadline fields.
+  No splitting, reorder, effective-frame resolution or CPU header rollback is
+  introduced; attempt-time checks and malformed switch placement stay in hardware.
+- Results require exact version/count/length/epoch/u64 sequence and known codes.
+  Earlier effects are not rewritten after refusal or uncertainty. Faulted packets
+  cannot claim fenced success; `Unprocessed` is accepted only as fault/uncertain
+  diagnostic data, never normal success. Decoding cannot retire an allocation.
+- Snapshot headers and full packet/row reserved fields are checked before use.
+  All 128 physical rows preserve raw words, original gain/failure/pulse values,
+  sequence gaps and saturated loss. Raw word 2 is not substituted for render
+  cursor word 8. Retained revision-0 rows, even with old valid bits/nonfinite raw
+  metadata, are not graph members; the future matching binding owner must filter
+  membership. There is no restore or continuing-state initializer API.
+
+Eight golden/negative tests cover all ordinary layouts, refusal-code restrictions,
+32-command packets, every truncated result/snapshot prefix, identity aliases,
+reserved bits, false fences and full-width metadata. Two additional tests feed
+packets to the existing RTL consumer and decode actual consumer/snapshot output.
+The consumer's delayed fence uses its qualified component handoff input, **not**
+a new real-media/AXI or ARM MMIO transport proof. Existing hardware-paced/actual-DDR
+regressions pass separately; the new codecs are not yet connected to that driver.
+
+[Results/source hashes](reports/wire-codecs-411b2b75f/results.json): **301 selected
+Rust = 229 affected + 72 directed**, including both 3,970-case kernel sources and
+four audio-I/O tests; **13 Python**; warnings/format/policy/coverage/generators.
+Fresh full Linux is **3,584 passed (2 slow) / 11 skipped / 405.319 s** with pinned
+nextest 0.9.116/owned isolated dummy JACK. Default application/worklet and optional
+`fpga-reference` worklet Wasm builds pass, plus an explicit codec Wasm check.
+The installed pinned Rust 1.99.1 `armv7a-none-eabihf` library check passes with
+warnings denied. That is not a matching firmware/link/pair/physical qualification.
+All builds/tests remain serialized; the default Linux feature set does not replace
+the explicit optional-feature RTL/codec matrix.
+
+Local `stage5-codec-{target-v2,milestone,linux,wasm,arm-v2}` gates pass. The initial
+unit run caught a mistyped golden group magic (`0x53464631` rather than frozen
+`0x53434631`); the encoder already matched the ABI. Its failed log is retained.
+The first ARM invocation failed before compilation because Nix's direct Cargo is
+not the rustup shim; explicit use of the already-installed pinned toolchain passes.
+No assertion, ABI or tool pin was weakened. Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_codec --test semantic_groups --test snapshots -- --test-threads=1
+'
+```
+
+Next: the bounded nonblocking MMIO pump and exact-ABI attachment/recovery through
+existing owners, then trusted preparation/binding/lease APIs, reference service
+alignment, first-frame Ready and CPU-control retirement after replacement/parity.
+All Stage 5 checkboxes remain open; Stage 4 is partial, Stages 6–7 open and ABI 15
+selected. No hardware/schema/runtime-owner changes, new synthesis/route/current
+fit, promotion, board work, push/PR or whole-goal completion follow. Binding
+resource/cycle/timing/safety requirements and final-budget agreement still apply.
+
+## Shared recovery-client intent/incarnation prerequisite — Stage 5 partial
+
+Before reusing the existing recovery owner for ABI-16 attachment, inspection and
+regression tests found three software authority gaps: a lost request/status ACK
+could discard pending intent, a later status could turn a terminal outcome into
+success, and a client recreated from a stale mailbox could adopt the new epoch.
+The same owner now records intent before the request write, permits only queries
+while that outcome is uncertain, and retains terminal failed/protocol-invalid
+state. It binds requests/reopen to its mailbox epoch and advances that binding
+only after the correlated next-epoch reset completion. No hardware controller,
+backend owner, timeout or automatic replay is added. Hardware reset-complete is
+not application Ready, semantic handoff or permission to reuse continuing leases.
+
+Five unit tests cover before/after-write and post-write-status errors, transient
+query errors, old/zero/wrong epochs, protocol-invalid/failed/late outcomes, stale
+mailbox recreation and refusal without reset effects. The actual legacy AXI
+pipeline case loses software acknowledgements after real B or status-R acceptance,
+waits for genuine epoch 1→2 reset completion, rejects both replay and stale
+mailbox adoption, and preserves zero completed audio quanta. It runs both error
+positions. The retained repeated-recovery test also passes: **7 targeted tests**.
+This is not an ABI-16 attachment, new held-DDR-drain, permanent-MMIO-stall or
+physical recovery proof. Existing actual-DDR/held-response suites pass separately.
+
+[Results and three exact Rust source hashes](reports/recovery-intent-369f5ae77/results.json)
+record final-source **307 Rust = 235 affected + 72 directed**, both 3,970-case
+kernel sources, four audio-I/O tests, **13 Python**, warnings/format/policy/
+coverage/generators. Fresh full Linux passes **3,589 (2 slow) / 11 skipped /
+404.637 s**, pinned nextest 0.9.116 and owned isolated 48 kHz/128-frame dummy JACK.
+Default application/worklet and optional `fpga-reference` Wasm builds, explicit
+host-library Wasm check and pinned Rust 1.99.1 ARM bare-metal library check pass.
+These are not browser-runtime, matched firmware/link/pair or physical proofs.
+All feature-sensitive builds and suites remain serialized.
+
+Both pre-fix regression failures are retained: the original run reproduces lost
+pending intent and late success; the second reproduces stale-mailbox adoption.
+Earlier partial gates are not final-source evidence. The final `target-v2`,
+`milestone-v2`, `v2-linux`, `wasm-v2` and `arm-v2` gates all pass. Reproduce narrowly:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test host_recovery --test recovery_pipeline -- --test-threads=1
+'
+```
+
+The default recovery reopen still requires **ABI 15**; no indiscriminate 15/16
+acceptance or production selection change is introduced. Exact ABI-16 attachment
+and bounded nonblocking group/result/snapshot pumping are next, followed by the
+trusted binding/preparation/lease and reference/Ready integration already listed.
+All Stage 5 checkboxes remain open. Stages 0–3 are complete, Stages 4–5 partial,
+Stages 6–7 open. No new hardware/schema change, synthesis/route/current-source fit,
+promotion, board work, push/PR, independent final audit or whole-goal completion.
+
+## Exact ABI-16 attachment and bounded publication — Stage 5 partial
+
+The existing host access layer now provides a candidate `semantic::Device` with
+exact version/capability/frozen advertised-profile checks and epoch-bracketed
+fresh-wire attachment. Continuing or already-admitted wire state is refused;
+attachment is not a runtime reset, lease grant or continuing-state restoration.
+The public legacy `Mailbox::open` remains ABI-15-only. A private exact-version
+constructor and captured version let the typed candidate recovery wrapper reuse
+the same hardened recovery owner without exposing ABI 16 as a legacy client.
+Recovery consumes old transport authority and permits only one successful typed
+reopen. Hardware reset-complete is not application Ready or ownership handoff.
+
+Complete groups are queued locally and forwarded in order through bounded steps,
+with **at most three MMIO operations per publication step**. Each body write is
+confirmed before the next; publication occurs once after the complete packet.
+No poll waits for space/execution, no frame is resolved on ARM, and no call creates
+an audio opportunity. An uncertain bus/protocol outcome quarantines the transport:
+no automatic retry, fake admission, lease retirement or destructive recovery.
+The four published identities track wire correlation only, not semantic ownership.
+
+Six pure tests cover exact mismatches, every attachment epoch-crossing prefix,
+1/16/32-command bodies, four-bank ordering, bounded space queries, expected
+refusals and every publication bus-error prefix before/after effects. Typed
+recovery retains query authority after a lost ACK and cannot fall back to ABI 15.
+A seventh test uses the **actual full-profile unpaced MMIO/semantic/media/AXI
+wrapper**, not synthetic discovery geometry: 1/16/32/2-command groups fill all
+four real banks; partial fills remain unpublished across 10,000-clock stalls;
+render cursor/completed quanta stay zero. A real recovery B is consumed before an
+injected software acknowledgement error; queries observe genuine epoch 1→2 and
+one reset only. This fixture is not continuous-audio, held-DDR-drain, protected
+board, matched firmware or first-frame-Ready proof. Existing hardware-paced,
+actual-DDR and held-response regressions pass separately.
+
+[Results/seven exact Rust source hashes](reports/publication-c525dd479/results.json):
+**314 Rust = 242 affected + 72 directed**, both 3,970-case kernel sources, four
+audio-I/O tests, **13 Python**, warnings/format/policy/coverage/generators. Fresh
+Linux **3,589 passed (2 slow) / 11 skipped / 406.003 s** uses pinned nextest 0.9.116
+and owned isolated 48 kHz/128-frame dummy JACK. Default application/worklet,
+optional `fpga-reference` worklet Wasm and explicit host-library Wasm checks pass.
+Pinned Rust 1.99.1 ARM-library checking passes, not firmware/link/pair proof.
+Feature-sensitive builds and suites remain serialized. The first actual test
+failed on duplicate test-memory registration; the fixture reuses the existing
+registration now. Its failed log remains; no RTL lint or assertion was weakened.
+
+Local `stage5-publication-{axi-v2,milestone,linux,wasm,arm}` gates pass. Narrow run:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_transport -- --test-threads=1
+'
+```
+
+That publication-only checkpoint filled four reservations; reliable-result
+copying and normal bank release now follow below. Latest-complete snapshot copying,
+trusted bindings/preparation/leases, reference cutoff, matched runtime/firmware,
+initial installation/real first-frame Ready and CPU-control retirement remain.
+All Stage 5 checkboxes are open; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7
+open. Production ABI 15 remains selected. No hardware/schema change, new synthesis/
+route/current fit, promotion, physical work, push/PR or independent final acceptance
+is implied.
+
+## Reliable result copy and wire-bank release — Stage 5 partial
+
+The same `semantic::Device` now copies and validates reliable results in FIFO
+order, then acknowledges their exact bank/incarnation/u64 sequence. Every step
+uses at most **three ordered MMIO operations**. Copy length comes from the original
+published command count, not an unchecked returned length; every data receipt is
+checked. Full packet validation precedes ACK. Successful ACK receipt plus a stable
+epoch releases only the wire reservation. One bounded local completion slot
+survives native reuse and caller stalls; it does not mint `FencedSwitch`, resource
+ownership, continuing-lease reuse or application Ready. Fault-retained banks are
+not assumed to publish complete diagnostic packets.
+
+Result visibility before the PUBLISH receipt is pumped and native free-bank
+visibility before ACK receipt are handled without false accounting failures or
+premature reuse. Bus/protocol errors retain quarantined authority without replay,
+false delivery or semantic rollback. The caller may stop taking completions;
+finite local/native reservations affect admission/readback, never audio pacing.
+
+Four pure tests exercise complete 1/16/32-command copies and repeated bank reuse,
+both receipt windows, every bus-operation error prefix before/after effects and
+epoch crossing, malformed/foreign/FIFO-invalid/truncated packets and refusals.
+A new actual full-profile **generated-audio/MMIO/SP/JP/media/64-bit-AXI** test runs
+normal and lost-ACK modes. Fixture-only public configuration prepares a genuinely
+unused direct-stereo program. Installation is published before enable; a real
+audio opportunity selects/renders it and the copied result observes a genuine
+native fence. Pausing after three copied words permits at least four more quanta
+while both snapshots are full. The first result's F=0/revision 0→1 fields remain
+unchanged after native reuse; later 16/32/2/1-command groups preserve stale-header,
+value-refusal and deadline outcomes. An injected software error after the real
+ACK B is consumed leaves one ACK only and no delivered result; explicit shared
+recovery reaches epoch 2 with audio disabled. This is not the pending trusted
+loader/runtime owner, exact-PCM oracle, dirty/held-DDR-fence, continuing-lease,
+matching-firmware, application-Ready or physical proof. Retained hardware tests
+cover other paths separately; no subset is whole-runtime acceptance.
+
+[Results/seven exact Rust hashes](reports/results-926189609/results.json):
+**12 transport tests**, **319 Rust = 247 affected + 72 directed**, both 3,970-case
+kernel sources, four audio-I/O tests and **13 Python** pass. Fresh Linux **3,589
+passed (2 slow) / 11 skipped / 405.144 s** uses pinned nextest 0.9.116 and owned
+isolated 48 kHz/128-frame dummy JACK. Default application/worklet and optional
+`fpga-reference` worklet Wasm builds, explicit host-library Wasm and installed
+pinned Rust 1.99.1 ARM-library checks pass. The ARM check is not firmware/link/pair
+proof. Warnings/format/policy/coverage/generators pass; feature-sensitive builds and
+subprocess suites remain serialized.
+
+Local gates: `stage5-results-{target-v2,milestone,linux,wasm,arm,precommit}`. Narrow:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_transport -- --test-threads=1
+'
+```
+
+That result-copy checkpoint left latest-complete snapshot copying next; it now
+follows below. Trusted bindings/preparation/leases, reference cutoff/callback
+cancellation, fresh-first-frame Ready, matched runtime/firmware and CPU-control
+retirement remain. All Stage 5 checkboxes remain open; Stages 0–3 complete,
+Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15. No RTL/schema change,
+new synthesis/route/current-source fit, promotion, physical qualification, push/PR
+or independent final audit is implied.
+
+## Latest-complete snapshot copy — Stage 5 partial
+
+`SnapshotBuffers` validates two caller-provided buffers of exactly **4,880 u32
+words each** before they attach once to the existing `Device` as `SnapshotDevice`.
+The same private device/bus owns all group/result/snapshot operations; the storage
+attachment forwards existing APIs, not a second controller/backend. Independent
+per-call contexts cannot mix an indexed snapshot cursor. Buffers are allocated
+outside pumping; no per-step allocation or whole-packet service is introduced.
+
+Each snapshot step performs at most **three ordered MMIO operations**. A finite
+ready-set/header scan selects its newest complete packet and may acknowledge an
+older one without exposing its rows. The full selected 128-row body, per-word
+receipts, scanned header/identity, reserved fields and epoch are validated before
+selected ACK/receipt and atomic latest/staging swap. New publications during
+copying do not trigger an unbounded chase: the returned copy is latest as of the
+finite ready-set scan, not necessarily newest at return. Publication/results can
+pump between copy steps. Initial raw valid bits/nonfinite gains remain nonmembers;
+no snapshot restores state, plans F, retires a lease or creates application Ready.
+Original gain bits, failure/pulse metadata, render cursor/stamp and producer loss
+are preserved without relabeling host discards as producer skips.
+
+The previous complete local image survives staging/native reuse and uncertain
+ACKs, retaining its original epoch/revision as potentially stale observations.
+Confirmed epoch change invalidates it. Consuming recovery drops private copy
+progress; a fresh storage attachment publishes no retained local image before a
+complete new copy. Optional sequence exhaustion remains idle rather than causing
+an audio fault/reset. No automatic read/ACK retry, false image update or semantic
+rollback follows an uncertain outcome.
+
+Five pure tests cover full 128-row metadata, high-u64 ACKs, refill during bounded
+selection, interleaved group/result pumping, exact buffer shape, initial raw rows,
+malformed/selected truncated packets, receipt/mask failures, maximum sequence,
+consuming recovery, and **sampled phases/selected row-boundary** errors before/
+after effects and epoch crossings. This is not exhaustive MMIO-prefix coverage.
+The retained full-profile generated-audio/MMIO/SP/JP/media/64-bit-AXI test now also
+copies snapshots while publishing/receiving group 6. A pause after three body words
+still permits at least four quanta; native refill cannot change the selected
+F0/revision-1 image. After a real selected-snapshot ACK B is consumed and software
+receives error 99, only the prior complete image remains, with no ACK replay.
+Explicit shared recovery then produces an epoch-2 initial sequence-1/F0/revision-0
+copy with audio disabled and no completed quanta. Fixture-only unused-program
+preparation is not the pending trusted loader/lease owner, logical snapshot API,
+exact-PCM oracle, dirty/held-DDR-fence, matched firmware, Ready or physical proof.
+
+[Results/seven exact Rust hashes](reports/snapshot-copy-30d7c6934/results.json):
+**17 transport tests**, **324 Rust = 252 affected + 72 directed**, both 3,970-case
+kernel sources/four audio-I/O tests and **13 Python** pass. Fresh Linux **3,589
+passed (2 slow) / 11 skipped / 404.541 s**, pinned nextest 0.9.116 and owned isolated
+48 kHz/128-frame dummy JACK. Default application/worklet and optional reference
+worklet Wasm builds, explicit host-library Wasm and installed pinned Rust 1.99.1
+ARM-library checks pass; these are not browser runtime or firmware/link/pair proof.
+Warnings/format/policy/coverage/generators pass. Feature-sensitive builds and
+subprocess suites remain serialized.
+
+Local final gates: `stage5-snapshot-copy-{target-v2,milestone,linux,wasm,arm,precommit}`.
+Use the preceding narrow `semantic_transport` command to reproduce. Earlier
+`build-v1`/`target-v1` were green preliminary iterations, not final-source proof.
+
+Low-level bounded group/result/latest-complete-snapshot pumps are implemented.
+Next: trusted Allocator/ProgramSession binding, preparation/lease eligibility,
+reference cutoff, callback/fresh-first-frame Ready, matched runtime/firmware and
+CPU-control retirement. All Stage 5 checkboxes remain open; Stages 0–3 complete,
+Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15. No new RTL/schema,
+synthesis/route/current-source fit, promotion, physical work, push/PR or independent
+final audit is implied.
+
+## Immutable preparation recipes — Stage 5 partial
+
+The allocator/session audit confirmed that `ProgramImage::writes` excludes
+continuing state and that `ProgramSession` retains its predecessor through a
+matched fence. Two lowering gaps are now addressed without a new device owner:
+
+- Logical `LoopBinding::initial_gain_bits` retains original primitive gain bits
+  before Q8.24 conversion. Gainless composites retain the reference's unity
+  observation. Supplied bits must be finite and consistent with the immutable
+  initial ramp. Optional/default metadata keeps older hand-built component
+  recipes valid; ABI-16 preparation of new loops refuses missing metadata instead
+  of reconstructing f32 from fixed memory. Continuing gain is never initialized
+  from a replacement's recipe.
+- `RtlTarget::build_semantic_image` uses the existing scheduler but emits every SP
+  sync visit/inline schedule row before JP work. Relative job order is preserved.
+  Ordinary component/ABI-15 lowering keeps its dependency interleaver.
+
+Feature-gated `semantic::Preparation` consumes the image, validates the frozen
+Q32/chunk32/128-loop/state/buffer/history/port/queue geometry, explicit sync-prefix
+shape and binding/fresh-initializer shape. It reuses existing `Upload` steps, then
+appends exactly three observation words for each allocator-marked new loop:
+original finite gain bits, zero pulse and zero validity/failure state. Its
+identity-qualified target lookup copies physical identity/gain address/source
+flags, never execution state. Construction allocates on the control side;
+iteration allocates nothing. **Advancing a recipe is not successful delivery.**
+
+This is an immutable recipe, **not trusted lease authority**. Public layout/fresh
+flags are not proof of an eligible allocation. The existing runtime owner must
+still correlate its allocator and incarnation, enforce inactive/unused/genuinely
+retired resources, pump the existing service lane nonblockingly, and retain old
+resources until genuine matched ownership completion. No raw ABI-16 mailbox,
+second controller/backend, semantic CPU planner, trusted loader API or new
+`FencedSwitch` is exposed. Legacy runtime/control selection remains unchanged.
+
+Four pure tests cover original bits (including lost fixed precision and negative
+zero), nonfinite/inconsistent/missing metadata, explicit whole-prefix lowering
+with unchanged job order, old/new allocation separation, generation/source-aware
+bindings and thirteen malformed artifact mutations. Allocator publish/complete in
+that test is bookkeeping only, not a native fence. A new full frozen-profile
+`fifo_audio_host_axi` generated-audio/MMIO/SP/JP/media/64-bit-AXI case serially
+issues a recipe for two genuinely unused fixture loops, installs before enabling,
+reads original bits from a settled F0/revision-1 snapshot, applies a recipe-bound
+gain command and observes its new original bits in a later native image. Audio
+continues with no xrun/fault. The serial fixture is not the pending trusted lease
+API/nonblocking preparation owner, logical snapshot API, matched firmware,
+application Ready, exact-PCM, dirty/held-DDR fence or all-admitted-envelope proof.
+
+[Results/eleven exact Rust hashes](reports/preparation-recipe-82848d048/results.json):
+**22 targeted tests = 4 preparation + 18 transport**, **329 Rust = 257 affected +
+72 directed**, both 3,970-case kernel sources/four audio-I/O tests, **13 Python**,
+Linux **3,589 passed (2 slow) / 11 skipped / 403.569 s** with pinned nextest 0.9.116
+and an owned isolated 48 kHz/128-frame dummy JACK. Both default/optional-reference
+Wasm builds, explicit host-library Wasm, installed pinned Rust 1.99.1 ARM-library
+check, workspace warning build, formatting, policy, coverage and generators pass.
+All feature-sensitive builds/subprocess suites were serialized. Wasm/library checks
+are not browser runtime, firmware/link/pair or physical proof.
+
+Local prefix `stage5-preparation-recipe-`: final `axi-v2,milestone,linux,wasm,arm,
+precommit` gates are zero. `target-v1=101` retains a compiler reference/value
+comparison typo; `axi-v1=101` retains a test calling `code` instead of `codes`.
+Both were corrected without weakening assertions or profile. `target-v2=0`
+proved the four pure cases before the native case was added; final `axi-v2=0`
+includes all 22. Narrow reproduction:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_preparation --test semantic_transport -- --test-threads=1
+'
+```
+
+Next: trusted allocator/incarnation-bound preparation and lease ownership through
+the same service/device owner, then reference cutoff, callback/fresh-first-frame
+Ready, matching runtime/firmware and CPU-control retirement. **All Stage 5 boxes
+remain open**; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. Production
+ABI 15/restart protocol 53 remains selected. No new hardware/schema, dependency,
+synthesis/route/current-source fit, promotion, physical work, push/PR or final
+independent implementation/verification/delivery acceptance is implied.
+
+## Canonical allocation provenance — Stage 5 partial
+
+Opt-in `Allocator::with_verifier` returns the existing allocator and an
+`AllocationVerifier` with a private software domain. Issued layout clones retain
+an immutable canonical allocation and predecessor witness in memory; serde omits
+it. The verifier authenticates the domain, every allocation fact and the exact
+predecessor. Unowned/foreign/modified/deserialized/injected layouts refuse. Canonical
+copies strip nested witnesses, avoiding an unbounded predecessor chain. No new
+allocator, backend, hardware owner or dependency is introduced; the default
+allocator and existing layout/image API remain usable without this opt-in.
+
+**Provenance is not device eligibility or lifecycle authority.** It proves no
+hardware incarnation, cancellation, admission, retirement, fence, lease or Ready.
+Cancellation deliberately does not revoke an immutable provenance fact. The
+runtime must retain its own verifier, bind it to a reset-qualified incarnation,
+supply its actual matched predecessor, enforce pending/cancel state and real
+fences, and gate the bounded same-owner preparation service. These remain pending.
+No public layout flags or caller-supplied predecessor become physical authority.
+
+Four new tests cover foreign/unowned domains and ten public-field mutations,
+exact predecessor/replay checks, explicit cancellation-versus-provenance separation,
+serde round-trip/injected witness refusal and preservation through semantic image
+lowering. Allocator publish/complete calls are software bookkeeping, not hardware
+fences. [Four exact Rust hashes/results](reports/allocation-witness-3b4a31def/results.json)
+record **21 targeted tests**, **333 Rust = 261 affected + 72 directed**, both
+3,970-case kernel sources/four audio-I/O tests and **13 Python**. The broad matrix
+adds `rt_fpga_reference/serde` to exercise serialization explicitly. Default and
+optional-reference Wasm builds, explicit host-library Wasm and pinned Rust 1.99.1
+ARM-library checks (both with compiler serde), warning build, formatting, policy,
+coverage and generators pass. Builds/subprocess suites remain serialized.
+
+Linux's first run retained **3589 passed / 2 failed / 11 skipped / 435.984 s**,
+status **100**: JACK startup Master-link count and graph-state confirmation failed.
+A strict fresh-server ten-round/two-case reproduction, without missing-backend
+skips, yielded **19/20 passed**; round 1 startup failed with `RevisionConflict`,
+aggregate status **1**, and all graph-contract repetitions passed. The unchanged
+full gate on a fresh isolated 48 kHz/128-frame dummy JACK then passed **3591
+(2 slow) / 11 skipped / 401.624 s**, nextest 0.9.116. No JACK code/assertion/profile/
+timeout was changed. The nondeterministic cause is unresolved; the successful
+rerun does not erase failures or establish final native stability.
+
+Local prefix `stage5-allocation-witness-`: final `target-v1,milestone,linux,wasm,
+arm,precommit` pass. Retained `linux-v1=100`, `jack-repro=1` and per-round logs
+remain failures. Troubleshooting and CI reproduction guidance were consulted.
+No artificial resource constraints, VM, skipped assertions or source workaround
+was used. This is checkpoint consistency, not independent final acceptance.
+
+Next: bind provenance checking to the actual incarnation/pending/fence lifecycle
+and trusted preparation/lease ownership; implement bounded same-owner services,
+then reference/runtime/callback/fresh-first-frame Ready, firmware and CPU-control
+retirement. All Stage 5 checkboxes remain open; Stages 0–3 complete, Stages 4–5
+partial, Stages 6–7 open. ABI 15/protocol 53 remains selected. No new hardware/
+register schema, current-source fit, promotion, physical work, push/PR or final
+implementation/verification/delivery acceptance is implied.
+
+## Reset-bound program session and bounded preparation — Stage 5 partial
+
+The existing program-session lifetime implementation is now one shared typed
+`Session<T,P,A>` core. Its legacy `ProgramSession<B>` alias preserves the ABI-15
+API and existing fixtures; the candidate `semantic::ProgramSession<B>` specializes
+the same core with the same `Device`, preparation artifact and opaque ownership.
+No second backend, allocator, MMIO actor, dispatcher or recovery controller appears.
+
+`Device::program_session` refuses discovery-only attachment, unrequested reopen
+and prior publication traffic. Only successful correlated explicit recovery
+completion supplies its private reset-epoch evidence. Consuming that device pairs
+one fresh existing allocator with a private enforced allocation owner. This is
+unused native preparation authority within this consumed owner, **not global
+runtime retirement, continuing-state restoration or application Ready**.
+
+The opt-in allocator's enforced claims prevent producer `cancel`, `refused` and
+`complete` calls from releasing claimed/published resources without the private
+owner's corresponding retirement transition. Claim/drop itself proves no fence.
+Witnesses retain the original immutable logical program as well as canonical
+allocations/predecessor. The session accepts a layout, verifies/claims its actual
+predecessor, then lowers the retained source itself; caller mutations of source or
+public image members cannot steer trusted writes. The earlier pure verifier still
+only authenticates provenance, including authentic cancelled recipes.
+
+Bounded configuration/observation/history/CLEAR_VIEW preparation uses the same
+service MMIO/loader/accepted-operation/recovery owners. Private fixed words, tag
+and progress are reserved before effects; every fill word/PUSH/POP receipt and
+per-step epoch bracket is checked. Reply tag/code/reserved fields precede POP.
+Each preparation or selection step performs at most three ordered bus operations,
+without polling loops or per-step allocation. Recipe advancement is not delivery.
+Cancellation waits for accepted work/POP confirmation; uncertainty quarantines
+without replay, faked completion or resource release. Only new allocations and
+inactive code are initialized; continuing state/loop/observations are untouched.
+The inactive preparation lane returns Idle safely while selection is being pumped.
+
+The private original single-switch group identity/descriptor, confirmed upload,
+actual predecessor and complete non-faulted native result must all match before
+allocator completion or predecessor retirement. Initial publication precedes
+bounded enable; hardware audio selects first F0. Primitive replacement uses the
+same genuine fence. Consuming typed recovery retains old/staged images and private
+request progress until correlated reset; reopening makes a fresh allocator/domain
+which refuses old layouts. Hardware reset/fence success is not application Ready.
+
+Seven new tests (six pure, one actual) cover reset/attachment refusal, immutable
+source and foreign/tampered layout rejection, continuing-allocation preservation,
+publication-before-enable, matched/refused/foreign-revision handoffs, deferred
+cancel and consuming recovery. Every MMIO prefix of the **first configuration
+service** is injected with before/after bus errors and an epoch crossing; this is
+not an exhaustive matrix for every later service/media operation. Malformed
+status/receipt/tag/code/reserved replies cannot POP/release. The full frozen-profile
+generated-audio/MMIO/SP/JP/media/64-bit AXI case reaches epoch 2, first native F0/
+revision 1, then revision 2 through a real primitive handoff. Parking three body
+words for 300,000 clocks leaves revision 1 rendering at least four more quanta.
+A later real service POP B is consumed then reported as error 99; no retry/release
+occurs and audio continues. Explicit recovery reaches epoch 3, fresh owner has no
+active image, old layouts refuse and quanta/audio remain stopped. This is direct
+stereo with genuine fences, not new exact-PCM/dirty-DDR/all-envelope/whole-runtime
+proof; retained playback/capture/held-DDR/exact-PCM suites pass separately.
+
+[Eleven exact Rust hashes/results](reports/session-owner-4d28b1dbe/results.json)
+record **30 targeted = 5 preparation + 25 transport (21 pure/4 actual)**,
+**340 Rust = 268 affected + 72 directed**, both 3,970-case kernel sources/four
+audio-I/O tests and **13 Python**. Full Linux passes **3591 (2 slow) / 11 skipped /
+406.496 s**, pinned nextest 0.9.116/owned isolated 48 kHz/128-frame dummy JACK/
+matching host rebuild/bounded cleanup. This default suite does not replace the
+explicit optional RTL matrix. Default app/worklet plus optional-reference Wasm,
+serde-enabled host-library Wasm and installed Rust 1.99.1 ARM-library checks pass,
+not browser runtime or linked/paired firmware. All feature-sensitive builds and
+subprocess suites were serialized. Warning build, formatting, test policy,
+coverage (62 retained/13 retired), generators and diff checks pass.
+
+Local prefix `stage5-session-owner-`: final `target-v6,milestone,linux,wasm,arm,
+precommit` pass. Retained `target-v3=101` was the fake service PUSH asserting epoch
+2 == 3 during an injected crossing; the model now returns native epoch refusal
+without accepting work. Native driver/assertions were not weakened. Retained
+`milestone-v1=101` exposed explicit legacy `ProgramSession<B>` fixture types after
+the initial generic refactor (E0308/E0599); the compatible alias restores the API,
+not a fixture workaround. Earlier target/build greens predate final source and
+are preliminary. Historical parent JACK failures/nondeterminism remain unresolved,
+not erased by this successful Linux run.
+
+Next: adapt the existing application owner/image channel to this specialization;
+ordinary semantic group/response and logical snapshot ownership, reference cutoff,
+whole-runtime callback cancellation/fresh-first-frame Ready, trusted bulk-media
+use, matching ARM firmware/pairing/watchdog and CPU-control retirement remain.
+Do not redo the completed local session/pump. All five Stage 5 boxes remain open;
+Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. ABI 15/protocol 53 stays
+selected. No RTL/register schema/dependency/default-runtime selection changes,
+new synthesis/route/current-source fit, promotion, physical work, push/PR or
+independent implementation/verification/delivery acceptance is implied.

@@ -1,0 +1,37 @@
+{
+  "base": "9454647c0c980cabb0d768795d0cb017de3a1de6",
+  "working_tree_snapshot": true,
+  "image": "docker.io/siliconbootcamp/xilinx-vivado@sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "expected_launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "runner_sha256": "da72d2fb8b9b2fcb61f76c776705e257815d34104d7123e52471785035b866da",
+  "catalog": {
+    "path": "/home/sander/dev/shoopdaloop/work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip",
+    "ps7_component_sha256": "5c884fb6b1f01c0cdde22724d3fdf462cdd05f1f31066ea07452c1815006ad10"
+  },
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "profile": {
+    "loops": 128,
+    "states": 512,
+    "instructions": 1024,
+    "buffers": 512
+  },
+  "sources": [
+    {
+      "path": "fpga/host_bridge/rtl/fifo_edit_kernel.sv",
+      "sha256": "bacf1224ab4cbaaa9f3f4bc3c033dac8b4d9e7c23222a0e58421d43483ada68f"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_group_banks.sv",
+      "sha256": "f042371c848035a6409ac80befdcdf7ce27fc238e283f77a3643c116a9a51556"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_group_consumer.sv",
+      "sha256": "2cd453c84440c35b225411d64c92390bcf0c56090ac80967450ddd535921dea7"
+    }
+  ],
+  "tcl_sha256": "fb8ea0447e85ee1311fb4ce901b4f6193debdaa278ef4123272d8d41de401556",
+  "scope": "partial semantic bank/consumer/kernel frontend; no MMIO, snapshots, SP observations, loader arbitration, SP/JP, PS/DDR or board",
+  "route": true
+}

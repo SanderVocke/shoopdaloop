@@ -29,15 +29,18 @@ pub struct State {
 }
 impl State {
     pub fn new(sim: &mut Sim<'_>, depths: [u64; 3], seed: u64) -> Self {
+        Self::with_guards(sim, depths, seed, &["cfg_ready", "run_ready", "job_valid"])
+    }
+    pub fn loading(sim: &mut Sim<'_>, depths: [u64; 3], seed: u64) -> Self {
+        Self::with_guards(sim, depths, seed, &["run_ready", "job_valid"])
+    }
+    fn with_guards(sim: &mut Sim<'_>, depths: [u64; 3], seed: u64, forbidden: &[&str]) -> Self {
         sim.agent(crate::protocol::ReadyValid::new(
             "job_valid",
             "job_ready",
             &["job_data"],
         ));
-        sim.agent(crate::protocol::Exclusion::new(
-            "busy",
-            &["cfg_ready", "run_ready", "job_valid"],
-        ));
+        sim.agent(crate::protocol::Exclusion::new("busy", forbidden));
         sim.agent(crate::protocol::Bound::new("queued_jobs", depths[2]));
         Self {
             image: Program::new(depths),

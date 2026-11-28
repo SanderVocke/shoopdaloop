@@ -150,15 +150,24 @@ fn targets_reject_missing_media_and_physical_capacity_before_loading() {
         target.build(&logical).err(),
         Some(CompileError::MissingView(1))
     );
+    target.media_views = &[23, 24];
     target.state_base = 13;
     assert_eq!(
         target.build(&logical).err(),
         Some(CompileError::Capacity(Resource::State))
     );
     target.state_base = 0;
-    target.capacities.jobs = 10;
+    let mut batch_limits = target.limits();
+    assert!(logical.resources.queue_capacity > 0);
+    batch_limits.jobs = logical.resources.queue_capacity - 1;
     assert_eq!(
-        target.build(&logical).err(),
-        Some(CompileError::Capacity(Resource::Jobs))
+        logical.validate(batch_limits),
+        Err(CompileError::Capacity(Resource::Jobs))
+    );
+    target.capacities.jobs = 1;
+    assert_eq!(target.limits().jobs, u32::MAX);
+    assert_eq!(
+        target.build(&logical).unwrap().jobs_per_quantum,
+        logical.jobs_per_quantum
     );
 }

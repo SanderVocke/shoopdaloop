@@ -1,0 +1,428 @@
+{
+  "outcome": "PARTIAL_CONFIGURATION_MMIO_COMPONENT_WITHIN_FRONTEND_CEILINGS_TIMING_UNCLOSED",
+  "source_base": "606ce161b0c6f7e55fde1b79416d00ae32841121",
+  "working_tree_snapshot": true,
+  "scope": "Q32 indexed-MMIO/semantic/audio/media/recovery component with low-range discovery/diagnostics/recovery/abort, configuration service and qualified safety sidebands; no complete preparation/media/lifecycle/trace service, audio adapter, PS/DDR, thermal or protected board integration; frontend and existing execution/backend hierarchy reported separately",
+  "deployed_abi": 15,
+  "candidate_semantic_abi": 16,
+  "indexed_mmio_included": true,
+  "low_range_discovery_recovery_included": true,
+  "low_range_service_included": true,
+  "configuration_service_only": true,
+  "complete_preparation_service_included": false,
+  "abort_mmio_included": true,
+  "qualified_fault_sidebands_included": true,
+  "mmio_epoch_reset_coupled": true,
+  "audio_adapter_included": false,
+  "protected_board_included": false,
+  "runner_status": 0,
+  "synthesis_completed": true,
+  "standard_optimization_completed": true,
+  "route_performed": false,
+  "excluded_paths": {
+    "audio_execution": "dut/pipeline/execution/core/pipeline/execution",
+    "media_store": "dut/pipeline/execution/core/media",
+    "axi_backend": "dut/pipeline/execution/memory_endpoint",
+    "program_backend": "dut/pipeline/execution/ddr_program.program_bus"
+  },
+  "variants": {
+    "synthesis": {
+      "component": {
+        "lut": 31674,
+        "logic_lut": 31316,
+        "lutram": 358,
+        "srl": 0,
+        "ff": 21832,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10626,
+          "logic_lut": 10626,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11425,
+          "logic_lut": 11421,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1534,
+          "logic_lut": 1534,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 919,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7995,
+        "logic_lut": 7641,
+        "lutram": 354,
+        "srl": 0,
+        "ff": 6943,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1763,
+        "logic_lut": 1763,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1936,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 1030,
+        "logic_lut": 1030,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 388,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "configuration_service": {
+        "lut": 316,
+        "logic_lut": 292,
+        "lutram": 24,
+        "srl": 0,
+        "ff": 175,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -12.58,
+        "tns_ns": -57294.609,
+        "setup_failing_endpoints": 11182,
+        "setup_total_endpoints": 71252,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 71252
+      }
+    },
+    "default-opt": {
+      "component": {
+        "lut": 31568,
+        "logic_lut": 31210,
+        "lutram": 358,
+        "srl": 0,
+        "ff": 21804,
+        "ramb36": 59,
+        "ramb18": 7,
+        "dsp": 4
+      },
+      "excluded_existing_execution_backend": {
+        "audio_execution": {
+          "lut": 10623,
+          "logic_lut": 10623,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 5945,
+          "ramb36": 33,
+          "ramb18": 2,
+          "dsp": 4
+        },
+        "media_store": {
+          "lut": 11410,
+          "logic_lut": 11406,
+          "lutram": 4,
+          "srl": 0,
+          "ff": 8022,
+          "ramb36": 8,
+          "ramb18": 4,
+          "dsp": 0
+        },
+        "axi_backend": {
+          "lut": 1451,
+          "logic_lut": 1451,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 891,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        },
+        "program_backend": {
+          "lut": 94,
+          "logic_lut": 94,
+          "lutram": 0,
+          "srl": 0,
+          "ff": 3,
+          "ramb36": 0,
+          "ramb18": 0,
+          "dsp": 0
+        }
+      },
+      "frontend_and_glue_including_indexed_mmio": {
+        "lut": 7990,
+        "logic_lut": 7636,
+        "lutram": 354,
+        "srl": 0,
+        "ff": 6943,
+        "ramb36": 18,
+        "ramb18": 1,
+        "dsp": 0
+      },
+      "kernel": {
+        "lut": 1763,
+        "logic_lut": 1763,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 1936,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "indexed_and_low_subset_mmio": {
+        "lut": 1030,
+        "logic_lut": 1030,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 388,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "configuration_service": {
+        "lut": 315,
+        "logic_lut": 291,
+        "lutram": 24,
+        "srl": 0,
+        "ff": 175,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": -12.116,
+        "tns_ns": -54692.113,
+        "setup_failing_endpoints": 11182,
+        "setup_total_endpoints": 71196,
+        "whs_ns": 0.183,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 71196
+      }
+    }
+  },
+  "standalone_codec_variants": {
+    "v1-five-fields": {
+      "scope": "Standalone RAM-backed configuration codec with synthetic endpoint; NOT actual pipeline or public MMIO",
+      "integrated_acceptance": false,
+      "optimized_resources": {
+        "lut": 548,
+        "logic_lut": 428,
+        "lutram": 120,
+        "srl": 0,
+        "ff": 89,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": 2.164,
+        "tns_ns": 0.0,
+        "setup_failing_endpoints": 0,
+        "setup_total_endpoints": 1347,
+        "whs_ns": 0.306,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 1347
+      },
+      "console_sha256": "b4379e7a660b8a84b83ae71fdc99a888494a0cde2ad7ad34cfa2797a4b2b318b"
+    },
+    "v2-multiple-reads": {
+      "scope": "Standalone RAM-backed configuration codec with synthetic endpoint; NOT actual pipeline or public MMIO",
+      "integrated_acceptance": false,
+      "optimized_resources": {
+        "lut": 522,
+        "logic_lut": 522,
+        "lutram": 0,
+        "srl": 0,
+        "ff": 701,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": 2.596,
+        "tns_ns": 0.0,
+        "setup_failing_endpoints": 0,
+        "setup_total_endpoints": 1839,
+        "whs_ns": 0.266,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 1839
+      },
+      "console_sha256": "e3191a9a138c054d87b18353da8c4f65e12d0ef4c845581b8e447ed08322df1a"
+    },
+    "v3-selected-read": {
+      "scope": "Standalone RAM-backed configuration codec with synthetic endpoint; NOT actual pipeline or public MMIO",
+      "integrated_acceptance": false,
+      "optimized_resources": {
+        "lut": 360,
+        "logic_lut": 336,
+        "lutram": 24,
+        "srl": 0,
+        "ff": 221,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": 2.029,
+        "tns_ns": 0.0,
+        "setup_failing_endpoints": 0,
+        "setup_total_endpoints": 1005,
+        "whs_ns": 0.266,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 1005
+      },
+      "console_sha256": "808184eb3d5b6b7ab4f1ed045160f98826b477a729f7b245440ce1d96e9145af"
+    },
+    "v4-cursor": {
+      "scope": "Standalone RAM-backed configuration codec with synthetic endpoint; NOT actual pipeline or public MMIO",
+      "integrated_acceptance": false,
+      "optimized_resources": {
+        "lut": 315,
+        "logic_lut": 291,
+        "lutram": 24,
+        "srl": 0,
+        "ff": 175,
+        "ramb36": 0,
+        "ramb18": 0,
+        "dsp": 0
+      },
+      "timing": {
+        "wns_ns": 1.21,
+        "tns_ns": 0.0,
+        "setup_failing_endpoints": 0,
+        "setup_total_endpoints": 847,
+        "whs_ns": 0.301,
+        "ths_ns": 0.0,
+        "hold_failing_endpoints": 0,
+        "hold_total_endpoints": 847
+      },
+      "console_sha256": "313cf8154ffe2655afb5dbc0a5779dc40aac5db555b24c86a3d4f6ff1adc071b"
+    }
+  },
+  "optimized_frontend_change_from_previous": {
+    "lut": 533,
+    "ff": 176
+  },
+  "private_configuration_inputs_now_owned_by_mmio": [
+    "audio_cfg_address",
+    "audio_cfg_space",
+    "audio_cfg_valid",
+    "audio_cfg_write",
+    "audio_cfg_write_data",
+    "cfg_address",
+    "cfg_loop",
+    "cfg_state",
+    "cfg_valid",
+    "cfg_write",
+    "cfg_write_data",
+    "store_cfg_address",
+    "store_cfg_space",
+    "store_cfg_valid",
+    "store_cfg_write",
+    "store_cfg_write_data"
+  ],
+  "current_ceilings": {
+    "frontend_lut": 8000,
+    "frontend_ff": 7000,
+    "kernel_lut": 2500,
+    "kernel_ff": 2500,
+    "kernel_dsp": 0,
+    "whole_lut": 32000,
+    "whole_ff": 24000,
+    "whole_ramb36_equivalents": 100,
+    "whole_dsp": 4,
+    "command_cycles": 4096,
+    "snapshot_cycles": 8192,
+    "quantum_cycles": 60000
+  },
+  "gates": {
+    "partial_frontend_area_within_current_limits": true,
+    "kernel_area_within_limits": true,
+    "complete_frontend_accepted": false,
+    "protected_whole_design_accepted": false,
+    "routed_timing_accepted": false,
+    "all_admitted_quantum_budget_proven": false
+  },
+  "remaining_partial_frontend_headroom": {
+    "lut": 10,
+    "ff": 57
+  },
+  "native_messages": {
+    "synthesis_errors": 0,
+    "synthesis_critical_warnings": 0,
+    "synthesis_warnings": 217,
+    "overall_errors": 0,
+    "overall_critical_warnings": 0
+  },
+  "local_artifact_sha256": {
+    "console.log": "dc4e78f203be2ad321b90ea8ac8d50bd67016fbaf9cab07019c460f6a9b484e2",
+    "build/component-synthesis.dcp": "8253f1e7164699a0c30c1c567c702e525aafcf5dc5b5cfe05b518ade54d88c12",
+    "build/component-optimized.dcp": "66c726a4f962b271b6b6e4037ba5b9506f842e726adbc762ea4790ee67419191"
+  },
+  "verification": {
+    "affected_package_rust_tests": 209,
+    "directed_component_rust_tests": 57,
+    "selected_rust_tests": 266,
+    "actual_mmio_tests": 7,
+    "standalone_mmio_tests": 7,
+    "standalone_config_tests": 3,
+    "offline_python_tests": 12,
+    "full_linux_passed": 3584,
+    "full_linux_skipped": 11,
+    "full_linux_seconds": 405.917,
+    "default_wasm_builds_passed": true,
+    "fpga_reference_worklet_wasm_build_passed": true,
+    "physical_tests_performed": false
+  },
+  "notes": [
+    "Only CORE_CONFIG1/AUDIO_CONFIG2/STORE_CONFIG3 are implemented in this service subset; bulk media, lifecycle and optional trace remain required.",
+    "STORE_CONFIG is metadata, not complete media upload. Existing whole-chunk owner/fence integration remains separate.",
+    "One sequential cursor and selected RAM read/write preserve inference. Ordered epoch/op/all12 payload staging matches existing submit ordering, not ABI16 software integration.",
+    "All65 native frozen sources match current measured files. The separately checked register generator reproduces the frozen map; it was not a native compiler input.",
+    "Exactly16 configuration inputs and their32 declaration/binding lines move from public probe to MMIO ownership; every other probe byte and parameter remains unchanged.",
+    "Standalone variants are preflight experiments, not arithmetic proof of integrated fit; all four native results/sources remain preserved.",
+    "Backend replies are copied without ARM readiness. POP/reuse preserves accepted RDATA; audio proceeds with partial requests or unread responses.",
+    "Both stale service-half orders survive actual DDR drain/reset with an old service word held in RDATA; no callbacks replay.",
+    "Initial lifecycle-v1 fixtures incorrectly read write-only audio history invalidation space3; scratch space2 fixes the fixtures and explicit space3 refusal/continued rendering remains tested. No RTL fix or weakened assertion.",
+    "Unrouted WNS worsens from -8.997ns to -12.580ns synthesis/-12.116ns optimized; no routed timing or protected whole-design acceptance.",
+    "ABI15 remains selected. Matched software, CPU-control retirement and Stages4-7 remain incomplete. No physical work/push/PR/deployment."
+  ]
+}

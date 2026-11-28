@@ -83,6 +83,7 @@ pub fn logical(q: u32, limits: SessionLimits) -> rt_fpga_compiler::LogicalStateP
                     slot: u32::from(slot),
                     generation: 1,
                 },
+                initial_gain_bits: None,
                 gain: None,
                 view: None,
                 meter: None,

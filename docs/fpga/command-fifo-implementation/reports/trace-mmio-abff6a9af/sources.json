@@ -1,0 +1,18 @@
+{
+  "fpga/host_bridge/generate_registers.py": "9fcc2617d3c619d4686760501cdc8bb720b12c3ad7be3630cec8e3931a413b72",
+  "fpga/host_bridge/generate_semantic_mmio.py": "108a0e9bd2ecb0702546320dc38ef49fd59aebee9c0cfd320a46f693f2442fc1",
+  "fpga/host_bridge/measure_semantic_pipeline.py": "f3a324978209ac765e0f0eb2d54784db2a5f680b5b324392890fdc11a87e2431",
+  "fpga/host_bridge/rtl/fifo_mmio.sv": "dc36c1bb304baf2b96e0dcd7cc1f2c28d0b2099d7869118407b8cdcd1400af22",
+  "fpga/host_bridge/rtl/fifo_mmio_pipeline_axi.sv": "02d77cd91ca6f3f02ab25973e0ed6d02d501d0cc9de2c83075dbada46cf6a0a8",
+  "fpga/host_bridge/rtl/semantic_registers.sv": "507c3230f7aece3bb1fb7dc682f4b803a84d4adb6fd0ce5dba1daa45d0042dbc",
+  "fpga/host_bridge/semantic_registers.json": "5dd7358b88586cc7bc4d0ea4753d30fd396208b8da1f3c524e27a4acb7a40d3e",
+  "fpga/host_bridge/test_measure_semantic.py": "afd4cfa7253fee89f75e61b1950dab74887c7cb6775fe247f387968a8876133e",
+  "fpga/host_bridge/test_semantic_mmio.py": "10eed1ed0aa8195183ed3fc347dd0a75b25a988cbe131ff2b128d2a09a9b2736",
+  "fpga/host_bridge/test_semantic_registers.py": "b4414e98acc9a6aa10da84f7e5f91b1cb034c5252760de9f74f3f4a0352c73d1",
+  "src/rust/rt_fpga_rtl/src/host/semantic_registers.rs": "90755b9d8017f9e796e1d3585dd23619213bb7a9d9510b41f7dc03a7823e10ac",
+  "src/rust/rt_fpga_rtl/tests/semantic_mmio.rs": "736e9eff27bd89ba3f3a4ad461747cc8046c043b39c8bcc27d54be969ea386c0",
+  "src/rust/rt_fpga_rtl/tests/support/semantic_mmio_probe.sv": "eff4a639eac1236cdd572e5ef4418e2908a4bcf946dbfe3b574ceefc2bfb4c58",
+  "src/rust/rt_fpga_rtl/tests/support/semantic_trace.rs": "944fed6e9ab8134304bf8c23044136ebec74cdd51165d0a6d4779a9baa1b5409",
+  "src/rust/rt_fpga_testbench/tests/support/semantic_mmio_audio.rs": "c4cadb9be7ab85c8ee81af6a651d00b34c21d71e157800f85026ca5be28780f9",
+  "src/rust/rt_fpga_testbench/tests/support/semantic_mmio_trace.rs": "ac37b7370aa30a22525730b5e69ffd770f2c7b5d7645b441f45f3d4b2b18c7aa"
+}

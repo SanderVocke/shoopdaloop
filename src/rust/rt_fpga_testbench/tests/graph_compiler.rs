@@ -46,6 +46,139 @@ fn composite_graph() -> Graph {
     graph
 }
 
+fn canonical_jobs(
+    mut jobs: Vec<serde_json::Value>,
+) -> (
+    Vec<serde_json::Value>,
+    std::collections::BTreeMap<u64, Vec<serde_json::Value>>,
+) {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut media = BTreeMap::<u64, Vec<serde_json::Value>>::new();
+    let mut buffers = BTreeSet::new();
+    let mut captures = BTreeSet::new();
+    let mut starts = BTreeSet::new();
+    let mut histories = BTreeSet::new();
+    let mut outputs = BTreeSet::new();
+    for job in &jobs {
+        let kind = job["kind"].as_str().unwrap();
+        let sources: &[&str] = match kind {
+            "gain" | "smoothing" | "capture" | "output" => &["source"],
+            "mix" => &["left", "right"],
+            "input" | "silence" | "read_view" | "begin_capture" => &[],
+            _ => panic!("unexpected audio job {job}"),
+        };
+        for field in sources {
+            assert!(
+                buffers.contains(&job[*field].as_u64().unwrap()),
+                "read before write: {job}"
+            );
+        }
+        if let Some(destination) = job.get("destination") {
+            assert!(
+                buffers.insert(destination.as_u64().unwrap()),
+                "duplicate buffer write: {job}"
+            );
+        }
+        if matches!(kind, "read_view" | "begin_capture" | "capture") {
+            media
+                .entry(job["view"].as_u64().unwrap())
+                .or_default()
+                .push(job.clone());
+        }
+        match kind {
+            "begin_capture" => {
+                let view = job["view"].as_u64().unwrap();
+                assert!(
+                    !captures.contains(&view),
+                    "writer start after capture: {job}"
+                );
+                assert!(starts.insert(view), "duplicate writer start: {job}");
+            }
+            "capture" => assert!(captures.insert(job["view"].as_u64().unwrap())),
+            "smoothing" => assert!(histories.insert(job["history"].as_u64().unwrap())),
+            "output" => assert!(outputs.insert(job["port"].as_u64().unwrap())),
+            _ => (),
+        }
+    }
+    jobs.sort_by_cached_key(|job| {
+        (
+            job["kind"].as_str().unwrap().to_owned(),
+            job.get("destination")
+                .or_else(|| job.get("view"))
+                .or_else(|| job.get("port"))
+                .unwrap()
+                .as_u64()
+                .unwrap(),
+        )
+    });
+    media.retain(|view, _| captures.contains(view) || starts.contains(view));
+    (jobs, media)
+}
+
+#[shoop_test]
+fn canonical_job_comparison_preserves_dependencies_writers_and_payloads() {
+    use serde_json::json;
+    let input = json!({"kind":"input","port":0,"destination":0});
+    let other_input = json!({"kind":"input","port":1,"destination":1});
+    let gain = json!({"kind":"gain","source":0,"destination":2,"ramp":{"target":1}});
+    let other_gain = json!({"kind":"gain","source":1,"destination":3,"ramp":{"target":2}});
+    let start = json!({"kind":"begin_capture","view":7});
+    let capture = json!({"kind":"capture","view":7,"source":1});
+    let output = json!({"kind":"output","port":0,"source":2});
+    let other_output = json!({"kind":"output","port":1,"source":3});
+    let valid = vec![
+        input.clone(),
+        other_input.clone(),
+        gain.clone(),
+        other_gain.clone(),
+        start.clone(),
+        capture.clone(),
+        output.clone(),
+        other_output.clone(),
+    ];
+    let reordered = vec![
+        other_input.clone(),
+        start.clone(),
+        capture.clone(),
+        other_gain,
+        input.clone(),
+        gain.clone(),
+        other_output,
+        output.clone(),
+    ];
+    assert_eq!(canonical_jobs(valid.clone()), canonical_jobs(reordered));
+    let mut duplicate_output = valid.clone();
+    duplicate_output.push(output);
+    for invalid in [
+        vec![gain, input.clone()],
+        vec![input.clone(), input.clone()],
+        vec![other_input.clone(), capture.clone(), start],
+        vec![other_input, capture.clone(), capture],
+        duplicate_output,
+        vec![
+            input,
+            json!({"kind":"smoothing","source":0,"destination":4,"history":1}),
+            json!({"kind":"smoothing","source":0,"destination":5,"history":1}),
+        ],
+    ] {
+        assert!(std::panic::catch_unwind(|| canonical_jobs(invalid)).is_err());
+    }
+    let mut changed = valid.clone();
+    changed[2]["ramp"]["target"] = json!(3);
+    assert_ne!(canonical_jobs(valid.clone()), canonical_jobs(changed));
+    let mut missing = valid.clone();
+    missing.pop();
+    assert_ne!(canonical_jobs(valid), canonical_jobs(missing));
+    let input = json!({"kind":"input","port":0,"destination":0});
+    let capture = json!({"kind":"capture","view":7,"source":0});
+    let read =
+        json!({"kind":"read_view","view":7,"destination":1,"position_chunks":0,"length_chunks":1});
+    assert_ne!(
+        canonical_jobs(vec![input.clone(), read.clone(), capture.clone()]),
+        canonical_jobs(vec![input, capture, read]),
+    );
+}
+
 #[shoop_test]
 fn composite_seek_arbitrates_shared_children_on_a_sync_pulse() {
     use rt_fpga_reference::transitions::LoopId;
@@ -175,7 +308,11 @@ fn composite_applies_sixty_four_child_actions_in_one_quantum() {
         row.length = 16;
     }
     let rtl = target.build(&logical).unwrap();
-    assert_eq!(rtl.sync_count, 3 * CHILDREN as usize + 1);
+    assert_eq!(rtl.sync_count, CHILDREN as usize + 1);
+    assert_eq!(
+        rtl.instructions.len(),
+        3 * CHILDREN as usize + 1 + logical.work_pass.len()
+    );
     let rust = RustTarget::new(&[]).build(&logical).unwrap();
     let model = suites::state::design(depths)
         .build(&rt_fpga_testbench::root().join("work/marlin-suite/composite-fanout"))
@@ -264,7 +401,11 @@ fn composite_schedule_uses_program_capacity_for_many_spans_and_parents() {
     .unwrap();
     logical.loops[0].length = 16;
     let rtl = target.build(&logical).unwrap();
-    assert_eq!(rtl.sync_count, 10 + 1 + 70 + 8 * 2);
+    assert_eq!(rtl.sync_count, 10);
+    assert_eq!(
+        rtl.instructions.len(),
+        10 + 1 + 70 + 8 * 2 + logical.work_pass.len()
+    );
     let too_small = rt_fpga_compiler::ProgramLimits {
         instructions: rtl.instructions.len() as u32 - 1,
         ..limits
@@ -339,7 +480,11 @@ fn bounded_composite_spans_drive_existing_media_jobs_in_rust_and_rtl() {
     let logical = compile_composites(&composite_graph(), context, Q as u32).unwrap();
     let rtl = target.build(&logical).unwrap();
     let rust = RustTarget::new(&views).build(&logical).unwrap();
-    assert_eq!(rtl.sync_count, logical.sync_pass.len() + 7);
+    assert_eq!(rtl.sync_count, logical.sync_pass.len());
+    assert_eq!(
+        rtl.instructions.len(),
+        logical.work_pass.len() + logical.sync_pass.len() + 7
+    );
     assert_eq!(rtl.bindings.iter().filter(|b| b.view.is_some()).count(), 2);
     assert_eq!(rtl.bindings.iter().filter(|b| b.gain.is_some()).count(), 2);
     let too_small = CompileContext {
@@ -461,12 +606,14 @@ fn bounded_composite_spans_drive_existing_media_jobs_in_rust_and_rtl() {
             "RTL quantum {tick}"
         );
         assert_eq!(
-            driver.consumed(),
-            pipeline
-                .emitted_jobs()
-                .iter()
-                .map(|j| serde_json::to_value(j).unwrap())
-                .collect::<Vec<_>>()
+            canonical_jobs(driver.consumed()),
+            canonical_jobs(
+                pipeline
+                    .emitted_jobs()
+                    .iter()
+                    .map(|j| serde_json::to_value(j).unwrap())
+                    .collect::<Vec<_>>()
+            )
         );
         for spec in &specs {
             let state = pipeline.state().loop_state(spec.id).unwrap();
@@ -569,7 +716,11 @@ fn multichannel_recording_smoothing_and_bus_programs_emit_identical_rust_and_rtl
                 .map(|j| serde_json::to_value(j).unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(driver.execute(&mut sim, &[]), 0);
-            assert_eq!(driver.drain(&mut sim), expected, "Q={quantum} tick={tick}");
+            assert_eq!(
+                canonical_jobs(driver.drain(&mut sim)),
+                canonical_jobs(expected),
+                "Q={quantum} tick={tick}"
+            );
             while jobs.pop().is_some() {}
         }
     }

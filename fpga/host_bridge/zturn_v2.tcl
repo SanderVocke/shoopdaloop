@@ -60,7 +60,7 @@ if {$native_pcm} {
     foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
         add_files [lsort [glob [file join $root fpga $directory rtl *.sv]]]
     }
-    foreach source {host_mailbox.sv host_dispatch.sv host_recovery.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
+    foreach source {host_fault_record.sv host_mailbox.sv host_dispatch.sv host_recovery.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
         add_files [file join $host $source]
     }
 }

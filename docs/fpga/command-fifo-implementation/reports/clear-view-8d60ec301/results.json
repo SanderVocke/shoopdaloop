@@ -1,0 +1,92 @@
+{
+  "outcome": "PARTIAL_PUBLIC_CLEAR_VIEW_FUNCTIONAL_GATES_PASSED_NO_RESOURCE_MEASUREMENT",
+  "source_base": "8d60ec30197490a76522aaae50756ad9bed64371",
+  "source_manifest": "sources.json",
+  "scope": "Candidate ABI 16 public preparation subset 1/2/3/4; production remains ABI 15",
+  "architecture": {
+    "service_slots": 1,
+    "working_bits": 160,
+    "added_dispatchers_or_backend_owners": 0,
+    "clear_view_opcode": 4,
+    "backend_clear_opcode": 2,
+    "view_bits": 64,
+    "reserved_zero_payload_words": 10,
+    "clear_reply_data_words": 12,
+    "clear_reply_data": "all zero",
+    "total_private_config_and_media_command_inputs": 23,
+    "additional_private_media_command_inputs": 7,
+    "public_bulk_service_complete": false,
+    "private_media_chunk_words_required": 32
+  },
+  "verification": {
+    "codec_tests": 4,
+    "indexed_mmio_tests": 7,
+    "actual_mmio_tests": 8,
+    "selected_affected_rust_tests": 210,
+    "selected_directed_rust_tests": 59,
+    "selected_rust_total": 269,
+    "kernel_differential_cases_per_source": 3970,
+    "kernel_sources_tested": 2,
+    "python_tests": 12,
+    "warning_denying_workspace_build": "passed",
+    "format_test_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3584,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 405.368,
+      "nextest": "0.9.116",
+      "audio": "isolated owned 48 kHz/128-frame dummy JACK"
+    },
+    "wasm_default_application_and_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "builds_and_tests_serialized": true,
+    "new_clear_fixture": "Unused empty range-view through actual loader/media/64-bit AXI model with stalls",
+    "clear_coverage": [
+      "all fourteen unpublished prefixes",
+      "silent audio progress with prefixes and held AXI B/R",
+      "backend completion released without ARM consumption",
+      "copied RDATA across POP/reuse",
+      "full-u64 view nonaliasing",
+      "reserved-field refusal",
+      "zero reply data",
+      "RPCs do not advance F",
+      "eighteen codec halt positions and late reply/reset/no replay"
+    ],
+    "not_established": [
+      "nonempty clear/fence qualification",
+      "complete hostile lifecycle",
+      "browser runtime",
+      "physical qualification"
+    ]
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "latest_prechange_measurement": "../config-ready-b1c37e8fd/results.json",
+    "prechange_frontend_lut": 7943,
+    "prechange_frontend_ff": 6943,
+    "prechange_optimized_unrouted_wns_ns": -9.754,
+    "reason": "Small functional service extension under functional-first amendment; complete baseline/full-design acceptance remains pending",
+    "final_lut_ff_budgets_agreed": false,
+    "other_profile_resource_cycle_safety_timing_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stages5_to7_complete": false,
+    "complete_preparation_media_lifecycle_trace": false,
+    "matching_abi16_software": false,
+    "protected_whole_design": false,
+    "all_admitted_quantum_proof": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization": false
+  },
+  "reproduce": [
+    "nix develop --command bash work/cmd-fifo-investigation/stage4-mmio-hookup-milestone.sh",
+    "nix develop --command cargo build -p shoopdaloop -p shoop_rt_host_worklet --target wasm32-unknown-unknown",
+    "nix develop --command cargo build -p shoop_rt_host_worklet --target wasm32-unknown-unknown --features fpga-reference",
+    "nix develop --command bash work/cmd-fifo-investigation/stage4-clear-view-linux.sh"
+  ],
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage4-clear-view-"
+}

@@ -1,6 +1,12 @@
 # Live program loading implementation
 
-Contract: [LOADING_DESIGN.md](../../LOADING_DESIGN.md).
+Ownership contract: [LOADING_DESIGN.md](../../LOADING_DESIGN.md).
+The [ABI-16 semantic FIFO contract](../../fpga/host_bridge/semantic_fifo.md) freezes
+the replacement frontend's publication, service and snapshot rules. Its production
+integration is still pending in Stages 4–5 of [the plan](../../FPGA_CMD_FIFO.md):
+current ARM controls use the legacy ABI-15 control-window/batch bridge. The
+Rust/reference, compiler and RTL composite live-switch paths have been removed;
+their verified milestones are recorded [here](command-fifo-implementation/README.md).
 
 ## Allocation and binding on ARM
 
@@ -45,35 +51,33 @@ access remains available for explicit test fixtures and is not hardware isolatio
 ## Rust real-time path
 
 The reference host keeps its state processor, job processor, media pool and frame
-clock alive across graph changes. Complete `GraphView` snapshots, including unsupported shapes and MIDI information,
-stop at the ARM endpoint:
-compilation and allocation run there, outside processing. Typed bound artifacts
-cross a bounded program-memory handoff. Unused media views are prepared
-incrementally. The prepared hosts use a bounded, single-request switch queue
-alongside the ordinary command FIFO. The switch can wait for an eligible
-restart while playback commands continue through that FIFO.
-When an eligible edit changes the timing of a repeating pass, the allocator
-prepares a fresh loop record for the new timing in the existing loop RAM.
-At the restart boundary, the host carries the pass count, repeat setting, and
-playback state into that record. The switch publishes the new instructions
-and timing together, then retires the old record through the existing fence.
+clock alive across supported primitive-only graph changes. Complete `GraphView`
+descriptions stop at the ARM endpoint; compilation and allocation run outside
+processing. Typed bound artifacts cross a bounded program-memory handoff. Unused
+media views are prepared incrementally. The legacy prepared hosts retain a
+bounded switch lane alongside ordinary commands during migration; ABI 16 instead
+uses one ordered semantic queue and a one-group-per-quantum cutoff.
 
-`CancelCompositeGraph` identifies an edit by its key and base revision. It
-passes through the image upload channel, which also reaches the renderer
-while the switch waits. When the renderer receives cancellation before the
-switch, it retires the image and reports a cancelled activation. A switch
-that already took effect reports its applied revision and frame.
-The application can also ask a waiting edit to release its staged copy while
-the composite's sync source changes. It stages the same edit version again
-against the new source once the source change has taken effect.
-An admitted switch also settles if the application connection closes. The
-loader uses the result to settle program ownership. After reconnecting, the
-client can read the current revision through its usual snapshot subscription.
+Initial static composite installation and its runtime controls remain supported.
+`Allocator::stage` refuses before reservation when either current or candidate
+layout contains composites. Reference execution, hardware sessions and Marlin add
+independent guards. Child edits, introduction/removal and unrelated changes while
+a composite is installed refuse with `GraphCompositeUnsupported`, including when
+transport is stopped. Installed schedules, recorded playback and allocations stay
+unchanged. No ancestor/cut planning, preview, outgoing-span migration, automatic
+stop or future-boundary retry remains.
 
-When an ordinary graph activation removes one composite with no parent, the
-host can stop the departing loop after the replacement is ready. One run
-with the old program releases its children and completes their authored audio
-recordings. The next boundary can switch programs and retire the old slot.
+`CancelCompositeGraph` can cancel unpublished preparation by key/base revision.
+It does not create permission for composite live replacement. A switch already
+selected must settle its actual ownership outcome; cancellation or disconnect
+cannot undo it or authorize reclamation. Reconnect observes revision/status, never
+replays a missing acknowledgement.
+
+A revised static composite requires the explicit quiescence/ownership lifecycle:
+retire the old execution owner, obtain a real memory fence or safe reset, then
+establish a new incarnation/allocator and perform initial installation. This is
+not a hidden stop-and-retry path. CPU-native/default-browser composite editing is
+unchanged; the optional `fpga-reference` worklet shares the reduced profile.
 
 At each quantum boundary, complete command groups execute in FIFO order within
 each queue. A switch changes the program, plan metadata, run parameters, control bindings and
@@ -189,7 +193,7 @@ rollback, state migration, live compaction or parallel graph crossfade. Reset
 requires quiescing execution and creating a new runtime/transport incarnation;
 an ARM owner cannot reconstruct free space from snapshots after losing its map.
 
-## Resource measurements
+## Historical resource measurements
 
 Yosys Xilinx 7-series cell mapping, with no I/O pads or clock buffers:
 
@@ -197,8 +201,8 @@ Yosys Xilinx 7-series cell mapping, with no I/O pads or clock buffers:
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Standalone SP before live RTL, one 256-instruction region | 4,244 | 1,616 | 14 | 3 | 0 |
 | Standalone SP with two 256-instruction regions | 4,213 | 1,617 | 14 | 3 | 0 |
-| Current SP/JP, single-program mode, 64 instructions | 6,651 | 3,629 | 1 | 3 | 4 |
-| Current SP/JP, live mode, two 64-instruction regions | 6,887 | 3,707 | 1 | 6 | 4 |
+| Recorded SP/JP, single-program mode, 64 instructions | 6,651 | 3,629 | 1 | 3 | 4 |
+| Recorded SP/JP, live mode, two 64-instruction regions | 6,887 | 3,707 | 1 | 6 | 4 |
 
 The standalone comparison uses the RTL at `f3fcf400` as its baseline, including
 the inline sync-source and explicit history operands. State, loop and job depths
@@ -231,7 +235,7 @@ The SP advances the single global frame even when its sync section is empty.
 Empty startup/retirement programs can therefore switch back into loop processing
 without restarting time. The loader does not introduce another processing clock.
 
-## Validation results
+## Historical loading validation results
 
 - Compiler/reference suites, including no-heap recording switches and six FIFO
   loading scenarios, pass.
@@ -243,6 +247,7 @@ without restarting time. The loader does not introduce another processing clock.
   launcher shutdown failure excluded and one device-dependent test ignored.
 - Formatting, warning-denying affected-package builds, Rust test-attribute policy
   and the historical Marlin coverage guard pass.
-- The complete workspace build is blocked by missing ALSA development files;
-  `cargo-nextest` is unavailable. These environment limitations are independent
-  of the loading changes.
+- At that historical checkpoint the workspace build was blocked by missing ALSA
+  development files and `cargo-nextest` was unavailable. Those are not current
+  environment claims; the subsequent command-FIFO removal milestones record
+  passing complete Linux, warning-denying workspace and Wasm gates.

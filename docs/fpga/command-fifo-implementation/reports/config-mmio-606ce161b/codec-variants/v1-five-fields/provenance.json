@@ -1,0 +1,18 @@
+{
+  "base": "606ce161b0c6f7e55fde1b79416d00ae32841121",
+  "working_tree_snapshot": true,
+  "image": "docker.io/siliconbootcamp/xilinx-vivado@sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "scope": "Standalone RAM-backed configuration codec with synthetic endpoint; NOT actual pipeline or public MMIO",
+  "all_top_inputs_and_outputs_external": true,
+  "route": false,
+  "sources": {
+    "fpga/host_bridge/rtl/fifo_config_service.sv": "8f81f1b3a8da22990fe05b90147c736a3280b2f7dbf052e183d2c824cbfeefa7"
+  },
+  "tcl_sha256": "bb24be332a6647b765c80e48d494e5a824adbf80f8bf38bed269957b65f112dc",
+  "runner_sha256": "8b3968e9f08b39f20f37e77e75c981682f53c8ec9e2771c657407726ef18fa59",
+  "catalog": "/home/sander/dev/shoopdaloop/work/vivado-zynq/catalog-tree/tools/Xilinx/Vivado/2021.1/data/ip"
+}

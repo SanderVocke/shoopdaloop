@@ -1,0 +1,59 @@
+{
+  "outcome": "PARTIAL_HARDWARE_PACED_FULL_RETURNS_TEST_ONLY_GATES_PASSED_NO_RESOURCE_MEASUREMENT",
+  "source_base": "d668fc02a418f1db748e6e234287aa24c6000598",
+  "source_manifest": "sources.json",
+  "scope": "One native test on unchanged generated-audio/SP/JP/media/64bitAXI production RTL and runtime; Stage4 partial, ABI15 remains selected",
+  "production_runtime_rtl_or_schema_changes": false,
+  "verification": {
+    "new_native_tests": 1,
+    "affected_rust_tests": 219,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 291,
+    "retained_audio_io_tests": 4,
+    "codec_tests": 12,
+    "indexed_mmio_tests": 8,
+    "actual_mmio_tests": 17,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "full_reservations": "initial switch plus three stateless refusals; all4 result banks checked complete5; FIFO head only visible; two full snapshots; fifth reservation refuses1 without consuming sequence5",
+    "held_reader_progress": "copied resultR and refusalB remain held;128additional exact stereo PCM frames pass; F and skipped snapshots grow, reservations/lastAdmitted4/next5 remain fixed, no fault/xrun",
+    "recovery": "hold real accepted DDR program read response; ABORT/recovery cannot reset before actual RLAST; global copied resultR/recoveryB survive E1->E2; all old returns flush, fresh initial snapshot completes without reader/ACK, no automatic replay/enable; full16word revision0/F0/seq1/epoch2 header checked",
+    "fixture_limits": "Q32 mono-input/stereo-output direct three-instruction program,128snapshot rows,reduced program/state/media geometry; not all graphs/optional-trace overflow/all-admitted cycle proof",
+    "fresh_linux_or_wasm_run": false,
+    "last_runtime_gates": {
+      "commit": "d668fc02a418f1db748e6e234287aa24c6000598",
+      "report": "../drain-stop-00314720f/results.json",
+      "linux_passed": 3584,
+      "linux_skipped": 11,
+      "linux_seconds": 405.373,
+      "wasm_default_application_worklet": "passed",
+      "wasm_optional_fpga_reference_worklet": "passed",
+      "qualification": "historical runtime gates, not fresh-head runs; only native test/docs/evidence changed"
+    },
+    "builds_and_tests_serialized": true
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "last_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stages5_to7_complete": false,
+    "complete_hostile_cross_layer_lifecycle": false,
+    "matching_abi16_software": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false
+  },
+  "reproduce_narrow": "nix develop --command cargo test -p rt_fpga_testbench --features sim --test semantic_audio mmio_audio::paced::full_results_and_snapshots -- --test-threads=1",
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage4-paced-full-"
+}

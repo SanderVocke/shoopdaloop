@@ -5,7 +5,7 @@ module host_recovery #(
     input wire clk, reset,
     input wire [31:0] seed_epoch,
     input wire request,
-    input wire quiescent,
+    input wire quiescent, bus_fault,
     input wire write_start, write_done, read_start, read_done,
     output wire quiesce,
     output wire datapath_reset,
@@ -32,6 +32,7 @@ module host_recovery #(
             unsafe_bus <= 0;
             quiet <= 0;
         end else begin
+            if (bus_fault) unsafe_bus <= 1;
             case ({write_start,write_done})
                 2'b10: if (writes == 16'hffff) unsafe_bus <= 1; else writes <= writes+1'b1;
                 2'b01: if (writes == 0) unsafe_bus <= 1; else writes <= writes-1'b1;
@@ -51,7 +52,7 @@ module host_recovery #(
                 DRAIN: begin
                     cycles <= cycles+1;
                     quiet <= quiescent && writes == 0 && reads == 0 && !write_start && !read_start;
-                    if (unsafe_bus || epoch == 0 || epoch == 32'hffffffff || cycles >= TIMEOUT_CYCLES-1)
+                    if (bus_fault || unsafe_bus || epoch == 0 || epoch == 32'hffffffff || cycles >= TIMEOUT_CYCLES-1)
                         state <= FAILED;
                     else if (quiet && quiescent && writes == 0 && reads == 0 && !write_start && !read_start) begin
                         state <= RESET;
@@ -60,7 +61,7 @@ module host_recovery #(
                     end
                 end
                 RESET: begin
-                    if (write_start || read_start || unsafe_bus) state <= FAILED;
+                    if (write_start || read_start || bus_fault || unsafe_bus) state <= FAILED;
                     else if (cycles == RESET_CYCLES-1) state <= READY;
                     cycles <= cycles+1;
                 end

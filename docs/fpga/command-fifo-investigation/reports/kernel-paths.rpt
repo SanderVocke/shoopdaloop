@@ -1,0 +1,486 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Wed Nov 25 22:26:39 2026
+| Host         : f0b8718a915c running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -max_paths 10 -file kernel-paths.rpt
+| Design       : fifo_edit_kernel
+| Device       : 7z020-clg400
+| Speed File   : -2  PRODUCTION 1.12 2019-11-22
+------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             1.239ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[51]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.939ns  (logic 0.589ns (8.488%)  route 6.350ns (91.512%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.923     6.834    memory_state
+    SLICE_X57Y49         LUT5 (Prop_lut5_I1_O)        0.105     6.939 r  memory_write_data[51]_INST_0/O
+                         net (fo=0)                   0.787     7.726    memory_write_data[51]
+                                                                      r  memory_write_data[51] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.726    
+  -------------------------------------------------------------------
+                         slack                                  1.239    
+
+Slack (MET) :             1.461ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[50]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.717ns  (logic 0.589ns (8.769%)  route 6.128ns (91.231%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.701     6.612    memory_state
+    SLICE_X56Y48         LUT5 (Prop_lut5_I1_O)        0.105     6.717 r  memory_write_data[50]_INST_0/O
+                         net (fo=0)                   0.787     7.504    memory_write_data[50]
+                                                                      r  memory_write_data[50] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.504    
+  -------------------------------------------------------------------
+                         slack                                  1.461    
+
+Slack (MET) :             1.584ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[59]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.594ns  (logic 0.589ns (8.932%)  route 6.005ns (91.068%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.578     6.489    memory_state
+    SLICE_X54Y50         LUT5 (Prop_lut5_I1_O)        0.105     6.594 r  memory_write_data[59]_INST_0/O
+                         net (fo=0)                   0.787     7.381    memory_write_data[59]
+                                                                      r  memory_write_data[59] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.381    
+  -------------------------------------------------------------------
+                         slack                                  1.584    
+
+Slack (MET) :             1.592ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[58]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.586ns  (logic 0.589ns (8.943%)  route 5.997ns (91.057%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.570     6.481    memory_state
+    SLICE_X54Y50         LUT5 (Prop_lut5_I1_O)        0.105     6.586 r  memory_write_data[58]_INST_0/O
+                         net (fo=0)                   0.787     7.373    memory_write_data[58]
+                                                                      r  memory_write_data[58] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.373    
+  -------------------------------------------------------------------
+                         slack                                  1.592    
+
+Slack (MET) :             1.632ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[55]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.546ns  (logic 0.589ns (8.998%)  route 5.957ns (91.002%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.530     6.441    memory_state
+    SLICE_X53Y52         LUT5 (Prop_lut5_I1_O)        0.105     6.546 r  memory_write_data[55]_INST_0/O
+                         net (fo=0)                   0.787     7.333    memory_write_data[55]
+                                                                      r  memory_write_data[55] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.333    
+  -------------------------------------------------------------------
+                         slack                                  1.632    
+
+Slack (MET) :             1.698ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_address[9]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.479ns  (logic 0.602ns (9.291%)  route 5.877ns (90.709%))
+  Logic Levels:           2  (LUT3=1 LUT5=1)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.451     6.361    memory_state
+    SLICE_X62Y40         LUT3 (Prop_lut3_I1_O)        0.118     6.479 r  memory_address[9]_INST_0/O
+                         net (fo=0)                   0.787     7.266    memory_address[9]
+                                                                      r  memory_address[9] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.266    
+  -------------------------------------------------------------------
+                         slack                                  1.698    
+
+Slack (MET) :             1.708ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[52]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.470ns  (logic 0.589ns (9.104%)  route 5.881ns (90.896%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.454     6.365    memory_state
+    SLICE_X54Y51         LUT5 (Prop_lut5_I1_O)        0.105     6.470 r  memory_write_data[52]_INST_0/O
+                         net (fo=0)                   0.787     7.257    memory_write_data[52]
+                                                                      r  memory_write_data[52] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.257    
+  -------------------------------------------------------------------
+                         slack                                  1.708    
+
+Slack (MET) :             1.711ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_address[15]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.466ns  (logic 0.589ns (9.109%)  route 5.877ns (90.891%))
+  Logic Levels:           2  (LUT3=1 LUT5=1)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.451     6.361    memory_state
+    SLICE_X62Y40         LUT3 (Prop_lut3_I1_O)        0.105     6.466 r  memory_address[15]_INST_0/O
+                         net (fo=0)                   0.787     7.253    memory_address[15]
+                                                                      r  memory_address[15] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.253    
+  -------------------------------------------------------------------
+                         slack                                  1.711    
+
+Slack (MET) :             1.718ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_write_data[53]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.460ns  (logic 0.589ns (9.118%)  route 5.871ns (90.882%))
+  Logic Levels:           2  (LUT5=2)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.444     6.355    memory_state
+    SLICE_X55Y51         LUT5 (Prop_lut5_I1_O)        0.105     6.460 r  memory_write_data[53]_INST_0/O
+                         net (fo=0)                   0.787     7.247    memory_write_data[53]
+                                                                      r  memory_write_data[53] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.247    
+  -------------------------------------------------------------------
+                         slack                                  1.718    
+
+Slack (MET) :             1.760ns  (required time - arrival time)
+  Source:                 FSM_sequential_phase_reg[2]_rep__5/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            memory_address[4]
+                            (output port clocked by core  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core
+  Path Type:              Max at Slow Process Corner
+  Requirement:            10.000ns  (core rise@10.000ns - core rise@0.000ns)
+  Data Path Delay:        6.418ns  (logic 0.610ns (9.505%)  route 5.808ns (90.495%))
+  Logic Levels:           2  (LUT3=1 LUT5=1)
+  Output Delay:           1.000ns
+  Clock Path Skew:        -0.787ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.000ns = ( 10.000 - 10.000 ) 
+    Source Clock Delay      (SCD):    0.787ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=1975, unset)         0.787     0.787    clk
+    SLICE_X37Y56         FDRE                                         r  FSM_sequential_phase_reg[2]_rep__5/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X37Y56         FDRE (Prop_fdre_C_Q)         0.379     1.166 f  FSM_sequential_phase_reg[2]_rep__5/Q
+                         net (fo=119, routed)         2.640     3.806    FSM_sequential_phase_reg[2]_rep__5_n_0
+    SLICE_X39Y41         LUT5 (Prop_lut5_I2_O)        0.105     3.911 r  memory_write_data[128]_INST_0/O
+                         net (fo=80, routed)          2.381     6.292    memory_state
+    SLICE_X65Y37         LUT3 (Prop_lut3_I1_O)        0.126     6.418 r  memory_address[4]_INST_0/O
+                         net (fo=0)                   0.787     7.205    memory_address[4]
+                                                                      r  memory_address[4] (OUT)
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)      10.000    10.000 r  
+                         clock pessimism              0.000    10.000    
+                         clock uncertainty           -0.035     9.965    
+                         output delay                -1.000     8.965    
+  -------------------------------------------------------------------
+                         required time                          8.965    
+                         arrival time                          -7.205    
+  -------------------------------------------------------------------
+                         slack                                  1.760    
+
+
+
+

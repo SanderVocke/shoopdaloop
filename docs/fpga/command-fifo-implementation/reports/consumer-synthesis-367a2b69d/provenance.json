@@ -1,0 +1,33 @@
+{
+  "base": "367a2b69d555eb9a4f9208fb213912a9ce5917b7",
+  "working_tree_snapshot": true,
+  "image": "docker.io/siliconbootcamp/xilinx-vivado@sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "expected_launcher_sha256": "2924389be0c4297f3e2c4d267e22904a89962575497d0f5fd7eb15dc959e5505",
+  "runner_sha256": "454c82b818fa0fcc2f95dd3ccb50685f3a1768d80671e05f027d5e0b85a31225",
+  "part": "xc7z020clg400-2",
+  "clock_mhz": 100,
+  "input_output_delay_ns": 1,
+  "profile": {
+    "loops": 128,
+    "states": 512,
+    "instructions": 1024,
+    "buffers": 512
+  },
+  "sources": [
+    {
+      "path": "fpga/host_bridge/rtl/fifo_edit_kernel.sv",
+      "sha256": "bacf1224ab4cbaaa9f3f4bc3c033dac8b4d9e7c23222a0e58421d43483ada68f"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_group_banks.sv",
+      "sha256": "f042371c848035a6409ac80befdcdf7ce27fc238e283f77a3643c116a9a51556"
+    },
+    {
+      "path": "fpga/host_bridge/rtl/fifo_group_consumer.sv",
+      "sha256": "0c1f3caf5011e3db4ae12ad3e8e209f83a05789663bfad895f5e4282320c33d3"
+    }
+  ],
+  "tcl_sha256": "2204b267780e091eceb152f13447d5f1674680f1d3672f1d02ed935be1c14665",
+  "scope": "partial semantic bank/consumer/kernel frontend; no MMIO, snapshots, SP observations, loader arbitration, SP/JP, PS/DDR or board",
+  "route": false
+}

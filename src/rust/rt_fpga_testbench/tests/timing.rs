@@ -27,8 +27,11 @@ fn fixed_latency_and_population_statistics() {
     assert!(fixed.ready(token));
 }
 fn model(name: &str) -> Dram {
-    Dram::default(
-        &rt_fpga_testbench::root().join(format!("work/marlin-suite/dram/{name}")),
+    let root = rt_fpga_testbench::root();
+    Dram::new(
+        &root.join("work/dramsim3/build/libshoop_dram.so"),
+        &root.join("fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini"),
+        &root.join(format!("work/marlin-suite/dram/{name}")),
         100_000_000,
     )
     .unwrap()

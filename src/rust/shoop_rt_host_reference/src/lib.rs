@@ -755,9 +755,7 @@ impl<L: ProgramLoader> Endpoint<L> {
             Some(Command::ActivateCompositeGraph(key)) => Some(*key),
             _ => None,
         };
-        let layout = self
-            .allocator
-            .stage_with_composite_retirement(&logical, cancel_key.is_none())?;
+        let layout = self.allocator.stage(&logical)?;
         let revision = layout.revision;
         let staged = self.programs.stage_program(&logical, layout);
         match staged {
