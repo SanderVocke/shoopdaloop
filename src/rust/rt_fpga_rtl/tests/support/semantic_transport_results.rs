@@ -2,7 +2,7 @@ use super::*;
 use rt_fpga_rtl::host::semantic::{GroupResult, MAX_RESULT_BUS_OPS, ResultStep};
 use shoop_rt_protocol::immediate::Code;
 
-fn ready(bus: &Bus, bank: usize) {
+pub(super) fn ready(bus: &Bus, bank: usize) {
     let mut state = bus.0.borrow_mut();
     assert_eq!(state.states[bank], 2);
     let group = &state.words[bank];

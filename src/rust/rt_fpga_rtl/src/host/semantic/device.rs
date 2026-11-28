@@ -1,9 +1,13 @@
 use super::{GroupIdentity, GroupPacket, GroupResult};
 mod result_reader;
+mod snapshot_reader;
 use crate::host::semantic_registers::*;
 use crate::host::{Contract, Error, Geometry, Mailbox, Recovery, RecoveryState, RegisterBus};
 use result_reader::Reader;
 pub use result_reader::{MAX_RESULT_BUS_OPS, ResultStep};
+pub use snapshot_reader::{
+    MAX_SNAPSHOT_BUS_OPS, SNAPSHOT_COPY_WORDS, SnapshotBuffers, SnapshotDevice, SnapshotStep,
+};
 
 pub const MAX_PUBLICATION_BUS_OPS: usize = 3;
 

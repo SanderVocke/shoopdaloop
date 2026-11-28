@@ -1923,11 +1923,54 @@ Final gates pass **12 transport tests**, **319 Rust = 247 affected + 72 directed
 **13 Python**, Linux **3,589 passed (2 slow) / 11 skipped / 405.144 s**, default and
 optional-reference Wasm builds, explicit host-library Wasm and pinned ARM-library
 checks, warnings/format/policy/coverage/generators. [Exact-source evidence](docs/fpga/command-fifo-implementation/reports/results-926189609/results.json)
-records seven Rust hashes. Latest-complete snapshot copying is next, then trusted
-bindings/preparation/leases, reference cutoff/callback/first-frame Ready and matched
-runtime/firmware integration before CPU-control retirement. All Stage 5 checkboxes
-remain open; no stage completion, hardware/schema change, fit, promotion, physical
-qualification or delivery is implied. Production remains ABI 15.
+records seven Rust hashes. That checkpoint left latest-complete snapshot copying
+pending; it now follows below. Trusted bindings/preparation/leases, reference
+cutoff/callback/first-frame Ready and matched runtime/firmware integration remain
+before CPU-control retirement. All Stage 5 checkboxes remain open; no stage
+completion, hardware/schema change, fit, promotion, physical qualification or
+delivery is implied. Production remains ABI 15.
+
+**Latest-complete snapshot copy (partial):** validated caller-provided buffers
+(two × 4,880 u32 words) attach once to the same `semantic::Device` owner through
+`SnapshotBuffers`/`SnapshotDevice`. All wire APIs still use that one private bus;
+independent per-call copy contexts cannot mix an indexed hardware cursor. Snapshot
+steps perform at most three ordered MMIO operations. A finite ready-set/header
+scan chooses the newest complete candidate as of that scan; older snapshots may
+be discarded by qualified ACK. The full selected 128-row packet, per-word
+receipts, scanned identity/header, reserved fields and epoch are checked before
+selected ACK and atomic latest/staging swap. It does not chase newer publications
+indefinitely. Publication/results can pump between copy steps. A prior immutable
+local image survives staging/native reuse and uncertain ACKs; it remains labeled
+with its original epoch/revision, not new membership or Ready authority. Confirmed
+epoch change invalidates it; consuming recovery cancels private copy progress and
+fresh storage starts without a published local image. Initial retained rows stay
+nonmembers, never restoration data. Exhausted optional publication stays idle,
+not a new audio fault or automatic reset.
+
+Five pure tests cover full 128-row metadata, full-width ACKs, refill during finite
+selection, interleaved groups/results, exact storage shape, initial raw rows,
+malformed/selected truncated packets, receipt/mask failures, sequence exhaustion,
+consuming recovery, and **sampled** phase/selected-row-boundary bus errors before/
+after effects and epoch crossings. The existing full-profile hardware-paced case
+now also copies snapshots while publishing/reading group 6, freezes after three
+body words with continued F, and retains the selected F=0/revision-1 image during
+refill. Losing the real selected-snapshot ACK B preserves only the previous
+complete local image, quarantines without replay and then recovers explicitly to
+an epoch-2 initial sequence-1/F0/revision-0 copy, audio disabled. This remains a
+fixture-only unused-program preparation path, not trusted loading/leases, logical
+snapshot API integration, exact PCM, dirty/held-DDR-fence, matched firmware,
+application Ready, all-admitted-envelope or physical qualification.
+
+Gates pass **17 transport tests**, **324 Rust = 252 affected + 72 directed**,
+**13 Python**, Linux **3,589 passed (2 slow) / 11 skipped / 404.541 s**, both Wasm
+profiles, explicit host-library Wasm and pinned ARM-library checks, warnings/
+format/policy/coverage/generators. [Exact-source evidence](docs/fpga/command-fifo-implementation/reports/snapshot-copy-30d7c6934/results.json)
+records seven Rust hashes. Bounded low-level group/result/snapshot pumps are now
+implemented; the matched ARM/reference runtime, trusted binding/preparation/lease
+owner, callback/fresh-first-frame Ready and CPU-control retirement are next.
+**All Stage 5 checkboxes remain open**; Stages 4–5 partial, Stages 6–7 open,
+production ABI 15 selected. No new hardware/schema, fit, promotion, physical work
+or delivery is implied.
 
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 

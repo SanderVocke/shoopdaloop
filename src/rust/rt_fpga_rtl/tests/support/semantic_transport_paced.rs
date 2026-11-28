@@ -2,7 +2,9 @@ use super::*;
 use rt_fpga_rtl::{
     component::{Instruction, instruction_words},
     host::semantic::{
-        CommandRecord, GroupHeader, GroupPacket, MAX_RESULT_BUS_OPS, ResultStep, SwitchOutcome,
+        CommandRecord, GroupHeader, GroupPacket, MAX_RESULT_BUS_OPS, MAX_SNAPSHOT_BUS_OPS,
+        ResultStep, SNAPSHOT_COPY_WORDS, SnapshotBuffers, SnapshotPhase, SnapshotStep,
+        SwitchOutcome,
     },
 };
 use shoop_rt_protocol::immediate::{Code, SwitchProgram};
@@ -13,6 +15,9 @@ struct Observed<B> {
     words: Rc<Cell<usize>>,
     acknowledgements: Rc<Cell<usize>>,
     lose_ack: Rc<Cell<bool>>,
+    snapshot_words: Rc<Cell<usize>>,
+    snapshot_acks: Rc<Cell<usize>>,
+    lose_snapshot_at: Rc<Cell<usize>>,
 }
 impl<B: RegisterBus<Error = u64>> RegisterBus for Observed<B> {
     type Error = u64;
@@ -21,6 +26,9 @@ impl<B: RegisterBus<Error = u64>> RegisterBus for Observed<B> {
         if address == REG_RESULT_DATA {
             self.words.set(self.words.get() + 1);
         }
+        if address == REG_SNAPSHOT_DATA {
+            self.snapshot_words.set(self.snapshot_words.get() + 1);
+        }
         Ok(value)
     }
     fn write(&mut self, address: u32, value: u32) -> Result<(), u64> {
@@ -28,6 +36,13 @@ impl<B: RegisterBus<Error = u64>> RegisterBus for Observed<B> {
         if address == REG_RESULT_ACK {
             self.acknowledgements.set(self.acknowledgements.get() + 1);
             if self.lose_ack.replace(false) {
+                return Err(99);
+            }
+        }
+        if address == REG_SNAPSHOT_ACK {
+            self.snapshot_acks.set(self.snapshot_acks.get() + 1);
+            if self.lose_snapshot_at.get() == self.snapshot_acks.get() {
+                self.lose_snapshot_at.set(0);
                 return Err(99);
             }
         }
@@ -142,6 +157,9 @@ fn hardware_paced_results_survive_partial_read_stalls_bank_reuse_and_a_lost_real
         let ops = Rc::new(Cell::new(0));
         let words = Rc::new(Cell::new(0));
         let acknowledgements = Rc::new(Cell::new(0));
+        let snapshot_words = Rc::new(Cell::new(0));
+        let snapshot_acks = Rc::new(Cell::new(0));
+        let lose_snapshot_at = Rc::new(Cell::new(0));
         let resets = Rc::new(Cell::new(0));
         let bus = Observed {
             bus: Count {
@@ -153,6 +171,9 @@ fn hardware_paced_results_survive_partial_read_stalls_bank_reuse_and_a_lost_real
             words: words.clone(),
             acknowledgements: acknowledgements.clone(),
             lose_ack: Rc::new(Cell::new(lost)),
+            snapshot_words: snapshot_words.clone(),
+            snapshot_acks: snapshot_acks.clone(),
+            lose_snapshot_at: lose_snapshot_at.clone(),
         };
         let mut device = Device::open(bus, contract()).unwrap();
         for (pc, instruction) in [
@@ -318,6 +339,128 @@ fn hardware_paced_results_survive_partial_read_stalls_bank_reuse_and_a_lost_real
             assert_eq!(acknowledgements.get(), 5);
             assert_eq!(resets.get(), 0);
             assert_eq!(Axi(&sim).read(REG_AUDIO_XRUNS), Ok(0));
+            let mut first = vec![0xa5a5_a5a5; SNAPSHOT_COPY_WORDS];
+            let mut second = first.clone();
+            let mut device =
+                device.with_snapshots(SnapshotBuffers::new(&mut first, &mut second).unwrap());
+            device.queue(group(6, 1, 1, None)).unwrap();
+            let mut published = false;
+            let mut copied_result = false;
+            let mut paused = false;
+            let mut snapshot = None;
+            for _ in 0..12_000 {
+                let before = ops.get();
+                let step = device.snapshot_step().unwrap();
+                assert!(ops.get() - before <= MAX_SNAPSHOT_BUS_OPS);
+                if let SnapshotStep::Updated(header) = step {
+                    snapshot = Some(header);
+                    break;
+                }
+                assert!(device.latest_snapshot().is_none());
+                if snapshot_words.get() == 35 && !paused {
+                    let frame = sim.borrow().model.get("sync_frame");
+                    sim.borrow_mut().idle(300_000);
+                    assert!(sim.borrow().model.get("sync_frame") >= frame + 128);
+                    paused = true;
+                }
+                let before = ops.get();
+                if !published {
+                    published = matches!(
+                        device.publication_step().unwrap(),
+                        PublicationStep::Published { .. }
+                    );
+                }
+                assert!(ops.get() - before <= MAX_PUBLICATION_BUS_OPS);
+                let before = ops.get();
+                if !copied_result {
+                    copied_result = device.result_step().unwrap() == ResultStep::Buffered;
+                }
+                assert!(ops.get() - before <= MAX_RESULT_BUS_OPS);
+            }
+            assert!(published && copied_result && paused);
+            let snapshot = snapshot.expect("complete snapshot");
+            assert_eq!(snapshot.sequence, 2);
+            assert_eq!(snapshot.frame, 0);
+            assert_eq!(snapshot.revision, 1);
+            assert_eq!(snapshot.phase, SnapshotPhase::Settled);
+            assert_eq!(device.latest_snapshot().unwrap().header(), snapshot);
+            assert_eq!(
+                device.take_result().unwrap().header().identity.sequence(),
+                6
+            );
+            assert_eq!(
+                snapshot_acks.get(),
+                2,
+                "older initial discarded, selected settled released"
+            );
+            assert_eq!(acknowledgements.get(), 6);
+            sim.borrow_mut().idle(100_000);
+            assert_eq!(Axi(&sim).read(REG_SNAPSHOT_READY), Ok(3));
+            lose_snapshot_at.set(4);
+            let mut failed = false;
+            for _ in 0..12_000 {
+                let before = ops.get();
+                let result = device.snapshot_step();
+                assert!(ops.get() - before <= MAX_SNAPSHOT_BUS_OPS);
+                assert_eq!(device.latest_snapshot().unwrap().header(), snapshot);
+                match result {
+                    Err(Error::Bus(99)) => {
+                        failed = true;
+                        break;
+                    }
+                    Ok(SnapshotStep::Progress) => {}
+                    other => panic!("unexpected snapshot ACK outcome {other:?}"),
+                }
+            }
+            assert!(failed);
+            assert_eq!(snapshot_acks.get(), 4);
+            let before = ops.get();
+            assert_eq!(device.snapshot_step(), Err(Error::Fault));
+            assert_eq!(device.publication_step(), Err(Error::Fault));
+            assert_eq!(device.result_step(), Err(Error::Fault));
+            assert_eq!(ops.get(), before);
+            assert_eq!(Axi(&sim).read(REG_AUDIO_XRUNS), Ok(0));
+            let mut recovery = device.recovery();
+            recovery.begin().unwrap();
+            let mut recovered = false;
+            for _ in 0..2000 {
+                match recovery.poll().unwrap() {
+                    RecoveryState::Ready(2) => {
+                        recovered = true;
+                        break;
+                    }
+                    RecoveryState::Draining | RecoveryState::Resetting => {}
+                    state => panic!("unexpected snapshot recovery {state:?}"),
+                }
+            }
+            assert!(recovered);
+            let fresh = recovery.reopen().unwrap();
+            let mut fresh =
+                fresh.with_snapshots(SnapshotBuffers::new(&mut first, &mut second).unwrap());
+            assert!(fresh.latest_snapshot().is_none());
+            sim.borrow_mut().idle(6000);
+            let mut initial = None;
+            for _ in 0..12_000 {
+                let before = ops.get();
+                let result = fresh.snapshot_step().unwrap();
+                assert!(ops.get() - before <= MAX_SNAPSHOT_BUS_OPS);
+                if let SnapshotStep::Updated(header) = result {
+                    initial = Some(header);
+                    break;
+                }
+                assert!(fresh.latest_snapshot().is_none());
+            }
+            let initial = initial.expect("fresh initial copy");
+            assert_eq!(initial.epoch, 2);
+            assert_eq!(initial.sequence, 1);
+            assert_eq!(initial.frame, 0);
+            assert_eq!(initial.revision, 0);
+            assert_eq!(initial.phase, SnapshotPhase::Initial);
+            assert_eq!(resets.get(), 1);
+            assert_eq!(snapshot_acks.get(), 5);
+            assert_eq!(acknowledgements.get(), 6);
+            assert_eq!(Axi(&sim).read(REG_COMPLETED_QUANTA), Ok(0));
+            assert_eq!(sim.borrow().model.get("audio_enable"), 0);
         }
     }
 }

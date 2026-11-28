@@ -2652,9 +2652,76 @@ nix develop --command bash -c '
 '
 ```
 
-Latest-complete snapshot copying is next. Trusted bindings/preparation/leases,
-reference cutoff/callback cancellation, fresh-first-frame Ready, matched runtime/
-firmware and CPU-control retirement remain. All Stage 5 checkboxes remain open;
-Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15.
-No RTL/schema change, new synthesis/route/current-source fit, promotion, physical
-qualification, push/PR or independent final audit is implied.
+That result-copy checkpoint left latest-complete snapshot copying next; it now
+follows below. Trusted bindings/preparation/leases, reference cutoff/callback
+cancellation, fresh-first-frame Ready, matched runtime/firmware and CPU-control
+retirement remain. All Stage 5 checkboxes remain open; Stages 0–3 complete,
+Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15. No RTL/schema change,
+new synthesis/route/current-source fit, promotion, physical qualification, push/PR
+or independent final audit is implied.
+
+## Latest-complete snapshot copy — Stage 5 partial
+
+`SnapshotBuffers` validates two caller-provided buffers of exactly **4,880 u32
+words each** before they attach once to the existing `Device` as `SnapshotDevice`.
+The same private device/bus owns all group/result/snapshot operations; the storage
+attachment forwards existing APIs, not a second controller/backend. Independent
+per-call contexts cannot mix an indexed snapshot cursor. Buffers are allocated
+outside pumping; no per-step allocation or whole-packet service is introduced.
+
+Each snapshot step performs at most **three ordered MMIO operations**. A finite
+ready-set/header scan selects its newest complete packet and may acknowledge an
+older one without exposing its rows. The full selected 128-row body, per-word
+receipts, scanned header/identity, reserved fields and epoch are validated before
+selected ACK/receipt and atomic latest/staging swap. New publications during
+copying do not trigger an unbounded chase: the returned copy is latest as of the
+finite ready-set scan, not necessarily newest at return. Publication/results can
+pump between copy steps. Initial raw valid bits/nonfinite gains remain nonmembers;
+no snapshot restores state, plans F, retires a lease or creates application Ready.
+Original gain bits, failure/pulse metadata, render cursor/stamp and producer loss
+are preserved without relabeling host discards as producer skips.
+
+The previous complete local image survives staging/native reuse and uncertain
+ACKs, retaining its original epoch/revision as potentially stale observations.
+Confirmed epoch change invalidates it. Consuming recovery drops private copy
+progress; a fresh storage attachment publishes no retained local image before a
+complete new copy. Optional sequence exhaustion remains idle rather than causing
+an audio fault/reset. No automatic read/ACK retry, false image update or semantic
+rollback follows an uncertain outcome.
+
+Five pure tests cover full 128-row metadata, high-u64 ACKs, refill during bounded
+selection, interleaved group/result pumping, exact buffer shape, initial raw rows,
+malformed/selected truncated packets, receipt/mask failures, maximum sequence,
+consuming recovery, and **sampled phases/selected row-boundary** errors before/
+after effects and epoch crossings. This is not exhaustive MMIO-prefix coverage.
+The retained full-profile generated-audio/MMIO/SP/JP/media/64-bit-AXI test now also
+copies snapshots while publishing/receiving group 6. A pause after three body words
+still permits at least four quanta; native refill cannot change the selected
+F0/revision-1 image. After a real selected-snapshot ACK B is consumed and software
+receives error 99, only the prior complete image remains, with no ACK replay.
+Explicit shared recovery then produces an epoch-2 initial sequence-1/F0/revision-0
+copy with audio disabled and no completed quanta. Fixture-only unused-program
+preparation is not the pending trusted loader/lease owner, logical snapshot API,
+exact-PCM oracle, dirty/held-DDR-fence, matched firmware, Ready or physical proof.
+
+[Results/seven exact Rust hashes](reports/snapshot-copy-30d7c6934/results.json):
+**17 transport tests**, **324 Rust = 252 affected + 72 directed**, both 3,970-case
+kernel sources/four audio-I/O tests and **13 Python** pass. Fresh Linux **3,589
+passed (2 slow) / 11 skipped / 404.541 s**, pinned nextest 0.9.116 and owned isolated
+48 kHz/128-frame dummy JACK. Default application/worklet and optional reference
+worklet Wasm builds, explicit host-library Wasm and installed pinned Rust 1.99.1
+ARM-library checks pass; these are not browser runtime or firmware/link/pair proof.
+Warnings/format/policy/coverage/generators pass. Feature-sensitive builds and
+subprocess suites remain serialized.
+
+Local final gates: `stage5-snapshot-copy-{target-v2,milestone,linux,wasm,arm,precommit}`.
+Use the preceding narrow `semantic_transport` command to reproduce. Earlier
+`build-v1`/`target-v1` were green preliminary iterations, not final-source proof.
+
+Low-level bounded group/result/latest-complete-snapshot pumps are implemented.
+Next: trusted Allocator/ProgramSession binding, preparation/lease eligibility,
+reference cutoff, callback/fresh-first-frame Ready, matched runtime/firmware and
+CPU-control retirement. All Stage 5 checkboxes remain open; Stages 0–3 complete,
+Stages 4–5 partial, Stages 6–7 open. Production remains ABI 15. No new RTL/schema,
+synthesis/route/current-source fit, promotion, physical work, push/PR or independent
+final audit is implied.

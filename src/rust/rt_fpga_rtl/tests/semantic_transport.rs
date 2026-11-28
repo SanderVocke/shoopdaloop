@@ -4,6 +4,8 @@
 mod axi;
 #[path = "support/semantic_transport_results.rs"]
 mod results;
+#[path = "support/semantic_transport_snapshots.rs"]
+mod snapshots;
 use rt_fpga_rtl::host::{
     Contract, Error, Mailbox, RecoveryState, RegisterBus,
     semantic::{
@@ -28,6 +30,13 @@ struct State {
     result_bank: usize,
     result_cursor: usize,
     acknowledgements: usize,
+    snapshots: [Option<Vec<u32>>; 2],
+    snapshot_bank: usize,
+    snapshot_cursor: usize,
+    snapshot_reads: usize,
+    snapshot_acks: Vec<(usize, u64)>,
+    snapshot_refill: Option<(usize, Vec<u32>)>,
+    forced_snapshot_receipt: Option<u32>,
     bank: usize,
     admitted: Vec<(usize, Vec<u32>)>,
     fail: Option<(usize, bool)>,
@@ -85,6 +94,13 @@ impl Bus {
             result_bank: 0,
             result_cursor: 0,
             acknowledgements: 0,
+            snapshots: [None, None],
+            snapshot_bank: 0,
+            snapshot_cursor: 0,
+            snapshot_reads: 0,
+            snapshot_acks: Vec::new(),
+            snapshot_refill: None,
+            forced_snapshot_receipt: None,
             bank: 0,
             admitted: Vec::new(),
             fail: None,
@@ -128,6 +144,12 @@ impl State {
         self.result_cursor = 0;
         self.registers.insert(REG_RESULT_RECEIPT, 0);
         self.registers.remove(&REG_RESULT_READY);
+        self.snapshots = [None, None];
+        self.snapshot_bank = 0;
+        self.snapshot_cursor = 0;
+        self.snapshot_refill = None;
+        self.registers.insert(REG_SNAPSHOT_RECEIPT, 0);
+        self.registers.remove(&REG_SNAPSHOT_READY);
     }
 }
 impl RegisterBus for Bus {
@@ -151,6 +173,29 @@ impl RegisterBus for Bus {
                     })
                     .map_or(0, |bank| if s.states[bank] == 5 { 1 << bank } else { 0 })
             }),
+            REG_SNAPSHOT_READY => s.registers.get(&register).copied().unwrap_or_else(|| {
+                u32::from(s.snapshots[0].is_some()) | (u32::from(s.snapshots[1].is_some()) << 1)
+            }),
+            REG_SNAPSHOT_RECEIPT => s
+                .forced_snapshot_receipt
+                .unwrap_or_else(|| *s.registers.get(&register).unwrap_or(&0)),
+            REG_SNAPSHOT_DATA => {
+                s.snapshot_reads += 1;
+                let bank = s.snapshot_bank;
+                let value = s.snapshots[bank]
+                    .as_ref()
+                    .and_then(|words| words.get(s.snapshot_cursor))
+                    .copied();
+                if let Some(value) = value {
+                    s.snapshot_cursor += 1;
+                    s.registers.insert(REG_SNAPSHOT_RECEIPT, 0);
+                    value
+                } else {
+                    s.registers
+                        .insert(REG_SNAPSHOT_RECEIPT, RECEIPT_UNAVAILABLE);
+                    0
+                }
+            }
             REG_RESULT_DATA => {
                 let bank = s.result_bank;
                 let cursor = s.result_cursor;
@@ -197,6 +242,42 @@ impl RegisterBus for Bus {
                     s.states[bank] = 2;
                     s.registers.insert(REG_LAST_ADMITTED_LOW, words[4]);
                     s.registers.insert(REG_NEXT_SEQUENCE_LOW, words[4] + 1);
+                }
+            }
+            REG_SNAPSHOT_BANK => {
+                s.snapshot_bank = value as usize;
+                s.snapshot_cursor = 0;
+            }
+            REG_SNAPSHOT_REWIND => {
+                assert_eq!(value, 1);
+                s.snapshot_cursor = 0;
+            }
+            REG_SNAPSHOT_ACK_LOW | REG_SNAPSHOT_ACK_HIGH | REG_SNAPSHOT_ACK_EPOCH => {
+                s.registers.insert(register, value);
+            }
+            REG_SNAPSHOT_ACK => {
+                assert_eq!(value, 1);
+                let bank = s.snapshot_bank;
+                let sequence = u64::from(s.registers[&REG_SNAPSHOT_ACK_LOW])
+                    | (u64::from(s.registers[&REG_SNAPSHOT_ACK_HIGH]) << 32);
+                let matches = s.snapshots[bank].as_ref().is_some_and(|words| {
+                    u64::from(words[4]) | (u64::from(words[5]) << 32) == sequence
+                });
+                let receipt = if s.registers[&REG_SNAPSHOT_ACK_EPOCH] != s.registers[&REG_EPOCH] {
+                    RECEIPT_EPOCH
+                } else if matches {
+                    0
+                } else {
+                    RECEIPT_UNAVAILABLE
+                };
+                s.registers.insert(REG_SNAPSHOT_RECEIPT, receipt);
+                if receipt == 0 {
+                    s.snapshots[bank] = None;
+                    s.snapshot_acks.push((bank, sequence));
+                    if let Some((refill, words)) = s.snapshot_refill.take() {
+                        assert!(s.snapshots[refill].is_none());
+                        s.snapshots[refill] = Some(words);
+                    }
                 }
             }
             REG_RESULT_BANK => {

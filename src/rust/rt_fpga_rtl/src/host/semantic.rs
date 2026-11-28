@@ -6,8 +6,9 @@ mod snapshot;
 
 pub use command::{BoundTarget, CommandRecord, GroupHeader, GroupIdentity, GroupPacket};
 pub use device::{
-    Device, DeviceRecovery, MAX_PUBLICATION_BUS_OPS, MAX_RESULT_BUS_OPS, PublicationStep,
-    ResultStep,
+    Device, DeviceRecovery, MAX_PUBLICATION_BUS_OPS, MAX_RESULT_BUS_OPS, MAX_SNAPSHOT_BUS_OPS,
+    PublicationStep, ResultStep, SNAPSHOT_COPY_WORDS, SnapshotBuffers, SnapshotDevice,
+    SnapshotStep,
 };
 pub use result::{GroupResult, ResultHeader, SwitchOutcome};
 pub use snapshot::{ObservationRow, Snapshot, SnapshotFormat, SnapshotHeader, SnapshotPhase};

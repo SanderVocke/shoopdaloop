@@ -319,10 +319,31 @@ ACK B, followed by explicit shared recovery. It uses fixture-only unused-program
 preparation and does not qualify trusted leases, exact PCM, dirty/held-DDR fences,
 matched firmware, application Ready or protected-board acceptance.
 
-Latest-complete snapshot copying, trusted binding/preparation/leases, reference
-cutoff alignment, callback/first-frame lifecycle, matching runtime/firmware and
-CPU-control retirement remain Stage 5 work. All Stage 5 checkboxes remain open.
-Production still selects ABI 15; no hardware fit or physical qualification follows.
+`SnapshotBuffers` now validates two caller-provided 4,880-u32 buffers before they
+attach once to the same device owner as `SnapshotDevice`. The attachment forwards
+the existing group/result APIs; there is no second bus/controller or exchangeable
+per-call cursor context. Bounded snapshot steps (at most three MMIO operations)
+scan the finite ready set, choose its newest complete header and may ACK/discard
+an older packet. Full selected-body/header/row-reserved/epoch validation precedes
+selected ACK and atomic latest/staging swap. Per-data receipts are checked; newer
+publications during the copy do not force an unbounded chase. The copied image is
+latest as of that ready-set scan, not necessarily newest at return. A prior local
+image remains immutable and labeled with its original epoch/revision after an
+uncertain read/ACK; confirmed epoch change invalidates it. Consuming recovery
+drops private copy progress; fresh buffer attachment exposes no old local image.
+Original metadata and initial raw nonmember semantics above remain unchanged.
+[Snapshot-copy evidence](../../docs/fpga/command-fifo-implementation/reports/snapshot-copy-30d7c6934/results.json)
+includes complete full-profile hardware-paced readback, native refill, interleaved
+group/result pumping, real snapshot-ACK loss and a fresh epoch-2 initial copy.
+Pure error/epoch injection samples phases and selected row boundaries; it is not
+an exhaustive MMIO-prefix or all-admitted-envelope qualification.
+
+Bounded low-level group/result/snapshot wire pumps are implemented, not their
+matched ARM/reference runtime or logical response/snapshot API ownership. Trusted
+binding/preparation/leases, reference cutoff alignment, callback/fresh-first-frame
+lifecycle, matching firmware and CPU-control retirement remain Stage 5 work.
+All Stage 5 checkboxes remain open. Production still selects ABI 15; no hardware
+fit, application Ready, lease reuse or physical qualification follows.
 
 ## MMIO allocation within the existing 4 KiB aperture
 
