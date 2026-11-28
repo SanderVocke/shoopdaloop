@@ -1,0 +1,111 @@
+{
+  "outcome": "PARTIAL_CANONICAL_ALLOCATION_PROVENANCE_GATES_PASSED_NATIVE_LIFECYCLE_PENDING_JACK_NONDETERMINISM_RETAINED",
+  "source_base": "3b4a31def0e10f9e42cb4a6731510495c490b462",
+  "source_manifest": "sources.json",
+  "scope": "Opt-in canonical allocation/predecessor provenance in the existing allocator/image path,NOT incarnation/cancellation/retirement/lease/Ready authority",
+  "provenance": {
+    "canonical_allocation_witness_implemented": true,
+    "factory": "Allocator.with_verifier returns sameallocator+private-domainAllocationVerifier; normalnew unchanged",
+    "witness": "Private in-memoryArc witness binds allcanonicalallocation facts andoriginalpredecessor; serde skip/no reconstruction,foreign/unowned/mutated/restored/injected layouts refuse; layoutclones preservememoryprovenance throughlowering; unsignedcanonicalprevious/next avoidunboundedpredecessor witness chain",
+    "not_authority": "Caller-providedcurrent mustbeactualprivate runtimepredecessor; runtime mustbinddomain toresetqualifiedincarnation/enforcepending+cancel+admission+matchedfences beforeprep/reclaim. Cancelledrecipe STILL authenticprovenance, deliberatelytested. Factory/verification alone grantsNO nativepermission or FencedSwitch",
+    "no_new_allocator_backend_controller_or_dependency": true
+  },
+  "verification": {
+    "new_tests": 4,
+    "target_tests": 21,
+    "affected_rust_tests": 261,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 333,
+    "broad_matrix_additional_feature": "rt_fpga_reference/serde",
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "retained_audio_io_tests": 4,
+    "python_tests": 13,
+    "scope": "Foreign/unowned domains;10publicfact mutations; exactpredecessor/stalereplay; explicitcancel-vs-provenance distinction; serde roundtrip/injectedwitness refuse; originalwitnesssurvives semanticlowering. No newnativeMMIO/lifecycle/leasequalification; retainedfull-profile service/audio suites passseparately",
+    "warnings_format_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3591,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 401.624,
+      "nextest": "0.9.116",
+      "fixture": "fresh ownedisolated48k128dummyJACK,matchinghostrebuild,unchangedprofile/assertions/timeouts"
+    },
+    "retained_linux_failures": {
+      "first_full_run": {
+        "status": 100,
+        "passed": 3589,
+        "failed": 2,
+        "skipped": 11,
+        "seconds": 435.984,
+        "failures": [
+          "shoop_host::jack native_jack_startup_playback_has_one_master_signal_path: Masterlinks0vs1",
+          "shoop_rt_host_native::jack native_jack_implements_the_shared_port_graph_contract: JACK didnotretainrequestedgraphstate"
+        ]
+      },
+      "strict_reproduction": {
+        "rounds": 10,
+        "cases_per_round": 2,
+        "passed": 19,
+        "failed": 1,
+        "status": 1,
+        "round1": "startupplayback RevisionConflict atjack.rs416; graphcontractpassed",
+        "rounds2to10": "bothpassed",
+        "missing_backend_skips_enabled": false,
+        "artificial_resource_constraints": false
+      },
+      "cause": "Unresolved nondeterminism; firstJACKlog containedmanyProcessGraph errors/lateclient notices. No JACK source/assertion/timeout/profile change. A successfulrerun neithererasesfailures norqualifiesfinal native stability"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "explicit_host_library_wasm_check": "passed with rt-interface+compiler/serde",
+    "arm_library_check": {
+      "result": "passed",
+      "target": "armv7a-none-eabihf",
+      "rust": "1.99.1",
+      "features": "rt-interface,rt_fpga_compiler/serde",
+      "warnings_denied": true,
+      "installed_toolchain_reused": true,
+      "matching_firmware_link_or_pair_proof": false
+    },
+    "builds_and_tests_serialized": true,
+    "final_source_local_gates": [
+      "target-v1",
+      "milestone",
+      "linux",
+      "wasm",
+      "arm",
+      "precommit"
+    ]
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stage5_complete": false,
+    "stages6_to7_complete": false,
+    "trusted_incarnation_fence_lease_preparation_owner": false,
+    "bounded_same_owner_preparation_service_pump": false,
+    "logical_response_snapshot_api_runtime_integration": false,
+    "reference_cutoff_aligned": false,
+    "fresh_first_frame_ready_integration": false,
+    "matching_abi16_runtime_firmware": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false,
+    "jack_nondeterminism_resolved": false,
+    "independent_final_audit": false
+  },
+  "production_abi_selected": 15,
+  "restart_protocol_selected": 53,
+  "hardware_register_schema_dependencies_or_runtime_owner_selection_changed": false,
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage5-allocation-witness-"
+}

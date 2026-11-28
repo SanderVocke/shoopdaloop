@@ -367,6 +367,21 @@ covers pure recipe checks and full-profile hardware-paced original-float/bound-g
 interop through a serial unused-resource fixture, not that pending trusted owner,
 matched runtime/firmware, application Ready or physical qualification.
 
+`Allocator::with_verifier` now optionally carries a private canonical allocation/
+predecessor witness through the existing in-memory layout/image path. It is omitted
+by serialization; foreign, unowned, modified, deserialized or injected layouts
+cannot authenticate. Nested canonical copies omit witnesses, so no predecessor
+chain is retained. [Provenance evidence](../../docs/fpga/command-fifo-implementation/reports/allocation-witness-3b4a31def/results.json)
+includes negative checks and preservation through target lowering.
+
+**This is provenance, not cancellation, epoch, fence or lease authority.** A
+cancelled recipe still has authentic provenance. The runtime must privately bind
+the verifier to its reset-qualified incarnation and actual matched predecessor,
+enforce pending/cancel lifecycle and genuine retirement, and gate the same bounded
+service owner before granting preparation. No raw trusted service API or new
+allocator/backend/controller is introduced. Those runtime integrations and every
+Stage 5 checkbox remain open; production ABI 15 remains selected.
+
 ## MMIO allocation within the existing 4 KiB aperture
 
 Discovery/geometry, retained fault record, recovery and service registers through

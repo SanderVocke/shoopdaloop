@@ -2016,6 +2016,38 @@ Stages 4–5 partial, Stages 6–7 open, production ABI 15 selected. No new hard
 register schema, synthesis/route/current-source fit, promotion, physical work,
 push/PR or independent final acceptance is implied.
 
+**Canonical allocation provenance (partial):** opt-in
+`Allocator::with_verifier` now creates a private software domain within the
+existing allocator. Layout clones carry an immutable canonical allocation and
+predecessor witness; serialization omits it. `AllocationVerifier` rejects foreign,
+unowned, modified or deserialized layouts and checks the exact predecessor.
+Canonical copies omit nested witnesses, avoiding an unbounded predecessor chain.
+The ordinary allocator and image channel remain unchanged; no second allocator,
+backend, hardware controller or dependency is introduced.
+
+This authenticates **recipe provenance only**, not an epoch, cancellation,
+publication, retirement, lease or Ready. In particular, cancellation does not
+revoke provenance. The runtime must privately bind the verifier to a reset-qualified
+incarnation, supply its own actual matched predecessor, enforce pending/cancel
+lifecycle and genuine fences, and gate bounded service writes. Those integrations
+remain pending; callers cannot turn public layout flags or a successful provenance
+check into trusted preparation permission.
+
+[Evidence/four Rust hashes](docs/fpga/command-fifo-implementation/reports/allocation-witness-3b4a31def/results.json):
+**21 targeted tests**, **333 Rust = 261 affected + 72 directed**, **13 Python**,
+Wasm and pinned ARM-library checks (including serde), warnings/format/policy/
+coverage/generators pass. The broad matrix explicitly enables reference serde.
+A fresh Linux rerun passed **3,591 (2 slow) / 11 skipped / 401.624 s**. The first
+run's two JACK graph/startup failures (**100**) and a strict ten-round two-case
+reproduction (**19/20 passed; one startup RevisionConflict; aggregate 1**) remain
+retained. No JACK source, assertion, timeout or profile was changed; the
+nondeterministic cause is unresolved, not reclassified as success or final native
+stability qualification. All Stage 5 checkboxes remain open; Stages 0–3 complete,
+Stages 4–5 partial, Stages 6–7 open, production ABI 15 selected. Trusted epoch/
+lease/service ownership, reference/runtime/Ready, firmware and CPU-control retirement
+remain next. No current-source fit, promotion, physical work or independent final
+acceptance follows.
+
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 
 - [ ] Run continuous-audio differential tests through the full AXI/host path for

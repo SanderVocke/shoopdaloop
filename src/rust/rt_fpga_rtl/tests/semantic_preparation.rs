@@ -220,6 +220,38 @@ fn fresh_observations_follow_preparation_and_never_initialize_continuing_allocat
 }
 
 #[shoop_test]
+fn allocation_witness_survives_lowering_without_making_preparation_a_lease() {
+    let (mut allocator, verifier) = Allocator::with_verifier(limits());
+    let first = logical(&[(11, 0.12345679, None)]);
+    let preparation = Preparation::new(image(&mut allocator, &first, true)).unwrap();
+    let active = &preparation.image().layout;
+    assert_eq!(verifier.verify_transition(None, active), Ok(()));
+    // Allocator bookkeeping only; the device owner must separately match an actual fence.
+    allocator.publish(active.revision).unwrap();
+    allocator.complete(active.revision).unwrap();
+    let next = logical(&[(11, 0.75, None), (27, -0.0, Some(11))]);
+    let next = Preparation::new(image(&mut allocator, &next, true)).unwrap();
+    assert_eq!(
+        verifier.verify_transition(Some(active), &next.image().layout),
+        Ok(())
+    );
+    assert!(
+        verifier
+            .verify_transition(None, &next.image().layout)
+            .is_err()
+    );
+    let mut tampered = next.image().layout.clone();
+    tampered.loops[0].fresh = true;
+    assert!(verifier.verify_transition(Some(active), &tampered).is_err());
+    let (_, other_domain) = Allocator::with_verifier(limits());
+    assert!(
+        other_domain
+            .verify_transition(Some(active), &next.image().layout)
+            .is_err()
+    );
+}
+
+#[shoop_test]
 fn malformed_images_cannot_become_semantic_preparation_recipes() {
     let program = logical(&[(11, 0.25, None)]);
     for change in 0..13 {

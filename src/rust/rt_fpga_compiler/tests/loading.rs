@@ -45,6 +45,90 @@ fn limits() -> ProgramLimits {
 }
 
 #[shoop_test]
+fn canonical_witness_rejects_unowned_foreign_and_tampered_allocation_recipes() {
+    let (mut allocator, verifier) = Allocator::with_verifier(limits());
+    let layout = allocator.stage(&graph(&[0, 1])).unwrap();
+    assert_eq!(verifier.verify_transition(None, &layout), Ok(()));
+    assert_eq!(verifier.verify_transition(None, &layout.clone()), Ok(()));
+    let mut unowned = Allocator::new(limits());
+    assert_eq!(
+        verifier.verify_transition(None, &unowned.stage(&graph(&[0, 1])).unwrap()),
+        Err(LoadError::IncompatibleState)
+    );
+    let (mut foreign, other) = Allocator::with_verifier(limits());
+    let foreign_layout = foreign.stage(&graph(&[0, 1])).unwrap();
+    assert_eq!(
+        verifier.verify_transition(None, &foreign_layout),
+        Err(LoadError::IncompatibleState)
+    );
+    assert_eq!(
+        other.verify_transition(None, &layout),
+        Err(LoadError::IncompatibleState)
+    );
+    for mutation in 0..10 {
+        let mut changed = layout.clone();
+        match mutation {
+            0 => changed.expected += 1,
+            1 => changed.revision += 1,
+            2 => changed.region ^= 1,
+            3 => changed.loops[0].logical.slot += 1,
+            4 => changed.loops[0].logical.generation += 1,
+            5 => changed.loops[0].physical.slot += 1,
+            6 => changed.loops[0].physical.generation += 1,
+            7 => changed.loops[0].fresh = !changed.loops[0].fresh,
+            8 => changed.loops[0].sync_source = Some(changed.loops[1].logical),
+            _ => changed.loops.reverse(),
+        }
+        assert_eq!(
+            verifier.verify_transition(None, &changed),
+            Err(LoadError::IncompatibleState),
+            "mutation {mutation}"
+        );
+    }
+    assert_eq!(verifier.verify_transition(None, &layout), Ok(()));
+}
+
+#[shoop_test]
+fn allocation_witness_binds_the_exact_predecessor_but_never_claims_a_device_fence() {
+    let (mut allocator, verifier) = Allocator::with_verifier(limits());
+    let first = allocator.stage(&graph(&[0, 1])).unwrap();
+    allocator.publish(first.revision).unwrap();
+    allocator.complete(first.revision).unwrap();
+    let second = allocator.stage(&graph(&[1, 2])).unwrap();
+    assert_eq!(
+        verifier.verify_transition(None, &second),
+        Err(LoadError::StaleRevision)
+    );
+    assert_eq!(verifier.verify_transition(Some(&first), &second), Ok(()));
+    let mut changed = first.clone();
+    changed.loops[0].fresh = false;
+    assert_eq!(
+        verifier.verify_transition(Some(&changed), &second),
+        Err(LoadError::IncompatibleState)
+    );
+    allocator.publish(second.revision).unwrap();
+    allocator.complete(second.revision).unwrap();
+    let third = allocator.stage(&graph(&[1, 3])).unwrap();
+    assert_eq!(
+        verifier.verify_transition(Some(&first), &third),
+        Err(LoadError::StaleRevision)
+    );
+    assert_eq!(verifier.verify_transition(Some(&second), &third), Ok(()));
+    assert_eq!(
+        verifier.verify_transition(Some(&first), &first),
+        Err(LoadError::StaleRevision)
+    );
+    allocator.cancel(third.revision).unwrap();
+    // Provenance is not pending/cancellation/fence authority. The runtime owns that lifecycle.
+    assert_eq!(verifier.verify_transition(Some(&second), &third), Ok(()));
+    let (_, fresh_domain) = Allocator::with_verifier(limits());
+    assert_eq!(
+        fresh_domain.verify_transition(Some(&second), &third),
+        Err(LoadError::IncompatibleState)
+    );
+}
+
+#[shoop_test]
 fn carry_over_has_no_initializers_and_old_slots_are_pinned_until_handoff() {
     let mut allocator = Allocator::new(limits());
     let a = allocator.stage(&graph(&[0, 1])).unwrap();

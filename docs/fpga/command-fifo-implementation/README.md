@@ -2805,3 +2805,58 @@ remain open**; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. P
 ABI 15/restart protocol 53 remains selected. No new hardware/schema, dependency,
 synthesis/route/current-source fit, promotion, physical work, push/PR or final
 independent implementation/verification/delivery acceptance is implied.
+
+## Canonical allocation provenance — Stage 5 partial
+
+Opt-in `Allocator::with_verifier` returns the existing allocator and an
+`AllocationVerifier` with a private software domain. Issued layout clones retain
+an immutable canonical allocation and predecessor witness in memory; serde omits
+it. The verifier authenticates the domain, every allocation fact and the exact
+predecessor. Unowned/foreign/modified/deserialized/injected layouts refuse. Canonical
+copies strip nested witnesses, avoiding an unbounded predecessor chain. No new
+allocator, backend, hardware owner or dependency is introduced; the default
+allocator and existing layout/image API remain usable without this opt-in.
+
+**Provenance is not device eligibility or lifecycle authority.** It proves no
+hardware incarnation, cancellation, admission, retirement, fence, lease or Ready.
+Cancellation deliberately does not revoke an immutable provenance fact. The
+runtime must retain its own verifier, bind it to a reset-qualified incarnation,
+supply its actual matched predecessor, enforce pending/cancel state and real
+fences, and gate the bounded same-owner preparation service. These remain pending.
+No public layout flags or caller-supplied predecessor become physical authority.
+
+Four new tests cover foreign/unowned domains and ten public-field mutations,
+exact predecessor/replay checks, explicit cancellation-versus-provenance separation,
+serde round-trip/injected witness refusal and preservation through semantic image
+lowering. Allocator publish/complete calls are software bookkeeping, not hardware
+fences. [Four exact Rust hashes/results](reports/allocation-witness-3b4a31def/results.json)
+record **21 targeted tests**, **333 Rust = 261 affected + 72 directed**, both
+3,970-case kernel sources/four audio-I/O tests and **13 Python**. The broad matrix
+adds `rt_fpga_reference/serde` to exercise serialization explicitly. Default and
+optional-reference Wasm builds, explicit host-library Wasm and pinned Rust 1.99.1
+ARM-library checks (both with compiler serde), warning build, formatting, policy,
+coverage and generators pass. Builds/subprocess suites remain serialized.
+
+Linux's first run retained **3589 passed / 2 failed / 11 skipped / 435.984 s**,
+status **100**: JACK startup Master-link count and graph-state confirmation failed.
+A strict fresh-server ten-round/two-case reproduction, without missing-backend
+skips, yielded **19/20 passed**; round 1 startup failed with `RevisionConflict`,
+aggregate status **1**, and all graph-contract repetitions passed. The unchanged
+full gate on a fresh isolated 48 kHz/128-frame dummy JACK then passed **3591
+(2 slow) / 11 skipped / 401.624 s**, nextest 0.9.116. No JACK code/assertion/profile/
+timeout was changed. The nondeterministic cause is unresolved; the successful
+rerun does not erase failures or establish final native stability.
+
+Local prefix `stage5-allocation-witness-`: final `target-v1,milestone,linux,wasm,
+arm,precommit` pass. Retained `linux-v1=100`, `jack-repro=1` and per-round logs
+remain failures. Troubleshooting and CI reproduction guidance were consulted.
+No artificial resource constraints, VM, skipped assertions or source workaround
+was used. This is checkpoint consistency, not independent final acceptance.
+
+Next: bind provenance checking to the actual incarnation/pending/fence lifecycle
+and trusted preparation/lease ownership; implement bounded same-owner services,
+then reference/runtime/callback/fresh-first-frame Ready, firmware and CPU-control
+retirement. All Stage 5 checkboxes remain open; Stages 0–3 complete, Stages 4–5
+partial, Stages 6–7 open. ABI 15/protocol 53 remains selected. No new hardware/
+register schema, current-source fit, promotion, physical work, push/PR or final
+implementation/verification/delivery acceptance is implied.

@@ -95,6 +95,30 @@ fn quantum(
     left
 }
 
+#[cfg(feature = "serde")]
+#[shoop_test]
+fn serialized_or_injected_layouts_never_recreate_an_allocation_witness() {
+    use rt_fpga_compiler::loading::{Layout, LoadError};
+    let (mut allocator, verifier) = Allocator::with_verifier(limits());
+    let original = allocator.stage(&graph(&[0, 1])).unwrap();
+    assert_eq!(verifier.verify_transition(None, &original), Ok(()));
+    let encoded = serde_json::to_value(&original).unwrap();
+    assert!(!encoded.as_object().unwrap().contains_key("witness"));
+    let restored: Layout = serde_json::from_value(encoded.clone()).unwrap();
+    assert_eq!(
+        verifier.verify_transition(None, &restored),
+        Err(LoadError::IncompatibleState)
+    );
+    let mut injected = encoded.clone();
+    injected["witness"] = serde_json::json!({ "domain": 1, "previous": null, "next": encoded });
+    let forged: Layout = serde_json::from_value(injected).unwrap();
+    assert_eq!(
+        verifier.verify_transition(None, &forged),
+        Err(LoadError::IncompatibleState)
+    );
+    assert_eq!(verifier.verify_transition(None, &original), Ok(()));
+}
+
 #[shoop_test]
 fn staging_never_reinitializes_live_recording_and_switch_keeps_plans_and_frame() {
     let mut allocator = Allocator::new(limits());

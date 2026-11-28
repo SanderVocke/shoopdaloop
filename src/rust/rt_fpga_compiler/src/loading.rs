@@ -1,6 +1,6 @@
 //! ARM-owned reservations and address binding for two executable regions.
 use crate::*;
-use alloc::vec;
+use alloc::{sync::Arc, vec};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -24,13 +24,13 @@ impl core::fmt::Display for LoadError {
 }
 impl core::error::Error for LoadError {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct ValueSlot {
     key: StateKey,
     address: u32,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopSlot {
     pub logical: Identity,
@@ -56,6 +56,54 @@ pub struct Layout {
     chunk_frames: u32,
     #[cfg_attr(feature = "serde", serde(default))]
     composites: Vec<CompositeSchedule>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    witness: Option<Arc<AllocationWitness>>,
+}
+
+#[derive(Debug)]
+struct AllocationDomain;
+#[derive(Debug)]
+struct AllocationWitness {
+    domain: Arc<AllocationDomain>,
+    previous: Option<Layout>,
+    next: Layout,
+}
+
+/// Authenticates allocator provenance and its immutable predecessor recipe only.
+/// The runtime owner must bind this domain to its incarnation and actual fenced predecessor.
+pub struct AllocationVerifier {
+    domain: Arc<AllocationDomain>,
+}
+impl AllocationVerifier {
+    fn authenticate<'a>(&self, layout: &'a Layout) -> Result<&'a AllocationWitness, LoadError> {
+        let witness = layout
+            .witness
+            .as_deref()
+            .ok_or(LoadError::IncompatibleState)?;
+        if !Arc::ptr_eq(&self.domain, &witness.domain) || !layout.same_allocation(&witness.next) {
+            return Err(LoadError::IncompatibleState);
+        }
+        Ok(witness)
+    }
+    pub fn verify_transition(
+        &self,
+        current: Option<&Layout>,
+        next: &Layout,
+    ) -> Result<(), LoadError> {
+        let witness = self.authenticate(next)?;
+        match (current, witness.previous.as_ref()) {
+            (None, None) => Ok(()),
+            (Some(current), Some(previous)) => {
+                self.authenticate(current)?;
+                if current.same_allocation(previous) {
+                    Ok(())
+                } else {
+                    Err(LoadError::StaleRevision)
+                }
+            }
+            _ => Err(LoadError::StaleRevision),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -66,6 +114,25 @@ pub struct Allocations {
 }
 
 impl Layout {
+    fn unsigned(&self) -> Self {
+        let mut layout = self.clone();
+        layout.witness = None;
+        layout
+    }
+    fn same_allocation(&self, other: &Self) -> bool {
+        self.expected == other.expected
+            && self.revision == other.revision
+            && self.region == other.region
+            && self.loops == other.loops
+            && self.values == other.values
+            && self.fresh_values == other.fresh_values
+            && self.histories == other.histories
+            && self.fresh_histories == other.fresh_histories
+            && self.changed_sources == other.changed_sources
+            && self.quantum == other.quantum
+            && self.chunk_frames == other.chunk_frames
+            && self.composites == other.composites
+    }
     pub fn allocations(&self) -> Allocations {
         Allocations {
             state: self.values.len(),
@@ -245,6 +312,7 @@ pub struct Allocator {
     generations: Vec<u32>,
     serial: u64,
     published: bool,
+    domain: Option<Arc<AllocationDomain>>,
 }
 impl Allocator {
     pub fn new(limits: ProgramLimits) -> Self {
@@ -255,7 +323,15 @@ impl Allocator {
             generations: vec![0; limits.loop_slots as usize],
             serial: 0,
             published: false,
+            domain: None,
         }
+    }
+    /// Creates a software allocation domain, not reset, retirement or device authority.
+    pub fn with_verifier(limits: ProgramLimits) -> (Self, AllocationVerifier) {
+        let domain = Arc::new(AllocationDomain);
+        let mut allocator = Self::new(limits);
+        allocator.domain = Some(domain.clone());
+        (allocator, AllocationVerifier { domain })
     }
     pub fn current(&self) -> Option<&Layout> {
         self.current.as_ref()
@@ -403,7 +479,7 @@ impl Allocator {
             }
         }
         self.serial = self.serial.checked_add(1).ok_or(LoadError::Exhausted)?;
-        let layout = Layout {
+        let mut layout = Layout {
             expected: self.revision(),
             revision: self.serial,
             region: old.map_or(0, |l| 1 - l.region),
@@ -416,8 +492,16 @@ impl Allocator {
             quantum: program.quantum,
             chunk_frames: program.chunk_frames,
             composites: program.composites.clone(),
+            witness: None,
         };
         layout.relocate(program)?.validate(self.limits)?;
+        if let Some(domain) = &self.domain {
+            layout.witness = Some(Arc::new(AllocationWitness {
+                domain: domain.clone(),
+                previous: self.current.as_ref().map(Layout::unsigned),
+                next: layout.unsigned(),
+            }));
+        }
         self.pending = Some(layout.clone());
         Ok(layout)
     }
