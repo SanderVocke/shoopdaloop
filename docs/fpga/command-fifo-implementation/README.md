@@ -2860,3 +2860,94 @@ retirement. All Stage 5 checkboxes remain open; Stages 0–3 complete, Stages 4�
 partial, Stages 6–7 open. ABI 15/protocol 53 remains selected. No new hardware/
 register schema, current-source fit, promotion, physical work, push/PR or final
 implementation/verification/delivery acceptance is implied.
+
+## Reset-bound program session and bounded preparation — Stage 5 partial
+
+The existing program-session lifetime implementation is now one shared typed
+`Session<T,P,A>` core. Its legacy `ProgramSession<B>` alias preserves the ABI-15
+API and existing fixtures; the candidate `semantic::ProgramSession<B>` specializes
+the same core with the same `Device`, preparation artifact and opaque ownership.
+No second backend, allocator, MMIO actor, dispatcher or recovery controller appears.
+
+`Device::program_session` refuses discovery-only attachment, unrequested reopen
+and prior publication traffic. Only successful correlated explicit recovery
+completion supplies its private reset-epoch evidence. Consuming that device pairs
+one fresh existing allocator with a private enforced allocation owner. This is
+unused native preparation authority within this consumed owner, **not global
+runtime retirement, continuing-state restoration or application Ready**.
+
+The opt-in allocator's enforced claims prevent producer `cancel`, `refused` and
+`complete` calls from releasing claimed/published resources without the private
+owner's corresponding retirement transition. Claim/drop itself proves no fence.
+Witnesses retain the original immutable logical program as well as canonical
+allocations/predecessor. The session accepts a layout, verifies/claims its actual
+predecessor, then lowers the retained source itself; caller mutations of source or
+public image members cannot steer trusted writes. The earlier pure verifier still
+only authenticates provenance, including authentic cancelled recipes.
+
+Bounded configuration/observation/history/CLEAR_VIEW preparation uses the same
+service MMIO/loader/accepted-operation/recovery owners. Private fixed words, tag
+and progress are reserved before effects; every fill word/PUSH/POP receipt and
+per-step epoch bracket is checked. Reply tag/code/reserved fields precede POP.
+Each preparation or selection step performs at most three ordered bus operations,
+without polling loops or per-step allocation. Recipe advancement is not delivery.
+Cancellation waits for accepted work/POP confirmation; uncertainty quarantines
+without replay, faked completion or resource release. Only new allocations and
+inactive code are initialized; continuing state/loop/observations are untouched.
+The inactive preparation lane returns Idle safely while selection is being pumped.
+
+The private original single-switch group identity/descriptor, confirmed upload,
+actual predecessor and complete non-faulted native result must all match before
+allocator completion or predecessor retirement. Initial publication precedes
+bounded enable; hardware audio selects first F0. Primitive replacement uses the
+same genuine fence. Consuming typed recovery retains old/staged images and private
+request progress until correlated reset; reopening makes a fresh allocator/domain
+which refuses old layouts. Hardware reset/fence success is not application Ready.
+
+Seven new tests (six pure, one actual) cover reset/attachment refusal, immutable
+source and foreign/tampered layout rejection, continuing-allocation preservation,
+publication-before-enable, matched/refused/foreign-revision handoffs, deferred
+cancel and consuming recovery. Every MMIO prefix of the **first configuration
+service** is injected with before/after bus errors and an epoch crossing; this is
+not an exhaustive matrix for every later service/media operation. Malformed
+status/receipt/tag/code/reserved replies cannot POP/release. The full frozen-profile
+generated-audio/MMIO/SP/JP/media/64-bit AXI case reaches epoch 2, first native F0/
+revision 1, then revision 2 through a real primitive handoff. Parking three body
+words for 300,000 clocks leaves revision 1 rendering at least four more quanta.
+A later real service POP B is consumed then reported as error 99; no retry/release
+occurs and audio continues. Explicit recovery reaches epoch 3, fresh owner has no
+active image, old layouts refuse and quanta/audio remain stopped. This is direct
+stereo with genuine fences, not new exact-PCM/dirty-DDR/all-envelope/whole-runtime
+proof; retained playback/capture/held-DDR/exact-PCM suites pass separately.
+
+[Eleven exact Rust hashes/results](reports/session-owner-4d28b1dbe/results.json)
+record **30 targeted = 5 preparation + 25 transport (21 pure/4 actual)**,
+**340 Rust = 268 affected + 72 directed**, both 3,970-case kernel sources/four
+audio-I/O tests and **13 Python**. Full Linux passes **3591 (2 slow) / 11 skipped /
+406.496 s**, pinned nextest 0.9.116/owned isolated 48 kHz/128-frame dummy JACK/
+matching host rebuild/bounded cleanup. This default suite does not replace the
+explicit optional RTL matrix. Default app/worklet plus optional-reference Wasm,
+serde-enabled host-library Wasm and installed Rust 1.99.1 ARM-library checks pass,
+not browser runtime or linked/paired firmware. All feature-sensitive builds and
+subprocess suites were serialized. Warning build, formatting, test policy,
+coverage (62 retained/13 retired), generators and diff checks pass.
+
+Local prefix `stage5-session-owner-`: final `target-v6,milestone,linux,wasm,arm,
+precommit` pass. Retained `target-v3=101` was the fake service PUSH asserting epoch
+2 == 3 during an injected crossing; the model now returns native epoch refusal
+without accepting work. Native driver/assertions were not weakened. Retained
+`milestone-v1=101` exposed explicit legacy `ProgramSession<B>` fixture types after
+the initial generic refactor (E0308/E0599); the compatible alias restores the API,
+not a fixture workaround. Earlier target/build greens predate final source and
+are preliminary. Historical parent JACK failures/nondeterminism remain unresolved,
+not erased by this successful Linux run.
+
+Next: adapt the existing application owner/image channel to this specialization;
+ordinary semantic group/response and logical snapshot ownership, reference cutoff,
+whole-runtime callback cancellation/fresh-first-frame Ready, trusted bulk-media
+use, matching ARM firmware/pairing/watchdog and CPU-control retirement remain.
+Do not redo the completed local session/pump. All five Stage 5 boxes remain open;
+Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. ABI 15/protocol 53 stays
+selected. No RTL/register schema/dependency/default-runtime selection changes,
+new synthesis/route/current-source fit, promotion, physical work, push/PR or
+independent implementation/verification/delivery acceptance is implied.

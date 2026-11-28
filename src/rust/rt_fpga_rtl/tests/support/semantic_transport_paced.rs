@@ -1,4 +1,6 @@
 use super::*;
+#[path = "semantic_transport_owned.rs"]
+mod owned;
 #[path = "semantic_transport_preparation.rs"]
 mod preparation;
 use rt_fpga_rtl::{

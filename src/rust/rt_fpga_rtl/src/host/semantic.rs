@@ -1,4 +1,4 @@
-//! Candidate ABI-16 wire codecs and bounded transport, without resource-ownership authority.
+//! Candidate ABI-16 codecs, bounded transport and reset-bound program preparation.
 mod command;
 mod device;
 mod preparation;
@@ -7,9 +7,10 @@ mod snapshot;
 
 pub use command::{BoundTarget, CommandRecord, GroupHeader, GroupIdentity, GroupPacket};
 pub use device::{
-    Device, DeviceRecovery, MAX_PUBLICATION_BUS_OPS, MAX_RESULT_BUS_OPS, MAX_SNAPSHOT_BUS_OPS,
-    PublicationStep, ResultStep, SNAPSHOT_COPY_WORDS, SnapshotBuffers, SnapshotDevice,
-    SnapshotStep,
+    AllocationOwnership, Device, DeviceRecovery, MAX_PREPARATION_BUS_OPS, MAX_PUBLICATION_BUS_OPS,
+    MAX_RESULT_BUS_OPS, MAX_SNAPSHOT_BUS_OPS, PreparationProgress, ProgramRecovery, ProgramSession,
+    PublicationStep, ResultStep, SNAPSHOT_COPY_WORDS, SelectionStep, SnapshotBuffers,
+    SnapshotDevice, SnapshotStep,
 };
 pub use preparation::{Preparation, PreparationStep};
 pub use result::{GroupResult, ResultHeader, SwitchOutcome};

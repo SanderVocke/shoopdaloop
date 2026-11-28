@@ -2048,6 +2048,60 @@ lease/service ownership, reference/runtime/Ready, firmware and CPU-control retir
 remain next. No current-source fit, promotion, physical work or independent final
 acceptance follows.
 
+**Reset-bound program-session/preparation milestone (partial):** the existing
+`ProgramSession` resource-lifetime code now has one shared typed `Session` core.
+The public ABI-15 `ProgramSession<B>` alias remains compatible; the candidate
+ABI-16 specialization owns the same `Device`/MMIO/recovery authority, not another
+backend or dispatcher. `Device::program_session` refuses discovery-only attachment
+and unrequested reopen. Only a correlated explicit recovery completion can supply
+its private reset-epoch evidence. Consuming it pairs a fresh existing `Allocator`
+with a private allocation owner; reset completion is still **not application Ready**.
+
+Opt-in enforced leases prevent producer cancel/refused/complete bookkeeping from
+releasing claimed resources prematurely. Immutable allocation witnesses also retain
+the original logical program. The session claims the exact actual predecessor and
+lowers that original source itself, rather than trusting caller-modified image
+members. Pure provenance checks remain provenance only. Cancellation waits for
+accepted preparation work and its qualified POP receipt/stable epoch; dropping a
+claim does not authorize cancellation. Publication intent prevents cancellation;
+only the original, complete, correlated non-faulted result can mark refusal or a
+real fenced handoff and permit allocator completion. The shared session retains
+its predecessor until that match, including during consuming recovery.
+
+Preparation/configuration and initial-enable steps use fixed request/tag/reply
+validation and **at most three ordered MMIO operations** each. Every fill word,
+PUSH and POP has a checked receipt; epoch brackets guard each step. The next recipe
+step is never treated as delivered, and uncertainty quarantines without replay or
+lease release. Only canonical unused/inactive preparation writes are issued; no
+continuing state/loop/observation initializer or raw ABI-16 service escape appears.
+Initial switch publication precedes enable; real audio chooses first F0. Primitive
+replacement uses the same path and native fence, without CPU effective-F planning.
+
+[Evidence/eleven Rust hashes](docs/fpga/command-fifo-implementation/reports/session-owner-4d28b1dbe/results.json):
+**30 targeted tests**, **340 Rust = 268 affected + 72 directed**, both 3,970-case
+kernel sources/four audio-I/O tests, **13 Python**, Linux **3,591 passed (2 slow) /
+11 skipped / 406.496 s**, default/optional Wasm and explicit serde-enabled Wasm/
+pinned ARM-library checks pass. Hostile tests cover every MMIO prefix of the first
+configuration service with before/after errors and epoch crossings, malformed
+replies, deferred cancellation and foreign fenced revisions. A full-profile native
+case exercises reset epoch 2, original-source staging, first F0 selection and a
+primitive replacement while an incomplete upload is parked for 300,000 clocks;
+audio advances at least four quanta. A real POP B is then consumed but reported as
+an error: no replay/release occurs, audio continues, and explicit recovery reaches
+epoch 3 with a fresh domain rejecting old layouts. The stale-PUSH model assertion
+and legacy-generic API compile failure are retained, corrected without weakening
+native checks or fixtures. This is not dirty-DDR/PCM/all-envelope/whole-runtime proof.
+
+The candidate session subset is implemented; **application owner/image-channel,
+ordinary command/response and logical snapshot API integration, reference cutoff,
+whole-runtime callbacks/fresh-first-frame Ready, trusted bulk-media use, matching
+firmware/pairing/watchdog and CPU-control retirement remain open**. All five Stage 5
+checkboxes remain unchecked; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7
+open. ABI 15/protocol 53 stays selected. No new RTL/schema/dependency, synthesis/
+route/current-source fit, promotion, physical work, push/PR or independent final
+acceptance is implied. The earlier JACK nondeterminism remains unresolved historical
+evidence; this successful Linux run does not erase it.
+
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 
 - [ ] Run continuous-audio differential tests through the full AXI/host path for

@@ -16,7 +16,7 @@ use rt_fpga_reference::{
     },
     transitions::{LoopId, LoopState, Mode, Operation, TransitionError},
 };
-pub use session::{ActiveProgram, FencedSwitch, ProgramSession};
+pub use session::{ActiveProgram, FencedSwitch, ProgramSession, Session};
 use shoop_rt_protocol::{
     LoopMode, LoopSlotId, SlotId, Telemetry,
     immediate::{

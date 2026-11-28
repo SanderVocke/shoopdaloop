@@ -4,6 +4,8 @@
 mod axi;
 #[path = "support/semantic_transport_results.rs"]
 mod results;
+#[path = "support/semantic_transport_sessions.rs"]
+mod sessions;
 #[path = "support/semantic_transport_snapshots.rs"]
 mod snapshots;
 use rt_fpga_rtl::host::{
@@ -44,6 +46,8 @@ struct State {
     forced_free: Option<u32>,
     forced_receipt: Option<u32>,
     recovery_requests: usize,
+    services: Vec<(u32, [u32; 14])>,
+    service_pops: usize,
 }
 #[derive(Clone)]
 struct Bus(Rc<RefCell<State>>);
@@ -108,6 +112,8 @@ impl Bus {
             forced_free: None,
             forced_receipt: None,
             recovery_requests: 0,
+            services: Vec::new(),
+            service_pops: 0,
         })))
     }
     fn set(&self, register: u32, value: u32) {
@@ -121,7 +127,8 @@ impl State {
     fn op(&mut self, op: Op) -> Result<bool, u32> {
         self.ops.push(op);
         if self.reset_at == Some(self.ops.len()) {
-            self.registers.insert(REG_EPOCH, 2);
+            let epoch = self.registers[&REG_EPOCH];
+            self.registers.insert(REG_EPOCH, epoch + 1);
         }
         match self.fail {
             Some((at, false)) if at == self.ops.len() => Err(99),
@@ -133,6 +140,9 @@ impl State {
         let epoch = self.registers[&REG_EPOCH] + 1;
         self.registers.insert(REG_EPOCH, epoch);
         self.registers.insert(REG_RECOVERY_STATUS, 3);
+        self.registers.insert(REG_STATUS, 1);
+        self.services.clear();
+        self.service_pops = 0;
         self.registers.insert(REG_NEXT_SEQUENCE_LOW, 1);
         self.registers.insert(REG_NEXT_SEQUENCE_HIGH, 0);
         self.registers.insert(REG_LAST_ADMITTED_LOW, 0);
@@ -216,6 +226,37 @@ impl RegisterBus for Bus {
         let fail = s.op(Op::Write(register, value))?;
         let bank = s.bank;
         match register {
+            r if (REG_REQUEST_EPOCH..REG_REQUEST_PUSH).contains(&r) => {
+                s.registers.insert(register, value);
+                s.registers.insert(REG_SUBMISSION_RESULT, 0);
+            }
+            REG_REQUEST_PUSH => {
+                let words = std::array::from_fn(|i| {
+                    *s.registers
+                        .get(&(REG_REQUEST_EPOCH + 4 * i as u32))
+                        .unwrap_or(&0)
+                });
+                if words[0] != s.registers[&REG_EPOCH] {
+                    s.registers.insert(REG_SUBMISSION_RESULT, RECEIPT_EPOCH);
+                } else {
+                    assert_ne!(value, 0);
+                    s.services.push((value, words));
+                    s.registers.insert(REG_STATUS, 2);
+                    s.registers.insert(REG_RESPONSE_TAG, value);
+                    s.registers.insert(REG_RESPONSE_CODE, 0);
+                    s.registers.insert(REG_SUBMISSION_RESULT, 0);
+                    for i in 0..12 {
+                        s.registers.insert(REG_RESPONSE_DATA + 4 * i, 0);
+                    }
+                }
+            }
+            REG_RESPONSE_POP => {
+                assert_eq!(value, s.registers[&REG_RESPONSE_TAG]);
+                assert_eq!(s.registers[&REG_STATUS], 2);
+                s.service_pops += 1;
+                s.registers.insert(REG_STATUS, 1);
+                s.registers.insert(REG_SUBMISSION_RESULT, 0);
+            }
             REG_COMMAND_BANK => {
                 assert!(value < 4);
                 s.bank = value as usize;

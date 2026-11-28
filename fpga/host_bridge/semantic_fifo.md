@@ -382,6 +382,41 @@ service owner before granting preparation. No raw trusted service API or new
 allocator/backend/controller is introduced. Those runtime integrations and every
 Stage 5 checkbox remain open; production ABI 15 remains selected.
 
+### Reset-bound session subset
+
+The existing program-session resource-lifetime code has a shared typed `Session`
+core; the ABI-15 `ProgramSession<B>` alias remains compatible. Its candidate
+`semantic::ProgramSession` specialization consumes the same `Device`, not a second
+MMIO/backend/recovery owner. `Device::program_session` requires private evidence of
+a correlated explicit recovery completion; discovery and unrequested reopen cannot
+supply it. A fresh existing allocator/domain is paired with that consumed reset
+incarnation. This qualifies unused native preparation in this owner, **not global
+runtime retirement, continuing-lease reuse or application Ready**.
+
+Enforced private claims bind the actual predecessor and original immutable logical
+source. Producer bookkeeping alone cannot cancel claimed work or certify refusal/
+completion. The session constructs lowering/recipes from that source, not mutable
+caller image bytes. It writes only canonical new allocations/inactive code, never
+continuing state/loop/observations. Accepted preparation work must finish through
+qualified POP/receipt/stable epoch before a cancellation releases its claim.
+
+Preparation/enable steps retain fixed request words, tag and private progress
+before effects, validate fill/PUSH/POP receipts and reply identity/reserved fields,
+and perform at most three ordered MMIO operations per step. Uncertainty retains
+resources and forbids replay. A private original switch identity/descriptor,
+confirmed upload and complete non-faulted result precede fenced handoff; a decoded
+wire result alone is still not a lease. Initial publication precedes enable, so
+hardware audio, not RPC, owns first F0. Old/staged images survive consuming recovery
+until correlated reset and fresh-domain reopening.
+
+[Session evidence](../../docs/fpga/command-fifo-implementation/reports/session-owner-4d28b1dbe/results.json)
+covers pure hostile service/lifetime checks and actual paced initial/primitive
+replacement plus lost real POP/recovery. It does not complete logical commands/
+snapshots, application owner/image-channel or whole-runtime callback/Ready,
+reference cutoff, bulk-media leases, firmware/pairing or CPU-control retirement.
+All Stage 5 checkboxes remain open; production ABI 15 remains selected. No raw
+trusted service/mailbox escape, physical qualification or fit is implied.
+
 ## MMIO allocation within the existing 4 KiB aperture
 
 Discovery/geometry, retained fault record, recovery and service registers through

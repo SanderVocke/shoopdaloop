@@ -33,25 +33,22 @@ impl FencedSwitch {
 }
 
 /// Owns the staged image and retains its predecessor until the fabric memory fence returns.
-pub struct ProgramSession<B> {
-    client: Client<B>,
-    active: Option<Upload>,
-    staged: Option<Upload>,
-    uploaded: bool,
-    failed: bool,
+pub type ProgramSession<B> = Session<Client<B>>;
+
+pub struct Session<T, P = Upload, A = ()> {
+    pub(crate) transport: T,
+    pub(crate) active: Option<P>,
+    pub(crate) staged: Option<P>,
+    pub(crate) uploaded: bool,
+    pub(crate) failed: bool,
+    pub(crate) authority: A,
 }
-impl<B: RegisterBus> ProgramSession<B> {
+impl<B: RegisterBus> Session<Client<B>> {
     pub fn new(client: Client<B>) -> Self {
-        Self {
-            client,
-            active: None,
-            staged: None,
-            uploaded: false,
-            failed: false,
-        }
+        Self::with_transport(client, ())
     }
     pub fn client(&mut self) -> &mut Client<B> {
-        &mut self.client
+        &mut self.transport
     }
     pub fn active(&self) -> Option<&ProgramImage> {
         self.active.as_ref().map(|upload| &upload.image)
@@ -69,7 +66,7 @@ impl<B: RegisterBus> ProgramSession<B> {
         (
             self.active.as_ref().map(|u| &u.image),
             self.staged.as_ref().map(|u| &u.image),
-            &mut self.client,
+            &mut self.transport,
         )
     }
     pub fn discard_staged(&mut self, requested: SwitchProgram) -> Option<Upload> {
@@ -83,19 +80,7 @@ impl<B: RegisterBus> ProgramSession<B> {
         self.staged.take()
     }
     pub fn stage(&mut self, upload: Upload) -> Result<(), Upload> {
-        let current = self.active().map_or(0, |image| image.layout.revision);
-        if self.staged.is_some()
-            || self.failed
-            || upload.image.layout.expected != current
-            || self.active().is_some_and(|active| {
-                active.layout.has_composites() || upload.image.layout.has_composites()
-            })
-        {
-            return Err(upload);
-        }
-        self.staged = Some(upload);
-        self.uploaded = false;
-        Ok(())
+        self.stage_prepared(upload, |u| &u.image)
     }
     /// Transfer at most one write or media reclamation per visit.
     pub fn upload_step(
@@ -149,18 +134,7 @@ impl<B: RegisterBus> ProgramSession<B> {
         &mut self,
         fence: FencedSwitch,
     ) -> Result<(ActiveProgram, Option<Upload>), Error<B::Error>> {
-        if self.failed
-            || fence.selected.revision != fence.requested.revision
-            || !self
-                .staged()
-                .is_some_and(|image| self.uploaded && descriptor(image) == fence.requested)
-        {
-            self.failed = true;
-            return Err(Error::UnexpectedResponse);
-        }
-        let staged = self.staged.take().unwrap();
-        self.uploaded = false;
-        Ok((fence.selected, self.active.replace(staged)))
+        self.accept_selection(fence.requested, fence.selected, |u| &u.image)
     }
     fn exchange(
         &mut self,
@@ -168,7 +142,7 @@ impl<B: RegisterBus> ProgramSession<B> {
         time_left: impl FnMut() -> bool,
     ) -> Result<[u32; HOST_PAYLOAD_WORDS], Error<B::Error>> {
         let result = request
-            .and_then(|request| self.client.exchange(request, time_left))
+            .and_then(|request| self.transport.exchange(request, time_left))
             .and_then(|response| {
                 if response.code == RESULT_OK {
                     Ok(response.data)
@@ -180,5 +154,57 @@ impl<B: RegisterBus> ProgramSession<B> {
             self.failed = true
         }
         result
+    }
+}
+
+impl<T, P, A> Session<T, P, A> {
+    pub(crate) fn with_transport(transport: T, authority: A) -> Self {
+        Self {
+            transport,
+            authority,
+            active: None,
+            staged: None,
+            uploaded: false,
+            failed: false,
+        }
+    }
+    pub(crate) fn stage_prepared(
+        &mut self,
+        prepared: P,
+        image: fn(&P) -> &ProgramImage,
+    ) -> Result<(), P> {
+        let current = self.active.as_ref().map_or(0, |p| image(p).layout.revision);
+        if self.staged.is_some()
+            || self.failed
+            || image(&prepared).layout.expected != current
+            || self.active.as_ref().is_some_and(|p| {
+                image(p).layout.has_composites() || image(&prepared).layout.has_composites()
+            })
+        {
+            return Err(prepared);
+        }
+        self.staged = Some(prepared);
+        self.uploaded = false;
+        Ok(())
+    }
+    pub(crate) fn accept_selection<E>(
+        &mut self,
+        requested: SwitchProgram,
+        selected: ActiveProgram,
+        image: fn(&P) -> &ProgramImage,
+    ) -> Result<(ActiveProgram, Option<P>), Error<E>> {
+        if self.failed
+            || selected.revision != requested.revision
+            || !self
+                .staged
+                .as_ref()
+                .is_some_and(|p| self.uploaded && descriptor(image(p)) == requested)
+        {
+            self.failed = true;
+            return Err(Error::UnexpectedResponse);
+        }
+        let staged = self.staged.take().unwrap();
+        self.uploaded = false;
+        Ok((selected, self.active.replace(staged)))
     }
 }

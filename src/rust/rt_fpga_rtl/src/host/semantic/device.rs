@@ -1,10 +1,16 @@
 use super::{GroupIdentity, GroupPacket, GroupResult};
 mod result_reader;
+mod service;
+mod session;
 mod snapshot_reader;
 use crate::host::semantic_registers::*;
 use crate::host::{Contract, Error, Geometry, Mailbox, Recovery, RecoveryState, RegisterBus};
 use result_reader::Reader;
 pub use result_reader::{MAX_RESULT_BUS_OPS, ResultStep};
+pub use service::MAX_PREPARATION_BUS_OPS;
+pub use session::{
+    AllocationOwnership, PreparationProgress, ProgramRecovery, ProgramSession, SelectionStep,
+};
 pub use snapshot_reader::{
     MAX_SNAPSHOT_BUS_OPS, SNAPSHOT_COPY_WORDS, SnapshotBuffers, SnapshotDevice, SnapshotStep,
 };
@@ -49,6 +55,7 @@ pub struct Device<B> {
     published: [Option<GroupIdentity>; SEMANTIC_GROUP_BANKS as usize],
     next: u64,
     halted: bool,
+    reset_epoch: Option<u32>,
 }
 impl<B: RegisterBus> Device<B> {
     pub fn open(mut bus: B, expected: Contract) -> Result<Self, Error<B::Error>> {
@@ -120,6 +127,7 @@ impl<B: RegisterBus> Device<B> {
             published: [None; 4],
             next: 1,
             halted: false,
+            reset_epoch: None,
         })
     }
     pub fn epoch(&self) -> u32 {
@@ -146,6 +154,7 @@ impl<B: RegisterBus> Device<B> {
         if self.pending.is_some() || self.published.iter().all(Option::is_some) {
             return Err(Error::Full);
         }
+        self.reset_epoch = None;
         self.pending = Some(Publication {
             packet,
             phase: Phase::Health,
@@ -277,6 +286,7 @@ impl<B: RegisterBus + Clone> Device<B> {
         DeviceRecovery {
             recovery: self.mailbox.recovery(),
             reopened: false,
+            completed: None,
         }
     }
 }
@@ -285,25 +295,32 @@ impl<B: RegisterBus + Clone> Device<B> {
 pub struct DeviceRecovery<B> {
     recovery: Recovery<B>,
     reopened: bool,
+    completed: Option<u32>,
 }
 impl<B: RegisterBus + Clone> DeviceRecovery<B> {
     pub fn begin(&mut self) -> Result<(), Error<B::Error>> {
         if self.reopened {
             return Err(Error::InvalidRequest);
         }
+        self.completed = None;
         self.recovery.begin()
     }
     pub fn poll(&mut self) -> Result<RecoveryState, Error<B::Error>> {
         if self.reopened {
             return Err(Error::InvalidRequest);
         }
-        self.recovery.poll()
+        let state = self.recovery.poll()?;
+        if let RecoveryState::Ready(epoch) = state {
+            self.completed = Some(epoch);
+        }
+        Ok(state)
     }
     pub fn reopen(&mut self) -> Result<Device<B>, Error<B::Error>> {
         if self.reopened {
             return Err(Error::Full);
         }
-        let device = Device::attach(self.recovery.reopen()?)?;
+        let mut device = Device::attach(self.recovery.reopen()?)?;
+        device.reset_epoch = self.completed.filter(|&epoch| epoch == device.epoch());
         self.reopened = true;
         Ok(device)
     }

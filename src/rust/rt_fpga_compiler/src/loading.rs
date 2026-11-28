@@ -1,6 +1,7 @@
 //! ARM-owned reservations and address binding for two executable regions.
 use crate::*;
 use alloc::{sync::Arc, vec};
+use core::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -61,12 +62,80 @@ pub struct Layout {
 }
 
 #[derive(Debug)]
-struct AllocationDomain;
+struct AllocationDomain {
+    leases: bool,
+}
 #[derive(Debug)]
 struct AllocationWitness {
     domain: Arc<AllocationDomain>,
     previous: Option<Layout>,
     next: Layout,
+    program: LogicalStateProgram,
+    lease: AtomicU32,
+}
+
+const PENDING: u32 = 0;
+const CLAIMED: u32 = 1;
+const PUBLISHING: u32 = 2;
+const FENCED: u32 = 3;
+const CANCELLED: u32 = 4;
+const REFUSED: u32 = 5;
+
+/// Exclusive resource-lifetime authority. Keep private to the actual device owner.
+pub struct AllocationOwner {
+    verifier: AllocationVerifier,
+}
+impl AllocationOwner {
+    pub fn claim(
+        &self,
+        current: Option<&Layout>,
+        next: &Layout,
+    ) -> Result<AllocationLease, LoadError> {
+        self.verifier.verify_transition(current, next)?;
+        let witness = next.witness.as_ref().ok_or(LoadError::IncompatibleState)?;
+        witness
+            .lease
+            .compare_exchange(PENDING, CLAIMED, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| LoadError::Busy)?;
+        Ok(AllocationLease {
+            witness: witness.clone(),
+        })
+    }
+}
+
+/// A claimed recipe. Dropping it never implies cancellation or hardware retirement.
+pub struct AllocationLease {
+    witness: Arc<AllocationWitness>,
+}
+impl AllocationLease {
+    pub fn program(&self) -> &LogicalStateProgram {
+        &self.witness.program
+    }
+    fn change(&mut self, from: u32, to: u32) -> Result<(), LoadError> {
+        self.witness
+            .lease
+            .compare_exchange(from, to, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| LoadError::Busy)
+    }
+    pub fn publishing(&mut self) -> Result<(), LoadError> {
+        self.change(CLAIMED, PUBLISHING)
+    }
+    pub fn unpublished(&mut self) -> Result<(), LoadError> {
+        self.change(PUBLISHING, CLAIMED)
+    }
+    /// Only after all accepted preparation work has retired and no switch can execute.
+    pub fn cancel(&mut self) -> Result<(), LoadError> {
+        self.change(CLAIMED, CANCELLED)
+    }
+    /// Only after the original switch's correlated native ownership fence.
+    pub fn fenced(&mut self) -> Result<(), LoadError> {
+        self.change(PUBLISHING, FENCED)
+    }
+    /// Only after a complete, correlated, non-faulted switch refusal.
+    pub fn refused(&mut self) -> Result<(), LoadError> {
+        self.change(PUBLISHING, REFUSED)
+    }
 }
 
 /// Authenticates allocator provenance and its immutable predecessor recipe only.
@@ -328,7 +397,16 @@ impl Allocator {
     }
     /// Creates a software allocation domain, not reset, retirement or device authority.
     pub fn with_verifier(limits: ProgramLimits) -> (Self, AllocationVerifier) {
-        let domain = Arc::new(AllocationDomain);
+        Self::paired(limits, false)
+    }
+    /// Pair the existing allocator with its exclusive runtime resource-lifetime owner.
+    /// This software factory does not establish a device incarnation or hardware fence.
+    pub fn with_leases(limits: ProgramLimits) -> (Self, AllocationOwner) {
+        let (allocator, verifier) = Self::paired(limits, true);
+        (allocator, AllocationOwner { verifier })
+    }
+    fn paired(limits: ProgramLimits, leases: bool) -> (Self, AllocationVerifier) {
+        let domain = Arc::new(AllocationDomain { leases });
         let mut allocator = Self::new(limits);
         allocator.domain = Some(domain.clone());
         (allocator, AllocationVerifier { domain })
@@ -500,6 +578,8 @@ impl Allocator {
                 domain: domain.clone(),
                 previous: self.current.as_ref().map(Layout::unsigned),
                 next: layout.unsigned(),
+                program: program.clone(),
+                lease: AtomicU32::new(PENDING),
             }));
         }
         self.pending = Some(layout.clone());
@@ -515,6 +595,19 @@ impl Allocator {
             .is_some_and(|l| l.revision == revision)
         {
             return Err(LoadError::StaleRevision);
+        }
+        if let Some(witness) = self.pending.as_ref().and_then(|l| l.witness.as_ref()) {
+            if witness.domain.leases {
+                match witness.lease.compare_exchange(
+                    PENDING,
+                    CANCELLED,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) | Err(CANCELLED) => {}
+                    Err(_) => return Err(LoadError::Busy),
+                }
+            }
         }
         self.pending = None;
         Ok(())
@@ -541,6 +634,7 @@ impl Allocator {
         {
             return Err(LoadError::StaleRevision);
         }
+        self.require_lease(REFUSED)?;
         self.pending = None;
         self.published = false;
         Ok(())
@@ -556,8 +650,21 @@ impl Allocator {
         {
             return Err(LoadError::StaleRevision);
         }
+        self.require_lease(FENCED)?;
         self.current = self.pending.take();
         self.published = false;
         Ok(())
+    }
+    fn require_lease(&self, state: u32) -> Result<(), LoadError> {
+        if self
+            .pending
+            .as_ref()
+            .and_then(|l| l.witness.as_ref())
+            .is_some_and(|w| w.domain.leases && w.lease.load(Ordering::Acquire) != state)
+        {
+            Err(LoadError::Busy)
+        } else {
+            Ok(())
+        }
     }
 }
