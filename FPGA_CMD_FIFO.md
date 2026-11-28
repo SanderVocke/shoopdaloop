@@ -1865,6 +1865,34 @@ bounded MMIO pumping and all remaining Stage 5 work above are still pending.
 No checkbox, stage completion, hardware change, current fit, promotion, physical
 qualification or delivery is implied.
 
+**Exact attachment and bounded publication (partial):** candidate
+`host::semantic::Device` now checks exact ABI 16, all seven capabilities, frozen
+advertised geometry/limits and epoch-bracketed fresh-wire state before attachment.
+The public legacy mailbox remains ABI-15-only. Typed candidate recovery delegates
+to the same hardened owner, retains exact version/incarnation and consumes old
+transport authority; reset-complete is still not application Ready or lease reuse.
+Publication preserves the complete group/order and uses at most three ordered
+MMIO operations per step, with a receipt after each body write. It never waits
+for execution or advances F. Bus/protocol uncertainty quarantines the transport
+without replay, fake admission or early resource retirement.
+
+Six pure transport tests and a real full-profile, unpaced MMIO/semantic/media/AXI
+case pass. The actual case publishes 1/16/32/2-command groups into all four banks,
+checks partial-fill stalls and zero render progress, and loses a real recovery B
+acknowledgement before querying genuine epoch 1→2. This is not continuous-audio,
+held-DDR, matched firmware or application-Ready proof. Final gates pass **314 Rust
+= 242 affected + 72 directed**, **13 Python**, Linux **3,589 passed / 11 skipped /
+406.003 s**, both Wasm profiles, explicit host-library Wasm and pinned ARM-library
+checks, warnings/format/policy/coverage/generators. The initial duplicate test-memory
+registration failure is retained; its fixture was fixed without suppressing lint.
+[Evidence](docs/fpga/command-fifo-implementation/reports/publication-c525dd479/results.json)
+records seven Rust source hashes. Reliable result/latest-complete snapshot readers
+and normal bank release are next; publication alone fills four reservations.
+Trusted binding/preparation/leases, reference/Ready/runtime-owner integration and
+CPU-control retirement remain open. No Stage 5 checkbox is complete; Stages 4–5
+stay partial, Stages 6–7 open and production ABI 15 selected. No hardware change,
+current fit, promotion, physical qualification or delivery follows.
+
 ### Stage 6 — End-to-end validation and resource/timing acceptance
 
 - [ ] Run continuous-audio differential tests through the full AXI/host path for

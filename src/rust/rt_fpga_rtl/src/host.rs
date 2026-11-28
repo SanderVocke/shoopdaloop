@@ -93,18 +93,24 @@ pub struct Mailbox<B> {
     epoch: u32,
     clock_hz: u32,
     contract: Contract,
+    version: u32,
 }
 
 impl<B: RegisterBus> Mailbox<B> {
     pub fn open(bus: B, expected: Contract) -> Result<Self, Error<B::Error>> {
+        Self::open_version(bus, expected, HOST_VERSION)
+    }
+
+    fn open_version(bus: B, expected: Contract, version: u32) -> Result<Self, Error<B::Error>> {
         let mut device = Self {
             bus,
             epoch: 0,
             clock_hz: expected.clock_hz,
             contract: expected,
+            version,
         };
         if device.read(REG_ID)? != HOST_ID
-            || device.read(REG_VERSION)? != HOST_VERSION
+            || device.read(REG_VERSION)? != version
             || device.read(REG_CORE_CLOCK_HZ)? != expected.clock_hz
             || device.read(REG_ARENA_BASE)? != expected.arena_base
             || device.read(REG_ARENA_BYTES)? != expected.arena_bytes

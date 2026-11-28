@@ -290,11 +290,23 @@ Golden/negative and existing consumer/snapshot-producer interop tests pass;
 records source hashes and native/Wasm/ARM-library gates. Its consumer fence input
 is component-qualified, not a new actual-DDR or ARM-transport proof.
 
-The nonblocking MMIO pump, trusted binding/preparation/lease owner, reference
-cutoff alignment, callback/first-frame lifecycle and CPU-control retirement remain
-Stage 5 work. These codecs do not make the legacy ABI-15 `Mailbox`/`Client` a
-matching endpoint or select ABI 16. No production RTL/schema changes, hardware
-fit, matching firmware or physical qualification are implied.
+The codecs do not make the legacy ABI-15 `Mailbox`/`Client` a matching endpoint or
+select ABI 16. The candidate `semantic::Device` separately checks exact ABI 16,
+all seven capabilities, frozen advertised geometry/limits and epoch-bracketed
+fresh-wire state. Its publication step performs at most three ordered MMIO
+operations, checks each body receipt and publishes once after the complete group.
+Uncertainty quarantines the transport without replay. Typed candidate recovery
+consumes old transport authority and delegates to the existing exact-version,
+incarnation-bound owner; it does not establish application Ready or a lease.
+[Publication evidence](../../docs/fpga/command-fifo-implementation/reports/publication-c525dd479/results.json)
+includes an actual full-profile MMIO/semantic/media/AXI fixture with no rendering,
+not continuous-audio, protected-board or matched-firmware qualification.
+
+Reliable-result/latest-complete-snapshot readers and normal bank release remain
+pending; publication alone fills four reservations. Trusted binding/preparation/
+leases, reference cutoff alignment, callback/first-frame lifecycle and CPU-control
+retirement also remain Stage 5 work. Production still selects ABI 15; no hardware
+fit or physical qualification follows.
 
 ## MMIO allocation within the existing 4 KiB aperture
 

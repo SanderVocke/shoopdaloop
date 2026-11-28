@@ -22,6 +22,7 @@ pub struct Recovery<B> {
     bus: B,
     contract: Contract,
     epoch: u32,
+    version: u32,
     request: RequestState,
 }
 
@@ -31,6 +32,7 @@ impl<B: RegisterBus + Clone> Mailbox<B> {
             bus: self.bus.clone(),
             contract: self.contract,
             epoch: self.epoch,
+            version: self.version,
             request: RequestState::Idle,
         }
     }
@@ -108,7 +110,7 @@ impl<B: RegisterBus + Clone> Recovery<B> {
         if self.request != RequestState::Idle {
             return Err(Error::Full);
         }
-        let mailbox = Mailbox::open(self.bus.clone(), self.contract)?;
+        let mailbox = Mailbox::open_version(self.bus.clone(), self.contract, self.version)?;
         if mailbox.epoch != self.epoch {
             return Err(Error::EpochChanged);
         }

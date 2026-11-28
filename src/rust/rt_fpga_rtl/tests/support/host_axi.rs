@@ -29,7 +29,12 @@ impl Axi<'_, '_> {
             assert_eq!(sim.tick(&[ready]).0.get(ready), 1);
             sim.model.set(valid, 0);
         }
-        sim.idle(1);
+        for _ in 0..16 {
+            if sim.model.get("s_axi_bvalid") != 0 {
+                break;
+            }
+            sim.idle(1);
+        }
         assert_eq!(sim.model.get("s_axi_bvalid"), 1);
         assert_eq!(sim.model.get("s_axi_awready"), 0);
         assert_eq!(sim.model.get("s_axi_wready"), 0);

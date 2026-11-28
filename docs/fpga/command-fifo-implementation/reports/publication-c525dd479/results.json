@@ -1,0 +1,96 @@
+{
+  "outcome": "PARTIAL_EXACT_ABI16_ATTACHMENT_BOUNDED_PUBLICATION_GATES_PASSED_READERS_AND_RUNTIME_PENDING",
+  "source_base": "c525dd479b21104e9784d169bce9ec8fd0ab8e76",
+  "source_manifest": "sources.json",
+  "scope": "Candidate wire attachment/publication through existing RegisterBus/Mailbox/recovery owners; no lease/semantic ownership authority or runtime-owner promotion",
+  "transport": {
+    "attachment": "ExactABI16/all7capabilities/frozen advertised production geometry/cycle limits; epoch bracket and high-low-high counters; only fresh wire state,not continuing restoration or lease authority",
+    "default_legacy_open": "Still exactABI15; private exact-version constructor and captured recovery version; no public15-or16 fallback",
+    "publication": "One complete immutable local packet,original order/header/arguments; per-word receipt; publish once; four local correlation identities mirror admitted banks,not live state or leases",
+    "max_mmio_operations_per_step": 3,
+    "no_space_or_execution_poll_loop_or_frame_advance": true,
+    "uncertainty": "Quarantine on bus/protocol error; preserve uncertainty without retry,replay,fake admission or early retirement",
+    "recovery": "Consume old transport authority; typed wrapper delegates to existing hardened recovery owner; exact version/incarnation and one successful reopen; reset-complete is not application Ready",
+    "normal_result_bank_release_implemented": false,
+    "publication_only_capacity": 4
+  },
+  "verification": {
+    "new_pure_tests": 6,
+    "new_actual_full_profile_mmio_test": 1,
+    "target_total": 7,
+    "affected_rust_tests": 242,
+    "directed_rust_tests_including_audio_io": 72,
+    "selected_rust_total": 314,
+    "kernel_sources": 2,
+    "kernel_cases_per_source": 3970,
+    "retained_audio_io_tests": 4,
+    "python_tests": 13,
+    "warnings_format_policy_coverage_generators": "passed",
+    "linux": {
+      "passed": 3589,
+      "skipped": 11,
+      "slow": 2,
+      "seconds": 406.003,
+      "nextest": "0.9.116",
+      "audio_fixture": "owned isolated48kHz/128frame dummy JACK"
+    },
+    "wasm_default_application_worklet": "passed",
+    "wasm_optional_fpga_reference_worklet": "passed",
+    "explicit_host_library_wasm_check": "passed",
+    "arm_library_check": {
+      "result": "passed",
+      "target": "armv7a-none-eabihf",
+      "rust": "1.99.1",
+      "warnings_denied": true,
+      "installed_toolchain_reused": true,
+      "matching_firmware_link_or_pair_proof": false
+    },
+    "builds_and_tests_serialized": true,
+    "pure_scope": "Profile/version/capability refusals,all discovery epoch-crossing prefixes,complete1/16/32command bodies,four-bank order,bounded space queries,refusals,all publication bus-error prefixes before/after effects,typed recovery lostACK",
+    "actual_scope": "Actual frozen full-profile unpaced MMIO/semantic/media/64-bitAXI wrapper and existing test-memory backend; no synthetic discovery geometry. Groups1/16/32/2 fill all four banks,partial fills remain unpublished through10000clock stalls,renderF/completed quanta stay0; real recovery B consumed before software error,one genuine epoch1-to2 reset queried without replay. Not continuous audio,held-DDR-drain,protected board,matched firmware or first-frameReady proof. Existing paced/DDR/held-response suites pass separately.",
+    "retained_failed_iteration": {
+      "gate": "stage5-publication-axi-v1",
+      "status": 101,
+      "cause": "Test builder registered existing axi_direct_memory twice; reused original registration and changed its base; no lint suppression/assertion weakening"
+    },
+    "final_source_local_gates": [
+      "axi-v2",
+      "milestone",
+      "linux",
+      "wasm",
+      "arm",
+      "precommit"
+    ]
+  },
+  "resources_and_timing": {
+    "new_synthesis_or_route": false,
+    "current_source_fit_verified": false,
+    "last_pre_clear_trace_bulk_enable_adapter_drain_measurement": "../config-ready-b1c37e8fd/results.json",
+    "final_lut_ff_budgets_agreed": false,
+    "other_binding_requirements_unchanged": true
+  },
+  "acceptance": {
+    "stage4_complete": false,
+    "stage5_complete": false,
+    "stages6_to7_complete": false,
+    "complete_group_result_snapshot_transport": false,
+    "reliable_result_reader": false,
+    "latest_complete_snapshot_reader": false,
+    "trusted_lease_binding_owner": false,
+    "reference_cutoff_aligned": false,
+    "fresh_first_frame_ready_integration": false,
+    "matching_abi16_runtime_software": false,
+    "cpu_control_retired": false,
+    "all_admitted_cycle_proof": false,
+    "protected_board_design": false,
+    "routed_timing": false,
+    "production_promotion": false,
+    "physical_authorization_or_qualification": false,
+    "browser_runtime_proof": false,
+    "independent_final_audit": false
+  },
+  "production_abi_selected": 15,
+  "production_rtl_schema_or_runtime_owner_selection_changed": false,
+  "reproduce_narrow": "nix develop --command bash -c 'export SHOOP_FPGA_SOURCE_ROOT=\"$PWD\"; RUSTFLAGS=\"-D warnings\" cargo test -p rt_fpga_rtl --features sim,rt-interface --test semantic_transport -- --test-threads=1'",
+  "local_evidence_prefix": "work/cmd-fifo-investigation/stage5-publication-"
+}

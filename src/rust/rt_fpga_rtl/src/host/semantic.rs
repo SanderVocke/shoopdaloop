@@ -1,9 +1,11 @@
-//! Candidate ABI-16 wire codecs. These do not attach a device or grant resource ownership.
+//! Candidate ABI-16 wire codecs and bounded transport, without resource-ownership authority.
 mod command;
+mod device;
 mod result;
 mod snapshot;
 
 pub use command::{BoundTarget, CommandRecord, GroupHeader, GroupIdentity, GroupPacket};
+pub use device::{Device, DeviceRecovery, MAX_PUBLICATION_BUS_OPS, PublicationStep};
 pub use result::{GroupResult, ResultHeader, SwitchOutcome};
 pub use snapshot::{ObservationRow, Snapshot, SnapshotFormat, SnapshotHeader, SnapshotPhase};
 

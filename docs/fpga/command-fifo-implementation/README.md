@@ -2533,3 +2533,65 @@ trusted binding/preparation/lease and reference/Ready integration already listed
 All Stage 5 checkboxes remain open. Stages 0–3 are complete, Stages 4–5 partial,
 Stages 6–7 open. No new hardware/schema change, synthesis/route/current-source fit,
 promotion, board work, push/PR, independent final audit or whole-goal completion.
+
+## Exact ABI-16 attachment and bounded publication — Stage 5 partial
+
+The existing host access layer now provides a candidate `semantic::Device` with
+exact version/capability/frozen advertised-profile checks and epoch-bracketed
+fresh-wire attachment. Continuing or already-admitted wire state is refused;
+attachment is not a runtime reset, lease grant or continuing-state restoration.
+The public legacy `Mailbox::open` remains ABI-15-only. A private exact-version
+constructor and captured version let the typed candidate recovery wrapper reuse
+the same hardened recovery owner without exposing ABI 16 as a legacy client.
+Recovery consumes old transport authority and permits only one successful typed
+reopen. Hardware reset-complete is not application Ready or ownership handoff.
+
+Complete groups are queued locally and forwarded in order through bounded steps,
+with **at most three MMIO operations per publication step**. Each body write is
+confirmed before the next; publication occurs once after the complete packet.
+No poll waits for space/execution, no frame is resolved on ARM, and no call creates
+an audio opportunity. An uncertain bus/protocol outcome quarantines the transport:
+no automatic retry, fake admission, lease retirement or destructive recovery.
+The four published identities track wire correlation only, not semantic ownership.
+
+Six pure tests cover exact mismatches, every attachment epoch-crossing prefix,
+1/16/32-command bodies, four-bank ordering, bounded space queries, expected
+refusals and every publication bus-error prefix before/after effects. Typed
+recovery retains query authority after a lost ACK and cannot fall back to ABI 15.
+A seventh test uses the **actual full-profile unpaced MMIO/semantic/media/AXI
+wrapper**, not synthetic discovery geometry: 1/16/32/2-command groups fill all
+four real banks; partial fills remain unpublished across 10,000-clock stalls;
+render cursor/completed quanta stay zero. A real recovery B is consumed before an
+injected software acknowledgement error; queries observe genuine epoch 1→2 and
+one reset only. This fixture is not continuous-audio, held-DDR-drain, protected
+board, matched firmware or first-frame-Ready proof. Existing hardware-paced,
+actual-DDR and held-response regressions pass separately.
+
+[Results/seven exact Rust source hashes](reports/publication-c525dd479/results.json):
+**314 Rust = 242 affected + 72 directed**, both 3,970-case kernel sources, four
+audio-I/O tests, **13 Python**, warnings/format/policy/coverage/generators. Fresh
+Linux **3,589 passed (2 slow) / 11 skipped / 406.003 s** uses pinned nextest 0.9.116
+and owned isolated 48 kHz/128-frame dummy JACK. Default application/worklet,
+optional `fpga-reference` worklet Wasm and explicit host-library Wasm checks pass.
+Pinned Rust 1.99.1 ARM-library checking passes, not firmware/link/pair proof.
+Feature-sensitive builds and suites remain serialized. The first actual test
+failed on duplicate test-memory registration; the fixture reuses the existing
+registration now. Its failed log remains; no RTL lint or assertion was weakened.
+
+Local `stage5-publication-{axi-v2,milestone,linux,wasm,arm}` gates pass. Narrow run:
+
+```sh
+nix develop --command bash -c '
+  export SHOOP_FPGA_SOURCE_ROOT="$PWD"
+  RUSTFLAGS="-D warnings" cargo test -p rt_fpga_rtl --features sim,rt-interface \
+    --test semantic_transport -- --test-threads=1
+'
+```
+
+Next: correlated reliable-result/latest-complete-snapshot readers and normal bank
+release; publication alone fills four reservations. Trusted bindings/preparation/
+leases, reference cutoff, matched runtime/firmware, initial installation/real
+first-frame Ready and CPU-control retirement remain. All Stage 5 checkboxes are
+open; Stages 0–3 complete, Stages 4–5 partial, Stages 6–7 open. Production ABI 15
+remains selected. No hardware/schema change, new synthesis/route/current fit,
+promotion, physical work, push/PR or independent final acceptance is implied.
